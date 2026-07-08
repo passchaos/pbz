@@ -49,6 +49,8 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writer.writeAll("\n");
     try writeEncode(message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeDecode(message, writer, depth + 1);
+    try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(nested, writer, depth + 1);
     try indent(writer, depth);
@@ -105,6 +107,96 @@ fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("_ = allocator;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var self = @This().init();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("while (try r.nextTag()) |tag| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("switch (tag.number) {\n");
+    for (message.fields.items) |*field| try writeDecodeField(field, writer, depth + 3);
+    try indent(writer, depth + 3);
+    try writer.writeAll("else => try r.skipValue(tag),\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeDecodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    switch (field.kind) {
+        .scalar => |scalar| try writeDecodeScalarField(field, scalar, writer, depth),
+        .enumeration => try writeDecodeEnumField(field, writer, depth),
+        .message => try writeDecodeMessageField(field, writer, depth),
+        else => return,
+    }
+}
+
+fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => ", .{field.number});
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("try r.skipValue(tag), // repeated decode requires caller-managed storage\n");
+    } else {
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(" = try r.{s}(),\n", .{scalarReaderName(scalar)});
+    }
+}
+
+fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => ", .{field.number});
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("try r.skipValue(tag), // repeated decode requires caller-managed storage\n");
+    } else {
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try r.readInt32(),\n");
+    }
+}
+
+fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => ", .{field.number});
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("try r.skipValue(tag), // repeated decode requires caller-managed storage\n");
+    } else {
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try r.readBytes(),\n");
+    }
+}
+
+fn scalarReaderName(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .double => "readDouble",
+        .float => "readFloat",
+        .int32 => "readInt32",
+        .int64 => "readInt64",
+        .uint32 => "readUInt32",
+        .uint64 => "readUInt64",
+        .sint32 => "readSInt32",
+        .sint64 => "readSInt64",
+        .fixed32 => "readFixed32",
+        .fixed64 => "readFixed64",
+        .sfixed32 => "readSFixed32",
+        .sfixed64 => "readSFixed64",
+        .bool => "readBool",
+        .string, .bytes => "readBytes",
+    };
 }
 
 fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -507,4 +599,21 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeString(1, entry.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeInt32(2, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, entry_writer.slice())") != null);
+}
+
+test "codegen emits basic decode method" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Person { int32 id = 1; string name = 2; Kind kind = 3; bytes payload = 4; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => self.@\"id\" = try r.readInt32()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => self.@\"name\" = try r.readBytes()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => self.@\"kind\" = try r.readInt32()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => self.@\"payload\" = try r.readBytes()") != null);
 }
