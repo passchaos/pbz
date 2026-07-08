@@ -629,7 +629,7 @@ fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std
 }
 
 fn hasPresence(field: schema.FieldDescriptor) bool {
-    return field.cardinality == .optional or field.cardinality == .required or field.proto3_optional;
+    return field.cardinality == .optional or field.cardinality == .required or field.proto3_optional or field.oneof_name != null;
 }
 
 fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -902,4 +902,20 @@ test "codegen emits required validation" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequired(self: @This()) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_id\") return error.MissingRequiredField") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "has_name") != null);
+}
+
+test "codegen emits oneof presence flags" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Choice { oneof pick { string name = 1; int32 id = 2; } }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_name\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_id\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_name\") try w.writeString(1, self.@\"name\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_id\") try w.writeInt32(2, self.@\"id\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"name\" = try r.readBytes(); self.@\"has_name\" = true") != null);
 }
