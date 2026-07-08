@@ -33,7 +33,7 @@ validated feature set.
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - Well-known types
-  - basic google.protobuf.Timestamp wire and JSON helpers
+  - basic google.protobuf.Timestamp and Duration wire/JSON helpers
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, and nested messages
 
@@ -130,6 +130,8 @@ objects, enum names/numbers, default lowerCamelCase field names, null-as-absent 
 const ts = pbz.Timestamp{ .seconds = 1_577_836_800, .nanos = 123_000_000 };
 const json_ts = try ts.jsonStringifyAlloc(allocator);
 defer allocator.free(json_ts);
+
+const d = pbz.Duration{ .seconds = -3, .nanos = -250_000_000 };
 ```
 
 ## TextFormat support

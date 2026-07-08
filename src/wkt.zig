@@ -146,3 +146,100 @@ test "timestamp json handles pre epoch times" {
     try std.testing.expectEqual(@as(i64, -1), parsed.seconds);
     try std.testing.expectEqual(@as(i32, 0), parsed.nanos);
 }
+
+pub const Duration = struct {
+    seconds: i64 = 0,
+    nanos: i32 = 0,
+
+    pub fn encode(self: Duration, allocator: std.mem.Allocator) ![]u8 {
+        var writer = wire.Writer.init(allocator);
+        errdefer writer.deinit();
+        if (self.seconds != 0) try writer.writeInt64(1, self.seconds);
+        if (self.nanos != 0) try writer.writeInt32(2, self.nanos);
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn decode(bytes: []const u8) !Duration {
+        var out = Duration{};
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| {
+            switch (tag.number) {
+                1 => {
+                    try wire.Reader.expectWireType(tag, .varint);
+                    out.seconds = try reader.readInt64();
+                },
+                2 => {
+                    try wire.Reader.expectWireType(tag, .varint);
+                    out.nanos = try reader.readInt32();
+                },
+                else => try reader.skipValue(tag),
+            }
+        }
+        return out;
+    }
+
+    pub fn jsonStringifyAlloc(self: Duration, allocator: std.mem.Allocator) ![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try self.jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
+    pub fn jsonStringify(self: Duration, writer: *std.Io.Writer) !void {
+        try writer.writeAll("\"");
+        if (self.seconds < 0 or self.nanos < 0) try writer.writeAll("-");
+        try writer.print("{d}", .{@abs(self.seconds)});
+        if (self.nanos != 0) {
+            var frac: [9]u8 = undefined;
+            _ = std.fmt.bufPrint(&frac, "{d:0>9}", .{@abs(self.nanos)}) catch unreachable;
+            var len: usize = frac.len;
+            while (len > 0 and frac[len - 1] == '0') len -= 1;
+            try writer.print(".{s}", .{frac[0..len]});
+        }
+        try writer.writeAll("s\"");
+    }
+
+    pub fn jsonParse(text: []const u8) !Duration {
+        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
+        if (unquoted.len < 2 or unquoted[unquoted.len - 1] != 's') return error.InvalidDuration;
+        var body = unquoted[0 .. unquoted.len - 1];
+        const negative = body.len != 0 and body[0] == '-';
+        if (negative) body = body[1..];
+        const dot = std.mem.indexOfScalar(u8, body, '.');
+        const sec_text = if (dot) |idx| body[0..idx] else body;
+        var seconds = try std.fmt.parseInt(i64, sec_text, 10);
+        var nanos: i32 = 0;
+        if (dot) |idx| {
+            const frac = body[idx + 1 ..];
+            if (frac.len == 0 or frac.len > 9) return error.InvalidDuration;
+            var scale: i32 = 100_000_000;
+            for (frac) |c| {
+                if (!std.ascii.isDigit(c)) return error.InvalidDuration;
+                nanos += @as(i32, @intCast(c - '0')) * scale;
+                scale = @divTrunc(scale, 10);
+            }
+        }
+        if (negative) {
+            seconds = -seconds;
+            nanos = -nanos;
+        }
+        return .{ .seconds = seconds, .nanos = nanos };
+    }
+};
+
+test "duration wire and json roundtrip" {
+    const allocator = std.testing.allocator;
+    const duration = Duration{ .seconds = -3, .nanos = -250_000_000 };
+    const bytes = try duration.encode(allocator);
+    defer allocator.free(bytes);
+    const decoded = try Duration.decode(bytes);
+    try std.testing.expectEqual(duration.seconds, decoded.seconds);
+    try std.testing.expectEqual(duration.nanos, decoded.nanos);
+
+    const json = try duration.jsonStringifyAlloc(allocator);
+    defer allocator.free(json);
+    try std.testing.expectEqualSlices(u8, "\"-3.25s\"", json);
+    const parsed = try Duration.jsonParse(json);
+    try std.testing.expectEqual(duration.seconds, parsed.seconds);
+    try std.testing.expectEqual(duration.nanos, parsed.nanos);
+}

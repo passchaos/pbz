@@ -41,6 +41,7 @@ pub const loadMemory = loader.loadMemory;
 pub const loadPath = loader.loadPath;
 pub const loadDir = loader.loadDir;
 pub const Timestamp = wkt.Timestamp;
+pub const Duration = wkt.Duration;
 
 test {
     _ = wire;
