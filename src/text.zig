@@ -412,8 +412,8 @@ const TextParser = struct {
 
     fn readBool(self: *TextParser) !bool {
         const atom = try self.readAtom();
-        if (std.mem.eql(u8, atom, "true")) return true;
-        if (std.mem.eql(u8, atom, "false")) return false;
+        if (std.mem.eql(u8, atom, "true") or std.mem.eql(u8, atom, "t") or std.mem.eql(u8, atom, "1")) return true;
+        if (std.mem.eql(u8, atom, "false") or std.mem.eql(u8, atom, "f") or std.mem.eql(u8, atom, "0")) return false;
         return error.TypeMismatch;
     }
 
@@ -642,4 +642,25 @@ test "text format parser decodes single quoted hex octal and C escapes" {
     defer msg.deinit();
     try std.testing.expectEqualSlices(u8, "line\nAA", msg.get("text").?.values.items[0].string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02, 0x07, 0x08, 0x0c, 0x0b, '?' }, msg.get("raw").?.values.items[0].bytes);
+}
+
+test "text format parser accepts bool aliases" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { repeated bool flags = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc, "flags: true flags: false flags: t flags: f flags: 1 flags: 0");
+    defer msg.deinit();
+    const flags = msg.get("flags").?.values.items;
+    try std.testing.expectEqual(@as(usize, 6), flags.len);
+    try std.testing.expect(flags[0].boolean);
+    try std.testing.expect(!flags[1].boolean);
+    try std.testing.expect(flags[2].boolean);
+    try std.testing.expect(!flags[3].boolean);
+    try std.testing.expect(flags[4].boolean);
+    try std.testing.expect(!flags[5].boolean);
 }

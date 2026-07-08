@@ -46,7 +46,7 @@ validated feature set.
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults
   - generated typed JSON stringify/parse helpers for scalar, enum, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, and scalar/enum oneof fields
 - TextFormat support
-  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, `{}`/`<>` delimiters, common separators, # comments, and common string/bytes escapes
+  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, `{}`/`<>` delimiters, bool aliases, common separators, # comments, and common string/bytes escapes
 
 ## Quick example
 
