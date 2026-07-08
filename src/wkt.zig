@@ -414,6 +414,29 @@ pub const Any = struct {
         try std.base64.standard.Encoder.encodeWriter(writer, self.value);
         try writer.writeAll("\"}");
     }
+
+    pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Any {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+        defer parsed.deinit();
+        const object = switch (parsed.value) {
+            .object => |object| object,
+            else => return error.TypeMismatch,
+        };
+        const type_url_json = object.get("@type") orelse return error.TypeMismatch;
+        const type_url = switch (type_url_json) {
+            .string => |value| value,
+            else => return error.TypeMismatch,
+        };
+        const value_json = object.get("value") orelse std.json.Value{ .string = "" };
+        const encoded = switch (value_json) {
+            .string => |value| value,
+            else => return error.TypeMismatch,
+        };
+        return .{
+            .type_url = try allocator.dupe(u8, type_url),
+            .value = try decodeBase64(allocator, encoded),
+        };
+    }
 };
 
 test "any wire and json helpers" {
@@ -429,6 +452,16 @@ test "any wire and json helpers" {
     const json = try any.jsonStringifyAlloc(allocator);
     defer allocator.free(json);
     try std.testing.expectEqualSlices(u8, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}", json);
+
+    var parsed = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}");
+    defer parsed.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, any.type_url, parsed.type_url);
+    try std.testing.expectEqualSlices(u8, any.value, parsed.value);
+
+    var parsed_url_safe = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"-_8\"}");
+    defer parsed_url_safe.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xff }, parsed_url_safe.value);
+    try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"value\":\"YWJj\"}"));
 }
 
 pub const Empty = struct {
@@ -596,10 +629,21 @@ fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptim
 }
 
 fn decodeBase64ForWrapper(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
-    const size = try std.base64.standard.Decoder.calcSizeForSlice(value);
+    return try decodeBase64(allocator, value);
+}
+
+fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
+    return decodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
+        decodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
+        decodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
+        decodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
+}
+
+fn decodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
+    const size = try decoder.calcSizeForSlice(value);
     const out = try allocator.alloc(u8, size);
     errdefer allocator.free(out);
-    try std.base64.standard.Decoder.decode(out, value);
+    try decoder.decode(out, value);
     return out;
 }
 

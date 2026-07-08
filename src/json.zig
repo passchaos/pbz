@@ -689,13 +689,12 @@ fn parseAnyMessage(allocator: std.mem.Allocator, descriptor: *const schema.Messa
     }
     const type_field = descriptor.findField("type_url") orelse return error.TypeMismatch;
     const value_field = descriptor.findField("value") orelse return error.TypeMismatch;
-    if (object.get("@type")) |type_json| {
-        const type_url = switch (type_json) {
-            .string => |value| value,
-            else => return error.TypeMismatch,
-        };
-        try message.add(type_field, .{ .string = try allocator.dupe(u8, type_url) });
-    }
+    const type_json = object.get("@type") orelse return error.TypeMismatch;
+    const type_url = switch (type_json) {
+        .string => |value| value,
+        else => return error.TypeMismatch,
+    };
+    try message.add(type_field, .{ .string = try allocator.dupe(u8, type_url) });
     if (object.get("value")) |value_json| {
         const encoded = switch (value_json) {
             .string => |value| value,
@@ -1427,6 +1426,8 @@ test "json parses Any message with type and base64 value" {
     const any_msg = parsed.get("any").?.values.items[0].message;
     try std.testing.expectEqualSlices(u8, "type.googleapis.com/demo.Msg", any_msg.get("type_url").?.values.items[0].string);
     try std.testing.expectEqualSlices(u8, "abc", any_msg.get("value").?.values.items[0].bytes);
+
+    try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"value\":\"YWJj\"}}", .{}));
 }
 
 test "json maps Struct Value and ListValue messages" {
