@@ -1,6 +1,7 @@
 const std = @import("std");
 const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
+const registry_mod = @import("registry.zig");
 
 pub const Error = std.Io.Writer.Error || error{TypeMismatch};
 
@@ -41,9 +42,9 @@ fn writeMessageFields(
         if (entry.descriptor.kind == .map) {
             for (entry.values.items) |value| try writeMapEntry(file, entry.descriptor, value, options, writer, depth);
         } else if (entry.descriptor.cardinality == .repeated) {
-            for (entry.values.items) |value| try writeField(file, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
+            for (entry.values.items) |value| try writeField(file, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
         } else if (entry.values.items.len != 0) {
-            try writeField(file, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
+            try writeField(file, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
         }
     }
 }
@@ -65,15 +66,17 @@ fn writeMapEntry(
         else => return error.TypeMismatch,
     };
     try writeIndent(writer, options, depth);
-    try writer.print("{s} {{\n", .{field.name});
-    try writeField(file, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
-    try writeField(file, "value", map_type.value.*, entry.value, options, writer, depth + 1);
+    try writeFieldName(file, field, field.name, writer);
+    try writer.writeAll(" {\n");
+    try writeField(file, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
+    try writeField(file, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
     try writeIndent(writer, options, depth);
     try writer.writeAll("}\n");
 }
 
 fn writeField(
     file: *const schema.FileDescriptor,
+    field: ?*const schema.FieldDescriptor,
     name: []const u8,
     kind: schema.FieldKind,
     value: dynamic.Value,
@@ -85,7 +88,8 @@ fn writeField(
     switch (kind) {
         .message => switch (value) {
             .message => |message| {
-                try writer.print("{s} {{\n", .{name});
+                try writeFieldName(file, field, name, writer);
+                try writer.writeAll(" {\n");
                 try writeMessageFields(file, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
                 try writer.writeAll("}\n");
@@ -94,7 +98,8 @@ fn writeField(
         },
         .group => switch (value) {
             .group => |message| {
-                try writer.print("{s} {{\n", .{name});
+                try writeFieldName(file, field, name, writer);
+                try writer.writeAll(" {\n");
                 try writeMessageFields(file, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
                 try writer.writeAll("}\n");
@@ -102,11 +107,24 @@ fn writeField(
             else => return error.TypeMismatch,
         },
         else => {
-            try writer.print("{s}: ", .{name});
+            try writeFieldName(file, field, name, writer);
+            try writer.writeAll(": ");
             try writeValue(file, kind, value, options, writer);
             try writer.writeAll("\n");
         },
     }
+}
+
+fn writeFieldName(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, fallback: []const u8, writer: *std.Io.Writer) Error!void {
+    const descriptor = field orelse return try writer.writeAll(fallback);
+    if (descriptor.extendee == null) return try writer.writeAll(fallback);
+    try writer.writeByte('[');
+    if (file.package.len != 0 and std.mem.indexOfScalar(u8, descriptor.name, '.') == null) {
+        try writer.print("{s}.{s}", .{ file.package, descriptor.name });
+    } else {
+        try writer.writeAll(descriptor.name);
+    }
+    try writer.writeByte(']');
 }
 
 fn writeValue(
@@ -277,7 +295,17 @@ pub fn parseAlloc(
     descriptor: *const schema.MessageDescriptor,
     input: []const u8,
 ) !dynamic.DynamicMessage {
-    var parser_state = TextParser{ .allocator = allocator, .input = input };
+    return parseAllocWithRegistry(allocator, file, null, descriptor, input);
+}
+
+pub fn parseAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    descriptor: *const schema.MessageDescriptor,
+    input: []const u8,
+) !dynamic.DynamicMessage {
+    var parser_state = TextParser{ .allocator = allocator, .input = input, .registry = registry };
     var message = dynamic.DynamicMessage.init(allocator, descriptor);
     errdefer message.deinit();
     try parser_state.parseMessage(file, &message, null);
@@ -287,6 +315,7 @@ pub fn parseAlloc(
 const TextParser = struct {
     allocator: std.mem.Allocator,
     input: []const u8,
+    registry: ?*const registry_mod.Registry = null,
     index: usize = 0,
 
     fn parseMessage(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, end: ?u8) !void {
@@ -302,8 +331,7 @@ const TextParser = struct {
                     return;
                 }
             }
-            const name = try self.readIdent();
-            const field = message.descriptor.findField(name) orelse return error.UnknownField;
+            const field = try self.readFieldReference(message.descriptor);
             self.skipSpace();
             if (self.consume(':')) {
                 self.skipSpace();
@@ -323,6 +351,38 @@ const TextParser = struct {
                 try self.parseAggregateField(file, message, field, close);
             } else return error.UnexpectedToken;
         }
+    }
+
+    fn readFieldReference(self: *TextParser, descriptor: *const schema.MessageDescriptor) !*const schema.FieldDescriptor {
+        self.skipSpace();
+        if (self.consume('[')) {
+            const name = try self.readExtensionName();
+            return self.findExtension(descriptor, name) orelse return error.UnknownField;
+        }
+        const name = try self.readIdent();
+        return descriptor.findField(name) orelse return error.UnknownField;
+    }
+
+    fn readExtensionName(self: *TextParser) ![]const u8 {
+        self.skipSpace();
+        const start = self.index;
+        while (!self.eof() and self.peek() != ']') self.index += 1;
+        if (self.eof()) return error.UnexpectedEof;
+        const raw = std.mem.trim(u8, self.input[start..self.index], " \t\r\n");
+        try self.expect(']');
+        if (raw.len == 0) return error.UnexpectedToken;
+        return raw;
+    }
+
+    fn findExtension(self: *TextParser, descriptor: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
+        const registry = self.registry orelse return null;
+        if (registry.findExtensionByName(descriptor.name, name)) |field| return field;
+        const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+        const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+        if (!std.mem.eql(u8, leaf, name)) {
+            if (registry.findExtensionByName(descriptor.name, leaf)) |field| return field;
+        }
+        return null;
     }
 
     fn consumeAggregateStart(self: *TextParser) !u8 {
@@ -620,6 +680,72 @@ test "text format parses dynamic messages" {
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
     try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 1), msg.get("kind").?.values.items[0].enumeration);
+}
+
+test "text format formats and parses proto2 extensions" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  optional int32 id = 1;
+        \\  extensions 100 to max;
+        \\}
+        \\message Note { optional string text = 1; }
+        \\extend Host {
+        \\  optional string tag = 100;
+        \\  repeated int32 nums = 101;
+        \\  optional Note note = 102;
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const note_desc = file.findMessage("Note").?;
+    const tag = registry.findExtension("demo.Host", 100).?;
+    const nums = registry.findExtension("demo.Host", 101).?;
+    const note = registry.findExtension("demo.Host", 102).?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.add(host.findField("id").?, .{ .int32 = 7 });
+    try msg.add(tag, .{ .string = try allocator.dupe(u8, "hello") });
+    try msg.add(nums, .{ .int32 = 1 });
+    try msg.add(nums, .{ .int32 = 2 });
+    const nested = try allocator.create(dynamic.DynamicMessage);
+    nested.* = dynamic.DynamicMessage.init(allocator, note_desc);
+    try nested.add(note_desc.findField("text").?, .{ .string = try allocator.dupe(u8, "body") });
+    try msg.add(note, .{ .message = nested });
+
+    const text = try formatAlloc(allocator, &file, &msg, .{});
+    defer allocator.free(text);
+    try std.testing.expectEqualSlices(u8,
+        \\id: 7
+        \\[demo.tag]: "hello"
+        \\[demo.nums]: 1
+        \\[demo.nums]: 2
+        \\[demo.note] {
+        \\  text: "body"
+        \\}
+        \\
+    , text);
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, host,
+        \\id: 8
+        \\[demo.tag]: "parsed"
+        \\[demo.nums]: 3
+        \\[demo.nums]: 4
+        \\[demo.note] < text: "parsed body" >
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 8), parsed.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "parsed", parsed.get("tag").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 3), parsed.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 4), parsed.get("nums").?.values.items[1].int32);
+    try std.testing.expectEqualSlices(u8, "parsed body", parsed.get("note").?.values.items[0].message.get("text").?.values.items[0].string);
 }
 
 test "text format parser accepts comma and semicolon separators" {

@@ -39,6 +39,7 @@ pub const Registry = registry.Registry;
 pub const formatText = text.format;
 pub const formatTextAlloc = text.formatAlloc;
 pub const parseTextAlloc = text.parseAlloc;
+pub const parseTextAllocWithRegistry = text.parseAllocWithRegistry;
 pub const MemorySourceTree = loader.MemorySourceTree;
 pub const loadMemory = loader.loadMemory;
 pub const loadPath = loader.loadPath;
