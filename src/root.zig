@@ -14,6 +14,7 @@ pub const registry = @import("registry.zig");
 pub const text = @import("text.zig");
 pub const loader = @import("loader.zig");
 pub const wkt = @import("wkt.zig");
+pub const plugin = @import("plugin.zig");
 
 pub const Allocator = @import("std").mem.Allocator;
 pub const FieldNumber = wire.FieldNumber;
@@ -54,6 +55,8 @@ pub const UInt32Value = wkt.UInt32Value;
 pub const BoolValue = wkt.BoolValue;
 pub const StringValue = wkt.StringValue;
 pub const BytesValue = wkt.BytesValue;
+pub const CodeGeneratorRequest = plugin.CodeGeneratorRequest;
+pub const CodeGeneratorResponse = plugin.CodeGeneratorResponse;
 
 test {
     _ = wire;
@@ -66,4 +69,5 @@ test {
     _ = text;
     _ = loader;
     _ = wkt;
+    _ = plugin;
 }
