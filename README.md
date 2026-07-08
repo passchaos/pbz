@@ -39,7 +39,8 @@ validated feature set.
 - Conformance helpers
   - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output and missing-required path parse errors
 - Protoc plugin and codegen helpers
-  - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
+  - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and generated_code_info
+  - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
@@ -171,7 +172,10 @@ and parse errors that identify missing proto2 required field paths when availabl
 ## Protoc plugin helpers
 
 `pbz.CodeGeneratorRequest` and `pbz.CodeGeneratorResponse` provide the basic
-wire types needed to build protoc-style generators; `pbz.generateZigFile` emits
+wire types needed to build protoc-style generators, including compiler version,
+source-retention descriptor request fields, response feature masks, edition
+support bounds, insertion points, and generated-code metadata payload passthrough.
+`pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,

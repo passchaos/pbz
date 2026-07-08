@@ -1,6 +1,7 @@
 const std = @import("std");
 const schema = @import("schema.zig");
 const plugin = @import("plugin.zig");
+const wire = @import("wire.zig");
 
 pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error || plugin.Error;
 
@@ -15,17 +16,24 @@ pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDes
 
 pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor) Error![]u8 {
     var response_files = try allocator.alloc(plugin.CodeGeneratorResponse.File, files.len);
+    @memset(response_files, .{});
     defer {
-        for (response_files) |file| allocator.free(file.content);
+        for (response_files) |file| {
+            if (file.name) |name| allocator.free(name);
+            if (file.content.len != 0) allocator.free(file.content);
+        }
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
         const content = try generateZigFile(allocator, file);
+        errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
-        defer allocator.free(name);
         response_files[i] = .{ .name = name, .content = content };
     }
-    return try (plugin.CodeGeneratorResponse{ .files = response_files }).encode(allocator);
+    return try (plugin.CodeGeneratorResponse{
+        .supported_features = plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{.proto3_optional}),
+        .files = response_files,
+    }).encode(allocator);
 }
 
 fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -2145,6 +2153,27 @@ test "codegen emits protoc response" {
     const response = try generatePluginResponse(allocator, &files);
     defer allocator.free(response);
     try std.testing.expect(response.len != 0);
+
+    var reader = wire.Reader.init(response);
+    var saw_supported_features = false;
+    var saw_file_name = false;
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            2 => saw_supported_features = (try reader.readUInt64()) == plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{.proto3_optional}),
+            15 => {
+                var file_reader = wire.Reader.init(try reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        1 => saw_file_name = std.mem.eql(u8, try file_reader.readBytes(), "a.pb.zig"),
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_supported_features);
+    try std.testing.expect(saw_file_name);
 }
 
 test "codegen quotes zig identifiers" {
