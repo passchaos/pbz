@@ -3,7 +3,7 @@ const schema = @import("schema.zig");
 
 pub const TypeKind = enum { message, enumeration };
 
-pub const Error = std.mem.Allocator.Error || error{DuplicateSymbol};
+pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, InvalidExtensionDeclaration };
 
 pub const TypeRef = union(TypeKind) {
     message: *const schema.MessageDescriptor,
@@ -27,6 +27,8 @@ pub const Registry = struct {
         try self.validateNoTypeConflicts(file);
         try self.validateNoExtensionConflicts(file);
         try self.files.append(self.allocator, file);
+        errdefer self.files.items.len -= 1;
+        try self.validateExtensionDeclarations();
     }
 
     fn validateNoTypeConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
@@ -64,6 +66,39 @@ pub const Registry = struct {
         const extendee = field.extendee orelse return;
         if (self.findExtension(extendee, field.number) != null) return error.DuplicateSymbol;
         if (self.findExtensionByName(extendee, field.name) != null) return error.DuplicateSymbol;
+    }
+
+    fn validateExtensionDeclarations(self: *const Registry) Error!void {
+        for (self.files.items) |file| {
+            for (file.messages.items) |*message| try self.validateMessageExtensionRangeDeclarations(message);
+        }
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| try self.validateExtensionAgainstDeclaration(field);
+            for (file.messages.items) |*message| try self.validateMessageExtensionsAgainstDeclarations(message);
+        }
+    }
+
+    fn validateMessageExtensionRangeDeclarations(self: *const Registry, message: *const schema.MessageDescriptor) Error!void {
+        for (message.extension_ranges.items) |range| try validateExtensionRangeDeclarationSet(range);
+        for (message.messages.items) |*nested| try self.validateMessageExtensionRangeDeclarations(nested);
+    }
+
+    fn validateMessageExtensionsAgainstDeclarations(self: *const Registry, message: *const schema.MessageDescriptor) Error!void {
+        for (message.extensions.items) |*field| try self.validateExtensionAgainstDeclaration(field);
+        for (message.messages.items) |*nested| try self.validateMessageExtensionsAgainstDeclarations(nested);
+    }
+
+    fn validateExtensionAgainstDeclaration(self: *const Registry, field: *const schema.FieldDescriptor) Error!void {
+        const extendee_name = field.extendee orelse return;
+        const extendee = self.findMessage(extendee_name, null) orelse return;
+        for (extendee.extension_ranges.items) |range| {
+            const end = range.end orelse std.math.maxInt(i64);
+            if (field.number >= range.start and field.number < end) {
+                try validateExtensionFieldDeclaration(field, range);
+                return;
+            }
+        }
+        return error.InvalidExtensionDeclaration;
     }
 
     pub fn findExtensionByName(self: *const Registry, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
@@ -153,6 +188,34 @@ pub const Registry = struct {
     }
 };
 
+fn validateExtensionRangeDeclarationSet(range: schema.ExtensionRange) Error!void {
+    const end = range.end orelse std.math.maxInt(i64);
+    for (range.declarations.items, 0..) |declaration, i| {
+        if (declaration.number <= 0) return error.InvalidExtensionDeclaration;
+        if (declaration.number < range.start or declaration.number >= end) return error.InvalidExtensionDeclaration;
+        for (range.declarations.items[i + 1 ..]) |other| {
+            if (declaration.number == other.number) return error.InvalidExtensionDeclaration;
+            if (declaration.full_name.len != 0 and other.full_name.len != 0 and std.mem.eql(u8, declaration.full_name, other.full_name)) return error.InvalidExtensionDeclaration;
+        }
+    }
+}
+
+fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
+    var matching_declaration: ?schema.ExtensionDeclaration = null;
+    for (range.declarations.items) |declaration| {
+        if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
+    }
+    const declaration = matching_declaration orelse {
+        if (range.verification == .declaration) return error.InvalidExtensionDeclaration;
+        return;
+    };
+    if (declaration.reserved) return error.InvalidExtensionDeclaration;
+    if (declaration.full_name.len != 0 and !namesMatch(declaration.full_name, field.name)) return error.InvalidExtensionDeclaration;
+    if (declaration.repeated and field.cardinality != .repeated) return error.InvalidExtensionDeclaration;
+    if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidExtensionDeclaration;
+    if (declaration.type_name.len != 0 and !extensionTypeMatches(field, declaration.type_name)) return error.InvalidExtensionDeclaration;
+}
+
 fn qualifiedTypeName(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
     if (prefix.len == 0) return try allocator.dupe(u8, name);
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
@@ -186,6 +249,34 @@ fn namesMatch(a: []const u8, b: []const u8) bool {
     const na = normalizeName(a);
     const nb = normalizeName(b);
     return std.mem.eql(u8, na, nb) or std.mem.endsWith(u8, na, nb) or std.mem.endsWith(u8, nb, na);
+}
+
+fn extensionTypeMatches(field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
+    return switch (field.kind) {
+        .message, .enumeration, .group => |type_name| namesMatch(declared_type, type_name),
+        .scalar => |scalar| std.mem.eql(u8, normalizeName(declared_type), scalarTypeName(scalar)),
+        .map => false,
+    };
+}
+
+fn scalarTypeName(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .double => "double",
+        .float => "float",
+        .int32 => "int32",
+        .int64 => "int64",
+        .uint32 => "uint32",
+        .uint64 => "uint64",
+        .sint32 => "sint32",
+        .sint64 => "sint64",
+        .fixed32 => "fixed32",
+        .fixed64 => "fixed64",
+        .sfixed32 => "sfixed32",
+        .sfixed64 => "sfixed64",
+        .bool => "bool",
+        .string => "string",
+        .bytes => "bytes",
+    };
 }
 
 fn findInFile(file: *const schema.FileDescriptor, relative_name: []const u8) ?TypeRef {
@@ -336,4 +427,65 @@ test "registry rejects duplicate extension symbols across files" {
     try registry.addFile(&first);
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_number));
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_name));
+}
+
+test "registry validates cross-file extension declarations" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" },
+        \\    verification = DECLARATION
+        \\  ];
+        \\}
+        \\message Ext {}
+    );
+    defer host.deinit();
+    var extension = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer extension.deinit();
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&host);
+    try registry.addFile(&extension);
+
+    var missing_declaration = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend Host { optional Ext other = 101; }
+    );
+    defer missing_declaration.deinit();
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&missing_declaration));
+}
+
+test "registry rejects cross-file extension declaration mismatches" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" repeated: true }
+        \\  ];
+        \\}
+        \\message Ext {}
+    );
+    defer host.deinit();
+    var extension = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer extension.deinit();
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&host);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&extension));
 }
