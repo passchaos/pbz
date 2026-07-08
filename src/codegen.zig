@@ -11,6 +11,7 @@ pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDes
     try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(\"pbz\");\n\n");
     for (file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (file.messages.items) |*message| try writeMessage(file, message, &out.writer, 0);
+    try writeExtensionMetadata(file, &out.writer, 0);
     return try out.toOwnedSlice();
 }
 
@@ -2069,6 +2070,72 @@ fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, 
     try writer.writeAll("};\n\n");
 }
 
+fn writeExtensionMetadata(file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const count = countExtensions(file);
+    if (count == 0) return;
+    try indent(writer, depth);
+    try writer.writeAll("pub const extensions = struct {\n");
+    for (file.extensions.items) |*field| try writeExtensionDecl(file, field, writer, depth + 1);
+    for (file.messages.items) |*message| try writeMessageExtensions(file, message, writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("};\n\n");
+}
+
+fn writeMessageExtensions(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (message.extensions.items) |*field| try writeExtensionDecl(file, field, writer, depth);
+    for (message.messages.items) |*nested| try writeMessageExtensions(file, nested, writer, depth);
+}
+
+fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = struct {\n");
+    try indent(writer, depth + 1);
+    try writer.print("pub const number = {d};\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const extendee = ");
+    try writeZigStringLiteral(field.extendee orelse "", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const cardinality = ");
+    try writeZigStringLiteral(@tagName(field.cardinality), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const value_type = ");
+    try writeZigStringLiteral(extensionValueTypeName(file, field), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const zig_type = ");
+    try writeZigStringLiteral(fieldType(field.*), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn extensionValueTypeName(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) []const u8 {
+    _ = file;
+    return switch (field.kind) {
+        .scalar => |scalar| @tagName(scalar),
+        .message => |name| name,
+        .enumeration => |name| name,
+        .group => |name| name,
+        .map => "map",
+    };
+}
+
+fn countExtensions(file: *const schema.FileDescriptor) usize {
+    var count: usize = file.extensions.items.len;
+    for (file.messages.items) |*message| count += countMessageExtensions(message);
+    return count;
+}
+
+fn countMessageExtensions(message: *const schema.MessageDescriptor) usize {
+    var count: usize = message.extensions.items.len;
+    for (message.messages.items) |*nested| count += countMessageExtensions(nested);
+    return count;
+}
+
 fn writeQuotedIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("@\"");
     for (name) |c| {
@@ -2631,6 +2698,39 @@ test "codegen maps oneof to tagged union" {
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (self.@\"pick\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"name\" => |value| try w.writeString(1, value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => self.@\"pick\" = .{ .@\"name\" = try r.readBytes() }") != null);
+}
+
+test "codegen emits proto2 extension metadata" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\message Note {}
+        \\extend Host {
+        \\  optional string tag = 100;
+        \\  repeated int32 nums = 101;
+        \\  optional Note note = 102;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extensions = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"tag\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const number = 100") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \"Host\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"optional\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"string\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const u8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"repeated\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen skips proto3 implicit default scalar and enum values" {
