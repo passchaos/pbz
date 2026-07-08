@@ -320,7 +320,7 @@ fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const
         if (field.oneof_name) |oneof_name| {
             try writeEncodeOneofSingleField(file, field, oneof_name, writer, depth);
         } else if (field.kind == .map) {
-            try writeEncodeMapFieldDeterministic(field, writer, depth);
+            try writeEncodeMapFieldDeterministic(file, field, writer, depth);
         } else {
             try writeEncodeField(file, field, writer, depth);
         }
@@ -621,7 +621,7 @@ fn writeDecodeField(file: *const schema.FileDescriptor, field: *const schema.Fie
         .scalar => |scalar| try writeDecodeScalarField(file, field, scalar, writer, depth),
         .enumeration => try writeDecodeEnumField(file, field, writer, depth),
         .message => try writeDecodeMessageField(file, field, writer, depth),
-        .map => try writeDecodeMapField(field, writer, depth),
+        .map => try writeDecodeMapField(file, field, writer, depth),
         else => return,
     }
 }
@@ -736,7 +736,7 @@ fn writeDecodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std
     try writer.writeAll("},\n");
 }
 
-fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeMapField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const map_type = switch (field.kind) {
         .map => |map| map,
         else => return,
@@ -753,14 +753,8 @@ fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try writer.writeAll("while (try entry_reader.nextTag()) |entry_tag| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("switch (entry_tag.number) {\n");
-    try indent(writer, depth + 3);
-    try writer.writeAll("1 => entry.key = ");
-    try writeEntryReadExpr(.{ .scalar = map_type.key }, "entry_reader", writer);
-    try writer.writeAll(",\n");
-    try indent(writer, depth + 3);
-    try writer.writeAll("2 => entry.value = ");
-    try writeEntryReadExpr(map_type.value.*, "entry_reader", writer);
-    try writer.writeAll(",\n");
+    try writeMapEntryDecodeAssign(file, field, "entry.key", 1, .{ .scalar = map_type.key }, writer, depth + 3);
+    try writeMapEntryDecodeAssign(file, field, "entry.value", 2, map_type.value.*, writer, depth + 3);
     try indent(writer, depth + 3);
     try writer.writeAll("else => try entry_reader.skipValue(entry_tag),\n");
     try indent(writer, depth + 2);
@@ -773,6 +767,21 @@ fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try writer.writeAll(".append(allocator, entry);\n");
     try indent(writer, depth);
     try writer.writeAll("},\n");
+}
+
+fn writeMapEntryDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, target: []const u8, number: u29, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    if (kind == .scalar and kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+        try writer.print("{d} => {{ const value = ", .{number});
+        try writeEntryReadExpr(kind, "entry_reader", writer);
+        try writer.writeAll("; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; ");
+        try writer.writeAll(target);
+        try writer.writeAll(" = value; },\n");
+    } else {
+        try writer.print("{d} => {s} = ", .{ number, target });
+        try writeEntryReadExpr(kind, "entry_reader", writer);
+        try writer.writeAll(",\n");
+    }
 }
 
 fn writeOneofDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, reader_method: []const u8, writer: *std.Io.Writer) Error!void {
@@ -844,7 +853,7 @@ fn writeEncodeField(file: *const schema.FileDescriptor, field: *const schema.Fie
         .scalar => |scalar| try writeEncodeScalarField(file, field, scalar, writer, depth),
         .enumeration => try writeEncodeEnumField(file, field, writer, depth),
         .message => try writeEncodeMessageField(file, field, writer, depth),
-        .map => try writeEncodeMapField(field, writer, depth),
+        .map => try writeEncodeMapField(file, field, writer, depth),
         else => return,
     }
 }
@@ -1024,7 +1033,7 @@ fn writeEncodeMessageField(file: *const schema.FileDescriptor, field: *const sch
     }
 }
 
-fn writeEncodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeMapField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const map_type = switch (field.kind) {
         .map => |map| map,
         else => return,
@@ -1037,9 +1046,11 @@ fn writeEncodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try writer.writeAll("var entry_writer = pbz.Writer.init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer entry_writer.deinit();\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.key", .{ .scalar = map_type.key }, writer, depth + 1);
     try indent(writer, depth + 1);
     try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "entry_writer", writer);
     try writer.writeAll(");\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 1);
     try indent(writer, depth + 1);
     try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
     try writer.writeAll(");\n");
@@ -1049,7 +1060,7 @@ fn writeEncodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try writer.writeAll("}\n");
 }
 
-fn writeEncodeMapFieldDeterministic(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeMapFieldDeterministic(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const map_type = switch (field.kind) {
         .map => |map| map,
         else => return,
@@ -1082,9 +1093,11 @@ fn writeEncodeMapFieldDeterministic(field: *const schema.FieldDescriptor, writer
     try writer.writeAll("var entry_writer = pbz.Writer.init(allocator);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("defer entry_writer.deinit();\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.key", .{ .scalar = map_type.key }, writer, depth + 2);
     try indent(writer, depth + 2);
     try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "entry_writer", writer);
     try writer.writeAll(");\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 2);
     try indent(writer, depth + 2);
     try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
     try writer.writeAll(");\n");
@@ -1094,6 +1107,13 @@ fn writeEncodeMapFieldDeterministic(field: *const schema.FieldDescriptor, writer
     try writer.writeAll("}\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeMapEntryEncodeUtf8Check(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (kind == .scalar and kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+        try indent(writer, depth);
+        try writer.print("if (!std.unicode.utf8ValidateSlice({s})) return error.InvalidUtf8;\n", .{value_expr});
+    }
 }
 
 fn writeMapKeyLessExpr(scalar: schema.ScalarType, a: []const u8, b: []const u8, writer: *std.Io.Writer) Error!void {
@@ -2891,7 +2911,7 @@ test "codegen decodes map fields into entry slices" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "var @\"counts_list\": std.ArrayList(@\"countsEntry\") = .empty") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var entry = @\"countsEntry\"{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => entry.key = try entry_reader.readBytes()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"counts_list\".append(allocator, entry)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = try @\"counts_list\".toOwnedSlice(allocator)") != null);
@@ -3293,6 +3313,8 @@ test "codegen honors utf8 validation features for wire strings" {
         \\  string relaxed = 2 [features.utf8_validation = NONE];
         \\  repeated string tags = 3;
         \\  oneof pick { string alias = 4; }
+        \\  map<string, string> labels = 5;
+        \\  map<string, string> relaxed_labels = 6 [features.utf8_validation = NONE];
         \\}
     );
     defer file.deinit();
@@ -3307,6 +3329,10 @@ test "codegen honors utf8 validation features for wire strings" {
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"relaxed\" = try r.readBytes(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @\"tags_list\".append(allocator, value); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.@\"pick\" = .{ .@\"alias\" = value }; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.value = value; }") != null);
 }
 
 test "codegen honors editions enum type features in JSON parse" {
