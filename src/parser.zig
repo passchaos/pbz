@@ -338,13 +338,15 @@ pub const Parser = struct {
         if (self.matchIdent("group")) return try self.parseGroupField(cardinality, oneof_name, parent);
 
         const kind = try self.parseFieldKind();
+        if (kind == .map and (cardinality != .implicit or oneof_name != null)) return error.InvalidFieldType;
+        const effective_cardinality: schema.Cardinality = if (kind == .map) .repeated else cardinality;
         const name = try self.expectIdentifier();
         try self.expectSymbol('=');
         const number = try self.parseFieldNumber();
         var field = schema.FieldDescriptor{
             .name = name,
             .number = number,
-            .cardinality = cardinality,
+            .cardinality = effective_cardinality,
             .kind = kind,
             .oneof_name = oneof_name,
             .proto3_optional = proto3_optional,
@@ -389,9 +391,11 @@ pub const Parser = struct {
             try self.expectSymbol('<');
             const key_name = try self.expectIdentifier();
             const key = schema.ScalarType.fromName(key_name) orelse return error.InvalidFieldType;
+            if (!key.validMapKey()) return error.InvalidFieldType;
             try self.expectSymbol(',');
             const value_kind = try self.parseFieldKind();
             try self.expectSymbol('>');
+            if (value_kind == .map or value_kind == .group) return error.InvalidFieldType;
             const ptr = try self.allocator.create(schema.FieldKind);
             ptr.* = value_kind;
             return .{ .map = .{ .key = key, .value = ptr } };

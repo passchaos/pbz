@@ -7,6 +7,17 @@ pub const DecodeError = wire.Error || std.mem.Allocator.Error || error{TypeMisma
 pub const EncodeError = wire.Error || std.mem.Allocator.Error || error{TypeMismatch};
 pub const ValidationError = error{MissingRequiredField};
 
+pub const MapEntry = struct {
+    key: Value,
+    value: Value,
+
+    pub fn deinit(self: *MapEntry, allocator: std.mem.Allocator) void {
+        deinitValue(&self.key, allocator);
+        deinitValue(&self.value, allocator);
+        self.* = undefined;
+    }
+};
+
 pub const Value = union(enum) {
     double: f64,
     float: f32,
@@ -26,6 +37,7 @@ pub const Value = union(enum) {
     enumeration: i32,
     message: *DynamicMessage,
     group: *DynamicMessage,
+    map_entry: *MapEntry,
 };
 
 pub const FieldValue = struct {
@@ -91,7 +103,7 @@ pub const DynamicMessage = struct {
 
     pub fn add(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
         var entry = try self.getOrCreateMutable(field);
-        if (field.cardinality != .repeated and entry.values.items.len != 0) {
+        if (!field.isRepeatedLike() and entry.values.items.len != 0) {
             deinitValue(&entry.values.items[0], self.allocator);
             entry.values.items.len = 0;
         }
@@ -110,6 +122,11 @@ pub const DynamicMessage = struct {
             for (entry.values.items) |value| switch (value) {
                 .message => |message| try message.validateRequired(),
                 .group => |message| try message.validateRequired(),
+                .map_entry => |map_entry| switch (map_entry.value) {
+                    .message => |message| try message.validateRequired(),
+                    .group => |message| try message.validateRequired(),
+                    else => {},
+                },
                 else => {},
             };
         }
@@ -182,6 +199,16 @@ pub const DynamicMessage = struct {
                 continue;
             }
 
+            if (field.kind == .map) {
+                if (tag.wire_type != .length_delimited) return error.InvalidWireType;
+                var value = try decodeMapEntryValue(self.allocator, file, self.descriptor, field.kind.map, reader);
+                self.add(field, value) catch |err| {
+                    deinitValue(&value, self.allocator);
+                    return err;
+                };
+                continue;
+            }
+
             if (tag.wire_type == .length_delimited and field.resolvedPacked(file) and field.kind.packable()) {
                 const payload = try reader.readBytes();
                 var packed_reader = wire.Reader.init(payload);
@@ -231,7 +258,55 @@ fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const 
             },
             else => return error.TypeMismatch,
         },
-        .map => return error.TypeMismatch,
+        .map => |map_type| try encodeMapEntry(field.number, map_type, value, file, writer),
+    }
+}
+
+fn encodeMapEntry(
+    number: wire.FieldNumber,
+    map_type: schema.MapType,
+    value: Value,
+    file: *const schema.FileDescriptor,
+    writer: *wire.Writer,
+) EncodeError!void {
+    const entry = switch (value) {
+        .map_entry => |map_entry| map_entry,
+        else => return error.TypeMismatch,
+    };
+
+    var entry_writer = wire.Writer.init(writer.allocator);
+    defer entry_writer.deinit();
+    try encodeMapElement(1, .{ .scalar = map_type.key }, entry.key, file, &entry_writer);
+    try encodeMapElement(2, map_type.value.*, entry.value, file, &entry_writer);
+    try writer.writeMessage(number, entry_writer.slice());
+}
+
+fn encodeMapElement(
+    number: wire.FieldNumber,
+    kind: schema.FieldKind,
+    value: Value,
+    file: *const schema.FileDescriptor,
+    writer: *wire.Writer,
+) EncodeError!void {
+    switch (kind) {
+        .scalar => |scalar| try encodeScalar(number, scalar, value, writer),
+        .enumeration => switch (value) {
+            .enumeration => |v| {
+                try writer.writeTag(number, .varint);
+                try writer.writeVarint(@as(u64, @bitCast(@as(i64, v))));
+            },
+            else => return error.TypeMismatch,
+        },
+        .message => switch (value) {
+            .message => |message| {
+                var nested_writer = wire.Writer.init(writer.allocator);
+                defer nested_writer.deinit();
+                try message.encode(file, &nested_writer);
+                try writer.writeMessage(number, nested_writer.slice());
+            },
+            else => return error.TypeMismatch,
+        },
+        .group, .map => return error.TypeMismatch,
     }
 }
 
@@ -305,6 +380,84 @@ fn decodeValue(
         },
         .group => error.TypeMismatch,
         .map => error.TypeMismatch,
+    };
+}
+
+fn decodeMapEntryValue(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    current: *const schema.MessageDescriptor,
+    map_type: schema.MapType,
+    reader: *wire.Reader,
+) DecodeError!Value {
+    const payload = try reader.readBytes();
+    var entry_reader = wire.Reader.init(payload);
+
+    var maybe_key: ?Value = null;
+    var maybe_value: ?Value = null;
+    errdefer {
+        if (maybe_key) |*key| deinitValue(key, allocator);
+        if (maybe_value) |*map_value| deinitValue(map_value, allocator);
+    }
+
+    while (try entry_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => {
+                if (tag.wire_type != map_type.key.wireType()) return error.InvalidWireType;
+                if (maybe_key) |*old| deinitValue(old, allocator);
+                maybe_key = try decodeValue(allocator, file, current, .{ .scalar = map_type.key }, &entry_reader);
+            },
+            2 => {
+                if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
+                if (maybe_value) |*old| deinitValue(old, allocator);
+                maybe_value = try decodeValue(allocator, file, current, map_type.value.*, &entry_reader);
+            },
+            else => try entry_reader.skipValue(tag),
+        }
+    }
+
+    const key = maybe_key orelse try defaultValue(allocator, file, current, .{ .scalar = map_type.key });
+    maybe_key = null;
+    const map_value = maybe_value orelse try defaultValue(allocator, file, current, map_type.value.*);
+    maybe_value = null;
+
+    const entry = try allocator.create(MapEntry);
+    entry.* = .{ .key = key, .value = map_value };
+    return .{ .map_entry = entry };
+}
+
+fn defaultValue(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    current: *const schema.MessageDescriptor,
+    kind: schema.FieldKind,
+) DecodeError!Value {
+    return switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .double => .{ .double = 0 },
+            .float => .{ .float = 0 },
+            .int32 => .{ .int32 = 0 },
+            .int64 => .{ .int64 = 0 },
+            .uint32 => .{ .uint32 = 0 },
+            .uint64 => .{ .uint64 = 0 },
+            .sint32 => .{ .sint32 = 0 },
+            .sint64 => .{ .sint64 = 0 },
+            .fixed32 => .{ .fixed32 = 0 },
+            .fixed64 => .{ .fixed64 = 0 },
+            .sfixed32 => .{ .sfixed32 = 0 },
+            .sfixed64 => .{ .sfixed64 = 0 },
+            .bool => .{ .boolean = false },
+            .string => .{ .string = try allocator.dupe(u8, "") },
+            .bytes => .{ .bytes = try allocator.dupe(u8, "") },
+        },
+        .enumeration => .{ .enumeration = 0 },
+        .message => |name| blk: {
+            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            const message = try allocator.create(DynamicMessage);
+            message.* = DynamicMessage.init(allocator, descriptor);
+            break :blk .{ .message = message };
+        },
+        .group, .map => error.TypeMismatch,
     };
 }
 
@@ -382,6 +535,10 @@ pub fn deinitValue(value: *Value, allocator: std.mem.Allocator) void {
             message.deinit();
             allocator.destroy(message);
         },
+        .map_entry => |entry| {
+            entry.deinit(allocator);
+            allocator.destroy(entry);
+        },
         else => {},
     }
     value.* = undefined;
@@ -419,6 +576,16 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
                 for (field.values.items) |item| try cloned.add(field.descriptor, try cloneValue(allocator, item));
             }
             break :blk .{ .group = cloned };
+        },
+        .map_entry => |entry| blk: {
+            var cloned_key = try cloneValue(allocator, entry.key);
+            errdefer deinitValue(&cloned_key, allocator);
+            var cloned_value = try cloneValue(allocator, entry.value);
+            errdefer deinitValue(&cloned_value, allocator);
+
+            const cloned = try allocator.create(MapEntry);
+            cloned.* = .{ .key = cloned_key, .value = cloned_value };
+            break :blk .{ .map_entry = cloned };
         },
         else => value,
     };
@@ -508,4 +675,79 @@ test "dynamic proto2 round-trips required optional repeated packed message and g
     try std.testing.expectEqual(@as(i32, 2), decoded.get("nums").?.values.items[1].sint32);
     try std.testing.expectEqualSlices(u8, "kid", decoded.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expect(decoded.get("Legacy").?.values.items[0].group.get("flag").?.values.items[0].boolean);
+}
+
+test "dynamic proto3 round-trips map fields and default packed repeated scalars" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Child { string label = 1; }
+        \\message Bag {
+        \\  repeated int32 nums = 1;
+        \\  map<string, int32> counts = 2;
+        \\  map<int32, string> names = 3;
+        \\  map<string, Child> children = 4;
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const bag_desc = file.findMessage("Bag").?;
+    const child_desc = file.findMessage("Child").?;
+
+    var bag = DynamicMessage.init(allocator, bag_desc);
+    defer bag.deinit();
+    try bag.add(bag_desc.findField("nums").?, .{ .int32 = 1 });
+    try bag.add(bag_desc.findField("nums").?, .{ .int32 = 2 });
+
+    const count_entry = try allocator.create(MapEntry);
+    count_entry.* = .{
+        .key = .{ .string = try allocator.dupe(u8, "red") },
+        .value = .{ .int32 = 7 },
+    };
+    try bag.add(bag_desc.findField("counts").?, .{ .map_entry = count_entry });
+
+    const name_entry = try allocator.create(MapEntry);
+    name_entry.* = .{
+        .key = .{ .int32 = 42 },
+        .value = .{ .string = try allocator.dupe(u8, "forty-two") },
+    };
+    try bag.add(bag_desc.findField("names").?, .{ .map_entry = name_entry });
+
+    const child = try allocator.create(DynamicMessage);
+    child.* = DynamicMessage.init(allocator, child_desc);
+    try child.add(child_desc.findField("label").?, .{ .string = try allocator.dupe(u8, "kid") });
+    const child_entry = try allocator.create(MapEntry);
+    child_entry.* = .{
+        .key = .{ .string = try allocator.dupe(u8, "first") },
+        .value = .{ .message = child },
+    };
+    try bag.add(bag_desc.findField("children").?, .{ .map_entry = child_entry });
+
+    const encoded = try bag.encoded(&file);
+    defer allocator.free(encoded);
+
+    // Proto3 numeric repeated fields are packed by default: field 1 appears as
+    // one length-delimited record containing the two varints.
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x02, 0x01, 0x02 }, encoded[0..4]);
+
+    var decoded = DynamicMessage.init(allocator, bag_desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, encoded);
+
+    try std.testing.expectEqual(@as(usize, 2), decoded.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), decoded.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), decoded.get("nums").?.values.items[1].int32);
+
+    const decoded_count = decoded.get("counts").?.values.items[0].map_entry;
+    try std.testing.expectEqualSlices(u8, "red", decoded_count.key.string);
+    try std.testing.expectEqual(@as(i32, 7), decoded_count.value.int32);
+
+    const decoded_name = decoded.get("names").?.values.items[0].map_entry;
+    try std.testing.expectEqual(@as(i32, 42), decoded_name.key.int32);
+    try std.testing.expectEqualSlices(u8, "forty-two", decoded_name.value.string);
+
+    const decoded_child = decoded.get("children").?.values.items[0].map_entry;
+    try std.testing.expectEqualSlices(u8, "first", decoded_child.key.string);
+    try std.testing.expectEqualSlices(u8, "kid", decoded_child.value.message.get("label").?.values.items[0].string);
 }

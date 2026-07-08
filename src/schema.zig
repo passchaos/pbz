@@ -84,6 +84,13 @@ pub const ScalarType = enum {
             else => true,
         };
     }
+
+    pub fn validMapKey(self: ScalarType) bool {
+        return switch (self) {
+            .double, .float, .bytes => false,
+            else => true,
+        };
+    }
 };
 
 pub const FieldKind = union(enum) {
@@ -152,6 +159,10 @@ pub const FieldDescriptor = struct {
 
     pub fn isPackable(self: FieldDescriptor) bool {
         return self.cardinality == .repeated and self.kind.packable();
+    }
+
+    pub fn isRepeatedLike(self: FieldDescriptor) bool {
+        return self.cardinality == .repeated or self.kind == .map;
     }
 
     pub fn resolvedPacked(self: FieldDescriptor, file: *const FileDescriptor) bool {

@@ -22,6 +22,7 @@ validated feature set.
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation, repeated packed fields
+  - proto3 default-packed repeated numeric fields and map fields
   - nested message and group round-trips
   - unknown field preservation
 
