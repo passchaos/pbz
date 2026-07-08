@@ -31,8 +31,8 @@ validated feature set.
   - unknown field preservation
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
-- TextFormat output
-  - dynamic message formatting for scalars, repeated fields, maps, enums, and nested messages
+- TextFormat support
+  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, and nested messages
 
 ## Quick example
 
@@ -98,13 +98,16 @@ The current JSON support handles present fields from dynamic messages, quoted
 64-bit integers, bytes as base64, repeated fields as arrays, maps as JSON
 objects, enum names/numbers, null-as-absent parsing, and nested messages recursively.
 
-## TextFormat output
+## TextFormat support
 
-Dynamic messages can be formatted as protobuf TextFormat-style text:
+Dynamic messages can be formatted and parsed as protobuf TextFormat-style text:
 
 ```zig
 const text_bytes = try pbz.formatTextAlloc(allocator, &file, &msg, .{});
 defer allocator.free(text_bytes);
+
+var parsed_text_msg = try pbz.parseTextAlloc(allocator, &file, descriptor, text_bytes);
+defer parsed_text_msg.deinit();
 ```
 
 ## Descriptor encoding
