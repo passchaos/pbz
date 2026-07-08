@@ -25,6 +25,7 @@ validated feature set.
   - extension range options for `declaration`, `verification`, and range-local `features.*`, with declaration/extension consistency validation
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
+  - basic SourceCodeInfo path/span generation for file-level syntax/package/import and top-level message/enum/service declarations
   - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
   - packed field option validation for repeated packable scalar/enum fields
 - Dynamic message runtime
@@ -245,7 +246,7 @@ default names on encode, typed scalar/enum default values on decode,
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name validation, enum allow_alias, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,
-structured SourceCodeInfo location path/span/comments, ExtensionRangeOptions
+structured SourceCodeInfo location path/span/comments including parser-generated basic declaration locations, ExtensionRangeOptions
 declarations/verification/features with parser-side consistency checks,
 structured GeneratedCodeInfo annotations, and edition feature metadata.
 

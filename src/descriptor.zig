@@ -775,6 +775,8 @@ test "descriptor encodes a minimal proto2 FileDescriptorProto" {
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
     defer file.deinit();
+    file.source_code_info.deinit(allocator);
+    file.source_code_info = .{};
 
     const bytes = try encodeFileDescriptorProto(allocator, &file, "person.proto");
     defer allocator.free(bytes);
@@ -2334,6 +2336,8 @@ test "descriptor preserves source code info locations" {
         \\message Person { optional string name = 1; }
     );
     defer file.deinit();
+    file.source_code_info.deinit(allocator);
+    file.source_code_info = .{};
 
     var file_location = schema.SourceCodeInfo.Location{};
     try file_location.path.appendSlice(allocator, &.{});

@@ -170,38 +170,76 @@ pub const Parser = struct {
 
     fn parseFile(self: *Parser) Error!void {
         while (self.current.tag != .eof) {
+            const decl_start = self.current.start;
             if (self.matchIdent("syntax")) {
                 try self.expectSymbol('=');
                 const syntax = try self.expectString();
                 if (std.mem.eql(u8, syntax, "proto2")) self.file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) self.file.setSyntax(.proto3) else return error.InvalidSyntax;
                 try self.expectSymbol(';');
+                try self.addSourceLocation(&.{12}, decl_start, self.previousEnd());
             } else if (self.matchIdent("edition")) {
                 try self.expectSymbol('=');
                 const edition_text = try self.expectString();
                 const edition = schema.Edition.fromYear(edition_text) orelse return error.InvalidEdition;
                 self.file.setEdition(edition);
                 try self.expectSymbol(';');
+                try self.addSourceLocation(&.{14}, decl_start, self.previousEnd());
             } else if (self.matchIdent("package")) {
                 self.file.package = try self.parseFullIdent();
                 try self.expectSymbol(';');
+                try self.addSourceLocation(&.{2}, decl_start, self.previousEnd());
             } else if (self.matchIdent("import")) {
+                const import_index: i32 = @intCast(self.file.imports.items.len);
                 try self.parseImport();
+                try self.addSourceLocation(&.{ 3, import_index }, decl_start, self.previousEnd());
             } else if (self.matchIdent("option")) {
                 try self.file.addOption(try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("message")) {
+                const index: i32 = @intCast(self.file.messages.items.len);
                 try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword());
+                try self.addSourceLocation(&.{ 4, index }, decl_start, self.previousEnd());
             } else if (self.matchIdent("enum")) {
+                const index: i32 = @intCast(self.file.enums.items.len);
                 try self.file.enums.append(self.allocator, try self.parseEnumAfterKeyword());
+                try self.addSourceLocation(&.{ 5, index }, decl_start, self.previousEnd());
             } else if (self.matchIdent("extend")) {
                 try self.parseExtend(&self.file.extensions);
             } else if (self.matchIdent("service")) {
+                const index: i32 = @intCast(self.file.services.items.len);
                 try self.file.services.append(self.allocator, try self.parseServiceAfterKeyword());
+                try self.addSourceLocation(&.{ 6, index }, decl_start, self.previousEnd());
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
                 return error.UnexpectedToken;
             }
         }
+    }
+
+    fn addSourceLocation(self: *Parser, path: []const i32, start: usize, end: usize) Error!void {
+        var location = schema.SourceCodeInfo.Location{};
+        errdefer location.deinit(self.allocator);
+        try location.path.appendSlice(self.allocator, path);
+        const start_pos = self.lineColumn(start);
+        const end_pos = self.lineColumn(end);
+        try location.span.appendSlice(self.allocator, &.{ start_pos.line, start_pos.column, end_pos.line, end_pos.column });
+        try self.file.source_code_info.locations.append(self.allocator, location);
+    }
+
+    fn lineColumn(self: *const Parser, byte_index: usize) struct { line: i32, column: i32 } {
+        var line: i32 = 0;
+        var column: i32 = 0;
+        var i: usize = 0;
+        const end = @min(byte_index, self.input.len);
+        while (i < end) : (i += 1) {
+            if (self.input[i] == '\n') {
+                line += 1;
+                column = 0;
+            } else {
+                column += 1;
+            }
+        }
+        return .{ .line = line, .column = column };
     }
 
     fn parseImport(self: *Parser) Error!void {
@@ -1415,6 +1453,37 @@ test "parser handles proto2 proto3 and editions declarations" {
     try std.testing.expect(person.findField("scores").?.packed_override.?);
     try std.testing.expect(person.findField("kind").?.kind == .enumeration);
     try std.testing.expectEqual(@as(usize, 1), file.services.items.len);
+}
+
+test "parser records basic source code info locations" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Person { optional string name = 1; }
+        \\enum Kind { A = 0; }
+        \\service Api { rpc Get (Person) returns (Person); }
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    try std.testing.expect(file.source_code_info.locations.items.len >= 6);
+    try expectLocationPath(&file, &.{12});
+    try expectLocationPath(&file, &.{2});
+    try expectLocationPath(&file, &.{ 3, 0 });
+    try expectLocationPath(&file, &.{ 4, 0 });
+    try expectLocationPath(&file, &.{ 5, 0 });
+    try expectLocationPath(&file, &.{ 6, 0 });
+}
+
+fn expectLocationPath(file: *const schema.FileDescriptor, path: []const i32) !void {
+    for (file.source_code_info.locations.items) |location| {
+        if (std.mem.eql(i32, location.path.items, path)) {
+            try std.testing.expectEqual(@as(usize, 4), location.span.items.len);
+            return;
+        }
+    }
+    return error.TestUnexpectedResult;
 }
 
 test "parser handles proto3 optional and map fields" {
