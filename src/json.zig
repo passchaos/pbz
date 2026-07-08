@@ -279,7 +279,7 @@ fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, opti
         if (std.mem.eql(u8, field.name, key)) return field;
         if (field.json_name) |json_name| {
             if (std.mem.eql(u8, json_name, key)) return field;
-        }
+        } else if (eqlLowerCamel(field.name, key)) return field;
     }
     return null;
 }
@@ -296,7 +296,7 @@ fn writeMessage(
         if (entry.values.items.len == 0) continue;
         if (!first) try writer.writeAll(",");
         first = false;
-        try writeJsonString(fieldJsonName(entry.descriptor, options), writer);
+        try writeFieldName(entry.descriptor, options, writer);
         try writer.writeAll(":");
         if (entry.descriptor.kind == .map) {
             try writeMap(file, entry.descriptor, entry.values.items, options, writer);
@@ -527,9 +527,43 @@ fn writeJsonStringFmt(writer: *std.Io.Writer, comptime fmt: []const u8, args: an
     try writer.writeAll("\"");
 }
 
-fn fieldJsonName(field: *const schema.FieldDescriptor, options: Options) []const u8 {
-    if (options.preserve_proto_field_names) return field.name;
-    return field.json_name orelse field.name;
+fn writeFieldName(field: *const schema.FieldDescriptor, options: Options, writer: *std.Io.Writer) Error!void {
+    if (options.preserve_proto_field_names) return writeJsonString(field.name, writer);
+    if (field.json_name) |json_name| return writeJsonString(json_name, writer);
+    try writer.writeAll("\"");
+    try writeLowerCamel(field.name, writer);
+    try writer.writeAll("\"");
+}
+
+fn writeLowerCamel(name: []const u8, writer: *std.Io.Writer) Error!void {
+    var upper_next = false;
+    for (name) |c| {
+        if (c == '_') {
+            upper_next = true;
+        } else if (upper_next) {
+            try writer.writeByte(std.ascii.toUpper(c));
+            upper_next = false;
+        } else {
+            try writer.writeByte(c);
+        }
+    }
+}
+
+fn eqlLowerCamel(name: []const u8, candidate: []const u8) bool {
+    var i: usize = 0;
+    var upper_next = false;
+    for (name) |c| {
+        if (c == '_') {
+            upper_next = true;
+            continue;
+        }
+        if (i >= candidate.len) return false;
+        const expected = if (upper_next) std.ascii.toUpper(c) else c;
+        upper_next = false;
+        if (candidate[i] != expected) return false;
+        i += 1;
+    }
+    return i == candidate.len;
 }
 
 test "json stringify dynamic message with scalars repeated maps enums and nested messages" {
@@ -637,4 +671,28 @@ test "json parse ignores null fields" {
     try std.testing.expect(msg.get("id") == null);
     try std.testing.expect(msg.get("tags") == null);
     try std.testing.expect(msg.get("counts") == null);
+}
+
+test "json uses default lowerCamelCase field names" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Names { int32 user_id = 1; string display_name = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Names").?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("user_id").?, .{ .int32 = 7 });
+    try msg.add(desc.findField("display_name").?, .{ .string = try allocator.dupe(u8, "Zig") });
+    const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .preserve_proto_field_names = false });
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"userId\":7,\"displayName\":\"Zig\"}", rendered);
+
+    var parsed = try parseAlloc(allocator, &file, desc, "{\"userId\":8,\"displayName\":\"Trae\"}", .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 8), parsed.get("user_id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "Trae", parsed.get("display_name").?.values.items[0].string);
 }

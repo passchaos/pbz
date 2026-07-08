@@ -113,7 +113,7 @@ defer parsed_msg.deinit();
 
 The current JSON support handles present fields from dynamic messages, quoted
 64-bit integers, bytes as base64, repeated fields as arrays, maps as JSON
-objects, enum names/numbers, null-as-absent parsing, and nested messages recursively.
+objects, enum names/numbers, default lowerCamelCase field names, null-as-absent parsing, and nested messages recursively.
 
 ## TextFormat support
 
