@@ -327,6 +327,10 @@ pub const Parser = struct {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.consumeSymbol(';')) continue;
             var field = try self.parseField(null, null);
+            if (field.cardinality == .required) {
+                field.deinit(self.allocator);
+                return error.InvalidSyntax;
+            }
             field.extendee = extendee;
             try output.append(self.allocator, field);
         }
@@ -1344,6 +1348,15 @@ test "parser validates extension field numbers against extension ranges" {
         \\syntax = "proto2";
         \\message Target { extensions 100 to 200; }
         \\extend Target { optional int32 bad = 99; }
+    ));
+}
+
+test "parser rejects required extension fields" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { required int32 bad = 150; }
     ));
 }
 
