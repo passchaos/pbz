@@ -19,7 +19,7 @@ validated feature set.
   - package/import-aware lookup for messages/enums across FileDescriptor values
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
-  - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges, field-number validation
+  - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges, field-number and duplicate-field validation
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
 - Dynamic message runtime

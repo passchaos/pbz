@@ -9,6 +9,7 @@ pub const ParseError = error{
     InvalidEdition,
     InvalidNumber,
     InvalidFieldType,
+    DuplicateField,
     InvalidRange,
     InvalidEscape,
     UnterminatedString,
@@ -225,6 +226,7 @@ pub const Parser = struct {
                 try message.fields.append(self.allocator, try self.parseField(null, &message));
             }
         }
+        try validateMessageFields(&message);
         return message;
     }
 
@@ -744,6 +746,14 @@ pub const Parser = struct {
     }
 };
 
+fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
+    for (message.fields.items, 0..) |field, i| {
+        for (message.fields.items[i + 1 ..]) |other| {
+            if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
+        }
+    }
+}
+
 fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8) ?*const schema.EnumDescriptor {
     if (message.findEnum(leaf)) |enumeration| return enumeration;
     for (message.messages.items) |*nested| if (findEnumInMessage(nested, leaf)) |found| return found;
@@ -950,5 +960,17 @@ test "parser rejects invalid and reserved field numbers" {
     try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { optional int32 reserved = 19000; }
+    ));
+}
+
+test "parser rejects duplicate field names and numbers" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 a = 1; optional int32 b = 1; }
+    ));
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 a = 1; optional int32 a = 2; }
     ));
 }
