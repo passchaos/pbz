@@ -9,7 +9,7 @@ pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDes
     errdefer out.deinit();
     try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(\"pbz\");\n\n");
     for (file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
-    for (file.messages.items) |*message| try writeMessage(message, &out.writer, 0);
+    for (file.messages.items) |*message| try writeMessage(file, message, &out.writer, 0);
     return try out.toOwnedSlice();
 }
 
@@ -28,7 +28,7 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
     return try (plugin.CodeGeneratorResponse{ .files = response_files }).encode(allocator);
 }
 
-fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdent(message.name, writer);
@@ -53,7 +53,7 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writer.writeAll("\n");
     try writeDeinit(message, writer, depth + 1);
     try writer.writeAll("\n");
-    try writeEncode(message, writer, depth + 1);
+    try writeEncode(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeEncodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
@@ -68,7 +68,7 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writeJsonMethods(message, writer, depth + 1);
     try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
-    for (message.messages.items) |*nested| try writeMessage(nested, writer, depth + 1);
+    for (message.messages.items) |*nested| try writeMessage(file, nested, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
 }
@@ -189,7 +189,7 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n");
 }
 
-fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
     try indent(writer, depth + 1);
@@ -197,7 +197,7 @@ fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
     for (message.fields.items) |*field| {
-        if (field.oneof_name == null) try writeEncodeField(field, writer, depth + 1);
+        if (field.oneof_name == null) try writeEncodeField(file, field, writer, depth + 1);
     }
     for (message.oneofs.items) |oneof| try writeEncodeOneof(message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
@@ -363,8 +363,12 @@ fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
-        try writeRepeatedAppendPrefix(field, writer);
-        try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
+        if (scalar.packable()) {
+            try writeDecodePackedScalarField(field, scalar, writer, depth);
+        } else {
+            try writeRepeatedAppendPrefix(field, writer);
+            try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
+        }
     } else if (field.oneof_name != null) {
         try writeOneofDecodeAssign(field, scalarReaderName(scalar), writer);
     } else {
@@ -380,8 +384,7 @@ fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
-        try writeRepeatedAppendPrefix(field, writer);
-        try writer.writeAll("try r.readInt32()),\n");
+        try writeDecodePackedEnumField(field, writer, depth);
     } else if (field.oneof_name != null) {
         try writeOneofDecodeAssign(field, "readInt32", writer);
     } else {
@@ -408,6 +411,48 @@ fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
         try writeSetPresence(field, writer);
         try writer.writeAll(" },\n");
     }
+}
+
+fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writer.writeAll("{\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("while (!packed_reader.eof()) try ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.print(".append(allocator, try packed_reader.{s}());\n", .{scalarReaderName(scalar)});
+    try indent(writer, depth + 1);
+    try writer.writeAll("} else {\n");
+    try indent(writer, depth + 2);
+    try writeRepeatedAppendPrefix(field, writer);
+    try writer.print("try r.{s}());\n", .{scalarReaderName(scalar)});
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+}
+
+fn writeDecodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writer.writeAll("{\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("while (!packed_reader.eof()) try ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".append(allocator, try packed_reader.readInt32());\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("} else {\n");
+    try indent(writer, depth + 2);
+    try writeRepeatedAppendPrefix(field, writer);
+    try writer.writeAll("try r.readInt32());\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
 }
 
 fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -492,24 +537,28 @@ fn scalarReaderName(scalar: schema.ScalarType) []const u8 {
     };
 }
 
-fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
-        .scalar => |scalar| try writeEncodeScalarField(field, scalar, writer, depth),
-        .enumeration => try writeEncodeEnumField(field, writer, depth),
+        .scalar => |scalar| try writeEncodeScalarField(file, field, scalar, writer, depth),
+        .enumeration => try writeEncodeEnumField(file, field, writer, depth),
         .message => try writeEncodeMessageField(field, writer, depth),
         .map => try writeEncodeMapField(field, writer, depth),
         else => return,
     }
 }
 
-fn writeEncodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
-        try indent(writer, depth);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |item| ");
-        try writeScalarWriteCall(field.number, scalar, "item", writer);
-        try writer.writeAll(");\n");
+        if (field.resolvedPacked(file)) {
+            try writeEncodePackedScalarField(field, scalar, writer, depth);
+        } else {
+            try indent(writer, depth);
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |item| ");
+            try writeScalarWriteCall(field.number, scalar, "item", writer);
+            try writer.writeAll(");\n");
+        }
     } else {
         try indent(writer, depth);
         if (hasPresence(field.*)) {
@@ -527,12 +576,16 @@ fn writeEncodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
     }
 }
 
-fn writeEncodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeEnumField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
-        try indent(writer, depth);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.print(") |item| try w.writeInt32({d}, item);\n", .{field.number});
+        if (field.resolvedPacked(file)) {
+            try writeEncodePackedEnumField(field, writer, depth);
+        } else {
+            try indent(writer, depth);
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |item| try w.writeInt32({d}, item);\n", .{field.number});
+        }
     } else {
         try indent(writer, depth);
         if (hasPresence(field.*)) {
@@ -548,6 +601,69 @@ fn writeEncodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     }
+}
+
+fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writeEncodePackedPrefix(field, writer, depth);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| ");
+    try writePackedScalarPayload(scalar, "item", writer);
+    try writer.writeAll(";\n");
+    try writeEncodePackedSuffix(field, writer, depth);
+}
+
+fn writeEncodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writeEncodePackedPrefix(field, writer, depth);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| ");
+    try writePackedEnumPayload("item", writer);
+    try writer.writeAll(";\n");
+    try writeEncodePackedSuffix(field, writer, depth);
+}
+
+fn writeEncodePackedPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var packed_writer = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer packed_writer.deinit();\n");
+}
+
+fn writeEncodePackedSuffix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth + 1);
+    try writer.print("try w.writeBytes({d}, packed_writer.slice());\n", .{field.number});
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writePackedScalarPayload(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double => try writer.print("try packed_writer.writeRawLittle(u64, @bitCast({s}))", .{value_expr}),
+        .float => try writer.print("try packed_writer.writeRawLittle(u32, @bitCast({s}))", .{value_expr}),
+        .int32 => try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr}),
+        .int64 => try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast({s})))", .{value_expr}),
+        .uint32 => try writer.print("try packed_writer.writeVarint({s})", .{value_expr}),
+        .uint64 => try writer.print("try packed_writer.writeVarint({s})", .{value_expr}),
+        .sint32 => try writer.print("try packed_writer.writeVarint(pbz.wire.zigZagEncode32({s}))", .{value_expr}),
+        .sint64 => try writer.print("try packed_writer.writeVarint(pbz.wire.zigZagEncode64({s}))", .{value_expr}),
+        .fixed32 => try writer.print("try packed_writer.writeRawLittle(u32, {s})", .{value_expr}),
+        .fixed64 => try writer.print("try packed_writer.writeRawLittle(u64, {s})", .{value_expr}),
+        .sfixed32 => try writer.print("try packed_writer.writeRawLittle(i32, {s})", .{value_expr}),
+        .sfixed64 => try writer.print("try packed_writer.writeRawLittle(i64, {s})", .{value_expr}),
+        .bool => try writer.print("try packed_writer.writeVarint(@as(u64, if ({s}) 1 else 0))", .{value_expr}),
+        .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
+    }
+}
+
+fn writePackedEnumPayload(value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr});
 }
 
 fn writeEncodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1152,7 +1268,36 @@ test "codegen encodes enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"kind\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"roles\") |item| try w.writeInt32(2, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(2, packed_writer.slice())") != null);
+}
+
+test "codegen encodes and decodes packed repeated scalar and enum fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message M {
+        \\  repeated int32 ids = 1 [packed = true];
+        \\  repeated Kind kinds = 2 [packed = true];
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_writer = pbz.Writer.init(allocator)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, item))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(1, packed_writer.slice())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(2, packed_writer.slice())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_reader = pbz.Reader.init(try r.readBytes())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try @\"ids_list\".append(allocator, try packed_reader.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try @\"kinds_list\".append(allocator, try packed_reader.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen emits message payload fields and encoders" {

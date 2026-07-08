@@ -40,6 +40,7 @@ validated feature set.
   - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
+  - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults
   - generated typed JSON stringify helpers for scalar, enum, repeated scalar/enum, optional presence, and scalar/enum oneof fields
 - TextFormat support
@@ -169,6 +170,8 @@ Generated message structs provide `encodeInitialized` and `decodeInitialized`
 wrappers that call `validateRequired` before returning initialized proto2 data.
 They also expose `missingRequiredFieldName` for callers that want the first
 missing direct required field name before handling `error.MissingRequiredField`.
+Packable repeated scalar and enum fields emit packed wire format when resolved
+as packed, and generated decoders accept both packed and expanded input.
 Generated message structs also include basic `jsonStringify` and `jsonStringifyAlloc`
 methods for scalar/enum fields, repeated scalar/enum fields, presence-aware optional
 fields, and scalar/enum oneof arms.
