@@ -220,8 +220,9 @@ metadata, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode,
 file/message/enum/field uninterpreted options, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name validation, enum allow_alias, enum descriptor validation,
-service/method validation, proto2 MessageOptions.message_set_wire_format, and
-edition feature metadata.
+service/method validation, proto2 MessageOptions.message_set_wire_format,
+structured SourceCodeInfo location path/span/comments, and edition feature
+metadata.
 
 ## Build and test
 

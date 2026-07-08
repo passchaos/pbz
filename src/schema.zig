@@ -203,6 +203,35 @@ pub const ExtensionRange = struct {
     }
 };
 
+pub const SourceCodeInfo = struct {
+    locations: std.ArrayList(Location) = .empty,
+
+    pub const Location = struct {
+        path: std.ArrayList(i32) = .empty,
+        span: std.ArrayList(i32) = .empty,
+        leading_comments: ?[]const u8 = null,
+        trailing_comments: ?[]const u8 = null,
+        leading_detached_comments: std.ArrayList([]const u8) = .empty,
+
+        pub fn deinit(self: *Location, allocator: std.mem.Allocator) void {
+            self.path.deinit(allocator);
+            self.span.deinit(allocator);
+            self.leading_detached_comments.deinit(allocator);
+            self.* = undefined;
+        }
+    };
+
+    pub fn deinit(self: *SourceCodeInfo, allocator: std.mem.Allocator) void {
+        for (self.locations.items) |*location| location.deinit(allocator);
+        self.locations.deinit(allocator);
+        self.* = undefined;
+    }
+
+    pub fn isEmpty(self: *const SourceCodeInfo) bool {
+        return self.locations.items.len == 0;
+    }
+};
+
 pub const EnumValueDescriptor = struct {
     name: []const u8,
     number: i32,
@@ -431,6 +460,7 @@ pub const FileDescriptor = struct {
     services: std.ArrayList(ServiceDescriptor) = .empty,
     options: OptionList = .empty,
     features: FeatureSet = FeatureSet.defaults(.proto2),
+    source_code_info: SourceCodeInfo = .{},
     owned_strings: std.ArrayList([]u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) FileDescriptor {
@@ -448,6 +478,7 @@ pub const FileDescriptor = struct {
         self.services.deinit(self.allocator);
         self.imports.deinit(self.allocator);
         deinitOptions(&self.options, self.allocator);
+        self.source_code_info.deinit(self.allocator);
         for (self.owned_strings.items) |owned| self.allocator.free(owned);
         self.owned_strings.deinit(self.allocator);
         self.* = undefined;

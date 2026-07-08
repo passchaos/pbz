@@ -40,6 +40,7 @@ pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schem
     for (file.services.items) |*service| try writeServiceDescriptor(allocator, service, 6, writer);
     for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, null, field, 7, writer);
     if (file.syntax == .editions or file.options.items.len != 0) try writeFileOptions(allocator, file, 8, writer);
+    if (!file.source_code_info.isEmpty()) try writeSourceCodeInfo(allocator, &file.source_code_info, 9, writer);
     try writer.writeString(12, switch (file.syntax) {
         .proto2 => "proto2",
         .proto3 => "proto3",
@@ -228,6 +229,32 @@ fn writeExtensionRange(allocator: std.mem.Allocator, range: *const schema.Extens
     try tmp.writeInt32(1, @intCast(range.start));
     if (range.end) |end| try tmp.writeInt32(2, @intCast(end));
     try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeSourceCodeInfo(allocator: std.mem.Allocator, source_code_info: *const schema.SourceCodeInfo, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    for (source_code_info.locations.items) |*location| try writeSourceCodeInfoLocation(allocator, location, 1, &tmp);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeSourceCodeInfoLocation(allocator: std.mem.Allocator, location: *const schema.SourceCodeInfo.Location, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    try writePackedInt32List(allocator, 1, location.path.items, &tmp);
+    try writePackedInt32List(allocator, 2, location.span.items, &tmp);
+    if (location.leading_comments) |comments| try tmp.writeString(3, comments);
+    if (location.trailing_comments) |comments| try tmp.writeString(4, comments);
+    for (location.leading_detached_comments.items) |comments| try tmp.writeString(6, comments);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writePackedInt32List(allocator: std.mem.Allocator, field_number: wire.FieldNumber, values: []const i32, writer: *wire.Writer) Error!void {
+    if (values.len == 0) return;
+    var packed_writer = wire.Writer.init(allocator);
+    defer packed_writer.deinit();
+    for (values) |value| try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, value))));
+    try writer.writeBytes(field_number, packed_writer.slice());
 }
 
 fn writeReservedRange(allocator: std.mem.Allocator, range: schema.ReservedRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -599,6 +626,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             6 => try file.services.append(allocator, try decodeServiceDescriptor(allocator, try reader.readBytes())),
             7 => try file.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
             8 => try decodeFileOptions(allocator, &file, try reader.readBytes()),
+            9 => file.source_code_info = try decodeSourceCodeInfo(allocator, try reader.readBytes()),
             12 => {
                 const syntax = try reader.readBytes();
                 if (std.mem.eql(u8, syntax, "proto2")) file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) file.setSyntax(.proto3) else if (std.mem.eql(u8, syntax, "editions")) file.setSyntax(.editions) else return error.InvalidFieldType;
@@ -915,6 +943,48 @@ fn decodeExtensionRange(allocator: std.mem.Allocator, bytes: []const u8) Error!s
         }
     }
     return range;
+}
+
+fn decodeSourceCodeInfo(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.SourceCodeInfo {
+    var source = schema.SourceCodeInfo{};
+    errdefer source.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try source.locations.append(allocator, try decodeSourceCodeInfoLocation(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return source;
+}
+
+fn decodeSourceCodeInfoLocation(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.SourceCodeInfo.Location {
+    var location = schema.SourceCodeInfo.Location{};
+    errdefer location.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try decodeInt32ListField(allocator, tag, &reader, &location.path),
+            2 => try decodeInt32ListField(allocator, tag, &reader, &location.span),
+            3 => location.leading_comments = try reader.readBytes(),
+            4 => location.trailing_comments = try reader.readBytes(),
+            6 => try location.leading_detached_comments.append(allocator, try reader.readBytes()),
+            else => try reader.skipValue(tag),
+        }
+    }
+    if (location.span.items.len != 0 and location.span.items.len != 3 and location.span.items.len != 4) return error.InvalidFieldType;
+    return location;
+}
+
+fn decodeInt32ListField(allocator: std.mem.Allocator, tag: wire.Tag, reader: *wire.Reader, output: *std.ArrayList(i32)) Error!void {
+    switch (tag.wire_type) {
+        .length_delimited => {
+            var packed_reader = wire.Reader.init(try reader.readBytes());
+            while (!packed_reader.eof()) try output.append(allocator, try packed_reader.readInt32());
+        },
+        .varint => try output.append(allocator, try reader.readInt32()),
+        else => return error.InvalidWireType,
+    }
 }
 
 fn decodeReservedRange(allocator: std.mem.Allocator, bytes: []const u8, inclusive_end: bool) Error!schema.ReservedRange {
@@ -1755,6 +1825,43 @@ test "descriptor preserves proto2 MessageSet message option" {
     try std.testing.expectEqual(@as(usize, 1), host.options.items.len);
     try std.testing.expectEqualStrings("message_set_wire_format", host.options.items[0].name);
     try std.testing.expect(host.options.items[0].value.boolean);
+}
+
+test "descriptor preserves source code info locations" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Person { optional string name = 1; }
+    );
+    defer file.deinit();
+
+    var file_location = schema.SourceCodeInfo.Location{};
+    try file_location.path.appendSlice(allocator, &.{});
+    try file_location.span.appendSlice(allocator, &.{ 0, 0, 2, 1 });
+    file_location.leading_comments = "file leading\n";
+    try file_location.leading_detached_comments.append(allocator, "detached paragraph\n");
+    try file.source_code_info.locations.append(allocator, file_location);
+
+    var field_location = schema.SourceCodeInfo.Location{};
+    try field_location.path.appendSlice(allocator, &.{ 4, 0, 2, 0 });
+    try field_location.span.appendSlice(allocator, &.{ 2, 2, 2, 35 });
+    field_location.trailing_comments = "field trailing\n";
+    try file.source_code_info.locations.append(allocator, field_location);
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "person.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), decoded.source_code_info.locations.items.len);
+    try std.testing.expectEqualSlices(i32, &.{}, decoded.source_code_info.locations.items[0].path.items);
+    try std.testing.expectEqualSlices(i32, &.{ 0, 0, 2, 1 }, decoded.source_code_info.locations.items[0].span.items);
+    try std.testing.expectEqualStrings("file leading\n", decoded.source_code_info.locations.items[0].leading_comments.?);
+    try std.testing.expectEqualStrings("detached paragraph\n", decoded.source_code_info.locations.items[0].leading_detached_comments.items[0]);
+    try std.testing.expectEqualSlices(i32, &.{ 4, 0, 2, 0 }, decoded.source_code_info.locations.items[1].path.items);
+    try std.testing.expectEqualSlices(i32, &.{ 2, 2, 2, 35 }, decoded.source_code_info.locations.items[1].span.items);
+    try std.testing.expectEqualStrings("field trailing\n", decoded.source_code_info.locations.items[1].trailing_comments.?);
 }
 
 test "descriptor rejects invalid enum descriptors" {

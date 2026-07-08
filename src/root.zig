@@ -26,6 +26,7 @@ pub const Writer = wire.Writer;
 pub const FileDescriptor = schema.FileDescriptor;
 pub const MessageDescriptor = schema.MessageDescriptor;
 pub const FieldDescriptor = schema.FieldDescriptor;
+pub const SourceCodeInfo = schema.SourceCodeInfo;
 pub const ProtoParser = parser.Parser;
 pub const DynamicMessage = dynamic.DynamicMessage;
 pub const encodeFileDescriptorProto = descriptor.encodeFileDescriptorProto;
