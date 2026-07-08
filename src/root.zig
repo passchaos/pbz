@@ -63,6 +63,7 @@ pub const generateZigFile = codegen.generateZigFile;
 pub const generatePluginResponse = codegen.generatePluginResponse;
 pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
+pub const runConformanceDynamic = conformance.runDynamic;
 
 test {
     _ = wire;

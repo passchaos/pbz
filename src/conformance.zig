@@ -1,5 +1,10 @@
 const std = @import("std");
 const wire = @import("wire.zig");
+const schema = @import("schema.zig");
+const registry_mod = @import("registry.zig");
+const dynamic = @import("dynamic.zig");
+const json = @import("json.zig");
+const text = @import("text.zig");
 
 pub const Error = wire.Error || std.mem.Allocator.Error;
 
@@ -86,6 +91,77 @@ pub const ConformanceResponse = struct {
     }
 };
 
+pub fn runDynamic(
+    allocator: std.mem.Allocator,
+    registry: *const registry_mod.Registry,
+    request: ConformanceRequest,
+) ![]u8 {
+    const descriptor = registry.findMessage(request.message_type, null) orelse
+        return try (ConformanceResponse{ .result = .{ .runtime_error = "unknown message type" } }).encode(allocator);
+    const file = findContainingFile(registry, descriptor) orelse
+        return try (ConformanceResponse{ .result = .{ .runtime_error = "unknown file" } }).encode(allocator);
+
+    var message = dynamic.DynamicMessage.init(allocator, descriptor);
+    defer message.deinit();
+    switch (request.payload) {
+        .protobuf_payload => |payload| message.decodeWithRegistry(file, registry, payload) catch |err| return try parseError(allocator, err),
+        .json_payload => |payload| {
+            var parsed = json.parseAlloc(allocator, file, descriptor, payload, .{ .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test }) catch |err| return try parseError(allocator, err);
+            defer parsed.deinit();
+            try message.mergeFrom(&parsed);
+        },
+        .text_payload => |payload| {
+            var parsed = text.parseAlloc(allocator, file, descriptor, payload) catch |err| return try parseError(allocator, err);
+            defer parsed.deinit();
+            try message.mergeFrom(&parsed);
+        },
+        else => return try (ConformanceResponse{ .result = .{ .skipped = "unsupported input format" } }).encode(allocator),
+    }
+
+    return switch (request.requested_output_format) {
+        .protobuf => try (ConformanceResponse{ .result = .{ .protobuf_payload = try message.encodedDeterministic(file) } }).encode(allocator),
+        .json => blk: {
+            const payload = json.stringifyAlloc(allocator, file, &message, .{}) catch |err| return try serializeError(allocator, err);
+            defer allocator.free(payload);
+            break :blk try (ConformanceResponse{ .result = .{ .json_payload = payload } }).encode(allocator);
+        },
+        .text_format => blk: {
+            const payload = text.formatAlloc(allocator, file, &message, .{}) catch |err| return try serializeError(allocator, err);
+            defer allocator.free(payload);
+            break :blk try (ConformanceResponse{ .result = .{ .text_payload = payload } }).encode(allocator);
+        },
+        else => try (ConformanceResponse{ .result = .{ .skipped = "unsupported output format" } }).encode(allocator),
+    };
+}
+
+fn parseError(allocator: std.mem.Allocator, err: anyerror) ![]u8 {
+    const msg = try std.fmt.allocPrint(allocator, "{t}", .{err});
+    defer allocator.free(msg);
+    return try (ConformanceResponse{ .result = .{ .parse_error = msg } }).encode(allocator);
+}
+
+fn serializeError(allocator: std.mem.Allocator, err: anyerror) ![]u8 {
+    const msg = try std.fmt.allocPrint(allocator, "{t}", .{err});
+    defer allocator.free(msg);
+    return try (ConformanceResponse{ .result = .{ .serialize_error = msg } }).encode(allocator);
+}
+
+fn findContainingFile(registry: *const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) ?*const schema.FileDescriptor {
+    for (registry.files.items) |file| {
+        for (file.messages.items) |*message| {
+            if (message == descriptor or containsMessage(message, descriptor)) return file;
+        }
+    }
+    return null;
+}
+
+fn containsMessage(parent: *const schema.MessageDescriptor, needle: *const schema.MessageDescriptor) bool {
+    for (parent.messages.items) |*message| {
+        if (message == needle or containsMessage(message, needle)) return true;
+    }
+    return false;
+}
+
 test "conformance request decodes and response encodes" {
     const allocator = std.testing.allocator;
     var writer = wire.Writer.init(allocator);
@@ -104,4 +180,27 @@ test "conformance request decodes and response encodes" {
     const response = try (ConformanceResponse{ .result = .{ .json_payload = "{}" } }).encode(allocator);
     defer allocator.free(response);
     try std.testing.expectEqualSlices(u8, &.{ 0x22, 0x02, '{', '}' }, response);
+}
+
+test "conformance dynamic runner converts protobuf to json" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto3\"; package demo; message Msg { int32 id = 1; }");
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    var payload = wire.Writer.init(allocator);
+    defer payload.deinit();
+    try payload.writeInt32(1, 7);
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .protobuf_payload = payload.slice() },
+        .requested_output_format = .json,
+        .message_type = "demo.Msg",
+        .test_category = .binary_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 4), tag.number);
+    try std.testing.expectEqualSlices(u8, "{\"id\":7}", try reader.readBytes());
 }
