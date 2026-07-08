@@ -35,7 +35,7 @@ validated feature set.
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - Well-known types
-  - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing, FieldMask path validation, and strict Empty object parsing
+  - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including Any expanded payload JSON, Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing, FieldMask path validation, and strict Empty object parsing
 - Conformance helpers
   - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output and missing-required path parse errors
 - Protoc plugin and codegen helpers

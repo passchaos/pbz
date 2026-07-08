@@ -3,7 +3,7 @@ const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
 
-pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{ TypeMismatch, TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch };
+pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch };
 
 pub const Options = struct {
     enum_as_name: bool = true,
@@ -60,9 +60,20 @@ pub fn fillMessage(
         .object => |object| object,
         else => return error.TypeMismatch,
     };
+    try fillMessageObject(allocator, file, message, object, options, false);
+}
 
+fn fillMessageObject(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    message: *dynamic.DynamicMessage,
+    object: std.json.ObjectMap,
+    options: Options,
+    skip_type_field: bool,
+) anyerror!void {
     var it = object.iterator();
     while (it.next()) |entry| {
+        if (skip_type_field and std.mem.eql(u8, entry.key_ptr.*, "@type")) continue;
         const field = findJsonField(message.descriptor, entry.key_ptr.*, options) orelse {
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
@@ -318,10 +329,21 @@ fn writeMessage(
 ) Error!void {
     try writer.writeAll("{");
     var first = true;
+    try writeMessageContents(file, message, options, writer, &first);
+    try writer.writeAll("}");
+}
+
+fn writeMessageContents(
+    file: *const schema.FileDescriptor,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+    writer: *std.Io.Writer,
+    first: *bool,
+) Error!void {
     for (message.fields.items) |*entry| {
         if (entry.values.items.len == 0) continue;
-        if (!first) try writer.writeAll(",");
-        first = false;
+        if (!first.*) try writer.writeAll(",");
+        first.* = false;
         try writeFieldName(entry.descriptor, options, writer);
         try writer.writeAll(":");
         if (entry.descriptor.kind == .map) {
@@ -341,14 +363,13 @@ fn writeMessage(
         for (message.descriptor.fields.items) |*field| {
             if (message.getByNumber(field.number) != null) continue;
             if (!shouldPrintAbsentField(field)) continue;
-            if (!first) try writer.writeAll(",");
-            first = false;
+            if (!first.*) try writer.writeAll(",");
+            first.* = false;
             try writeFieldName(field, options, writer);
             try writer.writeAll(":");
             try writeAbsentFieldDefault(file, field, options, writer);
         }
     }
-    try writer.writeAll("}");
 }
 
 fn shouldPrintAbsentField(field: *const schema.FieldDescriptor) bool {
@@ -410,7 +431,7 @@ fn writeValue(
         .scalar => |scalar| try writeScalar(scalar, value, writer),
         .enumeration => |name| try writeEnum(file, name, value, options, writer),
         .message => |name| switch (value) {
-            .message => |message| if (try writeKnownMessage(name, message, writer)) {} else try writeMessage(file, message, options, writer),
+            .message => |message| if (try writeKnownMessage(file, name, message, options, writer)) {} else try writeMessage(file, message, options, writer),
             else => return error.TypeMismatch,
         },
         .group => switch (value) {
@@ -569,7 +590,7 @@ fn parseWrapperValue(allocator: std.mem.Allocator, kind: schema.FieldKind, json_
     };
 }
 
-fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, writer: *std.Io.Writer) !bool {
+fn writeKnownMessage(file: *const schema.FileDescriptor, name: []const u8, message: *const dynamic.DynamicMessage, options: Options, writer: *std.Io.Writer) !bool {
     if (typeNameEquals(name, "google.protobuf.Timestamp")) {
         const ts = wkt.Timestamp{ .seconds = readInt64Field(message, "seconds"), .nanos = readInt32Field(message, "nanos") };
         try ts.jsonStringify(writer);
@@ -582,6 +603,17 @@ fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, w
     }
     if (typeNameEquals(name, "google.protobuf.Any")) {
         const any = wkt.Any{ .type_url = readStringField(message, "type_url"), .value = readBytesField(message, "value") };
+        if (resolveAnyType(file, any.type_url)) |descriptor| {
+            var nested = dynamic.DynamicMessage.init(message.allocator, descriptor);
+            defer nested.deinit();
+            try nested.decode(file, any.value);
+            try writer.writeAll("{\"@type\":");
+            try std.json.Stringify.value(any.type_url, .{}, writer);
+            var first = false;
+            try writeMessageContents(file, &nested, options, writer, &first);
+            try writer.writeAll("}");
+            return true;
+        }
         try any.jsonStringify(writer);
         return true;
     }
@@ -642,7 +674,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
         return try emptyKnownMessage(allocator, descriptor);
     }
     if (typeNameEquals(name, "google.protobuf.Any")) {
-        return try parseAnyMessage(allocator, descriptor, json_value);
+        return try parseAnyMessage(allocator, file, descriptor, json_value);
     }
     const text = switch (json_value) {
         .string => |value| value,
@@ -680,7 +712,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
     return null;
 }
 
-fn parseAnyMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) !*dynamic.DynamicMessage {
+fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) !*dynamic.DynamicMessage {
     const object = switch (json_value) {
         .object => |object| object,
         else => return error.TypeMismatch,
@@ -705,8 +737,24 @@ fn parseAnyMessage(allocator: std.mem.Allocator, descriptor: *const schema.Messa
             else => return error.TypeMismatch,
         };
         try message.add(value_field, .{ .bytes = try decodeBase64(allocator, encoded) });
+    } else if (resolveAnyType(file, type_url)) |payload_desc| {
+        const payload = try allocator.create(dynamic.DynamicMessage);
+        payload.* = dynamic.DynamicMessage.init(allocator, payload_desc);
+        defer {
+            payload.deinit();
+            allocator.destroy(payload);
+        }
+        try fillMessageObject(allocator, file, payload, object, .{}, true);
+        const encoded = try payload.encodedDeterministic(file);
+        defer allocator.free(encoded);
+        try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
     }
     return message;
+}
+
+fn resolveAnyType(file: *const schema.FileDescriptor, type_url: []const u8) ?*const schema.MessageDescriptor {
+    const name = if (std.mem.lastIndexOfScalar(u8, type_url, '/')) |idx| type_url[idx + 1 ..] else type_url;
+    return file.findMessageDeep(name);
 }
 
 fn emptyKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor) !*dynamic.DynamicMessage {
@@ -1433,6 +1481,51 @@ test "json parses Any message with type and base64 value" {
     try std.testing.expectEqualSlices(u8, "abc", any_msg.get("value").?.values.items[0].bytes);
 
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"value\":\"YWJj\"}}", .{}));
+}
+
+test "json expands Any message payloads when type is known" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Msg { int32 id = 1; string label = 2; }
+        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Holder { .google.protobuf.Any any = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+    const any_desc = file.findMessage("Any").?;
+    const msg_desc = file.findMessage("Msg").?;
+
+    var payload = dynamic.DynamicMessage.init(allocator, msg_desc);
+    defer payload.deinit();
+    try payload.add(msg_desc.findField("id").?, .{ .int32 = 7 });
+    try payload.add(msg_desc.findField("label").?, .{ .string = try allocator.dupe(u8, "known") });
+    const payload_bytes = try payload.encodedDeterministic(&file);
+    defer allocator.free(payload_bytes);
+
+    var holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer holder.deinit();
+    const any_msg = try allocator.create(dynamic.DynamicMessage);
+    any_msg.* = dynamic.DynamicMessage.init(allocator, any_desc);
+    try any_msg.add(any_desc.findField("type_url").?, .{ .string = try allocator.dupe(u8, "type.googleapis.com/demo.Msg") });
+    try any_msg.add(any_desc.findField("value").?, .{ .bytes = try allocator.dupe(u8, payload_bytes) });
+    try holder.add(holder_desc.findField("any").?, .{ .message = any_msg });
+
+    const rendered = try stringifyAlloc(allocator, &file, &holder, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"id\":7,\"label\":\"known\"}}", rendered);
+
+    var parsed = try parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"id\":8,\"label\":\"parsed\"}}", .{});
+    defer parsed.deinit();
+    const parsed_any = parsed.get("any").?.values.items[0].message;
+    const parsed_value = parsed_any.get("value").?.values.items[0].bytes;
+    var decoded_payload = dynamic.DynamicMessage.init(allocator, msg_desc);
+    defer decoded_payload.deinit();
+    try decoded_payload.decode(&file, parsed_value);
+    try std.testing.expectEqual(@as(i32, 8), decoded_payload.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "parsed", decoded_payload.get("label").?.values.items[0].string);
 }
 
 test "json maps Struct Value and ListValue messages" {
