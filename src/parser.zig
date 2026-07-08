@@ -334,20 +334,26 @@ pub const Parser = struct {
         var proto3_optional = false;
         if (self.current.tag == .identifier) {
             if (std.mem.eql(u8, self.current.text, "optional")) {
+                if (oneof_name != null) return error.InvalidSyntax;
                 _ = try self.advance();
                 cardinality = .optional;
                 proto3_optional = self.file.syntax == .proto3;
             } else if (std.mem.eql(u8, self.current.text, "required")) {
+                if (oneof_name != null) return error.InvalidSyntax;
                 if (self.file.syntax != .proto2) return error.InvalidSyntax;
                 _ = try self.advance();
                 cardinality = .required;
             } else if (std.mem.eql(u8, self.current.text, "repeated")) {
+                if (oneof_name != null) return error.InvalidSyntax;
                 _ = try self.advance();
                 cardinality = .repeated;
             }
         }
 
-        if (self.matchIdent("group")) return try self.parseGroupField(cardinality, oneof_name, parent);
+        if (self.matchIdent("group")) {
+            if (oneof_name != null) return error.InvalidSyntax;
+            return try self.parseGroupField(cardinality, oneof_name, parent);
+        }
 
         const kind = try self.parseFieldKind();
         if (kind == .map and (cardinality != .implicit or oneof_name != null)) return error.InvalidFieldType;
@@ -1208,5 +1214,25 @@ test "parser rejects required label outside proto2" {
     try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
         \\edition = "2023";
         \\message Bad { required int32 id = 1; }
+    ));
+}
+
+test "parser rejects labelled and group fields inside oneof" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { oneof pick { optional int32 id = 1; } }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { oneof pick { required int32 id = 1; } }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { oneof pick { repeated int32 ids = 1; } }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { oneof pick { group Legacy = 1 {} } }
     ));
 }
