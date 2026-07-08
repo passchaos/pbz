@@ -43,7 +43,7 @@ validated feature set.
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults
-  - generated typed JSON stringify/parse helpers for scalar, enum, repeated scalar/enum, optional presence, bytes/base64, and scalar/enum oneof fields
+  - generated typed JSON stringify/parse helpers for scalar, enum, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, and scalar/enum oneof fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, and common separators and # comments
 
@@ -175,7 +175,7 @@ Packable repeated scalar and enum fields emit packed wire format when resolved
 as packed, and generated decoders accept both packed and expanded input.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
-presence-aware optional fields, bytes/base64, and scalar/enum oneof arms.
+scalar/enum map fields, presence-aware optional fields, bytes/base64, and scalar/enum oneof arms.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
