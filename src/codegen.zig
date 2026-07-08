@@ -47,6 +47,8 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeInit(writer, depth + 1);
     try writer.writeAll("\n");
+    try writeDeinit(message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeEncode(message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeDecode(message, writer, depth + 1);
@@ -109,13 +111,35 @@ fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("}\n");
 }
 
+fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
+    var has_repeated = false;
+    for (message.fields.items) |*field| {
+        if (field.cardinality == .repeated and field.kind != .map) {
+            has_repeated = true;
+            try indent(writer, depth + 1);
+            try writer.writeAll("allocator.free(self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(");\n");
+        }
+    }
+    if (!has_repeated) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = allocator;\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.* = undefined;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("_ = allocator;\n");
-    try indent(writer, depth + 1);
     try writer.writeAll("var self = @This().init();\n");
+    for (message.fields.items) |*field| try writeRepeatedListDecl(field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     try indent(writer, depth + 1);
@@ -129,10 +153,44 @@ fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
+    for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeRepeatedListDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality != .repeated or field.kind == .map) return;
+    try indent(writer, depth);
+    try writer.writeAll("var ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(": std.ArrayList(");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(") = .empty;\n");
+    try indent(writer, depth);
+    try writer.writeAll("defer ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".deinit(allocator);\n");
+}
+
+fn writeRepeatedAssign(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality != .repeated or field.kind == .map) return;
+    try indent(writer, depth);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = try ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".toOwnedSlice(allocator);\n");
+}
+
+fn writeRepeatedElementType(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    switch (field.kind) {
+        .scalar => |scalar| try writer.writeAll(scalarZigType(scalar)),
+        .enumeration => try writer.writeAll("i32"),
+        .message => try writer.writeAll("[]const u8"),
+        else => try writer.writeAll("void"),
+    }
 }
 
 fn writeDecodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -148,7 +206,8 @@ fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
-        try writer.writeAll("try r.skipValue(tag), // repeated decode requires caller-managed storage\n");
+        try writeRepeatedAppendPrefix(field, writer);
+        try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
     } else {
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
@@ -160,7 +219,8 @@ fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
-        try writer.writeAll("try r.skipValue(tag), // repeated decode requires caller-managed storage\n");
+        try writeRepeatedAppendPrefix(field, writer);
+        try writer.writeAll("try r.readInt32()),\n");
     } else {
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
@@ -172,12 +232,19 @@ fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
-        try writer.writeAll("try r.skipValue(tag), // repeated decode requires caller-managed storage\n");
+        try writeRepeatedAppendPrefix(field, writer);
+        try writer.writeAll("try r.readBytes()),\n");
     } else {
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = try r.readBytes(),\n");
     }
+}
+
+fn writeRepeatedAppendPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("try ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".append(allocator, ");
 }
 
 fn scalarReaderName(scalar: schema.ScalarType) []const u8 {
@@ -616,4 +683,22 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => self.@\"name\" = try r.readBytes()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => self.@\"kind\" = try r.readInt32()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => self.@\"payload\" = try r.readBytes()") != null);
+}
+
+test "codegen decodes repeated scalar enum and message payload fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Child { int32 id = 1; }
+        \\message M { repeated int32 ids = 1; repeated Kind kinds = 2; repeated Child children = 3; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var @\"ids_list\": std.ArrayList(i32) = .empty") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"kinds_list\".append(allocator, try r.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"children_list\".append(allocator, try r.readBytes())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ids\" = try @\"ids_list\".toOwnedSlice(allocator)") != null);
 }
