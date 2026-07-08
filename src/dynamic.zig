@@ -174,17 +174,62 @@ pub const DynamicMessage = struct {
     }
 
     pub fn addClone(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
-        try self.add(field, try cloneValue(self.allocator, value));
+        var cloned = try cloneValue(self.allocator, value);
+        errdefer deinitValue(&cloned, self.allocator);
+        try self.add(field, cloned);
     }
 
     pub fn mergeFrom(self: *DynamicMessage, other: *const DynamicMessage) std.mem.Allocator.Error!void {
         for (other.fields.items) |*entry| {
-            for (entry.values.items) |value| try self.addClone(entry.descriptor, value);
+            for (entry.values.items) |value| try self.mergeFieldFrom(entry.descriptor, value);
         }
-        for (other.unknown_fields.items) |unknown| try self.unknown_fields.append(self.allocator, .{
+        for (other.unknown_fields.items) |unknown| try self.addUnknownClone(unknown);
+    }
+
+    fn addOwned(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
+        var owned = value;
+        if (try self.mergeSingularMessageValue(field, owned)) {
+            deinitValue(&owned, self.allocator);
+            return;
+        }
+        try self.add(field, owned);
+    }
+
+    fn mergeFieldFrom(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
+        if (try self.mergeSingularMessageValue(field, value)) return;
+        try self.addClone(field, value);
+    }
+
+    fn mergeSingularMessageValue(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!bool {
+        if (!shouldMergeSingularMessageField(field)) return false;
+        const entry = self.findMutableByNumber(field.number) orelse return false;
+        if (entry.values.items.len == 0) return false;
+        switch (entry.values.items[0]) {
+            .message => |target| switch (value) {
+                .message => |source| {
+                    try target.mergeFrom(source);
+                    return true;
+                },
+                else => return false,
+            },
+            .group => |target| switch (value) {
+                .group => |source| {
+                    try target.mergeFrom(source);
+                    return true;
+                },
+                else => return false,
+            },
+            else => return false,
+        }
+    }
+
+    fn addUnknownClone(self: *DynamicMessage, unknown: UnknownField) std.mem.Allocator.Error!void {
+        const data = try self.allocator.dupe(u8, unknown.data);
+        errdefer self.allocator.free(data);
+        try self.unknown_fields.append(self.allocator, .{
             .number = unknown.number,
             .wire_type = unknown.wire_type,
-            .data = try self.allocator.dupe(u8, unknown.data),
+            .data = data,
         });
     }
 
@@ -249,6 +294,13 @@ pub const DynamicMessage = struct {
         }
         try self.fields.append(self.allocator, .{ .descriptor = field });
         return &self.fields.items[self.fields.items.len - 1];
+    }
+
+    fn findMutableByNumber(self: *DynamicMessage, number: wire.FieldNumber) ?*FieldValue {
+        for (self.fields.items) |*entry| {
+            if (entry.descriptor.number == number) return entry;
+        }
+        return null;
     }
 
     fn clearOneofExcept(self: *DynamicMessage, oneof_name: []const u8, keep_number: wire.FieldNumber) void {
@@ -432,10 +484,10 @@ pub const DynamicMessage = struct {
                 continue;
             };
 
-            if (field.kind == .message and fieldMessageEncoding(file, field) == .delimited) {
+            if (field.kind == .message and registryEnumDescriptor(file, registry, self.descriptor, field.kind) == null and fieldMessageEncoding(file, field) == .delimited) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
                 var value = try decodeDelimitedMessageValue(self.allocator, file, registry, self.descriptor, field, reader);
-                self.add(field, value) catch |err| {
+                self.addOwned(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
                 };
@@ -445,7 +497,7 @@ pub const DynamicMessage = struct {
             if (field.kind == .group) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
                 var value = try decodeGroupValue(self.allocator, file, registry, self.descriptor, field, reader);
-                self.add(field, value) catch |err| {
+                self.addOwned(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
                 };
@@ -459,7 +511,7 @@ pub const DynamicMessage = struct {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                     continue;
                 };
-                self.add(field, value) catch |err| {
+                self.addOwned(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
                 };
@@ -528,7 +580,7 @@ pub const DynamicMessage = struct {
                 continue;
             }
             var value = try decodeValue(self.allocator, file, registry, self.descriptor, field, field.kind, reader);
-            self.add(field, value) catch |err| {
+            self.addOwned(field, value) catch |err| {
                 deinitValue(&value, self.allocator);
                 return err;
             };
@@ -627,7 +679,7 @@ pub const DynamicMessage = struct {
         };
         if (field.kind != .message or field.cardinality == .repeated or field.cardinality == .required) return error.TypeMismatch;
         var value = try decodeMessagePayload(self.allocator, file, registry, self.descriptor, field.kind.message, payload);
-        self.add(field, value) catch |err| {
+        self.addOwned(field, value) catch |err| {
             deinitValue(&value, self.allocator);
             return err;
         };
@@ -1127,6 +1179,11 @@ fn fieldIsRequired(field: *const schema.FieldDescriptor) bool {
     if (field.cardinality == .required) return true;
     if (field.features) |features| return features.field_presence == .legacy_required;
     return false;
+}
+
+fn shouldMergeSingularMessageField(field: *const schema.FieldDescriptor) bool {
+    if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null) return false;
+    return field.kind == .message or field.kind == .group;
 }
 
 fn isDefaultSingularValue(field: *const schema.FieldDescriptor, value: Value) bool {
@@ -2119,6 +2176,196 @@ test "dynamic mergeFrom appends repeated fields overrides singular and preserves
     try std.testing.expect(left.get("name") == null);
     try std.testing.expectEqual(@as(i32, 9), left.get("code").?.values.items[0].int32);
     try std.testing.expectEqual(@as(usize, 1), left.unknownCount());
+}
+
+test "dynamic decode merges duplicate singular message and group fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Grand { optional int32 a = 1; optional int32 b = 2; }
+        \\message Child {
+        \\  optional int32 id = 1;
+        \\  optional string name = 2;
+        \\  repeated int32 nums = 3;
+        \\  optional Grand grand = 4;
+        \\  optional group Legacy = 5 { optional int32 a = 6; optional int32 b = 7; }
+        \\}
+        \\message Parent {
+        \\  optional Child child = 1;
+        \\  optional group Box = 2 { optional int32 a = 3; optional int32 b = 4; }
+        \\  repeated Child children = 5;
+        \\  oneof pick { Child picked = 6; }
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+
+    var first_grand = wire.Writer.init(allocator);
+    defer first_grand.deinit();
+    try first_grand.writeInt32(1, 100);
+    var first_child = wire.Writer.init(allocator);
+    defer first_child.deinit();
+    try first_child.writeInt32(1, 1);
+    try first_child.writeInt32(3, 10);
+    try first_child.writeMessage(4, first_grand.slice());
+    try first_child.writeTag(5, .start_group);
+    try first_child.writeInt32(6, 1000);
+    try first_child.writeTag(5, .end_group);
+
+    var second_grand = wire.Writer.init(allocator);
+    defer second_grand.deinit();
+    try second_grand.writeInt32(2, 200);
+    var second_child = wire.Writer.init(allocator);
+    defer second_child.deinit();
+    try second_child.writeString(2, "two");
+    try second_child.writeInt32(3, 20);
+    try second_child.writeMessage(4, second_grand.slice());
+    try second_child.writeTag(5, .start_group);
+    try second_child.writeInt32(7, 2000);
+    try second_child.writeTag(5, .end_group);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeMessage(1, first_child.slice());
+    try encoded.writeMessage(1, second_child.slice());
+    try encoded.writeTag(2, .start_group);
+    try encoded.writeInt32(3, 11);
+    try encoded.writeTag(2, .end_group);
+    try encoded.writeTag(2, .start_group);
+    try encoded.writeInt32(4, 22);
+    try encoded.writeTag(2, .end_group);
+    try encoded.writeMessage(5, first_child.slice());
+    try encoded.writeMessage(5, second_child.slice());
+    try encoded.writeMessage(6, first_child.slice());
+    try encoded.writeMessage(6, second_child.slice());
+
+    var parent = DynamicMessage.init(allocator, parent_desc);
+    defer parent.deinit();
+    try parent.decode(&file, encoded.slice());
+
+    const merged_child = parent.get("child").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 1), merged_child.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "two", merged_child.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 2), merged_child.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 10), merged_child.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 20), merged_child.get("nums").?.values.items[1].int32);
+    const merged_grand = merged_child.get("grand").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 100), merged_grand.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 200), merged_grand.get("b").?.values.items[0].int32);
+    const merged_legacy = merged_child.get("Legacy").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 1000), merged_legacy.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2000), merged_legacy.get("b").?.values.items[0].int32);
+
+    const merged_box = parent.get("Box").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 11), merged_box.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 22), merged_box.get("b").?.values.items[0].int32);
+
+    try std.testing.expectEqual(@as(usize, 2), parent.get("children").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), parent.get("children").?.values.items[0].message.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "two", parent.get("children").?.values.items[1].message.get("name").?.values.items[0].string);
+
+    const picked = parent.get("picked").?.values.items[0].message;
+    try std.testing.expect(picked.get("id") == null);
+    try std.testing.expectEqualSlices(u8, "two", picked.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 1), picked.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 20), picked.get("nums").?.values.items[0].int32);
+}
+
+test "dynamic mergeFrom recursively merges singular messages and groups" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Grand { optional int32 a = 1; optional int32 b = 2; }
+        \\message Child {
+        \\  optional int32 id = 1;
+        \\  optional string name = 2;
+        \\  repeated int32 nums = 3;
+        \\  optional Grand grand = 4;
+        \\  optional group Legacy = 5 { optional int32 a = 6; optional int32 b = 7; }
+        \\}
+        \\message Parent {
+        \\  optional Child child = 1;
+        \\  optional group Box = 2 { optional int32 a = 3; optional int32 b = 4; }
+        \\  repeated Child children = 5;
+        \\  oneof pick { Child picked = 6; }
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+    const child_desc = file.findMessage("Child").?;
+    const grand_desc = file.findMessage("Grand").?;
+    const legacy_desc = child_desc.findMessageDeep("Legacy").?;
+    const box_desc = parent_desc.findMessageDeep("Box").?;
+
+    var left = DynamicMessage.init(allocator, parent_desc);
+    defer left.deinit();
+    const left_child = try allocator.create(DynamicMessage);
+    left_child.* = DynamicMessage.init(allocator, child_desc);
+    try left_child.add(child_desc.findField("id").?, .{ .int32 = 1 });
+    try left_child.add(child_desc.findField("nums").?, .{ .int32 = 10 });
+    const left_grand = try allocator.create(DynamicMessage);
+    left_grand.* = DynamicMessage.init(allocator, grand_desc);
+    try left_grand.add(grand_desc.findField("a").?, .{ .int32 = 100 });
+    try left_child.add(child_desc.findField("grand").?, .{ .message = left_grand });
+    const left_legacy = try allocator.create(DynamicMessage);
+    left_legacy.* = DynamicMessage.init(allocator, legacy_desc);
+    try left_legacy.add(legacy_desc.findField("a").?, .{ .int32 = 1000 });
+    try left_child.add(child_desc.findField("Legacy").?, .{ .group = left_legacy });
+    try left.add(parent_desc.findField("child").?, .{ .message = left_child });
+    const left_box = try allocator.create(DynamicMessage);
+    left_box.* = DynamicMessage.init(allocator, box_desc);
+    try left_box.add(box_desc.findField("a").?, .{ .int32 = 11 });
+    try left.add(parent_desc.findField("Box").?, .{ .group = left_box });
+
+    var right = DynamicMessage.init(allocator, parent_desc);
+    defer right.deinit();
+    const right_child = try allocator.create(DynamicMessage);
+    right_child.* = DynamicMessage.init(allocator, child_desc);
+    try right_child.add(child_desc.findField("name").?, .{ .string = try allocator.dupe(u8, "two") });
+    try right_child.add(child_desc.findField("nums").?, .{ .int32 = 20 });
+    const right_grand = try allocator.create(DynamicMessage);
+    right_grand.* = DynamicMessage.init(allocator, grand_desc);
+    try right_grand.add(grand_desc.findField("b").?, .{ .int32 = 200 });
+    try right_child.add(child_desc.findField("grand").?, .{ .message = right_grand });
+    const right_legacy = try allocator.create(DynamicMessage);
+    right_legacy.* = DynamicMessage.init(allocator, legacy_desc);
+    try right_legacy.add(legacy_desc.findField("b").?, .{ .int32 = 2000 });
+    try right_child.add(child_desc.findField("Legacy").?, .{ .group = right_legacy });
+    try right.add(parent_desc.findField("child").?, .{ .message = right_child });
+    const right_box = try allocator.create(DynamicMessage);
+    right_box.* = DynamicMessage.init(allocator, box_desc);
+    try right_box.add(box_desc.findField("b").?, .{ .int32 = 22 });
+    try right.add(parent_desc.findField("Box").?, .{ .group = right_box });
+
+    const repeated_child = try allocator.create(DynamicMessage);
+    repeated_child.* = DynamicMessage.init(allocator, child_desc);
+    try repeated_child.add(child_desc.findField("name").?, .{ .string = try allocator.dupe(u8, "repeat") });
+    try right.add(parent_desc.findField("children").?, .{ .message = repeated_child });
+    const picked = try allocator.create(DynamicMessage);
+    picked.* = DynamicMessage.init(allocator, child_desc);
+    try picked.add(child_desc.findField("name").?, .{ .string = try allocator.dupe(u8, "picked") });
+    try right.add(parent_desc.findField("picked").?, .{ .message = picked });
+
+    try left.mergeFrom(&right);
+
+    const merged_child = left.get("child").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 1), merged_child.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "two", merged_child.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 2), merged_child.get("nums").?.values.items.len);
+    const merged_grand = merged_child.get("grand").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 100), merged_grand.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 200), merged_grand.get("b").?.values.items[0].int32);
+    const merged_legacy = merged_child.get("Legacy").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 1000), merged_legacy.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2000), merged_legacy.get("b").?.values.items[0].int32);
+    const merged_box = left.get("Box").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 11), merged_box.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 22), merged_box.get("b").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 1), left.get("children").?.values.items.len);
+    try std.testing.expectEqualSlices(u8, "repeat", left.get("children").?.values.items[0].message.get("name").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, "picked", left.get("picked").?.values.items[0].message.get("name").?.values.items[0].string);
 }
 
 test "dynamic decodeWithRegistry decodes proto2 extensions" {
