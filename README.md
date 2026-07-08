@@ -46,6 +46,7 @@ validated feature set.
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
+  - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
@@ -191,6 +192,10 @@ support bounds, insertion points, and generated-code metadata payload passthroug
 or structured `GeneratedCodeInfo` annotations.
 `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
+For `service` declarations, generated files include a `services` namespace with
+service/method metadata, an unimplemented `Handler` stub, and a `Client` wrapper
+that dispatches serialized request/response payloads through a caller-provided
+function pointer.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, and `zig_type`) plus typed `write`/`writeAll` and

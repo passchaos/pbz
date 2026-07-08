@@ -12,6 +12,7 @@ pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDes
     for (file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (file.messages.items) |*message| try writeMessage(file, message, &out.writer, 0);
     try writeExtensionMetadata(file, &out.writer, 0);
+    try writeServiceMetadata(file, &out.writer, 0);
     return try out.toOwnedSlice();
 }
 
@@ -2298,6 +2299,104 @@ fn indent(writer: *std.Io.Writer, depth: usize) Error!void {
     while (i < depth) : (i += 1) try writer.writeAll("    ");
 }
 
+fn writeServiceMetadata(file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (file.services.items.len == 0) return;
+    try indent(writer, depth);
+    try writer.writeAll("pub const services = struct {\n");
+    for (file.services.items) |*service| try writeServiceDecl(service, writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("};\n\n");
+}
+
+fn writeServiceDecl(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(service.name, writer);
+    try writer.writeAll(" = struct {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const name = ");
+    try writeZigStringLiteral(service.name, writer);
+    try writer.writeAll(";\n");
+    for (service.methods.items) |*method| try writeMethodDecl(method, writer, depth + 1);
+    try writeServiceHandler(service, writer, depth + 1);
+    try writeServiceClient(service, writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn writeMethodDecl(method: *const schema.MethodDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(method.name, writer);
+    try writer.writeAll(" = struct {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const name = ");
+    try writeZigStringLiteral(method.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const input_type = ");
+    try writeZigStringLiteral(method.input_type, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const output_type = ");
+    try writeZigStringLiteral(method.output_type, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const client_streaming = ");
+    try writer.writeAll(if (method.client_streaming) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const server_streaming = ");
+    try writer.writeAll(if (method.server_streaming) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn writeServiceHandler(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const Handler = struct {\n");
+    for (service.methods.items) |*method| {
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdent(method.name, writer);
+        try writer.writeAll("(self: *@This(), request: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("_ = self; _ = request; _ = allocator;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("return error.Unimplemented;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn writeServiceClient(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const Client = struct {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("context: *anyopaque,\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("call: *const fn (context: *anyopaque, service: []const u8, method: []const u8, request: []const u8, allocator: std.mem.Allocator) anyerror![]u8,\n");
+    for (service.methods.items) |*method| {
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdent(method.name, writer);
+        try writer.writeAll("(self: @This(), request: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("return try self.call(self.context, ");
+        try writeZigStringLiteral(service.name, writer);
+        try writer.writeAll(", ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(", request, allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
 fn outputName(allocator: std.mem.Allocator, input: []const u8) std.mem.Allocator.Error![]u8 {
     const base = if (input.len == 0) "schema.proto" else input;
     const stem = if (std.mem.endsWith(u8, base, ".proto")) base[0 .. base.len - 6] else base;
@@ -2866,6 +2965,39 @@ test "codegen emits MessageSet extension write helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .end_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) payload else null;") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits service metadata and stubs" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Req {}
+        \\message Res {}
+        \\service Directory {
+        \\  rpc Get (Req) returns (Res);
+        \\  rpc Stream (stream Req) returns (stream Res);
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const services = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Directory\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const name = \"Directory\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Get\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type = \"Req\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type = \"Res\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const client_streaming = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const server_streaming = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const Handler = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return error.Unimplemented;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const Client = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try self.call(self.context, \"Directory\", \"Get\", request, allocator);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
