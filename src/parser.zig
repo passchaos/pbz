@@ -309,12 +309,14 @@ pub const Parser = struct {
     }
 
     fn parseExtend(self: *Parser, output: *std.ArrayList(schema.FieldDescriptor)) Error!void {
-        _ = try self.parseTypeNameSlice();
+        const extendee = try self.parseTypeNameSlice();
         try self.expectSymbol('{');
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.consumeSymbol(';')) continue;
-            try output.append(self.allocator, try self.parseField(null, null));
+            var field = try self.parseField(null, null);
+            field.extendee = extendee;
+            try output.append(self.allocator, field);
         }
     }
 

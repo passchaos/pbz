@@ -144,6 +144,7 @@ pub const FieldDescriptor = struct {
     number: wire.FieldNumber,
     cardinality: Cardinality = .implicit,
     kind: FieldKind,
+    extendee: ?[]const u8 = null,
     default_value: ?OptionValue = null,
     json_name: ?[]const u8 = null,
     oneof_name: ?[]const u8 = null,

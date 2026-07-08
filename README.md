@@ -61,6 +61,20 @@ pub fn example(allocator: std.mem.Allocator) !void {
 }
 ```
 
+## Descriptor encoding
+
+`pbz.descriptor` can encode parsed schemas into descriptor.proto-compatible
+wire bytes for `FileDescriptorProto` and `FileDescriptorSet` workflows:
+
+```zig
+const descriptor_bytes = try pbz.encodeFileDescriptorProto(allocator, &file, "schema.proto");
+defer allocator.free(descriptor_bytes);
+```
+
+The current descriptor encoder covers core file/message/field/enum/service
+metadata, map-entry descriptors, packed field options, and edition feature
+metadata.
+
 ## Build and test
 
 ```sh
