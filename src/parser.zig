@@ -15,6 +15,7 @@ pub const ParseError = error{
     InvalidRange,
     ReservedField,
     InvalidEscape,
+    InvalidDefault,
     UnterminatedString,
     UnterminatedComment,
 };
@@ -156,6 +157,7 @@ pub const Parser = struct {
         errdefer self.file.deinit();
         try self.parseFile();
         try self.resolveFieldKinds();
+        try self.validateDefaults();
         return self.file;
     }
 
@@ -624,6 +626,39 @@ pub const Parser = struct {
         self.resolveEnumDefault(field, context);
     }
 
+    fn validateDefaults(self: *Parser) ParseError!void {
+        for (self.file.messages.items) |*message| try self.validateMessageDefaults(message);
+        for (self.file.extensions.items) |*field| try self.validateFieldDefault(field, null);
+    }
+
+    fn validateMessageDefaults(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+        for (message.fields.items) |*field| try self.validateFieldDefault(field, message);
+        for (message.extensions.items) |*field| try self.validateFieldDefault(field, message);
+        for (message.messages.items) |*nested| try self.validateMessageDefaults(nested);
+    }
+
+    fn validateFieldDefault(self: *Parser, field: *const schema.FieldDescriptor, context: ?*schema.MessageDescriptor) ParseError!void {
+        const value = field.default_value orelse return;
+        if (self.file.syntax == .proto3) return error.InvalidDefault;
+        if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null) return error.InvalidDefault;
+        switch (field.kind) {
+            .scalar => |scalar| try validateScalarDefault(scalar, value),
+            .enumeration => |name| {
+                const number = switch (value) {
+                    .integer => |v| v,
+                    else => return error.InvalidDefault,
+                };
+                const enumeration = self.findEnumDescriptor(name, context) orelse return error.InvalidDefault;
+                for (enumeration.values.items) |enum_value| {
+                    if (enum_value.number == number) return;
+                }
+                return error.InvalidDefault;
+            },
+            .message, .group => return error.InvalidDefault,
+            .map => return error.InvalidDefault,
+        }
+    }
+
     fn resolveEnumDefault(self: *Parser, field: *schema.FieldDescriptor, context: ?*schema.MessageDescriptor) void {
         const enum_name = switch (field.kind) {
             .enumeration => |name| name,
@@ -831,6 +866,50 @@ fn messageContainsEnum(message: *const schema.MessageDescriptor, leaf: []const u
     return false;
 }
 
+fn validateScalarDefault(scalar: schema.ScalarType, value: schema.OptionValue) ParseError!void {
+    switch (scalar) {
+        .double, .float => {
+            if (optionFloat(value) == null) return error.InvalidDefault;
+        },
+        .int32, .sint32, .sfixed32 => {
+            _ = optionInt(i32, value) orelse return error.InvalidDefault;
+        },
+        .int64, .sint64, .sfixed64 => {
+            _ = optionInt(i64, value) orelse return error.InvalidDefault;
+        },
+        .uint32, .fixed32 => {
+            _ = optionInt(u32, value) orelse return error.InvalidDefault;
+        },
+        .uint64, .fixed64 => {
+            _ = optionInt(u64, value) orelse return error.InvalidDefault;
+        },
+        .bool => {
+            if (schema.optionAsBool(value) == null) return error.InvalidDefault;
+        },
+        .string, .bytes => switch (value) {
+            .string => {},
+            else => return error.InvalidDefault,
+        },
+    }
+}
+
+fn optionInt(comptime T: type, value: schema.OptionValue) ?T {
+    return switch (value) {
+        .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
+        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch null,
+        else => null,
+    };
+}
+
+fn optionFloat(value: schema.OptionValue) ?f64 {
+    return switch (value) {
+        .float => |v| v,
+        .integer => |v| @floatFromInt(v),
+        .identifier, .string => |text| std.fmt.parseFloat(f64, text) catch null,
+        else => null,
+    };
+}
+
 fn parseI64(text: []const u8) ParseError!i64 {
     const cleaned = removeUnderscore(text);
     // `cleaned` is either the original slice or a thread-local scratch-free path.
@@ -1010,6 +1089,32 @@ test "parser resolves enum symbolic defaults" {
     var file = try Parser.parse(allocator, source);
     defer file.deinit();
     try std.testing.expectEqual(@as(i64, 7), file.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "parser rejects invalid field defaults" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Bad { int32 id = 1 [default = 1]; }
+    ));
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { repeated int32 ids = 1 [default = 1]; }
+    ));
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child {}
+        \\message Bad { optional Child child = 1 [default = "x"]; }
+    ));
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [default = "not-int"]; }
+    ));
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; }
+        \\message Bad { optional Kind kind = 1 [default = MISSING]; }
+    ));
 }
 
 test "parser rejects invalid and reserved field numbers" {

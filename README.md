@@ -23,6 +23,7 @@ validated feature set.
   - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges, field-number, reserved/extension range, duplicate-field, and enum validation including allow_alias
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
+  - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation and decodeInitialized, repeated packed fields
