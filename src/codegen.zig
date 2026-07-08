@@ -151,7 +151,30 @@ fn fieldType(field: schema.FieldDescriptor) []const u8 {
         .enumeration => "i32",
         else => "void",
     };
-    return if (field.cardinality == .repeated) "[]const void" else base;
+    if (field.cardinality != .repeated) return base;
+    return switch (field.kind) {
+        .scalar => |scalar| repeatedScalarZigType(scalar),
+        .enumeration => "[]const i32",
+        else => "[]const void",
+    };
+}
+
+fn repeatedScalarZigType(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .string, .bytes => "[]const []const u8",
+        else => repeatedPrefix(scalarZigType(scalar)),
+    };
+}
+
+fn repeatedPrefix(base: []const u8) []const u8 {
+    if (std.mem.eql(u8, base, "f64")) return "[]const f64";
+    if (std.mem.eql(u8, base, "f32")) return "[]const f32";
+    if (std.mem.eql(u8, base, "i32")) return "[]const i32";
+    if (std.mem.eql(u8, base, "i64")) return "[]const i64";
+    if (std.mem.eql(u8, base, "u32")) return "[]const u32";
+    if (std.mem.eql(u8, base, "u64")) return "[]const u64";
+    if (std.mem.eql(u8, base, "bool")) return "[]const bool";
+    return "[]const void";
 }
 
 fn scalarZigType(scalar: schema.ScalarType) []const u8 {
@@ -278,4 +301,18 @@ test "codegen emits typed scalar fields and encode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"id\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) try w.writeString(2, self.@\"name\")") != null);
+}
+
+test "codegen emits repeated scalar slice types" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Repeated { repeated int32 ids = 1; repeated string names = 2; repeated bool flags = 3; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"ids\": []const i32 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"names\": []const []const u8 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"flags\": []const bool = &.{}") != null);
 }
