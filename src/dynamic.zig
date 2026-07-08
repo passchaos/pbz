@@ -167,6 +167,17 @@ pub const DynamicMessage = struct {
         try self.add(field, try cloneValue(self.allocator, value));
     }
 
+    pub fn mergeFrom(self: *DynamicMessage, other: *const DynamicMessage) std.mem.Allocator.Error!void {
+        for (other.fields.items) |*entry| {
+            for (entry.values.items) |value| try self.addClone(entry.descriptor, value);
+        }
+        for (other.unknown_fields.items) |unknown| try self.unknown_fields.append(self.allocator, .{
+            .number = unknown.number,
+            .wire_type = unknown.wire_type,
+            .data = try self.allocator.dupe(u8, unknown.data),
+        });
+    }
+
     pub fn whichOneof(self: *const DynamicMessage, oneof_name: []const u8) ?*const schema.FieldDescriptor {
         for (self.fields.items) |*entry| {
             if (entry.values.items.len == 0) continue;
@@ -1127,4 +1138,38 @@ test "dynamic decodeInitialized enforces proto2 required fields" {
     try writer.writeInt32(1, 9);
     try message.decodeInitialized(&file, writer.slice());
     try std.testing.expectEqual(@as(i32, 9), message.get("id").?.values.items[0].int32);
+}
+
+test "dynamic mergeFrom appends repeated fields overrides singular and preserves unknown" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Merge { int32 id = 1; repeated string tags = 2; oneof pick { string name = 3; int32 code = 4; } }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Merge").?;
+
+    var left = DynamicMessage.init(allocator, desc);
+    defer left.deinit();
+    try left.add(desc.findField("id").?, .{ .int32 = 1 });
+    try left.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "a") });
+    try left.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, "old") });
+
+    var right = DynamicMessage.init(allocator, desc);
+    defer right.deinit();
+    try right.add(desc.findField("id").?, .{ .int32 = 2 });
+    try right.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "b") });
+    try right.add(desc.findField("code").?, .{ .int32 = 9 });
+    var unknown_writer = wire.Writer.init(allocator);
+    defer unknown_writer.deinit();
+    try unknown_writer.writeUInt32(99, 1);
+    try right.unknown_fields.append(allocator, .{ .number = 99, .wire_type = .varint, .data = try allocator.dupe(u8, unknown_writer.slice()) });
+
+    try left.mergeFrom(&right);
+    try std.testing.expectEqual(@as(i32, 2), left.get("id").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 2), left.get("tags").?.values.items.len);
+    try std.testing.expect(left.get("name") == null);
+    try std.testing.expectEqual(@as(i32, 9), left.get("code").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 1), left.unknownCount());
 }
