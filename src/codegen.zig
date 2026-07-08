@@ -786,6 +786,14 @@ fn writeMapEntryDecodeAssign(file: *const schema.FileDescriptor, field: *const s
         try writer.writeAll("; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; ");
         try writer.writeAll(target);
         try writer.writeAll(" = value; },\n");
+    } else if (kind == .enumeration and enumIsClosed(file, kind.enumeration)) {
+        try writer.print("{d} => {{ const value = ", .{number});
+        try writeEntryReadExpr(kind, "entry_reader", writer);
+        try writer.writeAll(";");
+        try writeEnumClosedCheckByName(file, kind.enumeration, "value", writer);
+        try writer.writeByte(' ');
+        try writer.writeAll(target);
+        try writer.writeAll(" = value; },\n");
     } else {
         try writer.print("{d} => {s} = ", .{ number, target });
         try writeEntryReadExpr(kind, "entry_reader", writer);
@@ -839,6 +847,10 @@ fn writeEnumClosedCheck(file: *const schema.FileDescriptor, field: *const schema
         .enumeration => |name| name,
         else => return,
     };
+    try writeEnumClosedCheckByName(file, enum_name, value_expr, writer);
+}
+
+fn writeEnumClosedCheckByName(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     if (!enumIsClosed(file, enum_name)) return;
     try writer.writeAll(" if (");
     if (file.findEnumDeep(enum_name)) |enumeration| {
@@ -3419,4 +3431,19 @@ test "codegen validates closed enum values in wire decode" {
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value = try packed_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; self.@\"pick\" = .{ .@\"choice\" = value }; }") != null);
+}
+
+test "codegen validates closed enum map values in wire decode" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.enum_type = OPEN;
+        \\enum ClosedKind { option features.enum_type = CLOSED; UNKNOWN = 0; ADMIN = 1; }
+        \\message M { map<string, ClosedKind> keyed = 1; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; entry.value = value; }") != null);
 }
