@@ -752,11 +752,20 @@ pub const Parser = struct {
 
 fn validateEnum(enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) ParseError!void {
     if (syntax == .proto3 and (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0)) return error.InvalidEnum;
+    const allow_alias = enumAllowsAlias(enumeration);
     for (enumeration.values.items, 0..) |value, i| {
         for (enumeration.values.items[i + 1 ..]) |other| {
-            if (std.mem.eql(u8, value.name, other.name) or value.number == other.number) return error.DuplicateEnumValue;
+            if (std.mem.eql(u8, value.name, other.name)) return error.DuplicateEnumValue;
+            if (!allow_alias and value.number == other.number) return error.DuplicateEnumValue;
         }
     }
+}
+
+fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
+    for (enumeration.options.items) |option| {
+        if (std.mem.eql(u8, option.name, "allow_alias")) return schema.optionAsBool(option.value) orelse false;
+    }
+    return false;
 }
 
 fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
@@ -1021,4 +1030,14 @@ test "parser rejects fields using reserved names or numbers" {
         \\syntax = "proto2";
         \\message Bad { reserved "old"; optional int32 old = 1; }
     ));
+}
+
+test "parser honors enum allow_alias option" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Alias { option allow_alias = true; A = 1; B = 1; }
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(@as(i32, 1), file.findEnum("Alias").?.findValue("B").?.number);
 }
