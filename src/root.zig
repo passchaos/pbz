@@ -12,6 +12,7 @@ pub const descriptor = @import("descriptor.zig");
 pub const json = @import("json.zig");
 pub const registry = @import("registry.zig");
 pub const text = @import("text.zig");
+pub const loader = @import("loader.zig");
 
 pub const Allocator = @import("std").mem.Allocator;
 pub const FieldNumber = wire.FieldNumber;
@@ -34,6 +35,8 @@ pub const Registry = registry.Registry;
 pub const formatText = text.format;
 pub const formatTextAlloc = text.formatAlloc;
 pub const parseTextAlloc = text.parseAlloc;
+pub const MemorySourceTree = loader.MemorySourceTree;
+pub const loadMemory = loader.loadMemory;
 
 test {
     _ = wire;
@@ -44,4 +47,5 @@ test {
     _ = json;
     _ = registry;
     _ = text;
+    _ = loader;
 }

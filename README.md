@@ -15,8 +15,9 @@ validated feature set.
   - files, messages, fields, oneofs, enums, services, imports, options
   - proto2/proto3/editions syntax flags and feature defaults
   - proto2 required/optional/repeated cardinality, enum defaults, and packed override handling
-- Multi-file registry
+- Multi-file registry and loader
   - package/import-aware lookup for messages/enums across FileDescriptor values
+  - in-memory source tree loader that recursively parses imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges, field-number, reserved, duplicate-field, and enum validation
@@ -80,6 +81,22 @@ try registry.addFile(&common_file);
 try registry.addFile(&app_file);
 
 const user = registry.findMessage(".demo.common.User", null).?;
+```
+
+## Import loader
+
+For tests and embedded schemas, `pbz.MemorySourceTree` can load a root `.proto`
+and its imports from memory:
+
+```zig
+var tree = pbz.MemorySourceTree.init(allocator);
+defer tree.deinit();
+try tree.add("common.proto", common_source);
+try tree.add("app.proto", app_source);
+
+var loaded = try pbz.loadMemory(allocator, &tree, "app.proto");
+defer loaded.deinit();
+const request = loaded.registry.findMessage(".demo.app.Request", null).?;
 ```
 
 ## JSON support
