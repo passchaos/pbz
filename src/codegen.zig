@@ -2109,27 +2109,55 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writer.writeAll("pub const zig_type = ");
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
-    try indent(writer, depth + 1);
+    try writeExtensionWriteHelpers(field, writer, depth + 1);
+    try writeExtensionDecodeHelpers(field, writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn writeExtensionWriteHelpers(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
     try writer.writeAll("pub fn write(w: *pbz.Writer, value: ");
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(") !void {\n");
-    try indent(writer, depth + 2);
+    try indent(writer, depth + 1);
     try writeKindWriteCall(field.number, field.kind, "value", "w", writer);
     try writer.writeAll(");\n");
-    try indent(writer, depth + 1);
+    try indent(writer, depth);
     try writer.writeAll("}\n");
     if (field.cardinality == .repeated) {
-        try indent(writer, depth + 1);
+        try indent(writer, depth);
         try writer.writeAll("pub fn writeAll(w: *pbz.Writer, values: ");
         try writer.writeAll(fieldType(field.*));
         try writer.writeAll(") !void {\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("for (values) |value| try write(w, value);\n");
         try indent(writer, depth + 1);
+        try writer.writeAll("for (values) |value| try write(w, value);\n");
+        try indent(writer, depth);
         try writer.writeAll("}\n");
     }
+}
+
+fn writeExtensionDecodeHelpers(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("};\n");
+    try writer.writeAll("pub fn decodeValue(r: *pbz.Reader) !");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return ");
+    try writeEntryReadExpr(field.kind, "r", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll("), r: *pbz.Reader) !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try list.append(allocator, try decodeValue(r));\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
 }
 
 fn extensionSingleZigType(kind: schema.FieldKind) []const u8 {
@@ -2753,10 +2781,14 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const u8\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn write(w: *pbz.Writer, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeString(100, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeValue(r: *pbz.Reader) ![]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"repeated\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeAll(w: *pbz.Writer, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try write(w, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, try decodeValue(r));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
