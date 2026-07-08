@@ -202,8 +202,8 @@ The current descriptor support covers core file/message/import/field/enum/servic
 metadata, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode,
 file/message/enum/field uninterpreted options, decoded field number/label/type-name,
-enum allow_alias, enum descriptor validation, service/method validation, and
-edition feature metadata.
+oneof index/name validation, enum allow_alias, enum descriptor validation,
+service/method validation, and edition feature metadata.
 
 ## Build and test
 

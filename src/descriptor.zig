@@ -665,10 +665,15 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
         }
     }
 
-    for (oneof_indexes.items) |item| {
-        if (item.oneof_index < message.oneofs.items.len) {
-            message.fields.items[item.field_index].oneof_name = message.oneofs.items[item.oneof_index].name;
+    for (message.oneofs.items, 0..) |oneof, i| {
+        if (oneof.name.len == 0) return error.InvalidFieldType;
+        for (message.oneofs.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, oneof.name, other.name)) return error.InvalidFieldType;
         }
+    }
+    for (oneof_indexes.items) |item| {
+        if (item.oneof_index >= message.oneofs.items.len) return error.InvalidFieldType;
+        message.fields.items[item.field_index].oneof_name = message.oneofs.items[item.oneof_index].name;
     }
     return message;
 }
@@ -834,6 +839,7 @@ fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     while (try reader.nextTag()) |tag| {
         if (tag.number == 1) oneof.name = try reader.readBytes() else try reader.skipValue(tag);
     }
+    if (oneof.name.len == 0) return error.InvalidFieldType;
     return oneof;
 }
 
@@ -1444,6 +1450,60 @@ test "descriptor encodes proto3 optional synthetic oneof" {
     try std.testing.expectEqualStrings("_value", msg.oneofs.items[0].name);
     try std.testing.expectEqualStrings("_value", msg.findField("value").?.oneof_name.?);
     try std.testing.expect(msg.findField("value").?.proto3_optional);
+}
+
+test "descriptor rejects invalid oneof descriptors and indexes" {
+    const allocator = std.testing.allocator;
+    {
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-oneof.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "pick");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(8, oneof.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-oneof.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "name");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 9);
+        try field.writeInt32(9, 1);
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "pick");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-oneof-index.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor preserves message and enum custom options" {
