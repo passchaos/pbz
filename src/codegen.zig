@@ -1115,7 +1115,7 @@ fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.M
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer out.deinit();\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonStringify(&out.writer);\n");
+    try writer.writeAll("try self.jsonStringifyWithAllocator(allocator, &out.writer);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try out.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -1124,15 +1124,26 @@ fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.M
     try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("try self.jsonStringifyWithAllocator(std.heap.page_allocator, writer);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {\n");
+    if (!messageJsonStringifyUsesAllocator(message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = allocator;\n");
+    }
+    try indent(writer, depth + 1);
     try writer.writeAll("try writer.writeAll(\"{\");\n");
-    if (messageJsonStringifyHasFields(message)) {
+    if (messageJsonStringifyHasFields(file, message)) {
         try indent(writer, depth + 1);
         try writer.writeAll("var first = true;\n");
         for (message.fields.items) |*field| {
             if (field.oneof_name == null) try writeJsonField(file, field, writer, depth + 1);
         }
         for (message.oneofs.items) |oneof| {
-            if (oneofHasJsonField(message, oneof.name)) try writeJsonOneof(file, message, oneof, writer, depth + 1);
+            if (oneofHasJsonField(file, message, oneof.name)) try writeJsonOneof(file, message, oneof, writer, depth + 1);
         }
     } else {
         try indent(writer, depth + 1);
@@ -1244,33 +1255,41 @@ fn messageJsonParseUsesAllocator(message: *const schema.MessageDescriptor) bool 
 
 fn messageJsonParseHasFields(message: *const schema.MessageDescriptor) bool {
     for (message.fields.items) |field| {
-        if (field.kind == .scalar or field.kind == .enumeration or field.kind == .map) return true;
+        if (field.kind == .scalar or field.kind == .enumeration or field.kind == .map or field.kind == .message) return true;
     }
     return false;
 }
 
-fn messageJsonStringifyHasFields(message: *const schema.MessageDescriptor) bool {
+fn messageJsonStringifyHasFields(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
     for (message.fields.items) |field| {
-        if (field.oneof_name == null and fieldJsonStringifySupported(field)) return true;
+        if (field.oneof_name == null and fieldJsonStringifySupported(file, field)) return true;
     }
     for (message.oneofs.items) |oneof| {
-        if (oneofHasJsonField(message, oneof.name)) return true;
+        if (oneofHasJsonField(file, message, oneof.name)) return true;
     }
     return false;
 }
 
-fn fieldJsonStringifySupported(field: schema.FieldDescriptor) bool {
+fn messageJsonStringifyUsesAllocator(message: *const schema.MessageDescriptor) bool {
+    for (message.fields.items) |field| {
+        if (field.kind == .message) return true;
+    }
+    return false;
+}
+
+fn fieldJsonStringifySupported(file: *const schema.FileDescriptor, field: schema.FieldDescriptor) bool {
     return switch (field.kind) {
         .scalar, .enumeration => true,
+        .message => |name| codegenCanReferenceMessage(file, name),
         .map => |map_type| jsonMapValueSupported(map_type.value.*),
         else => false,
     };
 }
 
-fn oneofHasJsonField(message: *const schema.MessageDescriptor, oneof_name: []const u8) bool {
+fn oneofHasJsonField(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof_name: []const u8) bool {
     for (message.fields.items) |field| {
         if (field.oneof_name) |name| {
-            if (std.mem.eql(u8, name, oneof_name) and fieldJsonStringifySupported(field)) return true;
+            if (std.mem.eql(u8, name, oneof_name) and fieldJsonStringifySupported(file, field)) return true;
         }
     }
     return false;
@@ -1280,6 +1299,7 @@ fn messageJsonParseUsesArenaAllocator(message: *const schema.MessageDescriptor) 
     for (message.fields.items) |field| {
         switch (field.kind) {
             .scalar => |scalar| if (scalar == .bytes) return true,
+            .message => return true,
             .map => |map_type| switch (map_type.value.*) {
                 .scalar => |scalar| if (scalar == .bytes) return true,
                 else => {},
@@ -1291,12 +1311,13 @@ fn messageJsonParseUsesArenaAllocator(message: *const schema.MessageDescriptor) 
 }
 
 fn fieldJsonParseUsesAllocator(field: schema.FieldDescriptor) bool {
-    return field.kind == .map or (field.cardinality == .repeated and (field.kind == .scalar or field.kind == .enumeration));
+    return field.kind == .map or (field.cardinality == .repeated and (field.kind == .scalar or field.kind == .enumeration or field.kind == .message));
 }
 
 fn writeJsonParseField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
         .scalar, .enumeration => {},
+        .message => |name| return try writeJsonParseMessageField(file, field, name, writer, depth),
         .map => return try writeJsonParseMapField(file, field, writer, depth),
         else => return,
     }
@@ -1328,6 +1349,59 @@ fn writeJsonParseField(file: *const schema.FileDescriptor, field: *const schema.
         try writer.writeAll(" = ");
         try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
         try writer.writeAll(";\n");
+        if (hasPresence(field.*)) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(" = true;\n");
+        }
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeJsonParseMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!codegenCanReferenceMessage(file, type_name)) return;
+    try indent(writer, depth);
+    try writer.writeAll("if (");
+    try writeJsonKeyCondition(field, writer);
+    try writer.writeAll(") {\n");
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList([]const u8) = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (array.items) |item| {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("var nested = try ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(".jsonParse(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}));\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("defer nested.deinit(arena_allocator);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("try list.append(allocator, try nested.encode(arena_allocator));\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try list.toOwnedSlice(allocator);\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var nested = try ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(".jsonParse(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}));\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer nested.deinit(arena_allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try nested.encode(arena_allocator);\n");
         if (hasPresence(field.*)) {
             try indent(writer, depth + 1);
             try writer.writeAll("self.");
@@ -1395,7 +1469,7 @@ fn writeJsonParseMapKeyExpr(scalar: schema.ScalarType, key_expr: []const u8, wri
 
 fn writeJsonParseOneofField(file: *const schema.FileDescriptor, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
-        .scalar, .enumeration => {},
+        .scalar, .enumeration, .message => {},
         else => return,
     }
     try indent(writer, depth);
@@ -1408,7 +1482,13 @@ fn writeJsonParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = ");
-    try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
+    if (field.kind == .message and codegenCanReferenceMessage(file, field.kind.message)) {
+        try writer.writeAll("blk: { var nested = try ");
+        try writeMessageTypeReference(field.kind.message, writer);
+        try writer.writeAll(".jsonParse(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{})); defer nested.deinit(arena_allocator); break :blk try nested.encode(arena_allocator); }");
+    } else {
+        try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
+    }
     try writer.writeAll(" };\n");
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
@@ -1565,6 +1645,7 @@ fn writeJsonField(file: *const schema.FileDescriptor, field: *const schema.Field
         .scalar => |scalar| try writeJsonScalarField(field, scalar, writer, depth),
         .enumeration => |name| try writeJsonEnumField(file, field, name, writer, depth),
         .map => try writeJsonMapField(file, field, writer, depth),
+        .message => |name| try writeJsonMessageField(file, field, name, writer, depth),
         else => return,
     }
 }
@@ -1700,6 +1781,63 @@ fn writeJsonMapField(file: *const schema.FileDescriptor, field: *const schema.Fi
     try writer.writeAll("}\n");
 }
 
+fn writeJsonMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!codegenCanReferenceMessage(file, type_name)) return;
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) {\n");
+        try writeJsonPrefix(field, writer, depth + 1);
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.writeAll(\"[\");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", 0..) |payload, i| {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (i != 0) try writer.writeAll(\",\");\n");
+        try writeDecodeAndStringifyPayload(type_name, "payload", writer, depth + 2);
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.writeAll(\"]\");\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) {\n");
+        try writeJsonPrefix(field, writer, depth + 1);
+        try indent(writer, depth + 1);
+        try writer.writeAll("var nested = try ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(".decode(allocator, self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer nested.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try nested.jsonStringifyWithAllocator(allocator, writer);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+}
+
+fn writeDecodeAndStringifyPayload(type_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("var nested = try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".decode(allocator, ");
+    try writer.writeAll(payload_expr);
+    try writer.writeAll(");\n");
+    try indent(writer, depth);
+    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("try nested.jsonStringifyWithAllocator(allocator, writer);\n");
+}
+
 fn jsonMapValueSupported(kind: schema.FieldKind) bool {
     return kind == .scalar or kind == .enumeration;
 }
@@ -1747,6 +1885,15 @@ fn writeJsonOneof(file: *const schema.FileDescriptor, message: *const schema.Mes
                         try indent(writer, depth + 2);
                         try writeJsonEnumValue(file, enum_name, "value", writer);
                         try writer.writeAll(";\n");
+                    },
+                    .message => |type_name| {
+                        if (codegenCanReferenceMessage(file, type_name)) {
+                            try writeJsonPrefix(field, writer, depth + 2);
+                            try writeDecodeAndStringifyPayload(type_name, "value", writer, depth + 2);
+                        } else {
+                            try indent(writer, depth + 2);
+                            try writer.writeAll("_ = value;\n");
+                        }
                     },
                     else => {
                         try indent(writer, depth + 2);
@@ -1976,7 +2123,7 @@ test "codegen emits message payload fields and encoders" {
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
         \\message Child { int32 id = 1; }
-        \\message Parent { Child child = 1; repeated Child children = 2; }
+        \\message Parent { Child child = 1; repeated Child children = 2; oneof pick { Child picked = 3; } }
     );
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
@@ -1985,6 +2132,13 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\".len != 0) try w.writeMessage(1, self.@\"child\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithAllocator(allocator, writer)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |payload, i|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".jsonParse(arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = blk:") != null);
 }
 
 test "codegen emits map entry types and encoders" {
