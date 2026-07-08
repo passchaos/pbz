@@ -370,6 +370,20 @@ fn writeValue(
     }
 }
 
+fn writeWrapperValue(kind: schema.FieldKind, value: dynamic.Value, writer: *std.Io.Writer) Error!void {
+    return switch (kind) {
+        .scalar => |scalar| try writeScalar(scalar, value, writer),
+        else => error.TypeMismatch,
+    };
+}
+
+fn parseWrapperValue(allocator: std.mem.Allocator, kind: schema.FieldKind, json_value: std.json.Value) !dynamic.Value {
+    return switch (kind) {
+        .scalar => |scalar| try parseScalar(allocator, scalar, json_value),
+        else => error.TypeMismatch,
+    };
+}
+
 fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, writer: *std.Io.Writer) !bool {
     if (typeNameEquals(name, "google.protobuf.Timestamp")) {
         const ts = wkt.Timestamp{ .seconds = readInt64Field(message, "seconds"), .nanos = readInt32Field(message, "nanos") };
@@ -381,10 +395,31 @@ fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, w
         try duration.jsonStringify(writer);
         return true;
     }
+    if (wrapperKind(name)) |kind| {
+        if (message.get("value")) |field| {
+            if (field.values.items.len != 0) try writeWrapperValue(kind, field.values.items[field.values.items.len - 1], writer) else try writer.writeAll("null");
+        } else try writer.writeAll("null");
+        return true;
+    }
     return false;
 }
 
 fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value) !?*dynamic.DynamicMessage {
+    if (wrapperKind(name)) |kind| {
+        if (json_value == .null) return try emptyKnownMessage(allocator, descriptor);
+        const message = try allocator.create(dynamic.DynamicMessage);
+        message.* = dynamic.DynamicMessage.init(allocator, descriptor);
+        errdefer {
+            message.deinit();
+            allocator.destroy(message);
+        }
+        var value = try parseWrapperValue(allocator, kind, json_value);
+        message.add(descriptor.findField("value") orelse return error.TypeMismatch, value) catch |err| {
+            dynamic.deinitValue(&value, allocator);
+            return err;
+        };
+        return message;
+    }
     const text = switch (json_value) {
         .string => |value| value,
         else => return null,
@@ -407,6 +442,25 @@ fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.Mes
     }
     message.deinit();
     allocator.destroy(message);
+    return null;
+}
+
+fn emptyKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor) !*dynamic.DynamicMessage {
+    const message = try allocator.create(dynamic.DynamicMessage);
+    message.* = dynamic.DynamicMessage.init(allocator, descriptor);
+    return message;
+}
+
+fn wrapperKind(name: []const u8) ?schema.FieldKind {
+    if (typeNameEquals(name, "google.protobuf.DoubleValue")) return .{ .scalar = .double };
+    if (typeNameEquals(name, "google.protobuf.FloatValue")) return .{ .scalar = .float };
+    if (typeNameEquals(name, "google.protobuf.Int64Value")) return .{ .scalar = .int64 };
+    if (typeNameEquals(name, "google.protobuf.UInt64Value")) return .{ .scalar = .uint64 };
+    if (typeNameEquals(name, "google.protobuf.Int32Value")) return .{ .scalar = .int32 };
+    if (typeNameEquals(name, "google.protobuf.UInt32Value")) return .{ .scalar = .uint32 };
+    if (typeNameEquals(name, "google.protobuf.BoolValue")) return .{ .scalar = .bool };
+    if (typeNameEquals(name, "google.protobuf.StringValue")) return .{ .scalar = .string };
+    if (typeNameEquals(name, "google.protobuf.BytesValue")) return .{ .scalar = .bytes };
     return null;
 }
 
@@ -823,4 +877,40 @@ test "json maps Timestamp and Duration messages as well-known strings" {
     try std.testing.expectEqual(@as(i32, 123_000_000), parsed.get("at").?.values.items[0].message.get("nanos").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i64, -3), parsed.get("span").?.values.items[0].message.get("seconds").?.values.items[0].int64);
     try std.testing.expectEqual(@as(i32, -250_000_000), parsed.get("span").?.values.items[0].message.get("nanos").?.values.items[0].int32);
+}
+
+test "json maps wrapper messages as their value field" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\message StringValue { string value = 1; }
+        \\message Int32Value { int32 value = 1; }
+        \\message Event { .google.protobuf.StringValue name = 1; .google.protobuf.Int32Value count = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const event_desc = file.findMessage("Event").?;
+    const string_desc = file.findMessage("StringValue").?;
+    const int_desc = file.findMessage("Int32Value").?;
+
+    var event = dynamic.DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    const name = try allocator.create(dynamic.DynamicMessage);
+    name.* = dynamic.DynamicMessage.init(allocator, string_desc);
+    try name.add(string_desc.findField("value").?, .{ .string = try allocator.dupe(u8, "zig") });
+    try event.add(event_desc.findField("name").?, .{ .message = name });
+    const count = try allocator.create(dynamic.DynamicMessage);
+    count.* = dynamic.DynamicMessage.init(allocator, int_desc);
+    try count.add(int_desc.findField("value").?, .{ .int32 = 42 });
+    try event.add(event_desc.findField("count").?, .{ .message = count });
+
+    const rendered = try stringifyAlloc(allocator, &file, &event, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"name\":\"zig\",\"count\":42}", rendered);
+
+    var parsed = try parseAlloc(allocator, &file, event_desc, rendered, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(u8, "zig", parsed.get("name").?.values.items[0].message.get("value").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 42), parsed.get("count").?.values.items[0].message.get("value").?.values.items[0].int32);
 }
