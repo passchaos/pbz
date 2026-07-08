@@ -418,6 +418,9 @@ fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.Mess
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     if (message.messageSetWireFormat()) try tmp.writeBool(1, true);
+    if (exactOptionBool(message.options.items, "no_standard_descriptor_accessor")) |value| try tmp.writeBool(2, value);
+    if (exactOptionBool(message.options.items, "deprecated")) |value| try tmp.writeBool(3, value);
+    if (exactOptionBool(message.options.items, "deprecated_legacy_json_field_conflicts")) |value| try tmp.writeBool(11, value);
     try writeUninterpretedOptions(allocator, message.options.items, &tmp, .message);
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -426,6 +429,8 @@ fn writeEnumOptions(allocator: std.mem.Allocator, enumeration: *const schema.Enu
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     if (enumAllowsAlias(enumeration)) try tmp.writeBool(2, true);
+    if (exactOptionBool(enumeration.options.items, "deprecated")) |value| try tmp.writeBool(3, value);
+    if (exactOptionBool(enumeration.options.items, "deprecated_legacy_json_field_conflicts")) |value| try tmp.writeBool(6, value);
     try writeUninterpretedOptions(allocator, enumeration.options.items, &tmp, .enumeration);
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -447,7 +452,20 @@ fn writeMessageOptionsMapEntry(allocator: std.mem.Allocator, field_number: wire.
 fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
+    if (optionEnumNumber(field.options.items, "ctype")) |value| try tmp.writeInt32(1, value);
     if (field.packed_override) |is_packed| try tmp.writeBool(2, is_packed);
+    if (exactOptionBool(field.options.items, "deprecated")) |value| try tmp.writeBool(3, value);
+    if (exactOptionBool(field.options.items, "lazy")) |value| try tmp.writeBool(5, value);
+    if (optionEnumNumber(field.options.items, "jstype")) |value| try tmp.writeInt32(6, value);
+    if (exactOptionBool(field.options.items, "weak")) |value| try tmp.writeBool(10, value);
+    if (exactOptionBool(field.options.items, "unverified_lazy")) |value| try tmp.writeBool(15, value);
+    if (exactOptionBool(field.options.items, "debug_redact")) |value| try tmp.writeBool(16, value);
+    if (optionEnumNumber(field.options.items, "retention")) |value| try tmp.writeInt32(17, value);
+    for (field.options.items) |option| {
+        if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), "targets")) {
+            if (optionEnumNumberValue(option.value)) |value| try tmp.writeInt32(19, value);
+        }
+    }
     try writeUninterpretedOptions(allocator, field.options.items, &tmp, .field);
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -470,13 +488,13 @@ fn isKnownOption(name: []const u8, scope: OptionScope) bool {
     if (std.mem.startsWith(u8, trimmed, "features.")) return scope == .file or scope == .extension_range;
     return switch (scope) {
         .file => false,
-        .message => std.mem.eql(u8, trimmed, "message_set_wire_format"),
-        .enumeration => std.mem.eql(u8, trimmed, "allow_alias"),
+        .message => std.mem.eql(u8, trimmed, "message_set_wire_format") or std.mem.eql(u8, trimmed, "no_standard_descriptor_accessor") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
+        .enumeration => std.mem.eql(u8, trimmed, "allow_alias") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
         .enum_value => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "debug_redact"),
         .oneof => false,
         .service => std.mem.eql(u8, trimmed, "deprecated"),
         .method => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "idempotency_level"),
-        .field => std.mem.eql(u8, trimmed, "packed") or std.mem.eql(u8, trimmed, "default") or std.mem.eql(u8, trimmed, "json_name"),
+        .field => std.mem.eql(u8, trimmed, "ctype") or std.mem.eql(u8, trimmed, "packed") or std.mem.eql(u8, trimmed, "default") or std.mem.eql(u8, trimmed, "json_name") or std.mem.eql(u8, trimmed, "jstype") or std.mem.eql(u8, trimmed, "lazy") or std.mem.eql(u8, trimmed, "unverified_lazy") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "weak") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "retention") or std.mem.eql(u8, trimmed, "targets"),
         .extension_range => std.mem.eql(u8, schema.optionLeaf(name), "declaration") or std.mem.eql(u8, schema.optionLeaf(name), "verification"),
     };
 }
@@ -486,6 +504,33 @@ fn exactOptionBool(options: []const schema.FieldOption, name: []const u8) ?bool 
         if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) return schema.optionAsBool(option.value);
     }
     return null;
+}
+
+fn optionEnumNumber(options: []const schema.FieldOption, name: []const u8) ?i32 {
+    for (options) |option| {
+        if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) return optionEnumNumberValue(option.value);
+    }
+    return null;
+}
+
+fn optionEnumNumberValue(value: schema.OptionValue) ?i32 {
+    return switch (value) {
+        .integer => |v| if (v >= std.math.minInt(i32) and v <= std.math.maxInt(i32)) @intCast(v) else null,
+        .identifier, .string => |text| blk: {
+            if (std.mem.eql(u8, text, "STRING") or std.mem.eql(u8, text, "JS_NORMAL") or std.mem.eql(u8, text, "RETENTION_UNKNOWN") or std.mem.eql(u8, text, "TARGET_TYPE_UNKNOWN")) break :blk 0;
+            if (std.mem.eql(u8, text, "CORD") or std.mem.eql(u8, text, "JS_STRING") or std.mem.eql(u8, text, "RETENTION_RUNTIME") or std.mem.eql(u8, text, "TARGET_TYPE_FILE")) break :blk 1;
+            if (std.mem.eql(u8, text, "STRING_PIECE") or std.mem.eql(u8, text, "JS_NUMBER") or std.mem.eql(u8, text, "RETENTION_SOURCE") or std.mem.eql(u8, text, "TARGET_TYPE_EXTENSION_RANGE")) break :blk 2;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_MESSAGE")) break :blk 3;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_FIELD")) break :blk 4;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_ONEOF")) break :blk 5;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_ENUM")) break :blk 6;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_ENUM_ENTRY")) break :blk 7;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_SERVICE")) break :blk 8;
+            if (std.mem.eql(u8, text, "TARGET_TYPE_METHOD")) break :blk 9;
+            break :blk null;
+        },
+        else => null,
+    };
 }
 
 fn methodIdempotencyLevel(options: []const schema.FieldOption) ?i32 {
@@ -1074,6 +1119,8 @@ fn decodeEnumOptions(allocator: std.mem.Allocator, options: *schema.OptionList, 
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             2 => try options.append(allocator, .{ .name = "allow_alias", .value = .{ .boolean = try reader.readBool() } }),
+            3 => try options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            6 => try options.append(allocator, .{ .name = "deprecated_legacy_json_field_conflicts", .value = .{ .boolean = try reader.readBool() } }),
             999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
@@ -1297,6 +1344,9 @@ fn decodeMessageOptions(allocator: std.mem.Allocator, options: *schema.OptionLis
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => try options.append(allocator, .{ .name = "message_set_wire_format", .value = .{ .boolean = try reader.readBool() } }),
+            2 => try options.append(allocator, .{ .name = "no_standard_descriptor_accessor", .value = .{ .boolean = try reader.readBool() } }),
+            3 => try options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            11 => try options.append(allocator, .{ .name = "deprecated_legacy_json_field_conflicts", .value = .{ .boolean = try reader.readBool() } }),
             999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
@@ -1325,7 +1375,16 @@ fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!Dec
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
+            1 => try result.options.append(allocator, .{ .name = "ctype", .value = .{ .integer = try reader.readInt32() } }),
             2 => result.packed_override = try reader.readBool(),
+            3 => try result.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            5 => try result.options.append(allocator, .{ .name = "lazy", .value = .{ .boolean = try reader.readBool() } }),
+            6 => try result.options.append(allocator, .{ .name = "jstype", .value = .{ .integer = try reader.readInt32() } }),
+            10 => try result.options.append(allocator, .{ .name = "weak", .value = .{ .boolean = try reader.readBool() } }),
+            15 => try result.options.append(allocator, .{ .name = "unverified_lazy", .value = .{ .boolean = try reader.readBool() } }),
+            16 => try result.options.append(allocator, .{ .name = "debug_redact", .value = .{ .boolean = try reader.readBool() } }),
+            17 => try result.options.append(allocator, .{ .name = "retention", .value = .{ .integer = try reader.readInt32() } }),
+            19 => try result.options.append(allocator, .{ .name = "targets", .value = .{ .integer = try reader.readInt32() } }),
             999 => try result.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
@@ -2098,6 +2157,80 @@ test "descriptor preserves message and enum custom options" {
     try std.testing.expectEqualSlices(u8, "m", decoded.findMessage("M").?.options.items[0].value.string);
     try std.testing.expectEqualStrings("(demo.enum_opt)", decoded.findEnum("E").?.options.items[0].name);
     try std.testing.expectEqualSlices(u8, "e", decoded.findEnum("E").?.options.items[0].value.string);
+}
+
+test "descriptor preserves message field and enum known options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  option no_standard_descriptor_accessor = true;
+        \\  option deprecated = true;
+        \\  option deprecated_legacy_json_field_conflicts = true;
+        \\  optional bytes data = 1 [
+        \\    ctype = CORD,
+        \\    deprecated = true,
+        \\    lazy = true,
+        \\    jstype = JS_STRING,
+        \\    weak = true,
+        \\    unverified_lazy = true,
+        \\    debug_redact = true,
+        \\    retention = RETENTION_SOURCE,
+        \\    targets = TARGET_TYPE_FIELD,
+        \\    targets = TARGET_TYPE_MESSAGE
+        \\  ];
+        \\}
+        \\enum E {
+        \\  option allow_alias = true;
+        \\  option deprecated = true;
+        \\  option deprecated_legacy_json_field_conflicts = true;
+        \\  A = 0;
+        \\  B = 0;
+        \\}
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "known-options.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const message_options = decoded.findMessage("M").?.options.items;
+    try std.testing.expectEqualStrings("no_standard_descriptor_accessor", message_options[0].name);
+    try std.testing.expect(message_options[0].value.boolean);
+    try std.testing.expectEqualStrings("deprecated", message_options[1].name);
+    try std.testing.expect(message_options[1].value.boolean);
+    try std.testing.expectEqualStrings("deprecated_legacy_json_field_conflicts", message_options[2].name);
+    try std.testing.expect(message_options[2].value.boolean);
+
+    const field_options = decoded.findMessage("M").?.findField("data").?.options.items;
+    try std.testing.expectEqualStrings("ctype", field_options[0].name);
+    try std.testing.expectEqual(@as(i64, 1), field_options[0].value.integer);
+    try std.testing.expectEqualStrings("deprecated", field_options[1].name);
+    try std.testing.expect(field_options[1].value.boolean);
+    try std.testing.expectEqualStrings("lazy", field_options[2].name);
+    try std.testing.expect(field_options[2].value.boolean);
+    try std.testing.expectEqualStrings("jstype", field_options[3].name);
+    try std.testing.expectEqual(@as(i64, 1), field_options[3].value.integer);
+    try std.testing.expectEqualStrings("weak", field_options[4].name);
+    try std.testing.expect(field_options[4].value.boolean);
+    try std.testing.expectEqualStrings("unverified_lazy", field_options[5].name);
+    try std.testing.expect(field_options[5].value.boolean);
+    try std.testing.expectEqualStrings("debug_redact", field_options[6].name);
+    try std.testing.expect(field_options[6].value.boolean);
+    try std.testing.expectEqualStrings("retention", field_options[7].name);
+    try std.testing.expectEqual(@as(i64, 2), field_options[7].value.integer);
+    try std.testing.expectEqualStrings("targets", field_options[8].name);
+    try std.testing.expectEqual(@as(i64, 4), field_options[8].value.integer);
+    try std.testing.expectEqualStrings("targets", field_options[9].name);
+    try std.testing.expectEqual(@as(i64, 3), field_options[9].value.integer);
+
+    const enum_options = decoded.findEnum("E").?.options.items;
+    try std.testing.expectEqualStrings("allow_alias", enum_options[0].name);
+    try std.testing.expect(enum_options[0].value.boolean);
+    try std.testing.expectEqualStrings("deprecated", enum_options[1].name);
+    try std.testing.expect(enum_options[1].value.boolean);
+    try std.testing.expectEqualStrings("deprecated_legacy_json_field_conflicts", enum_options[2].name);
+    try std.testing.expect(enum_options[2].value.boolean);
 }
 
 test "descriptor preserves oneof enum value service and method options" {
