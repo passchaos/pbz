@@ -306,42 +306,55 @@ const TextParser = struct {
             const field = message.descriptor.findField(name) orelse return error.UnknownField;
             self.skipSpace();
             if (self.consume(':')) {
-                if (field.kind == .map) return error.TypeMismatch;
-                var value = try self.parseValue(file, message.descriptor, field.kind);
-                message.add(field, value) catch |err| {
-                    dynamic.deinitValue(&value, self.allocator);
-                    return err;
-                };
-                self.consumeSeparator();
-            } else if (self.peek() == '{' or self.peek() == '<') {
-                const close = if (self.consume('{')) @as(u8, '}') else blk: {
-                    try self.expect('<');
-                    break :blk '>';
-                };
-                if (field.kind == .map) {
-                    var value = try self.parseMapEntry(file, message.descriptor, field.kind.map, close);
+                self.skipSpace();
+                if (field.kind == .map or field.kind == .message or field.kind == .group) {
+                    const close = try self.consumeAggregateStart();
+                    try self.parseAggregateField(file, message, field, close);
+                } else {
+                    var value = try self.parseValue(file, message.descriptor, field.kind);
                     message.add(field, value) catch |err| {
                         dynamic.deinitValue(&value, self.allocator);
                         return err;
                     };
                     self.consumeSeparator();
-                } else {
-                    const nested_desc = switch (field.kind) {
-                        .message => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
-                        .group => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
-                        else => return error.TypeMismatch,
-                    };
-                    const nested = try self.allocator.create(dynamic.DynamicMessage);
-                    nested.* = dynamic.DynamicMessage.init(self.allocator, nested_desc);
-                    errdefer {
-                        nested.deinit();
-                        self.allocator.destroy(nested);
-                    }
-                    try self.parseMessage(file, nested, close);
-                    try message.add(field, if (field.kind == .group) .{ .group = nested } else .{ .message = nested });
-                    self.consumeSeparator();
                 }
+            } else if (self.peek() == '{' or self.peek() == '<') {
+                const close = try self.consumeAggregateStart();
+                try self.parseAggregateField(file, message, field, close);
             } else return error.UnexpectedToken;
+        }
+    }
+
+    fn consumeAggregateStart(self: *TextParser) !u8 {
+        self.skipSpace();
+        if (self.consume('{')) return '}';
+        try self.expect('<');
+        return '>';
+    }
+
+    fn parseAggregateField(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, close: u8) anyerror!void {
+        if (field.kind == .map) {
+            var value = try self.parseMapEntry(file, message.descriptor, field.kind.map, close);
+            message.add(field, value) catch |err| {
+                dynamic.deinitValue(&value, self.allocator);
+                return err;
+            };
+            self.consumeSeparator();
+        } else {
+            const nested_desc = switch (field.kind) {
+                .message => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
+                .group => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
+                else => return error.TypeMismatch,
+            };
+            const nested = try self.allocator.create(dynamic.DynamicMessage);
+            nested.* = dynamic.DynamicMessage.init(self.allocator, nested_desc);
+            errdefer {
+                nested.deinit();
+                self.allocator.destroy(nested);
+            }
+            try self.parseMessage(file, nested, close);
+            try message.add(field, if (field.kind == .group) .{ .group = nested } else .{ .message = nested });
+            self.consumeSeparator();
         }
     }
 
@@ -601,6 +614,25 @@ test "text format parser accepts angle bracket message and map delimiters" {
     var msg = try parseAlloc(allocator, &file, desc,
         \\child < label: "kid" >
         \\counts < key: "x" value: 3 >
+    );
+    defer msg.deinit();
+    try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
+}
+
+test "text format parser accepts colon before message and map aggregates" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Child { string label = 1; }
+        \\message M { Child child = 1; map<string, int32> counts = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\child: { label: "kid" }
+        \\counts: < key: "x" value: 3 >
     );
     defer msg.deinit();
     try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
