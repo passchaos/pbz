@@ -196,18 +196,15 @@ pub const Parser = struct {
                 try self.file.addOption(try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(self.file.messages.items.len);
-                try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword());
-                try self.addSourceLocation(&.{ 4, index }, decl_start, self.previousEnd());
+                try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start));
             } else if (self.matchIdent("enum")) {
                 const index: i32 = @intCast(self.file.enums.items.len);
-                try self.file.enums.append(self.allocator, try self.parseEnumAfterKeyword());
-                try self.addSourceLocation(&.{ 5, index }, decl_start, self.previousEnd());
+                try self.file.enums.append(self.allocator, try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start));
             } else if (self.matchIdent("extend")) {
                 try self.parseExtend(&self.file.extensions);
             } else if (self.matchIdent("service")) {
                 const index: i32 = @intCast(self.file.services.items.len);
-                try self.file.services.append(self.allocator, try self.parseServiceAfterKeyword());
-                try self.addSourceLocation(&.{ 6, index }, decl_start, self.previousEnd());
+                try self.file.services.append(self.allocator, try self.parseServiceAfterKeyword(&.{ 6, index }, decl_start));
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -224,6 +221,14 @@ pub const Parser = struct {
         const end_pos = self.lineColumn(end);
         try location.span.appendSlice(self.allocator, &.{ start_pos.line, start_pos.column, end_pos.line, end_pos.column });
         try self.file.source_code_info.locations.append(self.allocator, location);
+    }
+
+    fn childPath(self: *Parser, base: []const i32, field_number: i32, index: i32) std.mem.Allocator.Error![]i32 {
+        var path = try self.allocator.alloc(i32, base.len + 2);
+        @memcpy(path[0..base.len], base);
+        path[base.len] = field_number;
+        path[base.len + 1] = index;
+        return path;
     }
 
     fn lineColumn(self: *const Parser, byte_index: usize) struct { line: i32, column: i32 } {
@@ -250,7 +255,7 @@ pub const Parser = struct {
         try self.file.imports.append(self.allocator, .{ .path = path, .kind = kind });
     }
 
-    fn parseMessageAfterKeyword(self: *Parser) Error!schema.MessageDescriptor {
+    fn parseMessageAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize) Error!schema.MessageDescriptor {
         var message = schema.MessageDescriptor{ .name = try self.expectIdentifier() };
         errdefer message.deinit(self.allocator);
         try self.expectSymbol('{');
@@ -259,9 +264,17 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 try message.options.append(self.allocator, try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("message")) {
-                try message.messages.append(self.allocator, try self.parseMessageAfterKeyword());
+                const index: i32 = @intCast(message.messages.items.len);
+                const path = try self.childPath(source_path, 3, index);
+                defer self.allocator.free(path);
+                const nested_start = self.previous_end;
+                try message.messages.append(self.allocator, try self.parseMessageAfterKeyword(path, nested_start));
             } else if (self.matchIdent("enum")) {
-                try message.enums.append(self.allocator, try self.parseEnumAfterKeyword());
+                const index: i32 = @intCast(message.enums.items.len);
+                const path = try self.childPath(source_path, 4, index);
+                defer self.allocator.free(path);
+                const enum_start = self.previous_end;
+                try message.enums.append(self.allocator, try self.parseEnumAfterKeyword(path, enum_start));
             } else if (self.matchIdent("oneof")) {
                 try self.parseOneof(&message);
             } else if (self.matchIdent("extensions")) {
@@ -273,14 +286,20 @@ pub const Parser = struct {
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
+                const field_start = self.current.start;
+                const index: i32 = @intCast(message.fields.items.len);
                 try message.fields.append(self.allocator, try self.parseField(null, &message));
+                const path = try self.childPath(source_path, 2, index);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, field_start, self.previousEnd());
             }
         }
         try validateMessageFields(&message);
+        try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return message;
     }
 
-    fn parseEnumAfterKeyword(self: *Parser) Error!schema.EnumDescriptor {
+    fn parseEnumAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize) Error!schema.EnumDescriptor {
         var enumeration = schema.EnumDescriptor{ .name = try self.expectIdentifier() };
         errdefer enumeration.deinit(self.allocator);
         try self.expectSymbol('{');
@@ -293,6 +312,8 @@ pub const Parser = struct {
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
+                const value_start = self.current.start;
+                const index: i32 = @intCast(enumeration.values.items.len);
                 const name = try self.expectIdentifier();
                 try self.expectSymbol('=');
                 const number = try self.parseSignedInt32();
@@ -301,13 +322,17 @@ pub const Parser = struct {
                 if (self.consumeSymbol('[')) try self.parseOptionList(&options, ']');
                 try self.expectSymbol(';');
                 try enumeration.values.append(self.allocator, .{ .name = name, .number = number, .options = options });
+                const path = try self.childPath(source_path, 2, index);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, value_start, self.previousEnd());
             }
         }
         try validateEnum(&enumeration, self.file.syntax);
+        try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return enumeration;
     }
 
-    fn parseServiceAfterKeyword(self: *Parser) Error!schema.ServiceDescriptor {
+    fn parseServiceAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize) Error!schema.ServiceDescriptor {
         var service = schema.ServiceDescriptor{ .name = try self.expectIdentifier() };
         errdefer service.deinit(self.allocator);
         try self.expectSymbol('{');
@@ -316,11 +341,17 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 try service.options.append(self.allocator, try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("rpc")) {
+                const method_start = self.previous_end;
+                const index: i32 = @intCast(service.methods.items.len);
                 try service.methods.append(self.allocator, try self.parseRpcAfterKeyword());
+                const path = try self.childPath(source_path, 2, index);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, method_start, self.previousEnd());
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else return error.UnexpectedToken;
         }
+        try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return service;
     }
 
@@ -1461,7 +1492,7 @@ test "parser records basic source code info locations" {
         \\syntax = "proto2";
         \\package demo;
         \\import "common.proto";
-        \\message Person { optional string name = 1; }
+        \\message Person { optional string name = 1; message Child { optional int32 id = 1; } }
         \\enum Kind { A = 0; }
         \\service Api { rpc Get (Person) returns (Person); }
     ;
@@ -1472,8 +1503,13 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{2});
     try expectLocationPath(&file, &.{ 3, 0 });
     try expectLocationPath(&file, &.{ 4, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 3, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0 });
     try expectLocationPath(&file, &.{ 5, 0 });
+    try expectLocationPath(&file, &.{ 5, 0, 2, 0 });
     try expectLocationPath(&file, &.{ 6, 0 });
+    try expectLocationPath(&file, &.{ 6, 0, 2, 0 });
 }
 
 fn expectLocationPath(file: *const schema.FileDescriptor, path: []const i32) !void {
