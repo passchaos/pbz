@@ -347,3 +347,71 @@ test "field mask wire and json helpers" {
     try std.testing.expectEqualSlices(u8, paths[0], parsed[0]);
     try std.testing.expectEqualSlices(u8, paths[1], parsed[1]);
 }
+
+pub const Any = struct {
+    type_url: []const u8 = "",
+    value: []const u8 = "",
+
+    pub fn encode(self: Any, allocator: std.mem.Allocator) ![]u8 {
+        var writer = wire.Writer.init(allocator);
+        errdefer writer.deinit();
+        if (self.type_url.len != 0) try writer.writeString(1, self.type_url);
+        if (self.value.len != 0) try writer.writeBytes(2, self.value);
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !Any {
+        var out = Any{};
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| {
+            switch (tag.number) {
+                1 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    out.type_url = try allocator.dupe(u8, try reader.readBytes());
+                },
+                2 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    out.value = try allocator.dupe(u8, try reader.readBytes());
+                },
+                else => try reader.skipValue(tag),
+            }
+        }
+        return out;
+    }
+
+    pub fn deinit(self: *Any, allocator: std.mem.Allocator) void {
+        if (self.type_url.len != 0) allocator.free(self.type_url);
+        if (self.value.len != 0) allocator.free(self.value);
+        self.* = undefined;
+    }
+
+    pub fn jsonStringifyAlloc(self: Any, allocator: std.mem.Allocator) ![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try self.jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
+    pub fn jsonStringify(self: Any, writer: *std.Io.Writer) !void {
+        try writer.writeAll("{\"@type\":");
+        try std.json.Stringify.value(self.type_url, .{}, writer);
+        try writer.writeAll(",\"value\":\"");
+        try std.base64.standard.Encoder.encodeWriter(writer, self.value);
+        try writer.writeAll("\"}");
+    }
+};
+
+test "any wire and json helpers" {
+    const allocator = std.testing.allocator;
+    const any = Any{ .type_url = "type.googleapis.com/demo.Msg", .value = "abc" };
+    const bytes = try any.encode(allocator);
+    defer allocator.free(bytes);
+    var decoded = try Any.decode(allocator, bytes);
+    defer decoded.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, any.type_url, decoded.type_url);
+    try std.testing.expectEqualSlices(u8, any.value, decoded.value);
+
+    const json = try any.jsonStringifyAlloc(allocator);
+    defer allocator.free(json);
+    try std.testing.expectEqualSlices(u8, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}", json);
+}

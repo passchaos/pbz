@@ -395,6 +395,11 @@ fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, w
         try duration.jsonStringify(writer);
         return true;
     }
+    if (typeNameEquals(name, "google.protobuf.Any")) {
+        const any = wkt.Any{ .type_url = readStringField(message, "type_url"), .value = readBytesField(message, "value") };
+        try any.jsonStringify(writer);
+        return true;
+    }
     if (wrapperKind(name)) |kind| {
         if (message.get("value")) |field| {
             if (field.values.items.len != 0) try writeWrapperValue(kind, field.values.items[field.values.items.len - 1], writer) else try writer.writeAll("null");
@@ -467,6 +472,16 @@ fn wrapperKind(name: []const u8) ?schema.FieldKind {
 fn addKnownTimeFields(message: *dynamic.DynamicMessage, seconds: i64, nanos: i32) !void {
     if (seconds != 0) try message.add(message.descriptor.findField("seconds") orelse return error.TypeMismatch, .{ .int64 = seconds });
     if (nanos != 0) try message.add(message.descriptor.findField("nanos") orelse return error.TypeMismatch, .{ .int32 = nanos });
+}
+
+fn readStringField(message: *const dynamic.DynamicMessage, name: []const u8) []const u8 {
+    if (message.get(name)) |field| if (field.values.items.len != 0 and field.values.items[0] == .string) return field.values.items[0].string;
+    return "";
+}
+
+fn readBytesField(message: *const dynamic.DynamicMessage, name: []const u8) []const u8 {
+    if (message.get(name)) |field| if (field.values.items.len != 0 and field.values.items[0] == .bytes) return field.values.items[0].bytes;
+    return "";
 }
 
 fn readInt64Field(message: *const dynamic.DynamicMessage, name: []const u8) i64 {
@@ -913,4 +928,29 @@ test "json maps wrapper messages as their value field" {
     defer parsed.deinit();
     try std.testing.expectEqualSlices(u8, "zig", parsed.get("name").?.values.items[0].message.get("value").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 42), parsed.get("count").?.values.items[0].message.get("value").?.values.items[0].int32);
+}
+
+test "json maps Any message with type and base64 value" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Holder { .google.protobuf.Any any = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+    const any_desc = file.findMessage("Any").?;
+    var holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer holder.deinit();
+    const any_msg = try allocator.create(dynamic.DynamicMessage);
+    any_msg.* = dynamic.DynamicMessage.init(allocator, any_desc);
+    try any_msg.add(any_desc.findField("type_url").?, .{ .string = try allocator.dupe(u8, "type.googleapis.com/demo.Msg") });
+    try any_msg.add(any_desc.findField("value").?, .{ .bytes = try allocator.dupe(u8, "abc") });
+    try holder.add(holder_desc.findField("any").?, .{ .message = any_msg });
+
+    const rendered = try stringifyAlloc(allocator, &file, &holder, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}}", rendered);
 }
