@@ -1212,3 +1212,31 @@ test "dynamic decodeWithRegistry decodes proto2 extensions" {
     try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
     try std.testing.expectEqualSlices(u8, "hello", msg.get("note").?.values.items[0].string);
 }
+
+test "dynamic encodes extension fields using extension descriptors" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional int32 score = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const score = registry.findExtension("demo.Host", 100).?;
+
+    var msg = DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.add(score, .{ .int32 = 123 });
+    const encoded = try msg.encoded(&file);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa0, 0x06, 0x7b }, encoded);
+
+    var decoded = DynamicMessage.init(allocator, host);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&file, &registry, encoded);
+    try std.testing.expectEqual(@as(i32, 123), decoded.get("score").?.values.items[0].int32);
+}
