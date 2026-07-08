@@ -217,15 +217,7 @@ fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const 
     try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
-    for (message.fields.items) |*field| {
-        if (field.oneof_name != null) continue;
-        if (field.kind == .map) {
-            try writeEncodeMapFieldDeterministic(field, writer, depth + 1);
-        } else {
-            try writeEncodeField(file, field, writer, depth + 1);
-        }
-    }
-    for (message.oneofs.items) |oneof| try writeEncodeOneof(message, oneof, writer, depth + 1);
+    try writeEncodeFieldsByNumber(file, message, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -237,6 +229,44 @@ fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const 
     try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try self.encodeDeterministic(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    var emitted: usize = 0;
+    var previous: u29 = 0;
+    while (emitted < message.fields.items.len) : (emitted += 1) {
+        var next: ?*const schema.FieldDescriptor = null;
+        for (message.fields.items) |*field| {
+            if (field.number <= previous) continue;
+            if (next == null or field.number < next.?.number) next = field;
+        }
+        const field = next orelse break;
+        previous = field.number;
+        if (field.oneof_name) |oneof_name| {
+            try writeEncodeOneofSingleField(field, oneof_name, writer, depth);
+        } else if (field.kind == .map) {
+            try writeEncodeMapFieldDeterministic(field, writer, depth);
+        } else {
+            try writeEncodeField(file, field, writer, depth);
+        }
+    }
+}
+
+fn writeEncodeOneofSingleField(field: *const schema.FieldDescriptor, oneof_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof_name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" => |value| ");
+    try writeOneofValueEncode(field, "value", writer);
+    try writer.writeAll(",\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("else => {},\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -2248,6 +2278,28 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.sort(@\"countsEntry\", entries") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.lessThan(u8, a.key, b.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+}
+
+test "codegen deterministic encoder emits fields by number" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  int32 later = 10;
+        \\  oneof pick { int32 mid = 3; }
+        \\  int32 first = 1;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    const deterministic_start = std.mem.indexOf(u8, content, "pub fn encodeDeterministic").?;
+    const deterministic = content[deterministic_start..];
+    const first_pos = std.mem.indexOf(u8, deterministic, "try w.writeInt32(1, self.@\"first\")").?;
+    const mid_pos = std.mem.indexOf(u8, deterministic, ".@\"mid\" => |value| try w.writeInt32(3, value)").?;
+    const later_pos = std.mem.indexOf(u8, deterministic, "try w.writeInt32(10, self.@\"later\")").?;
+    try std.testing.expect(first_pos < mid_pos);
+    try std.testing.expect(mid_pos < later_pos);
 }
 
 test "codegen emits map JSON stringify and parse helpers" {
