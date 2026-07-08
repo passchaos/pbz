@@ -43,7 +43,7 @@ validated feature set.
 - Conformance helpers
   - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output and missing-required path parse errors
 - Protoc plugin and codegen helpers
-  - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and generated_code_info
+  - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
@@ -182,7 +182,8 @@ and parse errors that identify missing proto2 required field paths when availabl
 `pbz.CodeGeneratorRequest` and `pbz.CodeGeneratorResponse` provide the basic
 wire types needed to build protoc-style generators, including compiler version,
 source-retention descriptor request fields, response feature masks, edition
-support bounds, insertion points, and generated-code metadata payload passthrough.
+support bounds, insertion points, and generated-code metadata payload passthrough
+or structured `GeneratedCodeInfo` annotations.
 `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
@@ -223,7 +224,8 @@ file/message/enum/field uninterpreted options, decoded file syntax/edition/depen
 oneof index/name validation, enum allow_alias, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,
 structured SourceCodeInfo location path/span/comments, ExtensionRangeOptions
-declarations/verification/features, and edition feature metadata.
+declarations/verification/features, structured GeneratedCodeInfo annotations,
+and edition feature metadata.
 
 ## Build and test
 

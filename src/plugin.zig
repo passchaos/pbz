@@ -90,6 +90,7 @@ pub const CodeGeneratorResponse = struct {
         insertion_point: ?[]const u8 = null,
         content: []const u8 = "",
         generated_code_info: ?[]const u8 = null,
+        generated_code_info_value: ?*const schema.GeneratedCodeInfo = null,
     };
 
     pub fn encode(self: CodeGeneratorResponse, allocator: std.mem.Allocator) Error![]u8 {
@@ -106,7 +107,14 @@ pub const CodeGeneratorResponse = struct {
             if (file.name) |name| try fw.writeString(1, name);
             if (file.insertion_point) |point| try fw.writeString(2, point);
             try fw.writeString(15, file.content);
-            if (file.generated_code_info) |info| try fw.writeMessage(16, info);
+            if (file.generated_code_info_value) |info| {
+                var info_writer = wire.Writer.init(allocator);
+                defer info_writer.deinit();
+                try descriptor.writeGeneratedCodeInfo(allocator, info, &info_writer);
+                try fw.writeMessage(16, info_writer.slice());
+            } else if (file.generated_code_info) |info| {
+                try fw.writeMessage(16, info);
+            }
             try writer.writeMessage(15, fw.slice());
         }
         return try writer.toOwnedSlice();
@@ -179,6 +187,49 @@ test "plugin response rejects insertion points without file names" {
     const files = [_]CodeGeneratorResponse.File{.{ .insertion_point = "scope", .content = "const x = 1;\n" }};
     const response = CodeGeneratorResponse{ .files = &files };
     try std.testing.expectError(error.InvalidInsertionPoint, response.encode(allocator));
+}
+
+test "plugin response encodes structured generated code info" {
+    const allocator = std.testing.allocator;
+    var generated = schema.GeneratedCodeInfo{};
+    defer generated.deinit(allocator);
+    var annotation = schema.GeneratedCodeInfo.Annotation{};
+    try annotation.path.appendSlice(allocator, &.{ 4, 0 });
+    annotation.source_file = "input.proto";
+    annotation.begin = 0;
+    annotation.end = 12;
+    annotation.semantic = .alias;
+    try generated.annotations.append(allocator, annotation);
+
+    const files = [_]CodeGeneratorResponse.File{.{ .name = "out.zig", .content = "pub const x = 1;\n", .generated_code_info_value = &generated }};
+    const response = CodeGeneratorResponse{ .files = &files };
+    const bytes = try response.encode(allocator);
+    defer allocator.free(bytes);
+
+    var reader = wire.Reader.init(bytes);
+    var decoded_info = schema.GeneratedCodeInfo{};
+    defer decoded_info.deinit(allocator);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number != 15) {
+            try reader.skipValue(tag);
+            continue;
+        }
+        var file_reader = wire.Reader.init(try reader.readBytes());
+        while (try file_reader.nextTag()) |file_tag| {
+            if (file_tag.number == 16) {
+                decoded_info = try descriptor.decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
+            } else {
+                try file_reader.skipValue(file_tag);
+            }
+        }
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), decoded_info.annotations.items.len);
+    try std.testing.expectEqualSlices(i32, &.{ 4, 0 }, decoded_info.annotations.items[0].path.items);
+    try std.testing.expectEqualStrings("input.proto", decoded_info.annotations.items[0].source_file.?);
+    try std.testing.expectEqual(@as(i32, 0), decoded_info.annotations.items[0].begin.?);
+    try std.testing.expectEqual(@as(i32, 12), decoded_info.annotations.items[0].end.?);
+    try std.testing.expectEqual(schema.GeneratedCodeInfo.Semantic.alias, decoded_info.annotations.items[0].semantic.?);
 }
 
 test "plugin request decodes file names descriptors compiler version and source descriptors" {

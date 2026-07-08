@@ -271,6 +271,58 @@ fn writeSourceCodeInfoLocation(allocator: std.mem.Allocator, location: *const sc
     try writer.writeMessage(field_number, tmp.slice());
 }
 
+pub fn encodeGeneratedCodeInfo(allocator: std.mem.Allocator, generated_code_info: *const schema.GeneratedCodeInfo) Error![]u8 {
+    var writer = wire.Writer.init(allocator);
+    errdefer writer.deinit();
+    try writeGeneratedCodeInfo(allocator, generated_code_info, &writer);
+    return try writer.toOwnedSlice();
+}
+
+pub fn writeGeneratedCodeInfo(allocator: std.mem.Allocator, generated_code_info: *const schema.GeneratedCodeInfo, writer: *wire.Writer) Error!void {
+    for (generated_code_info.annotations.items) |*annotation| try writeGeneratedCodeInfoAnnotation(allocator, annotation, 1, writer);
+}
+
+fn writeGeneratedCodeInfoAnnotation(allocator: std.mem.Allocator, annotation: *const schema.GeneratedCodeInfo.Annotation, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    try writePackedInt32List(allocator, 1, annotation.path.items, &tmp);
+    if (annotation.source_file) |source_file| try tmp.writeString(2, source_file);
+    if (annotation.begin) |begin| try tmp.writeInt32(3, begin);
+    if (annotation.end) |end| try tmp.writeInt32(4, end);
+    if (annotation.semantic) |semantic| try tmp.writeInt32(5, @intFromEnum(semantic));
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+pub fn decodeGeneratedCodeInfo(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.GeneratedCodeInfo {
+    var generated = schema.GeneratedCodeInfo{};
+    errdefer generated.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try generated.annotations.append(allocator, try decodeGeneratedCodeInfoAnnotation(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return generated;
+}
+
+fn decodeGeneratedCodeInfoAnnotation(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.GeneratedCodeInfo.Annotation {
+    var annotation = schema.GeneratedCodeInfo.Annotation{};
+    errdefer annotation.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try decodeInt32ListField(allocator, tag, &reader, &annotation.path),
+            2 => annotation.source_file = try reader.readBytes(),
+            3 => annotation.begin = try reader.readInt32(),
+            4 => annotation.end = try reader.readInt32(),
+            5 => annotation.semantic = std.enums.fromInt(schema.GeneratedCodeInfo.Semantic, try reader.readInt32()) orelse return error.InvalidFieldType,
+            else => try reader.skipValue(tag),
+        }
+    }
+    return annotation;
+}
+
 fn writePackedInt32List(allocator: std.mem.Allocator, field_number: wire.FieldNumber, values: []const i32, writer: *wire.Writer) Error!void {
     if (values.len == 0) return;
     var packed_writer = wire.Writer.init(allocator);
@@ -1948,6 +2000,31 @@ test "descriptor preserves extension range options" {
     try std.testing.expect(range.declarations.items[0].reserved);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
     try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, range.features.?.enum_type);
+}
+
+test "descriptor encodes and decodes generated code info" {
+    const allocator = std.testing.allocator;
+    var generated = schema.GeneratedCodeInfo{};
+    defer generated.deinit(allocator);
+    var annotation = schema.GeneratedCodeInfo.Annotation{};
+    try annotation.path.appendSlice(allocator, &.{ 4, 0, 2, 0 });
+    annotation.source_file = "demo.proto";
+    annotation.begin = 10;
+    annotation.end = 20;
+    annotation.semantic = .set;
+    try generated.annotations.append(allocator, annotation);
+
+    const bytes = try encodeGeneratedCodeInfo(allocator, &generated);
+    defer allocator.free(bytes);
+    var decoded = try decodeGeneratedCodeInfo(allocator, bytes);
+    defer decoded.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), decoded.annotations.items.len);
+    try std.testing.expectEqualSlices(i32, &.{ 4, 0, 2, 0 }, decoded.annotations.items[0].path.items);
+    try std.testing.expectEqualStrings("demo.proto", decoded.annotations.items[0].source_file.?);
+    try std.testing.expectEqual(@as(i32, 10), decoded.annotations.items[0].begin.?);
+    try std.testing.expectEqual(@as(i32, 20), decoded.annotations.items[0].end.?);
+    try std.testing.expectEqual(schema.GeneratedCodeInfo.Semantic.set, decoded.annotations.items[0].semantic.?);
 }
 
 test "descriptor rejects invalid enum descriptors" {

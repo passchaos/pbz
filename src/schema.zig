@@ -249,6 +249,35 @@ pub const SourceCodeInfo = struct {
     }
 };
 
+pub const GeneratedCodeInfo = struct {
+    annotations: std.ArrayList(Annotation) = .empty,
+
+    pub const Semantic = enum(i32) {
+        none = 0,
+        set = 1,
+        alias = 2,
+    };
+
+    pub const Annotation = struct {
+        path: std.ArrayList(i32) = .empty,
+        source_file: ?[]const u8 = null,
+        begin: ?i32 = null,
+        end: ?i32 = null,
+        semantic: ?Semantic = null,
+
+        pub fn deinit(self: *Annotation, allocator: std.mem.Allocator) void {
+            self.path.deinit(allocator);
+            self.* = undefined;
+        }
+    };
+
+    pub fn deinit(self: *GeneratedCodeInfo, allocator: std.mem.Allocator) void {
+        for (self.annotations.items) |*annotation| annotation.deinit(allocator);
+        self.annotations.deinit(allocator);
+        self.* = undefined;
+    }
+};
+
 pub const EnumValueDescriptor = struct {
     name: []const u8,
     number: i32,
