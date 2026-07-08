@@ -34,7 +34,9 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
         response_files[i] = .{ .name = name, .content = content };
     }
     return try (plugin.CodeGeneratorResponse{
-        .supported_features = plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{.proto3_optional}),
+        .supported_features = plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions }),
+        .minimum_edition = .proto2,
+        .maximum_edition = .edition_2026,
         .files = response_files,
     }).encode(allocator);
 }
@@ -2654,10 +2656,14 @@ test "codegen emits protoc response" {
 
     var reader = wire.Reader.init(response);
     var saw_supported_features = false;
+    var saw_minimum_edition = false;
+    var saw_maximum_edition = false;
     var saw_file_name = false;
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            2 => saw_supported_features = (try reader.readUInt64()) == plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{.proto3_optional}),
+            2 => saw_supported_features = (try reader.readUInt64()) == plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions }),
+            3 => saw_minimum_edition = (try reader.readInt32()) == @intFromEnum(schema.Edition.proto2),
+            4 => saw_maximum_edition = (try reader.readInt32()) == @intFromEnum(schema.Edition.edition_2026),
             15 => {
                 var file_reader = wire.Reader.init(try reader.readBytes());
                 while (try file_reader.nextTag()) |file_tag| {
@@ -2671,6 +2677,8 @@ test "codegen emits protoc response" {
         }
     }
     try std.testing.expect(saw_supported_features);
+    try std.testing.expect(saw_minimum_edition);
+    try std.testing.expect(saw_maximum_edition);
     try std.testing.expect(saw_file_name);
 }
 
