@@ -174,7 +174,8 @@ and parse errors that identify missing proto2 required field paths when availabl
 wire types needed to build protoc-style generators; `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
-`jsonParseInitialized` wrappers that call `validateRequired` before returning initialized proto2 data.
+`jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
+including generated message payload fields when their types are available.
 They also expose `missingRequiredFieldName` for callers that want the first
 missing direct required field name before handling `error.MissingRequiredField`.
 Packable repeated scalar and enum fields emit packed wire format when resolved
