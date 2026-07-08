@@ -27,7 +27,7 @@ validated feature set.
   - packed field option validation for repeated packable scalar/enum fields
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
-  - proto2 strings/bytes, required-field validation, missing required field path reporting, decodeInitialized, repeated packed fields
+  - proto2 strings/bytes, required-field validation, missing required field path reporting, encode/decodeInitialized helpers, repeated packed fields
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
   - nested message and group round-trips

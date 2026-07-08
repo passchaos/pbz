@@ -276,6 +276,11 @@ pub const DynamicMessage = struct {
         for (self.unknown_fields.items) |unknown| try writer.appendSlice(unknown.data);
     }
 
+    pub fn encodeInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) (EncodeError || ValidationError)!void {
+        try self.validateRequired();
+        try self.encode(file, writer);
+    }
+
     pub fn encodeDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
         const indexes = try self.allocator.alloc(usize, self.fields.items.len);
         defer self.allocator.free(indexes);
@@ -314,6 +319,11 @@ pub const DynamicMessage = struct {
         for (unknown_indexes) |index| try writer.appendSlice(self.unknown_fields.items[index].data);
     }
 
+    pub fn encodeDeterministicInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) (EncodeError || ValidationError)!void {
+        try self.validateRequired();
+        try self.encodeDeterministic(file, writer);
+    }
+
     pub fn encoded(self: *const DynamicMessage, file: *const schema.FileDescriptor) EncodeError![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
@@ -321,10 +331,24 @@ pub const DynamicMessage = struct {
         return try writer.toOwnedSlice();
     }
 
+    pub fn encodedInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor) (EncodeError || ValidationError)![]u8 {
+        var writer = wire.Writer.init(self.allocator);
+        errdefer writer.deinit();
+        try self.encodeInitialized(file, &writer);
+        return try writer.toOwnedSlice();
+    }
+
     pub fn encodedDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor) EncodeError![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
         try self.encodeDeterministic(file, &writer);
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn encodedDeterministicInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor) (EncodeError || ValidationError)![]u8 {
+        var writer = wire.Writer.init(self.allocator);
+        errdefer writer.deinit();
+        try self.encodeDeterministicInitialized(file, &writer);
         return try writer.toOwnedSlice();
     }
 
@@ -1255,6 +1279,36 @@ test "dynamic decodeInitialized enforces proto2 required fields" {
     try writer.writeInt32(1, 9);
     try message.decodeInitialized(&file, writer.slice());
     try std.testing.expectEqual(@as(i32, 9), message.get("id").?.values.items[0].int32);
+}
+
+test "dynamic encodeInitialized enforces proto2 required fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Required { required int32 id = 1; optional string name = 2; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Required").?;
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try std.testing.expectError(error.MissingRequiredField, message.encodeInitialized(&file, &writer));
+    try std.testing.expectError(error.MissingRequiredField, message.encodedInitialized(&file));
+    try std.testing.expectError(error.MissingRequiredField, message.encodeDeterministicInitialized(&file, &writer));
+    try std.testing.expectError(error.MissingRequiredField, message.encodedDeterministicInitialized(&file));
+
+    try message.add(desc.findField("id").?, .{ .int32 = 9 });
+    try message.encodeInitialized(&file, &writer);
+    try std.testing.expect(writer.slice().len != 0);
+    const encoded = try message.encodedInitialized(&file);
+    defer allocator.free(encoded);
+    try std.testing.expect(encoded.len != 0);
+    const deterministic = try message.encodedDeterministicInitialized(&file);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, encoded, deterministic);
 }
 
 test "dynamic reports missing required field path" {
