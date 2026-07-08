@@ -288,9 +288,19 @@ fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const r
                     if (std.mem.eql(u8, enum_value.name, value)) return .{ .enumeration = enum_value.number };
                 }
             }
-            return .{ .enumeration = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue };
+            const number = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue;
+            if (enumeration) |enum_desc| {
+                if (enumIsClosed(file, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
+            }
+            return .{ .enumeration = number };
         },
-        else => return .{ .enumeration = try numberAsInt(i32, json_value) },
+        else => {
+            const number = try numberAsInt(i32, json_value);
+            if (enumeration) |enum_desc| {
+                if (enumIsClosed(file, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
+            }
+            return .{ .enumeration = number };
+        },
     }
 }
 
@@ -387,6 +397,18 @@ fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const 
     }
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     return current.findEnumDeep(trimmed) orelse file.findEnumDeep(trimmed);
+}
+
+fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
+    if (enumeration.features) |features| return features.enum_type == .closed;
+    return file.features.enum_type == .closed;
+}
+
+fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
+    for (enumeration.values.items) |value| {
+        if (value.number == number) return true;
+    }
+    return false;
 }
 
 fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, options: Options) ?*const schema.FieldDescriptor {
@@ -1306,6 +1328,49 @@ test "json parses and prints enum numbers and unknown enum values" {
     const rendered_numbers = try stringifyAlloc(allocator, &file, &numeric, .{ .enum_as_name = false });
     defer allocator.free(rendered_numbers);
     try std.testing.expectEqualSlices(u8, "{\"kind\":123,\"roles\":[1,123]}", rendered_numbers);
+}
+
+test "json honors closed enum feature for numeric values" {
+    const allocator = std.testing.allocator;
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.enum_type = CLOSED;
+            \\enum Kind { option features.enum_type = OPEN; UNKNOWN = 0; ADMIN = 1; }
+            \\message M { Kind kind = 1; repeated Kind roles = 2; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = try parseAlloc(allocator, &file, desc, "{\"kind\":123,\"roles\":[\"123\"]}", .{});
+        defer msg.deinit();
+        try std.testing.expectEqual(@as(i32, 123), msg.get("kind").?.values.items[0].enumeration);
+        try std.testing.expectEqual(@as(i32, 123), msg.get("roles").?.values.items[0].enumeration);
+    }
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.enum_type = OPEN;
+            \\enum Kind { option features.enum_type = CLOSED; UNKNOWN = 0; ADMIN = 1; }
+            \\message M {
+            \\  Kind kind = 1;
+            \\  repeated Kind roles = 2;
+            \\  map<string, Kind> keyed = 3;
+            \\}
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "{\"kind\":123}", .{}));
+        try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "{\"roles\":[\"123\"]}", .{}));
+        try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "{\"keyed\":{\"bad\":123}}", .{}));
+
+        var ignored = try parseAlloc(allocator, &file, desc, "{\"kind\":123,\"roles\":[1,123],\"keyed\":{\"ok\":1,\"bad\":123}}", .{ .ignore_unknown_fields = true });
+        defer ignored.deinit();
+        try std.testing.expect(ignored.get("kind") == null);
+        try std.testing.expectEqual(@as(usize, 1), ignored.get("roles").?.values.items.len);
+        try std.testing.expectEqual(@as(i32, 1), ignored.get("roles").?.values.items[0].enumeration);
+        try std.testing.expectEqual(@as(usize, 1), ignored.get("keyed").?.values.items.len);
+        try std.testing.expectEqualStrings("ok", ignored.get("keyed").?.values.items[0].map_entry.key.string);
+    }
 }
 
 test "json ignore unknown fields skips unknown enum names" {
