@@ -3,7 +3,7 @@ const schema = @import("schema.zig");
 const parser = @import("parser.zig");
 const registry_mod = @import("registry.zig");
 
-pub const Error = std.mem.Allocator.Error || parser.Error || error{ FileNotFound, ImportCycle };
+pub const Error = std.mem.Allocator.Error || parser.Error || registry_mod.Error || error{ FileNotFound, ImportCycle };
 
 pub const MemorySourceTree = struct {
     allocator: std.mem.Allocator,

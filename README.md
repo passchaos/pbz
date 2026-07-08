@@ -16,7 +16,7 @@ validated feature set.
   - proto2/proto3/editions syntax flags and feature defaults
   - proto2 required/optional/repeated cardinality plus proto3/editions required rejection, enum defaults, and packed override handling
 - Multi-file registry and loader
-  - package/import-aware lookup for messages/enums/extensions across FileDescriptor values
+  - package/import-aware lookup for messages/enums/extensions across FileDescriptor values with duplicate type/extension conflict detection
   - in-memory and filesystem source tree loaders that recursively parse imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
@@ -85,7 +85,8 @@ pub fn example(allocator: std.mem.Allocator) !void {
 ## Type registry
 
 Use `pbz.Registry` to register multiple parsed files and resolve message/enum
-types by absolute or scoped names:
+types by absolute or scoped names. Registration rejects duplicate fully-qualified
+type symbols and conflicting extension names/numbers for the same extendee:
 
 ```zig
 var registry = pbz.Registry.init(allocator);

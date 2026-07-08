@@ -3,6 +3,8 @@ const schema = @import("schema.zig");
 
 pub const TypeKind = enum { message, enumeration };
 
+pub const Error = std.mem.Allocator.Error || error{DuplicateSymbol};
+
 pub const TypeRef = union(TypeKind) {
     message: *const schema.MessageDescriptor,
     enumeration: *const schema.EnumDescriptor,
@@ -21,8 +23,60 @@ pub const Registry = struct {
         self.* = undefined;
     }
 
-    pub fn addFile(self: *Registry, file: *const schema.FileDescriptor) std.mem.Allocator.Error!void {
+    pub fn addFile(self: *Registry, file: *const schema.FileDescriptor) Error!void {
+        try self.validateNoTypeConflicts(file);
+        try self.validateNoExtensionConflicts(file);
         try self.files.append(self.allocator, file);
+    }
+
+    fn validateNoTypeConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
+        for (file.messages.items) |*message| try self.validateMessageType(file.package, message);
+        for (file.enums.items) |*enumeration| {
+            const full_name = try qualifiedTypeName(self.allocator, file.package, enumeration.name);
+            defer self.allocator.free(full_name);
+            if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
+        }
+    }
+
+    fn validateMessageType(self: *const Registry, prefix: []const u8, message: *const schema.MessageDescriptor) Error!void {
+        const full_name = try qualifiedTypeName(self.allocator, prefix, message.name);
+        defer self.allocator.free(full_name);
+        if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
+        for (message.messages.items) |*nested| try self.validateMessageType(full_name, nested);
+        for (message.enums.items) |*enumeration| {
+            const enum_name = try qualifiedTypeName(self.allocator, full_name, enumeration.name);
+            defer self.allocator.free(enum_name);
+            if (self.findAbsolute(enum_name) != null) return error.DuplicateSymbol;
+        }
+    }
+
+    fn validateNoExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
+        for (file.extensions.items) |*field| try self.validateExtensionConflict(field);
+        for (file.messages.items) |*message| try self.validateMessageExtensionConflicts(message);
+    }
+
+    fn validateMessageExtensionConflicts(self: *const Registry, message: *const schema.MessageDescriptor) Error!void {
+        for (message.extensions.items) |*field| try self.validateExtensionConflict(field);
+        for (message.messages.items) |*nested| try self.validateMessageExtensionConflicts(nested);
+    }
+
+    fn validateExtensionConflict(self: *const Registry, field: *const schema.FieldDescriptor) Error!void {
+        const extendee = field.extendee orelse return;
+        if (self.findExtension(extendee, field.number) != null) return error.DuplicateSymbol;
+        if (self.findExtensionByName(extendee, field.name) != null) return error.DuplicateSymbol;
+    }
+
+    pub fn findExtensionByName(self: *const Registry, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
+        const normalized = normalizeName(extendee);
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (field.extendee != null and namesMatch(field.extendee.?, normalized) and std.mem.eql(u8, field.name, name)) return field;
+            }
+            for (file.messages.items) |*message| {
+                if (findExtensionByNameInMessage(message, normalized, name)) |field| return field;
+            }
+        }
+        return null;
     }
 
     pub fn findMessage(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.MessageDescriptor {
@@ -98,6 +152,21 @@ pub const Registry = struct {
         return null;
     }
 };
+
+fn qualifiedTypeName(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
+    if (prefix.len == 0) return try allocator.dupe(u8, name);
+    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
+}
+
+fn findExtensionByNameInMessage(message: *const schema.MessageDescriptor, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
+    for (message.extensions.items) |*field| {
+        if (field.extendee != null and namesMatch(field.extendee.?, extendee) and std.mem.eql(u8, field.name, name)) return field;
+    }
+    for (message.messages.items) |*nested| {
+        if (findExtensionByNameInMessage(nested, extendee, name)) |field| return field;
+    }
+    return null;
+}
 
 fn findExtensionInMessage(message: *const schema.MessageDescriptor, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
     for (message.extensions.items) |*field| {
@@ -210,4 +279,61 @@ test "registry finds extension fields" {
     try registry.addFile(&file);
     const ext = registry.findExtension(".demo.Host", 100).?;
     try std.testing.expectEqualStrings("note", ext.name);
+}
+
+test "registry rejects duplicate type symbols across files" {
+    const allocator = std.testing.allocator;
+    var first = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message User { message Profile {} }
+    );
+    defer first.deinit();
+    var duplicate_message = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message User {}
+    );
+    defer duplicate_message.deinit();
+    var duplicate_nested = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message User { enum Profile { UNKNOWN = 0; } }
+    );
+    defer duplicate_nested.deinit();
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&first);
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_message));
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_nested));
+}
+
+test "registry rejects duplicate extension symbols across files" {
+    const allocator = std.testing.allocator;
+    var first = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer first.deinit();
+    var duplicate_number = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend Host { optional int32 other = 100; }
+    );
+    defer duplicate_number.deinit();
+    var duplicate_name = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend Host { optional int32 note = 101; }
+    );
+    defer duplicate_name.deinit();
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&first);
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_number));
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_name));
 }
