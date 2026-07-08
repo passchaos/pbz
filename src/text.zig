@@ -401,16 +401,16 @@ const TextParser = struct {
             .bool => .{ .boolean = try self.readBool() },
             .double => .{ .double = try std.fmt.parseFloat(f64, try self.readAtom()) },
             .float => .{ .float = try std.fmt.parseFloat(f32, try self.readAtom()) },
-            .int32 => .{ .int32 = try std.fmt.parseInt(i32, try self.readAtom(), 10) },
-            .int64 => .{ .int64 = try std.fmt.parseInt(i64, try self.readAtom(), 10) },
-            .uint32 => .{ .uint32 = try std.fmt.parseInt(u32, try self.readAtom(), 10) },
-            .uint64 => .{ .uint64 = try std.fmt.parseInt(u64, try self.readAtom(), 10) },
-            .sint32 => .{ .sint32 = try std.fmt.parseInt(i32, try self.readAtom(), 10) },
-            .sint64 => .{ .sint64 = try std.fmt.parseInt(i64, try self.readAtom(), 10) },
-            .fixed32 => .{ .fixed32 = try std.fmt.parseInt(u32, try self.readAtom(), 10) },
-            .fixed64 => .{ .fixed64 = try std.fmt.parseInt(u64, try self.readAtom(), 10) },
-            .sfixed32 => .{ .sfixed32 = try std.fmt.parseInt(i32, try self.readAtom(), 10) },
-            .sfixed64 => .{ .sfixed64 = try std.fmt.parseInt(i64, try self.readAtom(), 10) },
+            .int32 => .{ .int32 = try parseTextInt(i32, try self.readAtom()) },
+            .int64 => .{ .int64 = try parseTextInt(i64, try self.readAtom()) },
+            .uint32 => .{ .uint32 = try parseTextInt(u32, try self.readAtom()) },
+            .uint64 => .{ .uint64 = try parseTextInt(u64, try self.readAtom()) },
+            .sint32 => .{ .sint32 = try parseTextInt(i32, try self.readAtom()) },
+            .sint64 => .{ .sint64 = try parseTextInt(i64, try self.readAtom()) },
+            .fixed32 => .{ .fixed32 = try parseTextInt(u32, try self.readAtom()) },
+            .fixed64 => .{ .fixed64 = try parseTextInt(u64, try self.readAtom()) },
+            .sfixed32 => .{ .sfixed32 = try parseTextInt(i32, try self.readAtom()) },
+            .sfixed64 => .{ .sfixed64 = try parseTextInt(i64, try self.readAtom()) },
         };
     }
 
@@ -559,6 +559,32 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
     if (current.findMessageDeep(trimmed)) |message| return message;
     return file.findMessageDeep(trimmed);
+}
+
+fn parseTextInt(comptime T: type, atom: []const u8) !T {
+    var text = atom;
+    var negative = false;
+    if (text.len != 0 and (text[0] == '+' or text[0] == '-')) {
+        negative = text[0] == '-';
+        text = text[1..];
+    }
+    if (text.len == 0) return error.InvalidCharacter;
+
+    const base: u8 = if (std.mem.startsWith(u8, text, "0x") or std.mem.startsWith(u8, text, "0X")) blk: {
+        text = text[2..];
+        break :blk 16;
+    } else if (text.len > 1 and text[0] == '0') 8 else 10;
+    if (text.len == 0) return error.InvalidCharacter;
+
+    if (negative) {
+        const signed = try std.fmt.parseInt(i128, text, base);
+        const value = -signed;
+        if (value < std.math.minInt(T) or value > std.math.maxInt(T)) return error.Overflow;
+        return @intCast(value);
+    }
+    const unsigned = try std.fmt.parseInt(u128, text, base);
+    if (unsigned > std.math.maxInt(T)) return error.Overflow;
+    return @intCast(unsigned);
 }
 
 fn hexValue(c: u8) ?u8 {
@@ -724,4 +750,28 @@ test "text format parser accepts bool aliases" {
     try std.testing.expect(!flags[3].boolean);
     try std.testing.expect(flags[4].boolean);
     try std.testing.expect(!flags[5].boolean);
+}
+
+test "text format parser accepts decimal hex and octal integers" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M {
+        \\  int32 a = 1;
+        \\  int64 b = 2;
+        \\  uint32 c = 3;
+        \\  fixed64 d = 4;
+        \\  sfixed32 e = 5;
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc, "a: -0x10 b: +010 c: 0x10 d: 010 e: -010");
+    defer msg.deinit();
+    try std.testing.expectEqual(@as(i32, -16), msg.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i64, 8), msg.get("b").?.values.items[0].int64);
+    try std.testing.expectEqual(@as(u32, 16), msg.get("c").?.values.items[0].uint32);
+    try std.testing.expectEqual(@as(u64, 8), msg.get("d").?.values.items[0].fixed64);
+    try std.testing.expectEqual(@as(i32, -8), msg.get("e").?.values.items[0].sfixed32);
 }
