@@ -238,6 +238,11 @@ pub const Parser = struct {
             while (prev_start > 0 and self.input[prev_start - 1] != '\n') prev_start -= 1;
             const line = std.mem.trim(u8, self.input[prev_start..prev_end], " \t\r");
             if (line.len == 0) break;
+            if (std.mem.endsWith(u8, line, "*/")) {
+                if (std.mem.lastIndexOf(u8, self.input[0..prev_end], "/*")) |block_start| {
+                    return try self.normalizeBlockComment(self.input[block_start + 2 .. prev_end - 2]);
+                }
+            }
             if (!std.mem.startsWith(u8, line, "//")) break;
             var text = line[2..];
             if (text.len != 0 and text[0] == ' ') text = text[1..];
@@ -319,7 +324,13 @@ pub const Parser = struct {
     fn trailingLineComment(self: *Parser, end: usize) Error!?[]const u8 {
         var cursor = end;
         while (cursor < self.input.len and (self.input[cursor] == ' ' or self.input[cursor] == '\t' or self.input[cursor] == '\r')) cursor += 1;
-        if (cursor + 1 >= self.input.len or self.input[cursor] != '/' or self.input[cursor + 1] != '/') return null;
+        if (cursor + 1 >= self.input.len or self.input[cursor] != '/') return null;
+        if (self.input[cursor + 1] == '*') {
+            const block_start = cursor + 2;
+            const block_end = std.mem.indexOf(u8, self.input[block_start..], "*/") orelse return null;
+            return try self.normalizeBlockComment(self.input[block_start .. block_start + block_end]);
+        }
+        if (self.input[cursor + 1] != '/') return null;
         cursor += 2;
         if (cursor < self.input.len and self.input[cursor] == ' ') cursor += 1;
         const comment_start = cursor;
@@ -329,6 +340,31 @@ pub const Parser = struct {
         errdefer out.deinit(self.allocator);
         try out.appendSlice(self.allocator, comment);
         try out.append(self.allocator, '\n');
+        const owned = try out.toOwnedSlice(self.allocator);
+        errdefer self.allocator.free(owned);
+        try self.file.owned_strings.append(self.allocator, owned);
+        return owned;
+    }
+
+    fn normalizeBlockComment(self: *Parser, raw: []const u8) Error![]const u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var rest = raw;
+        while (rest.len != 0) {
+            const newline = std.mem.indexOfScalar(u8, rest, '\n');
+            const raw_line = if (newline) |idx| rest[0..idx] else rest;
+            var line = std.mem.trim(u8, raw_line, " \t\r");
+            if (std.mem.startsWith(u8, line, "*")) {
+                line = line[1..];
+                if (line.len != 0 and line[0] == ' ') line = line[1..];
+            }
+            try out.appendSlice(self.allocator, line);
+            try out.append(self.allocator, '\n');
+            if (newline) |idx| {
+                rest = rest[idx + 1 ..];
+            } else break;
+        }
+        if (out.items.len == 0) try out.append(self.allocator, '\n');
         const owned = try out.toOwnedSlice(self.allocator);
         errdefer self.allocator.free(owned);
         try self.file.owned_strings.append(self.allocator, owned);
@@ -1660,6 +1696,24 @@ test "parser records source code info line comments" {
     const field_location = findLocationPath(&file, &.{ 4, 0, 2, 0 }).?;
     try std.testing.expectEqualStrings("name leading\n", field_location.leading_comments.?);
     try std.testing.expectEqualStrings("name trailing\n", field_location.trailing_comments.?);
+}
+
+test "parser records source code info block comments" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\/* Message block
+        \\ * second line */
+        \\message Person {
+        \\  optional string name = 1; /* field trailing block */
+        \\}
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    const message_location = findLocationPath(&file, &.{ 4, 0 }).?;
+    try std.testing.expectEqualStrings("Message block\nsecond line\n", message_location.leading_comments.?);
+    const field_location = findLocationPath(&file, &.{ 4, 0, 2, 0 }).?;
+    try std.testing.expectEqualStrings("field trailing block\n", field_location.trailing_comments.?);
 }
 
 fn expectLocationPath(file: *const schema.FileDescriptor, path: []const i32) !void {
