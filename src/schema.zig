@@ -586,6 +586,39 @@ pub const FeatureSet = struct {
     }
 };
 
+pub const FeatureSetEditionDefault = struct {
+    edition: Edition = .unknown,
+    overridable_features: ?FeatureSet = null,
+    fixed_features: ?FeatureSet = null,
+};
+
+pub const FeatureSetDefaults = struct {
+    defaults: std.ArrayList(FeatureSetEditionDefault) = .empty,
+    minimum_edition: ?Edition = null,
+    maximum_edition: ?Edition = null,
+
+    pub fn deinit(self: *FeatureSetDefaults, allocator: std.mem.Allocator) void {
+        self.defaults.deinit(allocator);
+        self.* = undefined;
+    }
+
+    pub fn validate(self: *const FeatureSetDefaults) !void {
+        var previous: ?Edition = null;
+        for (self.defaults.items) |entry| {
+            if (entry.edition == .unknown) return error.InvalidEdition;
+            if (previous) |prev| {
+                if (@intFromEnum(entry.edition) <= @intFromEnum(prev)) return error.InvalidEdition;
+            }
+            previous = entry.edition;
+        }
+        if (self.minimum_edition) |min| {
+            if (self.maximum_edition) |max| {
+                if (@intFromEnum(min) > @intFromEnum(max)) return error.InvalidEdition;
+            }
+        }
+    }
+};
+
 pub const FileDescriptor = struct {
     allocator: std.mem.Allocator,
     name: []const u8 = "",

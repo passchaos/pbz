@@ -56,6 +56,13 @@ pub fn encodeFileDescriptorSet(allocator: std.mem.Allocator, files: []const *con
     return try writer.toOwnedSlice();
 }
 
+pub fn encodeFeatureSetDefaults(allocator: std.mem.Allocator, defaults: *const schema.FeatureSetDefaults) Error![]u8 {
+    var writer = wire.Writer.init(allocator);
+    errdefer writer.deinit();
+    try writeFeatureSetDefaults(allocator, defaults, &writer);
+    return try writer.toOwnedSlice();
+}
+
 pub fn writeFileDescriptorSet(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, writer: *wire.Writer) Error!void {
     for (files) |file| {
         var file_writer = wire.Writer.init(allocator);
@@ -63,6 +70,22 @@ pub fn writeFileDescriptorSet(allocator: std.mem.Allocator, files: []const *cons
         try writeFileDescriptorProto(allocator, file, file.name, &file_writer);
         try writer.writeMessage(1, file_writer.slice());
     }
+}
+
+pub fn writeFeatureSetDefaults(allocator: std.mem.Allocator, defaults: *const schema.FeatureSetDefaults, writer: *wire.Writer) Error!void {
+    try validateFeatureSetDefaults(defaults);
+    for (defaults.defaults.items) |entry| try writeFeatureSetEditionDefault(allocator, entry, 1, writer);
+    if (defaults.minimum_edition) |edition| try writer.writeInt32(4, @intFromEnum(edition));
+    if (defaults.maximum_edition) |edition| try writer.writeInt32(5, @intFromEnum(edition));
+}
+
+fn writeFeatureSetEditionDefault(allocator: std.mem.Allocator, entry: schema.FeatureSetEditionDefault, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (entry.edition != .unknown) try tmp.writeInt32(3, @intFromEnum(entry.edition));
+    if (entry.overridable_features) |features| try writeFeatureSet(allocator, features, 4, &tmp);
+    if (entry.fixed_features) |features| try writeFeatureSet(allocator, features, 5, &tmp);
+    try writer.writeMessage(field_number, tmp.slice());
 }
 
 fn writeMessageDescriptor(
@@ -1089,6 +1112,53 @@ pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) 
     return try files.toOwnedSlice(allocator);
 }
 
+pub fn decodeFeatureSetDefaults(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FeatureSetDefaults {
+    var defaults = schema.FeatureSetDefaults{};
+    errdefer defaults.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try defaults.defaults.append(allocator, try decodeFeatureSetEditionDefault(try reader.readBytes())),
+            4 => defaults.minimum_edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            5 => defaults.maximum_edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            else => try reader.skipValue(tag),
+        }
+    }
+    try validateFeatureSetDefaults(&defaults);
+    return defaults;
+}
+
+fn decodeFeatureSetEditionDefault(bytes: []const u8) Error!schema.FeatureSetEditionDefault {
+    var entry = schema.FeatureSetEditionDefault{};
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            3 => entry.edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            4 => entry.overridable_features = try decodeFeatureSet(try reader.readBytes()),
+            5 => entry.fixed_features = try decodeFeatureSet(try reader.readBytes()),
+            else => try reader.skipValue(tag),
+        }
+    }
+    if (entry.edition == .unknown) return error.InvalidFieldType;
+    return entry;
+}
+
+fn validateFeatureSetDefaults(defaults: *const schema.FeatureSetDefaults) Error!void {
+    var previous: ?schema.Edition = null;
+    for (defaults.defaults.items) |entry| {
+        if (entry.edition == .unknown) return error.InvalidFieldType;
+        if (previous) |prev| {
+            if (@intFromEnum(entry.edition) <= @intFromEnum(prev)) return error.InvalidFieldType;
+        }
+        previous = entry.edition;
+    }
+    if (defaults.minimum_edition) |minimum| {
+        if (defaults.maximum_edition) |maximum| {
+            if (@intFromEnum(minimum) > @intFromEnum(maximum)) return error.InvalidFieldType;
+        }
+    }
+}
+
 fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.MessageDescriptor {
     var message = schema.MessageDescriptor{ .name = "" };
     errdefer message.deinit(allocator);
@@ -2026,6 +2096,61 @@ test "descriptor decodes FileDescriptorSet" {
     try std.testing.expectEqual(@as(usize, 1), decoded_files.len);
     try std.testing.expectEqualStrings("a.proto", decoded_files[0].name);
     try std.testing.expect(decoded_files[0].findMessage("A") != null);
+}
+
+test "descriptor encodes and decodes FeatureSetDefaults" {
+    const allocator = std.testing.allocator;
+    var defaults = schema.FeatureSetDefaults{};
+    defer defaults.deinit(allocator);
+    try defaults.defaults.append(allocator, .{
+        .edition = .legacy,
+        .overridable_features = schema.FeatureSet.defaults(.proto2),
+        .fixed_features = .{ .enforce_naming_style = .style_legacy },
+    });
+    try defaults.defaults.append(allocator, .{
+        .edition = .edition_2023,
+        .overridable_features = schema.FeatureSet.defaults(.editions),
+        .fixed_features = .{ .json_format = .allow },
+    });
+    defaults.minimum_edition = .legacy;
+    defaults.maximum_edition = .edition_2026;
+
+    const bytes = try encodeFeatureSetDefaults(allocator, &defaults);
+    defer allocator.free(bytes);
+    var decoded = try decodeFeatureSetDefaults(allocator, bytes);
+    defer decoded.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), decoded.defaults.items.len);
+    try std.testing.expectEqual(schema.Edition.legacy, decoded.defaults.items[0].edition);
+    try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, decoded.defaults.items[0].overridable_features.?.enum_type);
+    try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, decoded.defaults.items[0].overridable_features.?.repeated_field_encoding);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style_legacy, decoded.defaults.items[0].fixed_features.?.enforce_naming_style);
+    try std.testing.expectEqual(schema.Edition.edition_2023, decoded.defaults.items[1].edition);
+    try std.testing.expectEqual(schema.FeatureSet.EnumType.open, decoded.defaults.items[1].overridable_features.?.enum_type);
+    try std.testing.expectEqual(schema.FeatureSet.JsonFormat.allow, decoded.defaults.items[1].fixed_features.?.json_format);
+    try std.testing.expectEqual(schema.Edition.legacy, decoded.minimum_edition.?);
+    try std.testing.expectEqual(schema.Edition.edition_2026, decoded.maximum_edition.?);
+}
+
+test "descriptor rejects invalid FeatureSetDefaults" {
+    const allocator = std.testing.allocator;
+    {
+        var entry = wire.Writer.init(allocator);
+        defer entry.deinit();
+        try entry.writeInt32(3, @intFromEnum(schema.Edition.edition_2023));
+        var writer = wire.Writer.init(allocator);
+        defer writer.deinit();
+        try writer.writeMessage(1, entry.slice());
+        try writer.writeMessage(1, entry.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFeatureSetDefaults(allocator, writer.slice()));
+    }
+    {
+        var writer = wire.Writer.init(allocator);
+        defer writer.deinit();
+        try writer.writeInt32(4, @intFromEnum(schema.Edition.edition_2026));
+        try writer.writeInt32(5, @intFromEnum(schema.Edition.edition_2023));
+        try std.testing.expectError(error.InvalidFieldType, decodeFeatureSetDefaults(allocator, writer.slice()));
+    }
 }
 
 test "descriptor rejects invalid synthetic map entry key type" {
