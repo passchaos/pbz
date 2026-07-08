@@ -199,7 +199,7 @@ fn parseEnum(file: *const schema.FileDescriptor, name: []const u8, json_value: s
                     if (std.mem.eql(u8, enum_value.name, value)) return .{ .enumeration = enum_value.number };
                 }
             }
-            return error.InvalidEnumValue;
+            return .{ .enumeration = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue };
         },
         else => return .{ .enumeration = try numberAsInt(i32, json_value) },
     }
@@ -1089,6 +1089,32 @@ test "json parse dynamic message with scalars repeated maps enums and nested mes
     const rendered = try stringifyAlloc(allocator, &file, &bag, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", rendered);
+}
+
+test "json parses and prints enum numbers and unknown enum values" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message M { Kind kind = 1; repeated Kind roles = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var numeric = try parseAlloc(allocator, &file, desc, "{\"kind\":123,\"roles\":[\"1\",\"123\"]}", .{});
+    defer numeric.deinit();
+    try std.testing.expectEqual(@as(i32, 123), numeric.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), numeric.get("roles").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 123), numeric.get("roles").?.values.items[1].enumeration);
+
+    const rendered_unknown = try stringifyAlloc(allocator, &file, &numeric, .{});
+    defer allocator.free(rendered_unknown);
+    try std.testing.expectEqualSlices(u8, "{\"kind\":123,\"roles\":[\"ADMIN\",123]}", rendered_unknown);
+
+    const rendered_numbers = try stringifyAlloc(allocator, &file, &numeric, .{ .enum_as_name = false });
+    defer allocator.free(rendered_numbers);
+    try std.testing.expectEqualSlices(u8, "{\"kind\":123,\"roles\":[1,123]}", rendered_numbers);
 }
 
 test "json parse ignores null fields" {
