@@ -539,7 +539,53 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
                 else => try std.json.Stringify.value(self.value, .{}, writer),
             }
         }
+
+        pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Self {
+            var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+            defer parsed.deinit();
+            return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, parsed.value) };
+        }
     };
+}
+
+fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptime scalar: anytype, value: std.json.Value) !T {
+    return switch (scalar) {
+        .double => switch (value) {
+            .float => |v| @floatCast(v),
+            .integer => |v| @floatFromInt(v),
+            else => error.TypeMismatch,
+        },
+        .float => switch (value) {
+            .float => |v| @floatCast(v),
+            .integer => |v| @floatFromInt(v),
+            else => error.TypeMismatch,
+        },
+        .int64, .uint64, .int32, .uint32 => switch (value) {
+            .integer => |v| @intCast(v),
+            .string => |v| try std.fmt.parseInt(T, v, 10),
+            else => error.TypeMismatch,
+        },
+        .bool => switch (value) {
+            .bool => |v| v,
+            else => error.TypeMismatch,
+        },
+        .string => switch (value) {
+            .string => |v| try allocator.dupe(u8, v),
+            else => error.TypeMismatch,
+        },
+        .bytes => switch (value) {
+            .string => |v| try decodeBase64ForWrapper(allocator, v),
+            else => error.TypeMismatch,
+        },
+    };
+}
+
+fn decodeBase64ForWrapper(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+    const size = try std.base64.standard.Decoder.calcSizeForSlice(value);
+    const out = try allocator.alloc(u8, size);
+    errdefer allocator.free(out);
+    try std.base64.standard.Decoder.decode(out, value);
+    return out;
 }
 
 fn defaultWrapperValue(comptime T: type) T {
@@ -584,4 +630,16 @@ test "wrapper wire and json helpers" {
     const bytes_json = try bytes_value.jsonStringifyAlloc(allocator);
     defer allocator.free(bytes_json);
     try std.testing.expectEqualSlices(u8, "\"aGk=\"", bytes_json);
+}
+
+test "wrapper json parse helpers" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectEqual(@as(i64, 9007199254740993), (try Int64Value.jsonParse(allocator, "\"9007199254740993\"")).value);
+    try std.testing.expectEqual(true, (try BoolValue.jsonParse(allocator, "true")).value);
+    const parsed_string = try StringValue.jsonParse(allocator, "\"zig\"");
+    defer allocator.free(parsed_string.value);
+    try std.testing.expectEqualSlices(u8, "zig", parsed_string.value);
+    const bytes = try BytesValue.jsonParse(allocator, "\"aGk=\"");
+    defer allocator.free(bytes.value);
+    try std.testing.expectEqualSlices(u8, "hi", bytes.value);
 }
