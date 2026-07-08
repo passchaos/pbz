@@ -634,7 +634,11 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
         return message;
     }
     if (typeNameEquals(name, "google.protobuf.Empty")) {
-        if (json_value != .object) return error.TypeMismatch;
+        const object = switch (json_value) {
+            .object => |object| object,
+            else => return error.TypeMismatch,
+        };
+        if (object.count() != 0) return error.UnknownField;
         return try emptyKnownMessage(allocator, descriptor);
     }
     if (typeNameEquals(name, "google.protobuf.Any")) {
@@ -1408,6 +1412,7 @@ test "json maps Empty message as empty object" {
     var parsed = try parseAlloc(allocator, &file, holder_desc, rendered, .{});
     defer parsed.deinit();
     try std.testing.expect(parsed.get("empty") != null);
+    try std.testing.expectError(error.UnknownField, parseAlloc(allocator, &file, holder_desc, "{\"empty\":{\"x\":1}}", .{}));
 }
 
 test "json parses Any message with type and base64 value" {

@@ -478,6 +478,17 @@ pub const Empty = struct {
     pub fn jsonStringify(writer: *std.Io.Writer) !void {
         try writer.writeAll("{}");
     }
+
+    pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Empty {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+        defer parsed.deinit();
+        const object = switch (parsed.value) {
+            .object => |object| object,
+            else => return error.TypeMismatch,
+        };
+        if (object.count() != 0) return error.UnknownField;
+        return .{};
+    }
 };
 
 test "empty wire and json helper" {
@@ -490,6 +501,8 @@ test "empty wire and json helper" {
     defer out.deinit();
     try Empty.jsonStringify(&out.writer);
     try std.testing.expectEqualSlices(u8, "{}", out.written());
+    _ = try Empty.jsonParse(allocator, "{}");
+    try std.testing.expectError(error.UnknownField, Empty.jsonParse(allocator, "{\"x\":1}"));
 }
 
 pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, uint64, int32, uint32, bool, string, bytes }) type {
