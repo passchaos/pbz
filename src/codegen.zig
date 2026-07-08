@@ -1051,6 +1051,19 @@ fn writeJsonParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn jsonParseInitialized(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var self = try @This().jsonParse(allocator, text);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.validateRequired();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !void {\n");
     if (!messageJsonParseUsesAllocator(message)) {
         try indent(writer, depth + 1);
@@ -2044,6 +2057,9 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{})") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.jsonFillFromValue(allocator, arena.allocator(), parsed)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_json_arena\" = arena") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitialized(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().jsonParse(allocator, text);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequired();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"id\" = try @This().jsonInt(i32, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
