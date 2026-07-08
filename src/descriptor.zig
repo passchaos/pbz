@@ -847,6 +847,12 @@ fn decodeServiceDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
             else => try reader.skipValue(tag),
         }
     }
+    if (service.name.len == 0) return error.InvalidFieldType;
+    for (service.methods.items, 0..) |method, i| {
+        for (service.methods.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, method.name, other.name)) return error.InvalidFieldType;
+        }
+    }
     return service;
 }
 
@@ -864,6 +870,7 @@ fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error
             else => try reader.skipValue(tag),
         }
     }
+    if (method.name.len == 0 or method.input_type.len == 0 or method.output_type.len == 0) return error.InvalidFieldType;
     return method;
 }
 
@@ -1114,6 +1121,51 @@ test "descriptor decodes encoded FileDescriptorProto back to schema" {
     try std.testing.expect(bag.findField("counts").?.kind == .map);
     try std.testing.expect(bag.findField("kind").?.kind == .enumeration);
     try std.testing.expectEqual(@as(usize, 1), decoded.services.items.len);
+}
+
+test "descriptor rejects invalid service and method descriptors" {
+    const allocator = std.testing.allocator;
+    {
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-service.proto");
+        try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var method = wire.Writer.init(allocator);
+        defer method.deinit();
+        try method.writeString(1, "Get");
+        try method.writeString(3, ".demo.Res");
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        try service.writeString(1, "Svc");
+        try service.writeMessage(2, method.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-method.proto");
+        try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var method = wire.Writer.init(allocator);
+        defer method.deinit();
+        try method.writeString(1, "Get");
+        try method.writeString(2, ".demo.Req");
+        try method.writeString(3, ".demo.Res");
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        try service.writeString(1, "Svc");
+        try service.writeMessage(2, method.slice());
+        try service.writeMessage(2, method.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-method.proto");
+        try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor decodes scalar default values with typed option values" {
