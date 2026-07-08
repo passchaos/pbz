@@ -540,6 +540,10 @@ fn writeEncodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
             try writer.writeAll(") ");
+        } else {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" != 0) ");
         }
         try writer.print("try w.writeInt32({d}, self.", .{field.number});
         try writeQuotedIdent(field.name, writer);
@@ -608,17 +612,15 @@ fn writeScalarWriteCall(number: u29, scalar: schema.ScalarType, prefix: []const 
 }
 
 fn shouldSkipDefault(scalar: schema.ScalarType) bool {
-    return switch (scalar) {
-        .string, .bytes, .bool => true,
-        else => false,
-    };
+    _ = scalar;
+    return true;
 }
 
 fn defaultSkipCondition(scalar: schema.ScalarType) []const u8 {
     return switch (scalar) {
         .string, .bytes => ".len != 0) ",
         .bool => ") ",
-        else => "",
+        else => " != 0) ",
     };
 }
 
@@ -1077,4 +1079,20 @@ test "codegen maps oneof to tagged union" {
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (self.@\"pick\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"name\" => |value| try w.writeString(1, value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => self.@\"pick\" = .{ .@\"name\" = try r.readBytes() }") != null);
+}
+
+test "codegen skips proto3 implicit default scalar and enum values" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message M { int32 id = 1; bool active = 2; Kind kind = 3; optional int32 opt = 4; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"id\" != 0) try w.writeInt32(1, self.@\"id\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"active\") try w.writeBool(2, self.@\"active\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"kind\" != 0) try w.writeInt32(3, self.@\"kind\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_opt\") try w.writeInt32(4, self.@\"opt\")") != null);
 }
