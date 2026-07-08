@@ -685,7 +685,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         switch (tag.number) {
             1 => name = try reader.readBytes(),
             2 => extendee = try reader.readBytes(),
-            3 => number = @intCast(try reader.readInt32()),
+            3 => number = try fieldNumberFromDescriptor(try reader.readInt32()),
             4 => cardinality = try labelFromNumber(try reader.readInt32()),
             5 => field_type = try reader.readInt32(),
             6 => type_name = try reader.readBytes(),
@@ -718,6 +718,12 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     };
     field_options = .empty;
     return field;
+}
+
+fn fieldNumberFromDescriptor(value: i32) wire.Error!wire.FieldNumber {
+    if (value <= 0 or value > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldNumber;
+    if (value >= 19000 and value <= 19999) return error.InvalidFieldNumber;
+    return @intCast(value);
 }
 
 fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) schema.OptionValue {
@@ -1211,6 +1217,29 @@ test "descriptor rejects invalid field labels" {
     try file.writeString(1, "bad-label.proto");
     try file.writeMessage(4, message.slice());
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+}
+
+test "descriptor rejects invalid field numbers" {
+    const allocator = std.testing.allocator;
+    inline for (.{ 0, -1, 19000 }) |bad_number| {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad");
+        try field.writeInt32(3, bad_number);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-number.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldNumber, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor decoded schema owns descriptor bytes" {
