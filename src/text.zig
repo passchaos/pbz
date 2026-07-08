@@ -313,9 +313,13 @@ const TextParser = struct {
                     return err;
                 };
                 self.consumeSeparator();
-            } else if (self.consume('{') or self.consume('<')) {
+            } else if (self.peek() == '{' or self.peek() == '<') {
+                const close = if (self.consume('{')) @as(u8, '}') else blk: {
+                    try self.expect('<');
+                    break :blk '>';
+                };
                 if (field.kind == .map) {
-                    var value = try self.parseMapEntry(file, message.descriptor, field.kind.map);
+                    var value = try self.parseMapEntry(file, message.descriptor, field.kind.map, close);
                     message.add(field, value) catch |err| {
                         dynamic.deinitValue(&value, self.allocator);
                         return err;
@@ -333,7 +337,7 @@ const TextParser = struct {
                         nested.deinit();
                         self.allocator.destroy(nested);
                     }
-                    try self.parseMessage(file, nested, '}');
+                    try self.parseMessage(file, nested, close);
                     try message.add(field, if (field.kind == .group) .{ .group = nested } else .{ .message = nested });
                     self.consumeSeparator();
                 }
@@ -341,7 +345,7 @@ const TextParser = struct {
         }
     }
 
-    fn parseMapEntry(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, map_type: schema.MapType) !dynamic.Value {
+    fn parseMapEntry(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, map_type: schema.MapType, end: u8) !dynamic.Value {
         var key: ?dynamic.Value = null;
         var value: ?dynamic.Value = null;
         errdefer {
@@ -350,7 +354,8 @@ const TextParser = struct {
         }
         while (true) {
             self.skipSpace();
-            if (self.consume('}')) break;
+            if (self.consume(end)) break;
+            if (self.eof()) return error.UnexpectedEof;
             const name = try self.readIdent();
             self.skipSpace();
             try self.expect(':');
@@ -543,6 +548,25 @@ test "text format parser accepts comma and semicolon separators" {
     defer msg.deinit();
     try std.testing.expectEqual(@as(i32, 1), msg.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), msg.get("b").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
+}
+
+test "text format parser accepts angle bracket message and map delimiters" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Child { string label = 1; }
+        \\message M { Child child = 1; map<string, int32> counts = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\child < label: "kid" >
+        \\counts < key: "x" value: 3 >
+    );
+    defer msg.deinit();
+    try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
 }
 
