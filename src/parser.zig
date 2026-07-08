@@ -433,7 +433,9 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
-                try message.options.append(self.allocator, try self.parseOptionAssignmentStatement());
+                const option = try self.parseOptionAssignmentStatement();
+                try message.options.append(self.allocator, option);
+                self.applyFeatureOption(&message.features, option);
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(message.messages.items.len);
                 const path = try self.childPath(source_path, 3, index);
@@ -490,7 +492,9 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
-                try enumeration.options.append(self.allocator, try self.parseOptionAssignmentStatement());
+                const option = try self.parseOptionAssignmentStatement();
+                try enumeration.options.append(self.allocator, option);
+                self.applyFeatureOption(&enumeration.features, option);
             } else if (self.matchIdent("reserved")) {
                 const reserved_start = self.previous_end;
                 const range_start_index = enumeration.reserved_ranges.items.len;
@@ -510,7 +514,10 @@ pub const Parser = struct {
                 errdefer schema.deinitOptions(&options, self.allocator);
                 if (self.consumeSymbol('[')) try self.parseOptionList(&options, ']');
                 try self.expectSymbol(';');
-                try enumeration.values.append(self.allocator, .{ .name = name, .number = number, .options = options });
+                var enum_value = schema.EnumValueDescriptor{ .name = name, .number = number, .options = options };
+                try self.applyEnumValueOptions(&enum_value);
+                try enumeration.values.append(self.allocator, enum_value);
+                options = .empty;
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, value_start, self.previousEnd());
@@ -528,7 +535,9 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
-                try service.options.append(self.allocator, try self.parseOptionAssignmentStatement());
+                const option = try self.parseOptionAssignmentStatement();
+                try service.options.append(self.allocator, option);
+                self.applyFeatureOption(&service.features, option);
             } else if (self.matchIdent("rpc")) {
                 const method_start = self.previous_end;
                 const index: i32 = @intCast(service.methods.items.len);
@@ -559,7 +568,11 @@ pub const Parser = struct {
         if (self.consumeSymbol('{')) {
             while (!self.consumeSymbol('}')) {
                 if (self.current.tag == .eof) return error.UnexpectedEof;
-                if (self.matchIdent("option")) try method.options.append(self.allocator, try self.parseOptionAssignmentStatement()) else if (self.consumeSymbol(';')) {} else return error.UnexpectedToken;
+                if (self.matchIdent("option")) {
+                    const option = try self.parseOptionAssignmentStatement();
+                    try method.options.append(self.allocator, option);
+                    self.applyFeatureOption(&method.features, option);
+                } else if (self.consumeSymbol(';')) {} else return error.UnexpectedToken;
             }
             _ = self.consumeSymbol(';');
         } else try self.expectSymbol(';');
@@ -573,7 +586,10 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
-                try message.oneofs.items[message.oneofs.items.len - 1].options.append(self.allocator, try self.parseOptionAssignmentStatement());
+                const option = try self.parseOptionAssignmentStatement();
+                const oneof = &message.oneofs.items[message.oneofs.items.len - 1];
+                try oneof.options.append(self.allocator, option);
+                self.applyFeatureOption(&oneof.features, option);
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -719,6 +735,7 @@ pub const Parser = struct {
                 };
                 field.feature_support = try self.parseFeatureSupportAggregate(aggregate);
             }
+            self.applyFeatureOption(&field.features, option);
             if (std.mem.eql(u8, leaf, "repeated_field_encoding")) {
                 if (schema.optionAsIdentifier(option.value)) |ident| {
                     if (std.ascii.eqlIgnoreCase(ident, "PACKED")) field.packed_override = true;
@@ -726,6 +743,27 @@ pub const Parser = struct {
                 }
             }
         }
+    }
+
+    fn applyEnumValueOptions(self: *Parser, enum_value: *schema.EnumValueDescriptor) Error!void {
+        for (enum_value.options.items) |option| {
+            const leaf = optionLeaf(option.name);
+            if (std.mem.eql(u8, leaf, "feature_support")) {
+                const aggregate = switch (option.value) {
+                    .aggregate => |text| text,
+                    else => return error.InvalidFieldType,
+                };
+                enum_value.feature_support = try self.parseFeatureSupportAggregate(aggregate);
+            }
+            self.applyFeatureOption(&enum_value.features, option);
+        }
+    }
+
+    fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption) void {
+        if (!std.mem.startsWith(u8, std.mem.trim(u8, option.name, " \t\r\n"), "features.")) return;
+        var features = target.* orelse schema.FeatureSet.defaults(self.file.syntax);
+        features.applyOption(option.name, option.value);
+        target.* = features;
     }
 
     fn parseOptionAssignmentStatement(self: *Parser) Error!schema.FieldOption {
@@ -2269,6 +2307,52 @@ test "parser parses field edition_defaults and feature_support aggregates" {
     try std.testing.expectEqualStrings("use new presence", field.feature_support.?.deprecation_warning);
     try std.testing.expectEqual(schema.Edition.edition_2026, field.feature_support.?.edition_removed.?);
     try std.testing.expectEqualStrings("removed", field.feature_support.?.removal_error);
+}
+
+test "parser applies feature options across declaration scopes" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.json_format = LEGACY_BEST_EFFORT;
+        \\message M {
+        \\  option features.message_encoding = DELIMITED;
+        \\  repeated int32 values = 1 [features.repeated_field_encoding = EXPANDED];
+        \\  oneof pick {
+        \\    option features.field_presence = EXPLICIT;
+        \\    string name = 2;
+        \\  }
+        \\}
+        \\enum E {
+        \\  option features.enum_type = CLOSED;
+        \\  A = 0 [
+        \\    features.enforce_naming_style = STYLE2026,
+        \\    feature_support = { edition_removed: EDITION_2026 removal_error: "removed enum value" }
+        \\  ];
+        \\}
+        \\service S {
+        \\  option features.enforce_naming_style = STYLE2024;
+        \\  rpc Do (M) returns (M) {
+        \\    option features.enforce_proto_limits = PROTO_LIMITS2026;
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+
+    try std.testing.expectEqual(schema.FeatureSet.JsonFormat.legacy_best_effort, file.features.json_format);
+    const message = file.findMessage("M").?;
+    try std.testing.expectEqual(schema.FeatureSet.MessageEncoding.delimited, message.features.?.message_encoding);
+    const field = message.findField("values").?;
+    try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, field.features.?.repeated_field_encoding);
+    try std.testing.expect(!field.resolvedPacked(&file));
+    try std.testing.expectEqual(schema.FeatureSet.FieldPresence.explicit, message.oneofs.items[0].features.?.field_presence);
+    const enumeration = file.findEnum("E").?;
+    try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, enumeration.features.?.enum_type);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2026, enumeration.values.items[0].features.?.enforce_naming_style);
+    try std.testing.expectEqual(schema.Edition.edition_2026, enumeration.values.items[0].feature_support.?.edition_removed.?);
+    try std.testing.expectEqualStrings("removed enum value", enumeration.values.items[0].feature_support.?.removal_error);
+    const service = file.services.items[0];
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, service.methods.items[0].features.?.enforce_proto_limits);
 }
 
 test "parser rejects invalid field edition_defaults and feature_support aggregates" {

@@ -175,6 +175,7 @@ pub const FieldDescriptor = struct {
     proto3_optional: bool = false,
     packed_override: ?bool = null,
     edition_defaults: std.ArrayList(FieldEditionDefault) = .empty,
+    features: ?FeatureSet = null,
     feature_support: ?FeatureSupport = null,
     options: OptionList = .empty,
 
@@ -196,6 +197,7 @@ pub const FieldDescriptor = struct {
     pub fn resolvedPacked(self: FieldDescriptor, file: *const FileDescriptor) bool {
         if (!self.isPackable()) return false;
         if (self.packed_override) |is_packed| return is_packed;
+        if (self.features) |features| return features.repeated_field_encoding == FeatureSet.RepeatedFieldEncoding.packed_encoding;
         return switch (file.syntax) {
             .proto2 => false,
             .proto3 => true,
@@ -219,6 +221,7 @@ pub const FeatureSupport = struct {
 
 pub const OneofDescriptor = struct {
     name: []const u8,
+    features: ?FeatureSet = null,
     options: OptionList = .empty,
 
     pub fn deinit(self: *OneofDescriptor, allocator: std.mem.Allocator) void {
@@ -321,6 +324,8 @@ pub const GeneratedCodeInfo = struct {
 pub const EnumValueDescriptor = struct {
     name: []const u8,
     number: i32,
+    features: ?FeatureSet = null,
+    feature_support: ?FeatureSupport = null,
     options: OptionList = .empty,
 
     pub fn deinit(self: *EnumValueDescriptor, allocator: std.mem.Allocator) void {
@@ -332,6 +337,7 @@ pub const EnumValueDescriptor = struct {
 pub const EnumDescriptor = struct {
     name: []const u8,
     values: std.ArrayList(EnumValueDescriptor) = .empty,
+    features: ?FeatureSet = null,
     options: OptionList = .empty,
     reserved_ranges: std.ArrayList(ReservedRange) = .empty,
     reserved_names: std.ArrayList([]const u8) = .empty,
@@ -363,6 +369,7 @@ pub const MessageDescriptor = struct {
     extension_ranges: std.ArrayList(ExtensionRange) = .empty,
     reserved_ranges: std.ArrayList(ReservedRange) = .empty,
     reserved_names: std.ArrayList([]const u8) = .empty,
+    features: ?FeatureSet = null,
     options: OptionList = .empty,
 
     pub fn deinit(self: *MessageDescriptor, allocator: std.mem.Allocator) void {
@@ -443,6 +450,7 @@ pub const MessageDescriptor = struct {
 pub const ServiceDescriptor = struct {
     name: []const u8,
     methods: std.ArrayList(MethodDescriptor) = .empty,
+    features: ?FeatureSet = null,
     options: OptionList = .empty,
 
     pub fn deinit(self: *ServiceDescriptor, allocator: std.mem.Allocator) void {
@@ -459,6 +467,7 @@ pub const MethodDescriptor = struct {
     output_type: []const u8,
     client_streaming: bool = false,
     server_streaming: bool = false,
+    features: ?FeatureSet = null,
     options: OptionList = .empty,
 
     pub fn deinit(self: *MethodDescriptor, allocator: std.mem.Allocator) void {
@@ -479,11 +488,21 @@ pub const FeatureSet = struct {
     enum_type: EnumType = .open,
     repeated_field_encoding: RepeatedFieldEncoding = .packed_encoding,
     utf8_validation: Utf8Validation = .verify,
+    message_encoding: MessageEncoding = .length_prefixed,
+    json_format: JsonFormat = .allow,
+    enforce_naming_style: EnforceNamingStyle = .style_legacy,
+    default_symbol_visibility: DefaultSymbolVisibility = .export_all,
+    enforce_proto_limits: EnforceProtoLimits = .legacy_no_explicit_limits,
 
     pub const FieldPresence = enum { explicit, implicit, legacy_required };
     pub const EnumType = enum { open, closed };
     pub const RepeatedFieldEncoding = enum { packed_encoding, expanded };
     pub const Utf8Validation = enum { none, verify };
+    pub const MessageEncoding = enum { length_prefixed, delimited };
+    pub const JsonFormat = enum { allow, legacy_best_effort };
+    pub const EnforceNamingStyle = enum { style2024, style_legacy, style2026 };
+    pub const DefaultSymbolVisibility = enum { export_all, export_top_level, local_all, strict };
+    pub const EnforceProtoLimits = enum { legacy_no_explicit_limits, proto_limits2026 };
 
     pub fn defaults(syntax: Syntax) FeatureSet {
         return switch (syntax) {
@@ -492,20 +511,35 @@ pub const FeatureSet = struct {
                 .enum_type = .closed,
                 .repeated_field_encoding = .expanded,
                 .utf8_validation = .none,
+                .json_format = .legacy_best_effort,
             },
             .proto3 => .{
                 .field_presence = .implicit,
                 .enum_type = .open,
                 .repeated_field_encoding = .packed_encoding,
                 .utf8_validation = .verify,
+                .json_format = .allow,
             },
             .editions => .{
                 .field_presence = .explicit,
                 .enum_type = .open,
                 .repeated_field_encoding = .packed_encoding,
                 .utf8_validation = .verify,
+                .json_format = .allow,
             },
         };
+    }
+
+    pub fn eql(self: FeatureSet, other: FeatureSet) bool {
+        return self.field_presence == other.field_presence and
+            self.enum_type == other.enum_type and
+            self.repeated_field_encoding == other.repeated_field_encoding and
+            self.utf8_validation == other.utf8_validation and
+            self.message_encoding == other.message_encoding and
+            self.json_format == other.json_format and
+            self.enforce_naming_style == other.enforce_naming_style and
+            self.default_symbol_visibility == other.default_symbol_visibility and
+            self.enforce_proto_limits == other.enforce_proto_limits;
     }
 
     pub fn applyOption(self: *FeatureSet, option_name: []const u8, value: OptionValue) void {
@@ -529,6 +563,24 @@ pub const FeatureSet = struct {
         } else if (std.mem.eql(u8, leaf, "utf8_validation")) {
             if (std.ascii.eqlIgnoreCase(ident, "NONE")) self.utf8_validation = .none;
             if (std.ascii.eqlIgnoreCase(ident, "VERIFY")) self.utf8_validation = .verify;
+        } else if (std.mem.eql(u8, leaf, "message_encoding")) {
+            if (std.ascii.eqlIgnoreCase(ident, "LENGTH_PREFIXED")) self.message_encoding = .length_prefixed;
+            if (std.ascii.eqlIgnoreCase(ident, "DELIMITED")) self.message_encoding = .delimited;
+        } else if (std.mem.eql(u8, leaf, "json_format")) {
+            if (std.ascii.eqlIgnoreCase(ident, "ALLOW")) self.json_format = .allow;
+            if (std.ascii.eqlIgnoreCase(ident, "LEGACY_BEST_EFFORT")) self.json_format = .legacy_best_effort;
+        } else if (std.mem.eql(u8, leaf, "enforce_naming_style")) {
+            if (std.ascii.eqlIgnoreCase(ident, "STYLE2024")) self.enforce_naming_style = .style2024;
+            if (std.ascii.eqlIgnoreCase(ident, "STYLE_LEGACY")) self.enforce_naming_style = .style_legacy;
+            if (std.ascii.eqlIgnoreCase(ident, "STYLE2026")) self.enforce_naming_style = .style2026;
+        } else if (std.mem.eql(u8, leaf, "default_symbol_visibility")) {
+            if (std.ascii.eqlIgnoreCase(ident, "EXPORT_ALL")) self.default_symbol_visibility = .export_all;
+            if (std.ascii.eqlIgnoreCase(ident, "EXPORT_TOP_LEVEL")) self.default_symbol_visibility = .export_top_level;
+            if (std.ascii.eqlIgnoreCase(ident, "LOCAL_ALL")) self.default_symbol_visibility = .local_all;
+            if (std.ascii.eqlIgnoreCase(ident, "STRICT")) self.default_symbol_visibility = .strict;
+        } else if (std.mem.eql(u8, leaf, "enforce_proto_limits")) {
+            if (std.ascii.eqlIgnoreCase(ident, "LEGACY_NO_EXPLICIT_LIMITS")) self.enforce_proto_limits = .legacy_no_explicit_limits;
+            if (std.ascii.eqlIgnoreCase(ident, "PROTO_LIMITS2026")) self.enforce_proto_limits = .proto_limits2026;
         }
     }
 };

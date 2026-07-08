@@ -28,6 +28,7 @@ pub const MessageDescriptor = schema.MessageDescriptor;
 pub const FieldDescriptor = schema.FieldDescriptor;
 pub const FieldEditionDefault = schema.FieldEditionDefault;
 pub const FeatureSupport = schema.FeatureSupport;
+pub const FeatureSet = schema.FeatureSet;
 pub const SourceCodeInfo = schema.SourceCodeInfo;
 pub const GeneratedCodeInfo = schema.GeneratedCodeInfo;
 pub const ExtensionDeclaration = schema.ExtensionDeclaration;

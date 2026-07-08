@@ -13,8 +13,8 @@ validated feature set.
   - tag parsing, unknown-field skipping, recursion guard for groups
 - Schema model
   - files, messages, fields, oneofs, enums, services, imports, options
-  - proto2/proto3/editions syntax flags and feature defaults
-  - proto2 required/optional/repeated cardinality plus proto3/editions required rejection, enum defaults, packed override handling, and structured FieldOptions edition default / feature support metadata
+  - proto2/proto3/editions syntax flags and expanded FeatureSet defaults
+  - proto2 required/optional/repeated cardinality plus proto3/editions required rejection, enum defaults, packed override handling, structured FeatureSet options, and FieldOptions edition default / feature support metadata
 - Multi-file registry and loader
   - package/import-aware lookup for messages/enums/extensions across FileDescriptor values with duplicate type/extension conflict detection and cross-file extension declaration validation
   - in-memory and filesystem source tree loaders that recursively parse imports
@@ -22,7 +22,7 @@ validated feature set.
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, and enum validation including allow_alias
   - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape
-  - extension range options for `declaration`, `verification`, and range-local `features.*`, plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation
+  - extension range options for `declaration`, `verification`, and range-local `features.*`; declaration-scope `features.*` across file/message/field/oneof/enum/enum-value/service/method; plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
@@ -35,7 +35,7 @@ validated feature set.
   - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries, including imported enums resolved through Registry
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
-  - descriptor encode/decode for `FieldOptions.edition_defaults` and `FieldOptions.feature_support`, preserving protobuf edition feature metadata as structured schema fields
+  - descriptor encode/decode for `FeatureSet` on file/message/field/oneof/enum/enum-value/service/method/extension-range options plus `FieldOptions.edition_defaults` and `FieldOptions.feature_support`, preserving protobuf edition feature metadata as structured schema fields
   - nested message and group round-trips, including imported message and enum decode through Registry
   - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
 - JSON support
