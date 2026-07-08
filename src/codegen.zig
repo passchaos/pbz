@@ -116,7 +116,7 @@ fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
     var has_repeated = false;
     for (message.fields.items) |*field| {
-        if (field.cardinality == .repeated and field.kind != .map) {
+        if (field.cardinality == .repeated or field.kind == .map) {
             has_repeated = true;
             try indent(writer, depth + 1);
             try writer.writeAll("allocator.free(self.");
@@ -161,7 +161,7 @@ fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
 }
 
 fn writeRepeatedListDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.cardinality != .repeated or field.kind == .map) return;
+    if (field.cardinality != .repeated and field.kind != .map) return;
     try indent(writer, depth);
     try writer.writeAll("var ");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
@@ -175,7 +175,7 @@ fn writeRepeatedListDecl(field: *const schema.FieldDescriptor, writer: *std.Io.W
 }
 
 fn writeRepeatedAssign(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.cardinality != .repeated or field.kind == .map) return;
+    if (field.cardinality != .repeated and field.kind != .map) return;
     try indent(writer, depth);
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
@@ -189,6 +189,7 @@ fn writeRepeatedElementType(field: schema.FieldDescriptor, writer: *std.Io.Write
         .scalar => |scalar| try writer.writeAll(scalarZigType(scalar)),
         .enumeration => try writer.writeAll("i32"),
         .message => try writer.writeAll("[]const u8"),
+        .map => try writeQuotedIdentWithSuffix(field.name, "Entry", writer),
         else => try writer.writeAll("void"),
     }
 }
@@ -198,6 +199,7 @@ fn writeDecodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer
         .scalar => |scalar| try writeDecodeScalarField(field, scalar, writer, depth),
         .enumeration => try writeDecodeEnumField(field, writer, depth),
         .message => try writeDecodeMessageField(field, writer, depth),
+        .map => try writeDecodeMapField(field, writer, depth),
         else => return,
     }
 }
@@ -238,6 +240,53 @@ fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = try r.readBytes(),\n");
+    }
+}
+
+fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("var entry = ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll("{};\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var entry_reader = pbz.Reader.init(try r.readBytes());\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("while (try entry_reader.nextTag()) |entry_tag| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("switch (entry_tag.number) {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("1 => entry.key = ");
+    try writeEntryReadExpr(.{ .scalar = map_type.key }, "entry_reader", writer);
+    try writer.writeAll(",\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("2 => entry.value = ");
+    try writeEntryReadExpr(map_type.value.*, "entry_reader", writer);
+    try writer.writeAll(",\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("else => try entry_reader.skipValue(entry_tag),\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".append(allocator, entry);\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+}
+
+fn writeEntryReadExpr(kind: schema.FieldKind, reader_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writer.print("try {s}.{s}()", .{ reader_name, scalarReaderName(scalar) }),
+        .enumeration => try writer.print("try {s}.readInt32()", .{reader_name}),
+        .message => try writer.print("try {s}.readBytes()", .{reader_name}),
+        else => try writer.writeAll("@compileError(\"unsupported map decode kind\")"),
     }
 }
 
@@ -701,4 +750,21 @@ test "codegen decodes repeated scalar enum and message payload fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"kinds_list\".append(allocator, try r.readInt32())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"children_list\".append(allocator, try r.readBytes())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ids\" = try @\"ids_list\".toOwnedSlice(allocator)") != null);
+}
+
+test "codegen decodes map fields into entry slices" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { map<string, int32> counts = 1; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var @\"counts_list\": std.ArrayList(@\"countsEntry\") = .empty") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var entry = @\"countsEntry\"{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => entry.key = try entry_reader.readBytes()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"counts_list\".append(allocator, entry)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = try @\"counts_list\".toOwnedSlice(allocator)") != null);
 }
