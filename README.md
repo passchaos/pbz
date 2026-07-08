@@ -34,8 +34,8 @@ validated feature set.
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, and wrapper wire/JSON helpers plus dynamic JSON mapping plus dynamic JSON mapping
-- Protoc plugin helpers
-  - basic CodeGeneratorRequest decode and CodeGeneratorResponse encode
+- Protoc plugin and codegen helpers
+  - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig skeleton generation
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, and nested messages
 
@@ -152,7 +152,8 @@ defer parsed_text_msg.deinit();
 ## Protoc plugin helpers
 
 `pbz.CodeGeneratorRequest` and `pbz.CodeGeneratorResponse` provide the basic
-wire types needed to build protoc-style generators.
+wire types needed to build protoc-style generators; `pbz.generateZigFile` emits
+a starter Zig skeleton for parsed descriptors.
 
 ## Descriptor encoding
 
