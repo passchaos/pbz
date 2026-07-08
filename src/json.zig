@@ -400,6 +400,10 @@ fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, w
         try any.jsonStringify(writer);
         return true;
     }
+    if (typeNameEquals(name, "google.protobuf.FieldMask")) {
+        try writeFieldMaskMessage(message, writer);
+        return true;
+    }
     if (wrapperKind(name)) |kind| {
         if (message.get("value")) |field| {
             if (field.values.items.len != 0) try writeWrapperValue(kind, field.values.items[field.values.items.len - 1], writer) else try writer.writeAll("null");
@@ -445,6 +449,16 @@ fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.Mes
         try addKnownTimeFields(message, duration.seconds, duration.nanos);
         return message;
     }
+    if (typeNameEquals(name, "google.protobuf.FieldMask")) {
+        const paths = try wkt.FieldMask.jsonParse(allocator, text);
+        defer {
+            for (paths) |path| allocator.free(path);
+            allocator.free(paths);
+        }
+        const field = descriptor.findField("paths") orelse return error.TypeMismatch;
+        for (paths) |path| try message.add(field, .{ .string = try allocator.dupe(u8, path) });
+        return message;
+    }
     message.deinit();
     allocator.destroy(message);
     return null;
@@ -472,6 +486,18 @@ fn wrapperKind(name: []const u8) ?schema.FieldKind {
 fn addKnownTimeFields(message: *dynamic.DynamicMessage, seconds: i64, nanos: i32) !void {
     if (seconds != 0) try message.add(message.descriptor.findField("seconds") orelse return error.TypeMismatch, .{ .int64 = seconds });
     if (nanos != 0) try message.add(message.descriptor.findField("nanos") orelse return error.TypeMismatch, .{ .int32 = nanos });
+}
+
+fn writeFieldMaskMessage(message: *const dynamic.DynamicMessage, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("\"");
+    if (message.get("paths")) |field| {
+        for (field.values.items, 0..) |value, index| {
+            if (value != .string) return error.TypeMismatch;
+            if (index != 0) try writer.writeAll(",");
+            try writeLowerCamel(value.string, writer);
+        }
+    }
+    try writer.writeAll("\"");
 }
 
 fn readStringField(message: *const dynamic.DynamicMessage, name: []const u8) []const u8 {
@@ -953,4 +979,36 @@ test "json maps Any message with type and base64 value" {
     const rendered = try stringifyAlloc(allocator, &file, &holder, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}}", rendered);
+}
+
+test "json maps FieldMask message as comma-separated string" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\message FieldMask { repeated string paths = 1; }
+        \\message Holder { .google.protobuf.FieldMask mask = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+    const mask_desc = file.findMessage("FieldMask").?;
+
+    var holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer holder.deinit();
+    const mask = try allocator.create(dynamic.DynamicMessage);
+    mask.* = dynamic.DynamicMessage.init(allocator, mask_desc);
+    try mask.add(mask_desc.findField("paths").?, .{ .string = try allocator.dupe(u8, "foo_bar") });
+    try mask.add(mask_desc.findField("paths").?, .{ .string = try allocator.dupe(u8, "baz.qux_value") });
+    try holder.add(holder_desc.findField("mask").?, .{ .message = mask });
+
+    const rendered = try stringifyAlloc(allocator, &file, &holder, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"mask\":\"fooBar,baz.quxValue\"}", rendered);
+
+    var parsed = try parseAlloc(allocator, &file, holder_desc, rendered, .{});
+    defer parsed.deinit();
+    const parsed_mask = parsed.get("mask").?.values.items[0].message;
+    try std.testing.expectEqualSlices(u8, "foo_bar", parsed_mask.get("paths").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, "baz.qux_value", parsed_mask.get("paths").?.values.items[1].string);
 }
