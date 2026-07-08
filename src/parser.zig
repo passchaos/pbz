@@ -687,9 +687,20 @@ pub const Parser = struct {
         if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
     }
 
-    fn validateExtensions(self: *Parser) ParseError!void {
+    fn validateExtensions(self: *Parser) Error!void {
         for (self.file.extensions.items) |*field| try self.validateExtensionField(field);
         for (self.file.messages.items) |*message| try self.validateMessageExtensions(message);
+        var extensions: std.ArrayList(*const schema.FieldDescriptor) = .empty;
+        defer extensions.deinit(self.allocator);
+        try self.collectExtensions(&extensions);
+        for (extensions.items, 0..) |field, i| {
+            for (extensions.items[i + 1 ..]) |other| {
+                const field_extendee = field.extendee orelse "";
+                const other_extendee = other.extendee orelse "";
+                if (!std.mem.eql(u8, field_extendee, other_extendee)) continue;
+                if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
+            }
+        }
     }
 
     fn validateMessageExtensions(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
@@ -697,7 +708,18 @@ pub const Parser = struct {
         for (message.messages.items) |*nested| try self.validateMessageExtensions(nested);
     }
 
+    fn collectExtensions(self: *Parser, output: *std.ArrayList(*const schema.FieldDescriptor)) std.mem.Allocator.Error!void {
+        for (self.file.extensions.items) |*field| try output.append(self.allocator, field);
+        for (self.file.messages.items) |*message| try collectMessageExtensions(self.allocator, message, output);
+    }
+
+    fn collectMessageExtensions(allocator: std.mem.Allocator, message: *schema.MessageDescriptor, output: *std.ArrayList(*const schema.FieldDescriptor)) std.mem.Allocator.Error!void {
+        for (message.extensions.items) |*field| try output.append(allocator, field);
+        for (message.messages.items) |*nested| try collectMessageExtensions(allocator, nested, output);
+    }
+
     fn validateExtensionField(self: *Parser, field: *const schema.FieldDescriptor) ParseError!void {
+        if (field.kind == .map) return error.InvalidFieldType;
         const extendee_name = field.extendee orelse return;
         if (self.file.findMessageDeep(extendee_name) == null and self.file.findEnumDeep(extendee_name) != null) return error.InvalidFieldType;
         const extendee = self.file.findMessageDeep(extendee_name) orelse return;
@@ -1367,6 +1389,27 @@ test "parser rejects extensions of non-message extendees in same file" {
         \\syntax = "proto2";
         \\enum Target { UNKNOWN = 0; }
         \\extend Target { optional int32 bad = 100; }
+    ));
+}
+
+test "parser rejects map and duplicate extension fields" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { map<string, int32> bad = 150; }
+    ));
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { optional int32 a = 150; }
+        \\extend Target { optional int32 b = 150; }
+    ));
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { optional int32 a = 150; }
+        \\message Scope { extend Target { optional string a = 151; } }
     ));
 }
 
