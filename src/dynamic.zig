@@ -241,6 +241,11 @@ pub const DynamicMessage = struct {
         try self.decodeStream(file, &reader, null);
     }
 
+    pub fn decodeInitialized(self: *DynamicMessage, file: *const schema.FileDescriptor, bytes: []const u8) (DecodeError || ValidationError)!void {
+        try self.decode(file, bytes);
+        try self.validateRequired();
+    }
+
     fn decodeStream(self: *DynamicMessage, file: *const schema.FileDescriptor, reader: *wire.Reader, end_group: ?wire.FieldNumber) DecodeError!void {
         while (try reader.nextTag()) |tag| {
             if (tag.wire_type == .end_group) {
@@ -1098,4 +1103,28 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try message.add(desc.findField("count").?, .{ .int32 = 7 });
     try std.testing.expect(message.has(desc.findField("count").?));
     try std.testing.expectEqual(@as(i32, 7), message.getOrDefault(desc.findField("count").?).int32);
+}
+
+test "dynamic decodeInitialized enforces proto2 required fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Required { required int32 id = 1; optional string name = 2; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Required").?;
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(2, "missing id");
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try std.testing.expectError(error.MissingRequiredField, message.decodeInitialized(&file, writer.slice()));
+
+    writer.clearRetainingCapacity();
+    try writer.writeInt32(1, 9);
+    try message.decodeInitialized(&file, writer.slice());
+    try std.testing.expectEqual(@as(i32, 9), message.get("id").?.values.items[0].int32);
 }
