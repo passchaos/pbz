@@ -101,6 +101,27 @@ pub const DynamicMessage = struct {
         return null;
     }
 
+    pub fn unknownCount(self: *const DynamicMessage) usize {
+        return self.unknown_fields.items.len;
+    }
+
+    pub fn unknownByNumber(self: *const DynamicMessage, number: wire.FieldNumber) []const UnknownField {
+        var first: ?usize = null;
+        var last: usize = 0;
+        for (self.unknown_fields.items, 0..) |field, index| {
+            if (field.number == number) {
+                if (first == null) first = index;
+                last = index + 1;
+            } else if (first != null) break;
+        }
+        return if (first) |start| self.unknown_fields.items[start..last] else &.{};
+    }
+
+    pub fn clearUnknownFields(self: *DynamicMessage) void {
+        for (self.unknown_fields.items) |*field| field.deinit(self.allocator);
+        self.unknown_fields.clearRetainingCapacity();
+    }
+
     pub fn add(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
         if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
@@ -604,6 +625,11 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
             for (message.fields.items) |*field| {
                 for (field.values.items) |item| try cloned.add(field.descriptor, try cloneValue(allocator, item));
             }
+            for (message.unknown_fields.items) |unknown| try cloned.unknown_fields.append(allocator, .{
+                .number = unknown.number,
+                .wire_type = unknown.wire_type,
+                .data = try allocator.dupe(u8, unknown.data),
+            });
             break :blk .{ .group = cloned };
         },
         .map_entry => |entry| blk: {
@@ -874,4 +900,41 @@ test "dynamic oneof keeps only the last selected field" {
     try std.testing.expect(decoded.get("name") == null);
     try std.testing.expectEqualStrings("id", decoded.whichOneof("pick").?.name);
     try std.testing.expectEqual(@as(i32, 7), decoded.get("id").?.values.items[0].int32);
+}
+
+test "dynamic unknown field API preserves queries and clears raw fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Known { int32 id = 1; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Known").?;
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeInt32(1, 5);
+    try writer.writeString(100, "extra");
+    try writer.writeUInt32(101, 7);
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try message.decode(&file, writer.slice());
+
+    try std.testing.expectEqual(@as(usize, 2), message.unknownCount());
+    const unknown_100 = message.unknownByNumber(100);
+    try std.testing.expectEqual(@as(usize, 1), unknown_100.len);
+    try std.testing.expectEqual(wire.WireType.length_delimited, unknown_100[0].wire_type);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa2, 0x06, 0x05, 'e', 'x', 't', 'r', 'a' }, unknown_100[0].data);
+
+    const encoded = try message.encoded(&file);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, writer.slice(), encoded);
+
+    message.clearUnknownFields();
+    try std.testing.expectEqual(@as(usize, 0), message.unknownCount());
+    const encoded_clean = try message.encoded(&file);
+    defer allocator.free(encoded_clean);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x05 }, encoded_clean);
 }
