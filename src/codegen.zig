@@ -40,10 +40,144 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
         try writer.print(" = {d};\n", .{field.number});
     }
     if (message.fields.items.len != 0) try writer.writeAll("\n");
+    for (message.fields.items) |*field| try writeFieldDecl(field, writer, depth + 1);
+    if (message.fields.items.len != 0) try writer.writeAll("\n");
+    try writeInit(writer, depth + 1);
+    try writer.writeAll("\n");
+    try writeEncode(message, writer, depth + 1);
+    try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(nested, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
+}
+
+fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writeQuotedIdent(field.name, writer);
+    try writer.print(": {s} = {s},\n", .{ fieldType(field.*), fieldDefault(field.*) });
+}
+
+fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn init() @This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return .{};\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer w.deinit();\n");
+    for (message.fields.items) |*field| try writeEncodeField(field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try w.toOwnedSlice();\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const scalar = switch (field.kind) {
+        .scalar => |scalar| scalar,
+        else => return,
+    };
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| ");
+        try writeScalarWriteCall(field.number, scalar, "item", writer);
+        try writer.writeAll(");\n");
+    } else {
+        try indent(writer, depth);
+        if (shouldSkipDefault(scalar)) {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(defaultSkipCondition(scalar));
+        }
+        try writeScalarWriteCall(field.number, scalar, "self.", writer);
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+    }
+}
+
+fn writeScalarWriteCall(number: u29, scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("try w.{s}({d}, {s}", .{ scalarWriterName(scalar), number, prefix });
+}
+
+fn shouldSkipDefault(scalar: schema.ScalarType) bool {
+    return switch (scalar) {
+        .string, .bytes, .bool => true,
+        else => false,
+    };
+}
+
+fn defaultSkipCondition(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .string, .bytes => ".len != 0) ",
+        .bool => ") ",
+        else => "",
+    };
+}
+
+fn scalarWriterName(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .double => "writeDouble",
+        .float => "writeFloat",
+        .int32 => "writeInt32",
+        .int64 => "writeInt64",
+        .uint32 => "writeUInt32",
+        .uint64 => "writeUInt64",
+        .sint32 => "writeSInt32",
+        .sint64 => "writeSInt64",
+        .fixed32 => "writeFixed32",
+        .fixed64 => "writeFixed64",
+        .sfixed32 => "writeSFixed32",
+        .sfixed64 => "writeSFixed64",
+        .bool => "writeBool",
+        .string => "writeString",
+        .bytes => "writeBytes",
+    };
+}
+
+fn fieldType(field: schema.FieldDescriptor) []const u8 {
+    const base = switch (field.kind) {
+        .scalar => |scalar| scalarZigType(scalar),
+        .enumeration => "i32",
+        else => "void",
+    };
+    return if (field.cardinality == .repeated) "[]const void" else base;
+}
+
+fn scalarZigType(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .double => "f64",
+        .float => "f32",
+        .int32, .sint32, .sfixed32 => "i32",
+        .int64, .sint64, .sfixed64 => "i64",
+        .uint32, .fixed32 => "u32",
+        .uint64, .fixed64 => "u64",
+        .bool => "bool",
+        .string, .bytes => "[]const u8",
+    };
+}
+
+fn fieldDefault(field: schema.FieldDescriptor) []const u8 {
+    if (field.cardinality == .repeated) return "&.{}";
+    return switch (field.kind) {
+        .scalar => |scalar| switch (scalar) {
+            .string, .bytes => "\"\"",
+            .bool => "false",
+            else => "0",
+        },
+        .enumeration => "0",
+        else => "{}",
+    };
 }
 
 fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -128,4 +262,20 @@ test "codegen quotes zig identifiers" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"struct\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"fn_number\" = 1") != null);
+}
+
+test "codegen emits typed scalar fields and encode method" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Person { int32 id = 1; string name = 2; bool active = 3; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"id\": i32 = 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"id\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) try w.writeString(2, self.@\"name\")") != null);
 }
