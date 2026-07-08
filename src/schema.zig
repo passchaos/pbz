@@ -617,6 +617,35 @@ pub const FeatureSetDefaults = struct {
             }
         }
     }
+
+    pub fn defaultsForEdition(self: *const FeatureSetDefaults, edition: Edition) ?*const FeatureSetEditionDefault {
+        if (edition == .unknown) return null;
+        const requested = @intFromEnum(edition);
+        if (self.minimum_edition) |minimum| {
+            if (requested < @intFromEnum(minimum)) return null;
+        }
+        if (self.maximum_edition) |maximum| {
+            if (requested > @intFromEnum(maximum)) return null;
+        }
+
+        var closest: ?*const FeatureSetEditionDefault = null;
+        for (self.defaults.items) |*entry| {
+            const entry_value = @intFromEnum(entry.edition);
+            if (entry.edition == .unknown or entry_value > requested) break;
+            closest = entry;
+        }
+        return closest;
+    }
+
+    pub fn overridableFeaturesForEdition(self: *const FeatureSetDefaults, edition: Edition) ?FeatureSet {
+        const entry = self.defaultsForEdition(edition) orelse return null;
+        return entry.overridable_features;
+    }
+
+    pub fn fixedFeaturesForEdition(self: *const FeatureSetDefaults, edition: Edition) ?FeatureSet {
+        const entry = self.defaultsForEdition(edition) orelse return null;
+        return entry.fixed_features;
+    }
 };
 
 pub const FileDescriptor = struct {
@@ -786,4 +815,32 @@ test "schema resolves feature defaults for proto2 proto3 and editions" {
     try std.testing.expectEqual(Syntax.editions, file.syntax);
     try std.testing.expectEqual(Edition.edition_2023, file.edition);
     try std.testing.expectEqual(FeatureSet.RepeatedFieldEncoding.expanded, file.features.repeated_field_encoding);
+}
+
+test "schema finds closest FeatureSetDefaults entry for editions" {
+    const allocator = std.testing.allocator;
+    var defaults = FeatureSetDefaults{};
+    defer defaults.deinit(allocator);
+    try defaults.defaults.append(allocator, .{
+        .edition = .legacy,
+        .overridable_features = .{ .json_format = .legacy_best_effort },
+        .fixed_features = .{ .enforce_naming_style = .style_legacy },
+    });
+    try defaults.defaults.append(allocator, .{
+        .edition = .edition_2024,
+        .overridable_features = .{ .default_symbol_visibility = .export_top_level },
+        .fixed_features = .{ .enforce_naming_style = .style2024 },
+    });
+    defaults.minimum_edition = .legacy;
+    defaults.maximum_edition = .edition_2026;
+    try defaults.validate();
+
+    try std.testing.expectEqual(Edition.legacy, defaults.defaultsForEdition(.proto2).?.edition);
+    try std.testing.expectEqual(Edition.legacy, defaults.defaultsForEdition(.edition_2023).?.edition);
+    try std.testing.expectEqual(Edition.edition_2024, defaults.defaultsForEdition(.edition_2026).?.edition);
+    try std.testing.expectEqual(FeatureSet.JsonFormat.legacy_best_effort, defaults.overridableFeaturesForEdition(.edition_2023).?.json_format);
+    try std.testing.expectEqual(FeatureSet.DefaultSymbolVisibility.export_top_level, defaults.overridableFeaturesForEdition(.edition_2024).?.default_symbol_visibility);
+    try std.testing.expectEqual(FeatureSet.EnforceNamingStyle.style2024, defaults.fixedFeaturesForEdition(.edition_2026).?.enforce_naming_style);
+    try std.testing.expect(defaults.defaultsForEdition(.unknown) == null);
+    try std.testing.expect(defaults.defaultsForEdition(.unstable) == null);
 }
