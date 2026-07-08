@@ -795,11 +795,38 @@ pub const Parser = struct {
 
 fn validateEnum(enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) ParseError!void {
     if (syntax == .proto3 and (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0)) return error.InvalidEnum;
+    try validateEnumReserved(enumeration);
     const allow_alias = enumAllowsAlias(enumeration);
     for (enumeration.values.items, 0..) |value, i| {
         for (enumeration.values.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, value.name, other.name)) return error.DuplicateEnumValue;
             if (!allow_alias and value.number == other.number) return error.DuplicateEnumValue;
+        }
+    }
+}
+
+fn validateEnumReserved(enumeration: *const schema.EnumDescriptor) ParseError!void {
+    for (enumeration.reserved_ranges.items, 0..) |range, i| {
+        const end = range.end orelse std.math.maxInt(i64);
+        if (range.start >= end) return error.InvalidRange;
+        for (enumeration.reserved_ranges.items[i + 1 ..]) |other| {
+            const other_end = other.end orelse std.math.maxInt(i64);
+            if (other.start >= other_end) return error.InvalidRange;
+            if (range.start < other_end and other.start < end) return error.InvalidRange;
+        }
+    }
+    for (enumeration.reserved_names.items, 0..) |name, i| {
+        for (enumeration.reserved_names.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, name, other)) return error.ReservedField;
+        }
+    }
+    for (enumeration.values.items) |value| {
+        for (enumeration.reserved_ranges.items) |range| {
+            const end = range.end orelse std.math.maxInt(i64);
+            if (value.number >= range.start and value.number < end) return error.ReservedField;
+        }
+        for (enumeration.reserved_names.items) |name| {
+            if (std.mem.eql(u8, value.name, name)) return error.ReservedField;
         }
     }
 }
@@ -1173,6 +1200,26 @@ test "parser validates enum values" {
     try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum Bad { A = 1; A = 2; }
+    ));
+}
+
+test "parser rejects enum values using reserved names or numbers" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { reserved 1 to 3; HIT = 2; }
+    ));
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { reserved "OLD"; OLD = 1; }
+    ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { reserved 5 to 3; OK = 1; }
+    ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { reserved 1 to 5, 4 to 8; OK = 9; }
     ));
 }
 
