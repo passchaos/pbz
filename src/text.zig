@@ -407,9 +407,13 @@ const TextParser = struct {
                     self.consumeSeparator();
                 }
             } else if (self.peek() == '{' or self.peek() == '<') {
-                if (field == null) return error.UnexpectedToken;
                 const close = try self.consumeAggregateStart();
-                try self.parseAggregateField(file, message, field.?, close);
+                if (field == null) {
+                    try self.parseUnknownGroup(message, unknown_number.?, close);
+                    self.consumeSeparator();
+                } else {
+                    try self.parseAggregateField(file, message, field.?, close);
+                }
             } else return error.UnexpectedToken;
         }
     }
@@ -417,6 +421,39 @@ const TextParser = struct {
     fn parseUnknownField(self: *TextParser, message: *dynamic.DynamicMessage, number: wire.FieldNumber) !void {
         var raw = wire.Writer.init(self.allocator);
         defer raw.deinit();
+        try self.parseUnknownValueInto(number, &raw);
+        try self.appendUnknown(message, number, raw.slice());
+    }
+
+    fn parseUnknownGroup(self: *TextParser, message: *dynamic.DynamicMessage, number: wire.FieldNumber, close: u8) !void {
+        var raw = wire.Writer.init(self.allocator);
+        defer raw.deinit();
+        try self.parseUnknownGroupInto(number, close, &raw);
+        try self.appendUnknown(message, number, raw.slice());
+    }
+
+    fn parseUnknownGroupInto(self: *TextParser, number: wire.FieldNumber, close: u8, raw: *wire.Writer) !void {
+        try raw.writeTag(number, .start_group);
+        while (true) {
+            self.skipSpace();
+            if (self.consume(close)) break;
+            if (self.eof()) return error.UnexpectedEof;
+            const child_number = try self.readUnknownNumber();
+            self.skipSpace();
+            if (self.consume(':')) {
+                self.skipSpace();
+                try self.parseUnknownValueInto(child_number, raw);
+                self.consumeSeparator();
+            } else if (self.peek() == '{' or self.peek() == '<') {
+                const child_close = try self.consumeAggregateStart();
+                try self.parseUnknownGroupInto(child_number, child_close, raw);
+                self.consumeSeparator();
+            } else return error.UnexpectedToken;
+        }
+        try raw.writeTag(number, .end_group);
+    }
+
+    fn parseUnknownValueInto(self: *TextParser, number: wire.FieldNumber, raw: *wire.Writer) !void {
         if (!self.eof() and (self.peek() == '"' or self.peek() == '\'')) {
             const bytes = try self.readString();
             defer self.allocator.free(bytes);
@@ -425,7 +462,10 @@ const TextParser = struct {
             const value = try parseTextInt(u64, try self.readAtom());
             try raw.writeUInt64(number, value);
         }
-        const owned = try self.allocator.dupe(u8, raw.slice());
+    }
+
+    fn appendUnknown(self: *TextParser, message: *dynamic.DynamicMessage, number: wire.FieldNumber, raw_bytes: []const u8) !void {
+        const owned = try self.allocator.dupe(u8, raw_bytes);
         errdefer self.allocator.free(owned);
         var raw_reader = wire.Reader.init(owned);
         const tag = (try raw_reader.nextTag()) orelse return error.UnexpectedToken;
@@ -896,6 +936,41 @@ test "text format formats and parses numeric unknown fields" {
     try std.testing.expectEqual(@as(usize, 2), parsed.unknownCount());
     try std.testing.expectEqualSlices(u8, raw_varint.slice(), parsed.unknown_fields.items[0].data);
     try std.testing.expectEqualSlices(u8, raw_bytes.slice(), parsed.unknown_fields.items[1].data);
+}
+
+test "text format parses numeric unknown groups" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message M {}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var raw_group = wire.Writer.init(allocator);
+    defer raw_group.deinit();
+    try raw_group.writeTag(100, .start_group);
+    try raw_group.writeUInt64(101, 1);
+    try raw_group.writeBytes(102, "x");
+    try raw_group.writeTag(100, .end_group);
+
+    var parsed = try parseAlloc(allocator, &file, desc,
+        \\100 {
+        \\  101: 1
+        \\  102: "x"
+        \\}
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 1), parsed.unknownCount());
+    try std.testing.expectEqual(wire.WireType.start_group, parsed.unknown_fields.items[0].wire_type);
+    try std.testing.expectEqualSlices(u8, raw_group.slice(), parsed.unknown_fields.items[0].data);
+
+    const text = try formatAlloc(allocator, &file, &parsed, .{});
+    defer allocator.free(text);
+    try std.testing.expect(std.mem.indexOf(u8, text, "100 {\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "101: 1\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "102: \"x\"\n") != null);
 }
 
 test "text format parser accepts comma and semicolon separators" {

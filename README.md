@@ -55,7 +55,7 @@ validated feature set.
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults
   - generated typed JSON stringify/parse helpers for scalar, enum names with unknown-number fallback, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, and scalar/enum oneof fields
 - TextFormat support
-  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, proto2 extension fields using `[ext.name]`, numeric unknown fields, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
+  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, proto2 extension fields using `[ext.name]`, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
 
 ## Quick example
 
@@ -176,7 +176,7 @@ Use `parseTextAllocWithRegistry` when parsing TextFormat that contains proto2
 extension references such as `[demo.ext_field]`; formatting dynamic messages
 with extension values emits the same bracketed field-name form. Numeric unknown
 fields are formatted and parsed using their field number, for example
-`100: 123` or `101: "raw-bytes"`.
+`100: 123`, `101: "raw-bytes"`, or `102 { 103: 1 }`.
 
 ## Conformance helpers
 
