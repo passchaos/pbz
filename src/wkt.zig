@@ -300,6 +300,7 @@ pub const FieldMask = struct {
 
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) ![][]const u8 {
         const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
+        if (unquoted.len == 0) return try allocator.alloc([]const u8, 0);
         var paths: std.ArrayList([]const u8) = .empty;
         errdefer {
             for (paths.items) |path| allocator.free(path);
@@ -307,6 +308,7 @@ pub const FieldMask = struct {
         }
         var it = std.mem.splitScalar(u8, unquoted, ',');
         while (it.next()) |part| {
+            if (part.len == 0) return error.InvalidFieldMask;
             try paths.append(allocator, try lowerCamelToSnake(allocator, part));
         }
         return try paths.toOwnedSlice(allocator);
@@ -328,12 +330,22 @@ fn writeLowerCamelPath(path: []const u8, writer: *std.Io.Writer) !void {
 fn lowerCamelToSnake(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
+    var last_was_dot = true;
     for (text) |c| {
+        if (c == '_') return error.InvalidFieldMask;
+        if (c == '.') {
+            if (last_was_dot) return error.InvalidFieldMask;
+            try out.append(allocator, c);
+            last_was_dot = true;
+            continue;
+        }
         if (std.ascii.isUpper(c)) {
-            if (out.items.len != 0) try out.append(allocator, '_');
+            if (!last_was_dot and out.items.len != 0) try out.append(allocator, '_');
             try out.append(allocator, std.ascii.toLower(c));
         } else try out.append(allocator, c);
+        last_was_dot = false;
     }
+    if (last_was_dot) return error.InvalidFieldMask;
     return try out.toOwnedSlice(allocator);
 }
 
@@ -361,6 +373,21 @@ test "field mask wire and json helpers" {
     }
     try std.testing.expectEqualSlices(u8, paths[0], parsed[0]);
     try std.testing.expectEqualSlices(u8, paths[1], parsed[1]);
+
+    const empty = try FieldMask.jsonParse(allocator, "\"\"");
+    defer allocator.free(empty);
+    try std.testing.expectEqual(@as(usize, 0), empty.len);
+
+    const dotted = try FieldMask.jsonParse(allocator, "\"fooBar,baz.quxValue\"");
+    defer {
+        for (dotted) |path| allocator.free(path);
+        allocator.free(dotted);
+    }
+    try std.testing.expectEqualSlices(u8, "foo_bar", dotted[0]);
+    try std.testing.expectEqualSlices(u8, "baz.qux_value", dotted[1]);
+    try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo_bar\""));
+    try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo,,bar\""));
+    try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo.\""));
 }
 
 pub const Any = struct {
