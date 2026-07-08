@@ -209,7 +209,11 @@ pub const DynamicMessage = struct {
                 continue;
             }
 
-            if (tag.wire_type == .length_delimited and field.resolvedPacked(file) and field.kind.packable()) {
+            // Protobuf decoders must accept packed input for packable repeated
+            // fields regardless of whether the schema currently emits packed
+            // or expanded encoding. This is especially important across
+            // proto2 options, proto3 defaults, and editions features.
+            if (tag.wire_type == .length_delimited and field.isPackable()) {
                 const payload = try reader.readBytes();
                 var packed_reader = wire.Reader.init(payload);
                 while (!packed_reader.eof()) {
@@ -750,4 +754,61 @@ test "dynamic proto3 round-trips map fields and default packed repeated scalars"
     const decoded_child = decoded.get("children").?.values.items[0].map_entry;
     try std.testing.expectEqualSlices(u8, "first", decoded_child.key.string);
     try std.testing.expectEqualSlices(u8, "kid", decoded_child.value.message.get("label").?.values.items[0].string);
+}
+
+test "dynamic editions honors repeated field encoding features and accepts packed compatibility" {
+    const allocator = std.testing.allocator;
+
+    const expanded_source =
+        \\edition = "2023";
+        \\package demo;
+        \\option features.repeated_field_encoding = EXPANDED;
+        \\message Metrics { repeated int32 values = 1; }
+    ;
+    var expanded_file = try parser.Parser.parse(allocator, expanded_source);
+    defer expanded_file.deinit();
+    const expanded_desc = expanded_file.findMessage("Metrics").?;
+    try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, expanded_file.features.repeated_field_encoding);
+    try std.testing.expect(!expanded_desc.findField("values").?.resolvedPacked(&expanded_file));
+
+    var expanded = DynamicMessage.init(allocator, expanded_desc);
+    defer expanded.deinit();
+    try expanded.add(expanded_desc.findField("values").?, .{ .int32 = 1 });
+    try expanded.add(expanded_desc.findField("values").?, .{ .int32 = 2 });
+    const expanded_bytes = try expanded.encoded(&expanded_file);
+    defer allocator.free(expanded_bytes);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x08, 0x02 }, expanded_bytes);
+
+    var expanded_decoded_from_packed = DynamicMessage.init(allocator, expanded_desc);
+    defer expanded_decoded_from_packed.deinit();
+    try expanded_decoded_from_packed.decode(&expanded_file, &.{ 0x0a, 0x02, 0x01, 0x02 });
+    try std.testing.expectEqual(@as(usize, 2), expanded_decoded_from_packed.get("values").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), expanded_decoded_from_packed.get("values").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), expanded_decoded_from_packed.get("values").?.values.items[1].int32);
+
+    const packed_source =
+        \\edition = "2023";
+        \\package demo;
+        \\message Metrics { repeated int32 values = 1; }
+    ;
+    var packed_file = try parser.Parser.parse(allocator, packed_source);
+    defer packed_file.deinit();
+    const packed_desc = packed_file.findMessage("Metrics").?;
+    try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, packed_file.features.repeated_field_encoding);
+    try std.testing.expect(packed_desc.findField("values").?.resolvedPacked(&packed_file));
+
+    var packed_msg = DynamicMessage.init(allocator, packed_desc);
+    defer packed_msg.deinit();
+    try packed_msg.add(packed_desc.findField("values").?, .{ .int32 = 1 });
+    try packed_msg.add(packed_desc.findField("values").?, .{ .int32 = 2 });
+    const packed_bytes = try packed_msg.encoded(&packed_file);
+    defer allocator.free(packed_bytes);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x02, 0x01, 0x02 }, packed_bytes);
+
+    var packed_decoded_from_expanded = DynamicMessage.init(allocator, packed_desc);
+    defer packed_decoded_from_expanded.deinit();
+    try packed_decoded_from_expanded.decode(&packed_file, &.{ 0x08, 0x01, 0x08, 0x02 });
+    try std.testing.expectEqual(@as(usize, 2), packed_decoded_from_expanded.get("values").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), packed_decoded_from_expanded.get("values").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), packed_decoded_from_expanded.get("values").?.values.items[1].int32);
 }
