@@ -87,6 +87,7 @@ fn writeMessageDescriptor(
     for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, enumeration, 4, &tmp);
     for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, range, 5, &tmp);
     for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, field, 6, &tmp);
+    if (message.options.items.len != 0) try writeMessageOptions(allocator, message, 7, &tmp);
     for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, oneof, 8, &tmp);
     for (message.fields.items) |*field| {
         if (field.proto3_optional and field.oneof_name == null) try writeSyntheticOneofDescriptor(allocator, field, 8, &tmp);
@@ -197,6 +198,7 @@ fn writeEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const schema.
 
     try tmp.writeString(1, enumeration.name);
     for (enumeration.values.items) |*value| try writeEnumValueDescriptor(allocator, value, 2, &tmp);
+    if (enumeration.options.items.len != 0) try writeEnumOptions(allocator, enumeration, 3, &tmp);
     for (enumeration.reserved_ranges.items) |range| try writeEnumReservedRange(allocator, range, 4, &tmp);
     for (enumeration.reserved_names.items) |reserved_name| try tmp.writeString(5, reserved_name);
 
@@ -271,6 +273,20 @@ fn writeFileOptions(allocator: std.mem.Allocator, file: *const schema.FileDescri
     try writer.writeMessage(field_number, tmp.slice());
 }
 
+fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    try writeUninterpretedOptions(allocator, message.options.items, &tmp, .message);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeEnumOptions(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    try writeUninterpretedOptions(allocator, enumeration.options.items, &tmp, .enumeration);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
 fn writeMessageOptionsMapEntry(allocator: std.mem.Allocator, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
@@ -286,7 +302,7 @@ fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDes
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-const OptionScope = enum { file, field };
+const OptionScope = enum { file, field, message, enumeration };
 
 fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const schema.FieldOption, writer: *wire.Writer, scope: OptionScope) Error!void {
     for (options) |option| {
@@ -302,7 +318,8 @@ fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const sche
 fn isKnownOption(name: []const u8, scope: OptionScope) bool {
     if (std.mem.startsWith(u8, name, "features.")) return true;
     return switch (scope) {
-        .file => false,
+        .file, .message => false,
+        .enumeration => std.mem.eql(u8, name, "allow_alias"),
         .field => std.mem.eql(u8, name, "packed") or std.mem.eql(u8, name, "default") or std.mem.eql(u8, name, "json_name"),
     };
 }
@@ -605,6 +622,7 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
             4 => try message.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             5 => try message.extension_ranges.append(allocator, try decodeExtensionRange(allocator, try reader.readBytes())),
             6 => try message.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
+            7 => try decodeGenericOptions(allocator, &message.options, try reader.readBytes()),
             8 => try message.oneofs.append(allocator, try decodeOneofDescriptor(allocator, try reader.readBytes())),
             9 => try message.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), false)),
             10 => try message.reserved_names.append(allocator, try reader.readBytes()),
@@ -682,6 +700,7 @@ fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!s
         switch (tag.number) {
             1 => enumeration.name = try reader.readBytes(),
             2 => try enumeration.values.append(allocator, try decodeEnumValueDescriptor(allocator, try reader.readBytes())),
+            3 => try decodeGenericOptions(allocator, &enumeration.options, try reader.readBytes()),
             4 => try enumeration.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), true)),
             5 => try enumeration.reserved_names.append(allocator, try reader.readBytes()),
             else => try reader.skipValue(tag),
@@ -774,6 +793,13 @@ fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error
         }
     }
     return method;
+}
+
+fn decodeGenericOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 999) try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())) else try reader.skipValue(tag);
+    }
 }
 
 fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor, bytes: []const u8) Error!void {
@@ -1142,4 +1168,22 @@ test "descriptor encodes proto3 optional synthetic oneof" {
     try std.testing.expectEqualStrings("_value", msg.oneofs.items[0].name);
     try std.testing.expectEqualStrings("_value", msg.findField("value").?.oneof_name.?);
     try std.testing.expect(msg.findField("value").?.proto3_optional);
+}
+
+test "descriptor preserves message and enum custom options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M { option (demo.msg_opt) = "m"; optional int32 id = 1; }
+        \\enum E { option (demo.enum_opt) = "e"; A = 0; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "opts.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    try std.testing.expectEqualStrings("(demo.msg_opt)", decoded.findMessage("M").?.options.items[0].name);
+    try std.testing.expectEqualSlices(u8, "m", decoded.findMessage("M").?.options.items[0].value.string);
+    try std.testing.expectEqualStrings("(demo.enum_opt)", decoded.findEnum("E").?.options.items[0].name);
+    try std.testing.expectEqualSlices(u8, "e", decoded.findEnum("E").?.options.items[0].value.string);
 }
