@@ -40,6 +40,9 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
         try writer.print(" = {d};\n", .{field.number});
     }
     if (message.fields.items.len != 0) try writer.writeAll("\n");
+    for (message.fields.items) |*field| {
+        if (field.kind == .map) try writeMapEntryType(field, writer, depth + 1);
+    }
     for (message.fields.items) |*field| try writeFieldDecl(field, writer, depth + 1);
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeInit(writer, depth + 1);
@@ -55,7 +58,30 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
 fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writeQuotedIdent(field.name, writer);
-    try writer.print(": {s} = {s},\n", .{ fieldType(field.*), fieldDefault(field.*) });
+    try writer.writeAll(": ");
+    try writeFieldType(field.*, writer);
+    try writer.print(" = {s},\n", .{fieldDefault(field.*)});
+}
+
+fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(" = struct {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("key: ");
+    try writer.writeAll(scalarZigType(map_type.key));
+    try writer.print(" = {s},\n", .{scalarDefault(map_type.key)});
+    try indent(writer, depth + 1);
+    try writer.writeAll("value: ");
+    try writeFieldKindType(map_type.value.*, writer);
+    try writer.print(" = {s},\n", .{fieldKindDefault(map_type.value.*)});
+    try indent(writer, depth);
+    try writer.writeAll("};\n\n");
 }
 
 fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
@@ -86,6 +112,7 @@ fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer
         .scalar => |scalar| try writeEncodeScalarField(field, scalar, writer, depth),
         .enumeration => try writeEncodeEnumField(field, writer, depth),
         .message => try writeEncodeMessageField(field, writer, depth),
+        .map => try writeEncodeMapField(field, writer, depth),
         else => return,
     }
 }
@@ -141,6 +168,40 @@ fn writeEncodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
     }
 }
 
+fn writeEncodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var entry_writer = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer entry_writer.deinit();\n");
+    try indent(writer, depth + 1);
+    try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "entry_writer", writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 1);
+    try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 1);
+    try writer.print("try w.writeMessage({d}, entry_writer.slice());\n", .{field.number});
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeKindWriteCall(number: u29, kind: schema.FieldKind, value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writer.print("try {s}.{s}({d}, {s}", .{ writer_name, scalarWriterName(scalar), number, value_expr }),
+        .enumeration => try writer.print("try {s}.writeInt32({d}, {s}", .{ writer_name, number, value_expr }),
+        .message => try writer.print("try {s}.writeMessage({d}, {s}", .{ writer_name, number, value_expr }),
+        else => try writer.writeAll("@compileError(\"unsupported map field kind\")"),
+    }
+}
+
 fn writeScalarWriteCall(number: u29, scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.print("try w.{s}({d}, {s}", .{ scalarWriterName(scalar), number, prefix });
 }
@@ -178,6 +239,24 @@ fn scalarWriterName(scalar: schema.ScalarType) []const u8 {
         .string => "writeString",
         .bytes => "writeBytes",
     };
+}
+
+fn writeFieldType(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (field.kind == .map) {
+        try writer.writeAll("[]const ");
+        try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+        return;
+    }
+    try writer.writeAll(fieldType(field));
+}
+
+fn writeFieldKindType(kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writer.writeAll(scalarZigType(scalar)),
+        .enumeration => try writer.writeAll("i32"),
+        .message => try writer.writeAll("[]const u8"),
+        else => try writer.writeAll("void"),
+    }
 }
 
 fn fieldType(field: schema.FieldDescriptor) []const u8 {
@@ -227,6 +306,23 @@ fn scalarZigType(scalar: schema.ScalarType) []const u8 {
     };
 }
 
+fn scalarDefault(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .string, .bytes => "\"\"",
+        .bool => "false",
+        else => "0",
+    };
+}
+
+fn fieldKindDefault(kind: schema.FieldKind) []const u8 {
+    return switch (kind) {
+        .scalar => |scalar| scalarDefault(scalar),
+        .enumeration => "0",
+        .message => "\"\"",
+        else => "{}",
+    };
+}
+
 fn fieldDefault(field: schema.FieldDescriptor) []const u8 {
     if (field.cardinality == .repeated) return "&.{}";
     return switch (field.kind) {
@@ -261,6 +357,16 @@ fn writeQuotedIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
         if (c == '\\' or c == '"') try writer.writeByte('\\');
         try writer.writeByte(c);
     }
+    try writer.writeAll("\"");
+}
+
+fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"");
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll(suffix);
     try writer.writeAll("\"");
 }
 
@@ -385,4 +491,20 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\".len != 0) try w.writeMessage(1, self.@\"child\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
+}
+
+test "codegen emits map entry types and encoders" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { map<string, int32> counts = 1; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"countsEntry\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"counts\": []const @\"countsEntry\" = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeString(1, entry.key)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeInt32(2, entry.value)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, entry_writer.slice())") != null);
 }

@@ -37,7 +37,7 @@ validated feature set.
 - Conformance helpers
   - basic ConformanceRequest decode, ConformanceResponse encode, and dynamic runner
 - Protoc plugin and codegen helpers
-  - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload skeleton generation
+  - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton generation
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, and common separators and # comments
 
@@ -160,7 +160,7 @@ structures and a dynamic-message runner for integrating with protobuf conformanc
 
 `pbz.CodeGeneratorRequest` and `pbz.CodeGeneratorResponse` provide the basic
 wire types needed to build protoc-style generators; `pbz.generateZigFile` emits
-a starter Zig typed scalar/repeated-scalar/enum/message-payload skeleton with field constants, fields, init, and encode methods for parsed descriptors.
+a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with field constants, fields, init, and encode methods for parsed descriptors.
 
 ## Descriptor encoding
 
