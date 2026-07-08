@@ -36,14 +36,14 @@ validated feature set.
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior, `features.message_encoding` delimited/length-prefixed message wire behavior, enum-level `features.enum_type` open/closed override behavior, string UTF-8 validation via `features.utf8_validation`, and implicit/explicit/legacy-required `features.field_presence` behavior
   - descriptor encode/decode for common `FileOptions` fields, `MessageOptions.map_entry`, `FeatureSet` on file/message/field/oneof/enum/enum-value/service/method/extension-range options, `FeatureSetDefaults` with closest-edition lookup helpers, plus `FieldOptions.edition_defaults` and `FieldOptions.feature_support`, preserving protobuf edition feature metadata as structured schema fields
-  - nested message and group round-trips, including imported message and enum decode through Registry
-  - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
+  - nested message and group round-trips, including imported message and enum decode through Registry, plus registry-aware encode helpers for imported enum scalar/repeated/map fields
+  - unknown field preservation/querying, extension encoding/decoding with Registry, registry-aware initialized encode/decode helpers, deterministic encoding including map key ordering, and message merging
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums including editions open/closed enum numeric validation, nested messages, and registry-aware imported message/enum parsing plus imported enum-name stringify
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including Any expanded payload JSON, Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing and float special values, FieldMask path validation, and strict Empty object parsing
 - Conformance helpers
-  - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output, registry-aware imported JSON/Text types, and missing-required path parse errors
+  - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic registry-aware protobuf output, registry-aware imported JSON/Text types, and missing-required path parse errors
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; generated plugin responses advertise proto3 optional and editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
@@ -188,7 +188,7 @@ formatted and parsed using their field number, for example
 
 `pbz.ConformanceRequest` and `pbz.ConformanceResponse` provide basic wire
 structures and a dynamic-message runner for integrating with protobuf conformance-style runners,
-including safe handling for unknown request enum values, deterministic protobuf output,
+including safe handling for unknown request enum values, deterministic registry-aware protobuf output,
 registry-aware parsing/printing for imported JSON/Text message and enum types, and parse errors that identify missing proto2 required field paths when available.
 
 ## Protoc plugin helpers

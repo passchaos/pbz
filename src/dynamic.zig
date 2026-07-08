@@ -266,25 +266,37 @@ pub const DynamicMessage = struct {
     }
 
     pub fn encode(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
-        if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, writer, false);
+        return try self.encodeWithRegistry(file, null, writer);
+    }
+
+    pub fn encodeWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
+        if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, registry, writer, false);
         for (self.fields.items) |*entry| {
-            if (!fieldHasPresence(file, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValue(entry.descriptor, entry.values.items[0])) continue;
-            if (entry.descriptor.resolvedPacked(file)) {
-                try encodePacked(entry.descriptor, entry.values.items, file, writer);
+            if (!entry.descriptor.isRepeatedLike() and !fieldHasPresenceForEncoding(file, registry, self.descriptor, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValueForEncoding(file, registry, self.descriptor, entry.descriptor, entry.values.items[0])) continue;
+            if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
+                try encodePackedWithRegistry(self.descriptor, entry.descriptor, entry.values.items, file, registry, writer);
             } else {
-                for (entry.values.items) |value| try encodeField(entry.descriptor, value, file, writer);
+                for (entry.values.items) |value| try encodeField(self.descriptor, entry.descriptor, value, file, registry, writer);
             }
         }
         for (self.unknown_fields.items) |unknown| try writer.appendSlice(unknown.data);
     }
 
     pub fn encodeInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) (EncodeError || ValidationError)!void {
+        return try self.encodeInitializedWithRegistry(file, null, writer);
+    }
+
+    pub fn encodeInitializedWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) (EncodeError || ValidationError)!void {
         try self.validateRequired();
-        try self.encode(file, writer);
+        try self.encodeWithRegistry(file, registry, writer);
     }
 
     pub fn encodeDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
-        if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, writer, true);
+        return try self.encodeDeterministicWithRegistry(file, null, writer);
+    }
+
+    pub fn encodeDeterministicWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
+        if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, registry, writer, true);
         const indexes = try self.allocator.alloc(usize, self.fields.items.len);
         defer self.allocator.free(indexes);
         for (indexes, 0..) |*index, i| index.* = i;
@@ -295,9 +307,9 @@ pub const DynamicMessage = struct {
         }.lessThan);
         for (indexes) |index| {
             const entry = &self.fields.items[index];
-            if (!fieldHasPresence(file, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValue(entry.descriptor, entry.values.items[0])) continue;
-            if (entry.descriptor.resolvedPacked(file)) {
-                try encodePacked(entry.descriptor, entry.values.items, file, writer);
+            if (!entry.descriptor.isRepeatedLike() and !fieldHasPresenceForEncoding(file, registry, self.descriptor, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValueForEncoding(file, registry, self.descriptor, entry.descriptor, entry.values.items[0])) continue;
+            if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
+                try encodePackedWithRegistry(self.descriptor, entry.descriptor, entry.values.items, file, registry, writer);
             } else if (entry.descriptor.kind == .map) {
                 const value_indexes = try self.allocator.alloc(usize, entry.values.items.len);
                 defer self.allocator.free(value_indexes);
@@ -307,9 +319,9 @@ pub const DynamicMessage = struct {
                         return mapEntryLessThan(field_value.values.items[a], field_value.values.items[b]);
                     }
                 }.lessThan);
-                for (value_indexes) |value_index| try encodeField(entry.descriptor, entry.values.items[value_index], file, writer);
+                for (value_indexes) |value_index| try encodeField(self.descriptor, entry.descriptor, entry.values.items[value_index], file, registry, writer);
             } else {
-                for (entry.values.items) |value| try encodeField(entry.descriptor, value, file, writer);
+                for (entry.values.items) |value| try encodeField(self.descriptor, entry.descriptor, value, file, registry, writer);
             }
         }
         const unknown_indexes = try self.allocator.alloc(usize, self.unknown_fields.items.len);
@@ -324,35 +336,55 @@ pub const DynamicMessage = struct {
     }
 
     pub fn encodeDeterministicInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) (EncodeError || ValidationError)!void {
+        return try self.encodeDeterministicInitializedWithRegistry(file, null, writer);
+    }
+
+    pub fn encodeDeterministicInitializedWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) (EncodeError || ValidationError)!void {
         try self.validateRequired();
-        try self.encodeDeterministic(file, writer);
+        try self.encodeDeterministicWithRegistry(file, registry, writer);
     }
 
     pub fn encoded(self: *const DynamicMessage, file: *const schema.FileDescriptor) EncodeError![]u8 {
+        return try self.encodedWithRegistry(file, null);
+    }
+
+    pub fn encodedWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry) EncodeError![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
-        try self.encode(file, &writer);
+        try self.encodeWithRegistry(file, registry, &writer);
         return try writer.toOwnedSlice();
     }
 
     pub fn encodedInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor) (EncodeError || ValidationError)![]u8 {
+        return try self.encodedInitializedWithRegistry(file, null);
+    }
+
+    pub fn encodedInitializedWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry) (EncodeError || ValidationError)![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
-        try self.encodeInitialized(file, &writer);
+        try self.encodeInitializedWithRegistry(file, registry, &writer);
         return try writer.toOwnedSlice();
     }
 
     pub fn encodedDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor) EncodeError![]u8 {
+        return try self.encodedDeterministicWithRegistry(file, null);
+    }
+
+    pub fn encodedDeterministicWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry) EncodeError![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
-        try self.encodeDeterministic(file, &writer);
+        try self.encodeDeterministicWithRegistry(file, registry, &writer);
         return try writer.toOwnedSlice();
     }
 
     pub fn encodedDeterministicInitialized(self: *const DynamicMessage, file: *const schema.FileDescriptor) (EncodeError || ValidationError)![]u8 {
+        return try self.encodedDeterministicInitializedWithRegistry(file, null);
+    }
+
+    pub fn encodedDeterministicInitializedWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry) (EncodeError || ValidationError)![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
-        try self.encodeDeterministicInitialized(file, &writer);
+        try self.encodeDeterministicInitializedWithRegistry(file, registry, &writer);
         return try writer.toOwnedSlice();
     }
 
@@ -370,6 +402,11 @@ pub const DynamicMessage = struct {
 
     pub fn decodeInitialized(self: *DynamicMessage, file: *const schema.FileDescriptor, bytes: []const u8) (DecodeError || ValidationError)!void {
         try self.decode(file, bytes);
+        try self.validateRequired();
+    }
+
+    pub fn decodeInitializedWithRegistry(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry, bytes: []const u8) (DecodeError || ValidationError)!void {
+        try self.decodeWithRegistry(file, registry, bytes);
         try self.validateRequired();
     }
 
@@ -517,7 +554,7 @@ pub const DynamicMessage = struct {
         try self.addUnknownRaw(number, .varint, raw_writer.slice());
     }
 
-    fn encodeMessageSet(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer, deterministic: bool) EncodeError!void {
+    fn encodeMessageSet(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer, deterministic: bool) EncodeError!void {
         if (deterministic) {
             const indexes = try self.allocator.alloc(usize, self.fields.items.len);
             defer self.allocator.free(indexes);
@@ -527,7 +564,7 @@ pub const DynamicMessage = struct {
                     return message.fields.items[a].descriptor.number < message.fields.items[b].descriptor.number;
                 }
             }.lessThan);
-            for (indexes) |index| try encodeMessageSetEntry(self.descriptor, &self.fields.items[index], file, writer, true);
+            for (indexes) |index| try encodeMessageSetEntry(self.descriptor, &self.fields.items[index], file, registry, writer, true);
 
             const unknown_indexes = try self.allocator.alloc(usize, self.unknown_fields.items.len);
             defer self.allocator.free(unknown_indexes);
@@ -541,7 +578,7 @@ pub const DynamicMessage = struct {
             return;
         }
 
-        for (self.fields.items) |*entry| try encodeMessageSetEntry(self.descriptor, entry, file, writer, false);
+        for (self.fields.items) |*entry| try encodeMessageSetEntry(self.descriptor, entry, file, registry, writer, false);
         for (self.unknown_fields.items) |*unknown| try encodeUnknownMessageSetField(unknown, writer);
     }
 
@@ -602,7 +639,7 @@ fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const
     return reg.findExtension(descriptor.name, number);
 }
 
-fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const FieldValue, file: *const schema.FileDescriptor, writer: *wire.Writer, deterministic: bool) EncodeError!void {
+fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const FieldValue, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer, deterministic: bool) EncodeError!void {
     if (entry.descriptor.kind != .message or entry.descriptor.extendee == null or entry.descriptor.cardinality == .repeated or entry.descriptor.cardinality == .required) return error.TypeMismatch;
     if (!extensionExtendsMessage(entry.descriptor.extendee.?, host)) return error.TypeMismatch;
     for (entry.values.items) |value| {
@@ -613,9 +650,9 @@ fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const Fi
         var payload_writer = wire.Writer.init(writer.allocator);
         defer payload_writer.deinit();
         if (deterministic) {
-            try message.encodeDeterministic(file, &payload_writer);
+            try message.encodeDeterministicWithRegistry(file, registry, &payload_writer);
         } else {
-            try message.encode(file, &payload_writer);
+            try message.encodeWithRegistry(file, registry, &payload_writer);
         }
         try writeMessageSetItem(writer, entry.descriptor.number, payload_writer.slice());
     }
@@ -650,7 +687,7 @@ fn extensionExtendsMessage(extendee: []const u8, message: *const schema.MessageD
     return std.mem.eql(u8, trimmed, message.name) or std.mem.eql(u8, leaf, message.name);
 }
 
-fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
+fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
     switch (field.kind) {
         .scalar => |scalar| try encodeScalar(file, field, field.number, scalar, value, writer),
         .enumeration => switch (value) {
@@ -661,16 +698,22 @@ fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const 
             else => return error.TypeMismatch,
         },
         .message => switch (value) {
+            .enumeration => |v| {
+                if (registryEnumDescriptor(file, registry, current, field.kind) == null) return error.TypeMismatch;
+                try writer.writeTag(field.number, .varint);
+                try writer.writeVarint(@as(u64, @bitCast(@as(i64, v))));
+            },
             .message => |message| {
+                if (registryEnumDescriptor(file, registry, current, field.kind) != null) return error.TypeMismatch;
                 if (fieldMessageEncoding(file, field) == .delimited) {
                     try writer.writeTag(field.number, .start_group);
-                    try message.encode(file, writer);
+                    try message.encodeWithRegistry(file, registry, writer);
                     try writer.writeTag(field.number, .end_group);
                 } else {
                     var nested_writer = wire.Writer.init(writer.allocator);
                     defer nested_writer.deinit();
                     // Nested message packing depends on its own file-level features only for repeated scalar fields.
-                    try message.encode(file, &nested_writer);
+                    try message.encodeWithRegistry(file, registry, &nested_writer);
                     try writer.writeMessage(field.number, nested_writer.slice());
                 }
             },
@@ -679,20 +722,22 @@ fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const 
         .group => switch (value) {
             .group => |message| {
                 try writer.writeTag(field.number, .start_group);
-                try message.encode(file, writer);
+                try message.encodeWithRegistry(file, registry, writer);
                 try writer.writeTag(field.number, .end_group);
             },
             else => return error.TypeMismatch,
         },
-        .map => |map_type| try encodeMapEntry(field, map_type, value, file, writer),
+        .map => |map_type| try encodeMapEntry(current, field, map_type, value, file, registry, writer),
     }
 }
 
 fn encodeMapEntry(
+    current: *const schema.MessageDescriptor,
     field: *const schema.FieldDescriptor,
     map_type: schema.MapType,
     value: Value,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     writer: *wire.Writer,
 ) EncodeError!void {
     const entry = switch (value) {
@@ -702,17 +747,19 @@ fn encodeMapEntry(
 
     var entry_writer = wire.Writer.init(writer.allocator);
     defer entry_writer.deinit();
-    try encodeMapElement(field, 1, .{ .scalar = map_type.key }, entry.key, file, &entry_writer);
-    try encodeMapElement(field, 2, map_type.value.*, entry.value, file, &entry_writer);
+    try encodeMapElement(current, field, 1, .{ .scalar = map_type.key }, entry.key, file, registry, &entry_writer);
+    try encodeMapElement(current, field, 2, map_type.value.*, entry.value, file, registry, &entry_writer);
     try writer.writeMessage(field.number, entry_writer.slice());
 }
 
 fn encodeMapElement(
+    current: *const schema.MessageDescriptor,
     field: *const schema.FieldDescriptor,
     number: wire.FieldNumber,
     kind: schema.FieldKind,
     value: Value,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     writer: *wire.Writer,
 ) EncodeError!void {
     switch (kind) {
@@ -725,10 +772,16 @@ fn encodeMapElement(
             else => return error.TypeMismatch,
         },
         .message => switch (value) {
+            .enumeration => |v| {
+                if (registryEnumDescriptor(file, registry, current, kind) == null) return error.TypeMismatch;
+                try writer.writeTag(number, .varint);
+                try writer.writeVarint(@as(u64, @bitCast(@as(i64, v))));
+            },
             .message => |message| {
+                if (registryEnumDescriptor(file, registry, current, kind) != null) return error.TypeMismatch;
                 var nested_writer = wire.Writer.init(writer.allocator);
                 defer nested_writer.deinit();
-                try message.encode(file, &nested_writer);
+                try message.encodeWithRegistry(file, registry, &nested_writer);
                 try writer.writeMessage(number, nested_writer.slice());
             },
             else => return error.TypeMismatch,
@@ -737,10 +790,11 @@ fn encodeMapElement(
     }
 }
 
-fn encodePacked(field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
+fn encodePackedWithRegistry(current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
     var packed_writer = wire.Writer.init(writer.allocator);
     defer packed_writer.deinit();
-    for (values) |value| try encodeScalarPayloadWithValidation(file, field, field.kind, value, &packed_writer);
+    const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
+    for (values) |value| try encodeScalarPayloadWithValidation(file, field, kind, value, &packed_writer);
     try writer.writeBytes(field.number, packed_writer.slice());
 }
 
@@ -1061,6 +1115,14 @@ fn fieldHasPresence(file: *const schema.FileDescriptor, field: *const schema.Fie
     return file.features.field_presence != .implicit;
 }
 
+fn fieldHasPresenceForEncoding(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+    if (fieldIsRequired(field) or field.proto3_optional or field.oneof_name != null or field.kind == .group) return true;
+    if (field.kind == .message and fieldKindIsRegistryEnum(file, registry, current, field.kind) == null) return true;
+    if (field.cardinality == .repeated or field.kind == .map) return false;
+    if (field.features) |features| return features.field_presence != .implicit;
+    return file.features.field_presence != .implicit;
+}
+
 fn fieldIsRequired(field: *const schema.FieldDescriptor) bool {
     if (field.cardinality == .required) return true;
     if (field.features) |features| return features.field_presence == .legacy_required;
@@ -1090,6 +1152,40 @@ fn isDefaultSingularValue(field: *const schema.FieldDescriptor, value: Value) bo
         .enumeration => value == .enumeration and value.enumeration == 0,
         else => false,
     };
+}
+
+fn isDefaultSingularValueForEncoding(file: ?*const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: Value) bool {
+    if (field.default_value != null) return false;
+    if (fieldKindIsRegistryEnum(file, registry, current, field.kind) == null) return isDefaultSingularValue(field, value);
+    return value == .enumeration and value.enumeration == 0;
+}
+
+fn resolvedPackedForEncoding(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+    if (field.cardinality != .repeated) return false;
+    const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
+    if (!kind.packable()) return false;
+    if (field.packed_override) |is_packed| return is_packed;
+    if (field.features) |features| return features.repeated_field_encoding == schema.FeatureSet.RepeatedFieldEncoding.packed_encoding;
+    return switch (file.syntax) {
+        .proto2 => false,
+        .proto3 => true,
+        .editions => file.features.repeated_field_encoding == schema.FeatureSet.RepeatedFieldEncoding.packed_encoding,
+    };
+}
+
+fn scalarLikeKindForEncoding(file: ?*const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, kind: schema.FieldKind) schema.FieldKind {
+    if (fieldKindIsRegistryEnum(file, registry, current, kind)) |name| return .{ .enumeration = name };
+    return kind;
+}
+
+fn fieldKindIsRegistryEnum(file: ?*const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, kind: schema.FieldKind) ?[]const u8 {
+    const enum_name = switch (kind) {
+        .message, .enumeration => |name| name,
+        else => return null,
+    };
+    const f = file orelse return null;
+    const c = current orelse return if (f.findEnumDeep(enum_name) != null) enum_name else null;
+    return if (registryEnumDescriptor(f, registry, c, kind) != null) enum_name else null;
 }
 
 fn decodeScalarLike(kind: schema.FieldKind, reader: *wire.Reader) DecodeError!Value {
@@ -2171,6 +2267,228 @@ test "dynamic decodeWithRegistry resolves imported enum map entries" {
     try std.testing.expectEqual(@as(i32, 2), entry.value.enumeration);
     try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
     try std.testing.expectEqualSlices(u8, bad_raw, event.unknown_fields.items[0].data);
+}
+
+test "dynamic encodeWithRegistry resolves imported enum fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { A = 1; B = 2; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Event { optional common.Kind kind = 1; repeated common.Kind many = 2; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const event_desc = app.findMessage("Event").?;
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    try event.add(event_desc.findField("kind").?, .{ .enumeration = 2 });
+    try event.add(event_desc.findField("many").?, .{ .enumeration = 1 });
+    try event.add(event_desc.findField("many").?, .{ .enumeration = 2 });
+
+    try std.testing.expectError(error.TypeMismatch, event.encoded(&app));
+
+    const encoded = try event.encodedWithRegistry(&app, &registry);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x02, 0x10, 0x01, 0x10, 0x02 }, encoded);
+
+    const deterministic = try event.encodedDeterministicWithRegistry(&app, &registry);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, encoded, deterministic);
+
+    var decoded = DynamicMessage.init(allocator, event_desc);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&app, &registry, encoded);
+    try std.testing.expectEqual(@as(i32, 2), decoded.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), decoded.get("many").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 2), decoded.get("many").?.values.items[1].enumeration);
+}
+
+test "dynamic encodeWithRegistry rejects message values for imported enum fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { A = 1; B = 2; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Event { optional common.Kind kind = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const event_desc = app.findMessage("Event").?;
+    const bogus = try allocator.create(DynamicMessage);
+    bogus.* = DynamicMessage.init(allocator, event_desc);
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    try event.add(event_desc.findField("kind").?, .{ .message = bogus });
+
+    try std.testing.expectError(error.TypeMismatch, event.encodedWithRegistry(&app, &registry));
+}
+
+test "dynamic encodeWithRegistry packs imported proto3 enum fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { A = 0; B = 1; C = 2; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.Kind kind = 1; repeated common.Kind many = 2; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const event_desc = app.findMessage("Event").?;
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    try event.add(event_desc.findField("kind").?, .{ .enumeration = 0 });
+    try event.add(event_desc.findField("many").?, .{ .enumeration = 1 });
+    try event.add(event_desc.findField("many").?, .{ .enumeration = 2 });
+
+    try std.testing.expectError(error.TypeMismatch, event.encoded(&app));
+
+    const encoded = try event.encodedWithRegistry(&app, &registry);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x12, 0x02, 0x01, 0x02 }, encoded);
+
+    const deterministic = try event.encodedDeterministicWithRegistry(&app, &registry);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, encoded, deterministic);
+
+    var decoded = DynamicMessage.init(allocator, event_desc);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&app, &registry, encoded);
+    try std.testing.expect(decoded.get("kind") == null);
+    try std.testing.expectEqual(@as(i32, 1), decoded.get("many").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 2), decoded.get("many").?.values.items[1].enumeration);
+}
+
+test "dynamic encodeWithRegistry resolves imported enum map entries" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { A = 0; B = 1; C = 2; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { map<string, common.Kind> kinds = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const event_desc = app.findMessage("Event").?;
+    const field = event_desc.findField("kinds").?;
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    const b = try allocator.create(MapEntry);
+    b.* = .{ .key = .{ .string = try allocator.dupe(u8, "b") }, .value = .{ .enumeration = 2 } };
+    try event.add(field, .{ .map_entry = b });
+    const a = try allocator.create(MapEntry);
+    a.* = .{ .key = .{ .string = try allocator.dupe(u8, "a") }, .value = .{ .enumeration = 1 } };
+    try event.add(field, .{ .map_entry = a });
+
+    try std.testing.expectError(error.TypeMismatch, event.encodedDeterministic(&app));
+
+    const encoded = try event.encodedWithRegistry(&app, &registry);
+    defer allocator.free(encoded);
+    var normal_decoded = DynamicMessage.init(allocator, event_desc);
+    defer normal_decoded.deinit();
+    try normal_decoded.decodeWithRegistry(&app, &registry, encoded);
+    try std.testing.expectEqual(@as(usize, 2), normal_decoded.get("kinds").?.values.items.len);
+
+    const deterministic = try event.encodedDeterministicWithRegistry(&app, &registry);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x05, 0x0a, 0x01, 'a', 0x10, 0x01, 0x0a, 0x05, 0x0a, 0x01, 'b', 0x10, 0x02 }, deterministic);
+
+    var decoded = DynamicMessage.init(allocator, event_desc);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&app, &registry, deterministic);
+    const entries = decoded.get("kinds").?.values.items;
+    try std.testing.expectEqual(@as(usize, 2), entries.len);
+    try std.testing.expectEqualStrings("a", entries[0].map_entry.key.string);
+    try std.testing.expectEqual(@as(i32, 1), entries[0].map_entry.value.enumeration);
+    try std.testing.expectEqualStrings("b", entries[1].map_entry.key.string);
+    try std.testing.expectEqual(@as(i32, 2), entries[1].map_entry.value.enumeration);
+}
+
+test "dynamic initialized registry helpers resolve imported message fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Child { required int32 id = 1; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Parent { required common.Child child = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const child_desc = common.findMessage("Child").?;
+    const parent_desc = app.findMessage("Parent").?;
+    const child_field = parent_desc.findField("child").?;
+
+    const child = try allocator.create(DynamicMessage);
+    child.* = DynamicMessage.init(allocator, child_desc);
+
+    var parent = DynamicMessage.init(allocator, parent_desc);
+    defer parent.deinit();
+    try parent.add(child_field, .{ .message = child });
+
+    try std.testing.expectError(error.MissingRequiredField, parent.encodedInitializedWithRegistry(&app, &registry));
+
+    try child.add(child_desc.findField("id").?, .{ .int32 = 7 });
+    const encoded = try parent.encodedInitializedWithRegistry(&app, &registry);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x02, 0x08, 0x07 }, encoded);
+
+    var decoded = DynamicMessage.init(allocator, parent_desc);
+    defer decoded.deinit();
+    try decoded.decodeInitializedWithRegistry(&app, &registry, encoded);
+    const decoded_child = decoded.get("child").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 7), decoded_child.get("id").?.values.items[0].int32);
+
+    var missing_payload = wire.Writer.init(allocator);
+    defer missing_payload.deinit();
+    try missing_payload.writeMessage(1, &.{});
+    var invalid = DynamicMessage.init(allocator, parent_desc);
+    defer invalid.deinit();
+    try std.testing.expectError(error.MissingRequiredField, invalid.decodeInitializedWithRegistry(&app, &registry, missing_payload.slice()));
 }
 
 test "dynamic encodes extension fields using extension descriptors" {

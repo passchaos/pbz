@@ -125,7 +125,7 @@ pub fn runDynamic(
 
     return switch (request.requested_output_format) {
         .protobuf => blk: {
-            const payload = message.encodedDeterministicInitialized(file) catch |err| return try serializeError(allocator, err);
+            const payload = message.encodedDeterministicInitializedWithRegistry(file, registry) catch |err| return try serializeError(allocator, err);
             defer allocator.free(payload);
             break :blk try (ConformanceResponse{ .result = .{ .protobuf_payload = payload } }).encode(allocator);
         },
@@ -327,6 +327,38 @@ test "conformance dynamic runner uses registry for imported text output" {
     const tag = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(wire.FieldNumber, 8), tag.number);
     try std.testing.expectEqualSlices(u8, "kind: ADMIN\n", try reader.readBytes());
+}
+
+test "conformance dynamic runner uses registry for imported protobuf output" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; USER = 2; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.Kind kind = 1; repeated common.Kind many = 2; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"kind\":\"ADMIN\",\"many\":[\"ADMIN\",\"USER\"]}" },
+        .requested_output_format = .protobuf,
+        .message_type = "app.Event",
+        .test_category = .json_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 3), tag.number);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x12, 0x02, 0x01, 0x02 }, try reader.readBytes());
 }
 
 test "conformance dynamic runner reports missing required fields" {
