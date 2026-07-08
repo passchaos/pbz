@@ -490,7 +490,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             5 => try file.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             6 => try file.services.append(allocator, try decodeServiceDescriptor(allocator, try reader.readBytes())),
             7 => try file.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
-            8 => try decodeFileOptions(&file, try reader.readBytes()),
+            8 => try decodeFileOptions(allocator, &file, try reader.readBytes()),
             12 => {
                 const syntax = try reader.readBytes();
                 if (std.mem.eql(u8, syntax, "proto2")) file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) file.setSyntax(.proto3) else if (std.mem.eql(u8, syntax, "editions")) file.setSyntax(.editions);
@@ -571,6 +571,8 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     var json_name: ?[]const u8 = null;
     var proto3_optional = false;
     var packed_override: ?bool = null;
+    var field_options: schema.OptionList = .empty;
+    errdefer field_options.deinit(allocator);
 
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
@@ -582,7 +584,11 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
             5 => field_type = try reader.readInt32(),
             6 => type_name = try reader.readBytes(),
             7 => default_value = .{ .string = try reader.readBytes() },
-            8 => packed_override = try decodeFieldOptions(try reader.readBytes()),
+            8 => {
+                const decoded_options = try decodeFieldOptions(allocator, try reader.readBytes());
+                packed_override = decoded_options.packed_override;
+                field_options = decoded_options.options;
+            },
             9 => oneof_index_text = try oneofIndexText(try reader.readInt32()),
             10 => json_name = try reader.readBytes(),
             17 => proto3_optional = try reader.readBool(),
@@ -590,7 +596,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         }
     }
 
-    return .{
+    const field = schema.FieldDescriptor{
         .name = name,
         .number = number,
         .cardinality = cardinality,
@@ -601,7 +607,10 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         .json_name = json_name,
         .proto3_optional = proto3_optional,
         .packed_override = packed_override,
+        .options = field_options,
     };
+    field_options = .empty;
+    return field;
 }
 
 fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.EnumDescriptor {
@@ -706,20 +715,67 @@ fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error
     return method;
 }
 
-fn decodeFileOptions(file: *schema.FileDescriptor, bytes: []const u8) Error!void {
+fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor, bytes: []const u8) Error!void {
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
-        if (tag.number == 50) file.features = try decodeFeatureSet(try reader.readBytes()) else try reader.skipValue(tag);
+        switch (tag.number) {
+            50 => file.features = try decodeFeatureSet(try reader.readBytes()),
+            999 => try file.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
     }
 }
 
-fn decodeFieldOptions(bytes: []const u8) Error!?bool {
-    var result: ?bool = null;
+const DecodedFieldOptions = struct {
+    packed_override: ?bool = null,
+    options: schema.OptionList = .empty,
+};
+
+fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!DecodedFieldOptions {
+    var result = DecodedFieldOptions{};
+    errdefer result.options.deinit(allocator);
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
-        if (tag.number == 2) result = try reader.readBool() else try reader.skipValue(tag);
+        switch (tag.number) {
+            2 => result.packed_override = try reader.readBool(),
+            999 => try result.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
     }
     return result;
+}
+
+fn decodeUninterpretedOption(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldOption {
+    _ = allocator;
+    var name: []const u8 = "";
+    var value: schema.OptionValue = .{ .identifier = "" };
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            2 => name = try decodeUninterpretedNamePart(try reader.readBytes()),
+            3 => value = .{ .identifier = try reader.readBytes() },
+            4 => {
+                const v = try reader.readUInt64();
+                if (v > std.math.maxInt(i64)) return error.InvalidFieldType;
+                value = .{ .integer = @intCast(v) };
+            },
+            5 => value = .{ .integer = try reader.readInt64() },
+            6 => value = .{ .float = try reader.readDouble() },
+            7 => value = .{ .string = try reader.readBytes() },
+            8 => value = .{ .aggregate = try reader.readBytes() },
+            else => try reader.skipValue(tag),
+        }
+    }
+    return .{ .name = name, .value = value };
+}
+
+fn decodeUninterpretedNamePart(bytes: []const u8) Error![]const u8 {
+    var name: []const u8 = "";
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 1) name = try reader.readBytes() else try reader.skipValue(tag);
+    }
+    return name;
 }
 
 fn decodeMessageOptionsMapEntry(bytes: []const u8) Error!bool {
@@ -969,4 +1025,23 @@ test "descriptor preserves custom options as uninterpreted options" {
     try std.testing.expect(std.mem.indexOf(u8, bytes, "(demo.file_opt)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "file-value") != null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "(demo.field_opt)") != null);
+}
+
+test "descriptor decodes uninterpreted options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\option (demo.file_opt) = "file-value";
+        \\message M { optional int32 id = 1 [(demo.field_opt) = 123]; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "custom.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    try std.testing.expectEqualStrings("(demo.file_opt)", decoded.options.items[0].name);
+    try std.testing.expectEqualSlices(u8, "file-value", decoded.options.items[0].value.string);
+    const field = decoded.findMessage("M").?.findField("id").?;
+    try std.testing.expectEqualStrings("(demo.field_opt)", field.options.items[0].name);
+    try std.testing.expectEqual(@as(i64, 123), field.options.items[0].value.integer);
 }
