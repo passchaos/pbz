@@ -47,6 +47,8 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeInit(writer, depth + 1);
     try writer.writeAll("\n");
+    try writeOneofHelpers(message, writer, depth + 1);
+    if (message.oneofs.items.len != 0) try writer.writeAll("\n");
     try writeDeinit(message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeEncode(message, writer, depth + 1);
@@ -102,6 +104,27 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("return .{};\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeOneofHelpers(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (message.oneofs.items) |oneof| {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix("clear_", oneof.name, writer);
+        try writer.writeAll("(self: *@This()) void {\n");
+        for (message.fields.items) |*field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name)) {
+                    try indent(writer, depth + 1);
+                    try writer.writeAll("self.");
+                    try writePresenceIdent(field.name, writer);
+                    try writer.writeAll(" = false;\n");
+                }
+            }
+        }
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
 }
 
 fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -642,11 +665,26 @@ fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
 }
 
 fn writeSetPresence(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (field.oneof_name) |oneof_name| {
+        try writer.writeAll(" self.");
+        try writeQuotedIdentWithPrefix("clear_", oneof_name, writer);
+        try writer.writeAll("();");
+    }
     if (hasPresence(field.*)) {
         try writer.writeAll(" self.");
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" = true;");
     }
+}
+
+fn writeQuotedIdentWithPrefix(prefix: []const u8, name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"");
+    try writer.writeAll(prefix);
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll("\"");
 }
 
 fn writeQuotedFieldNumber(name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -917,5 +955,21 @@ test "codegen emits oneof presence flags" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_id\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_name\") try w.writeString(1, self.@\"name\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_id\") try w.writeInt32(2, self.@\"id\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"name\" = try r.readBytes(); self.@\"has_name\" = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"name\" = try r.readBytes(); self.@\"clear_pick\"(); self.@\"has_name\" = true") != null);
+}
+
+test "codegen emits oneof clear helpers and decode clears siblings" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Choice { oneof pick { string name = 1; int32 id = 2; } }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clear_pick\"(self: *@This()) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"has_name\" = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"has_id\" = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"clear_pick\"(); self.@\"has_name\" = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"clear_pick\"(); self.@\"has_id\" = true") != null);
 }
