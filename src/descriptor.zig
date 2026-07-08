@@ -1010,11 +1010,11 @@ fn kindFromType(allocator: std.mem.Allocator, field_type: i32, type_name: ?[]con
         7 => .{ .scalar = .fixed32 },
         8 => .{ .scalar = .bool },
         9 => .{ .scalar = .string },
-        10 => .{ .group = type_name orelse "" },
-        11 => .{ .message = type_name orelse "" },
+        10 => .{ .group = try requireTypeName(type_name) },
+        11 => .{ .message = try requireTypeName(type_name) },
         12 => .{ .scalar = .bytes },
         13 => .{ .scalar = .uint32 },
-        14 => .{ .enumeration = type_name orelse "" },
+        14 => .{ .enumeration = try requireTypeName(type_name) },
         15 => .{ .scalar = .sfixed32 },
         16 => .{ .scalar = .sfixed64 },
         17 => .{ .scalar = .sint32 },
@@ -1024,6 +1024,12 @@ fn kindFromType(allocator: std.mem.Allocator, field_type: i32, type_name: ?[]con
             break :blk error.InvalidFieldType;
         },
     };
+}
+
+fn requireTypeName(type_name: ?[]const u8) Error![]const u8 {
+    const name = type_name orelse return error.InvalidFieldType;
+    if (name.len == 0) return error.InvalidFieldType;
+    return name;
 }
 
 fn collapseMapEntryMessages(allocator: std.mem.Allocator, file: *schema.FileDescriptor) Error!void {
@@ -1217,6 +1223,29 @@ test "descriptor rejects invalid field labels" {
     try file.writeString(1, "bad-label.proto");
     try file.writeMessage(4, message.slice());
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+}
+
+test "descriptor rejects missing type names for message enum and group fields" {
+    const allocator = std.testing.allocator;
+    inline for (.{ 10, 11, 14 }) |field_type| {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, field_type);
+
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-type-name.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor rejects invalid field numbers" {
