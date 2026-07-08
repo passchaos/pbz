@@ -104,16 +104,21 @@ pub fn runDynamic(
     var message = dynamic.DynamicMessage.init(allocator, descriptor);
     defer message.deinit();
     switch (request.payload) {
-        .protobuf_payload => |payload| message.decodeWithRegistry(file, registry, payload) catch |err| return try parseError(allocator, err),
+        .protobuf_payload => |payload| {
+            message.decodeWithRegistry(file, registry, payload) catch |err| return try parseError(allocator, err);
+            message.validateRequired() catch |err| return try parseError(allocator, err);
+        },
         .json_payload => |payload| {
             var parsed = json.parseAlloc(allocator, file, descriptor, payload, .{ .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test }) catch |err| return try parseError(allocator, err);
             defer parsed.deinit();
             try message.mergeFrom(&parsed);
+            message.validateRequired() catch |err| return try parseError(allocator, err);
         },
         .text_payload => |payload| {
             var parsed = text.parseAlloc(allocator, file, descriptor, payload) catch |err| return try parseError(allocator, err);
             defer parsed.deinit();
             try message.mergeFrom(&parsed);
+            message.validateRequired() catch |err| return try parseError(allocator, err);
         },
         else => return try (ConformanceResponse{ .result = .{ .skipped = "unsupported input format" } }).encode(allocator),
     }
@@ -203,4 +208,24 @@ test "conformance dynamic runner converts protobuf to json" {
     const tag = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(wire.FieldNumber, 4), tag.number);
     try std.testing.expectEqualSlices(u8, "{\"id\":7}", try reader.readBytes());
+}
+
+test "conformance dynamic runner reports missing required fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { required int32 id = 1; }");
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .protobuf_payload = "" },
+        .requested_output_format = .json,
+        .message_type = "demo.Msg",
+        .test_category = .binary_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 1), tag.number);
+    try std.testing.expect(std.mem.indexOf(u8, try reader.readBytes(), "MissingRequiredField") != null);
 }
