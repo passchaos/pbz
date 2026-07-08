@@ -17,9 +17,19 @@ pub fn formatAlloc(
     message: *const dynamic.DynamicMessage,
     options: Options,
 ) (Error || std.mem.Allocator.Error)![]u8 {
+    return try formatAllocWithRegistry(allocator, file, null, message, options);
+}
+
+pub fn formatAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+) (Error || std.mem.Allocator.Error)![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try format(file, message, options, &out.writer);
+    try formatWithRegistry(file, registry, message, options, &out.writer);
     return try out.toOwnedSlice();
 }
 
@@ -29,11 +39,22 @@ pub fn format(
     options: Options,
     writer: *std.Io.Writer,
 ) Error!void {
-    try writeMessageFields(file, message, options, writer, 0);
+    try formatWithRegistry(file, null, message, options, writer);
+}
+
+pub fn formatWithRegistry(
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+    writer: *std.Io.Writer,
+) Error!void {
+    try writeMessageFields(file, registry, message, options, writer, 0);
 }
 
 fn writeMessageFields(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     message: *const dynamic.DynamicMessage,
     options: Options,
     writer: *std.Io.Writer,
@@ -41,11 +62,11 @@ fn writeMessageFields(
 ) Error!void {
     for (message.fields.items) |*entry| {
         if (entry.descriptor.kind == .map) {
-            for (entry.values.items) |value| try writeMapEntry(file, entry.descriptor, value, options, writer, depth);
+            for (entry.values.items) |value| try writeMapEntry(file, registry, entry.descriptor, value, options, writer, depth);
         } else if (entry.descriptor.cardinality == .repeated) {
-            for (entry.values.items) |value| try writeField(file, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
+            for (entry.values.items) |value| try writeField(file, registry, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
         } else if (entry.values.items.len != 0) {
-            try writeField(file, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
+            try writeField(file, registry, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
         }
     }
     for (message.unknown_fields.items) |*unknown| try writeUnknownRaw(unknown.data, options, writer, depth);
@@ -107,6 +128,7 @@ fn writeUnknownField(
 
 fn writeMapEntry(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     field: *const schema.FieldDescriptor,
     value: dynamic.Value,
     options: Options,
@@ -124,14 +146,15 @@ fn writeMapEntry(
     try writeIndent(writer, options, depth);
     try writeFieldName(file, field, field.name, writer);
     try writer.writeAll(" {\n");
-    try writeField(file, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
-    try writeField(file, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
+    try writeField(file, registry, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
+    try writeField(file, registry, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
     try writeIndent(writer, options, depth);
     try writer.writeAll("}\n");
 }
 
 fn writeField(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     field: ?*const schema.FieldDescriptor,
     name: []const u8,
     kind: schema.FieldKind,
@@ -142,21 +165,32 @@ fn writeField(
 ) Error!void {
     try writeIndent(writer, options, depth);
     switch (kind) {
-        .message => switch (value) {
-            .message => |message| {
-                try writeFieldName(file, field, name, writer);
-                try writer.writeAll(" {\n");
-                try writeMessageFields(file, message, options, writer, depth + 1);
-                try writeIndent(writer, options, depth);
-                try writer.writeAll("}\n");
-            },
-            else => return error.TypeMismatch,
+        .message => |type_name| {
+            if (value == .enumeration) {
+                if (registryEnumDescriptor(file, registry, field, type_name)) |_| {
+                    try writeFieldName(file, field, name, writer);
+                    try writer.writeAll(": ");
+                    try writeEnum(file, registry, type_name, value, options, writer);
+                    try writer.writeAll("\n");
+                    return;
+                }
+            }
+            switch (value) {
+                .message => |message| {
+                    try writeFieldName(file, field, name, writer);
+                    try writer.writeAll(" {\n");
+                    try writeMessageFields(file, registry, message, options, writer, depth + 1);
+                    try writeIndent(writer, options, depth);
+                    try writer.writeAll("}\n");
+                },
+                else => return error.TypeMismatch,
+            }
         },
         .group => switch (value) {
             .group => |message| {
                 try writeFieldName(file, field, name, writer);
                 try writer.writeAll(" {\n");
-                try writeMessageFields(file, message, options, writer, depth + 1);
+                try writeMessageFields(file, registry, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
                 try writer.writeAll("}\n");
             },
@@ -165,7 +199,7 @@ fn writeField(
         else => {
             try writeFieldName(file, field, name, writer);
             try writer.writeAll(": ");
-            try writeValue(file, kind, value, options, writer);
+            try writeValue(file, registry, kind, value, options, writer);
             try writer.writeAll("\n");
         },
     }
@@ -185,6 +219,7 @@ fn writeFieldName(file: *const schema.FileDescriptor, field: ?*const schema.Fiel
 
 fn writeValue(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     kind: schema.FieldKind,
     value: dynamic.Value,
     options: Options,
@@ -192,8 +227,12 @@ fn writeValue(
 ) Error!void {
     switch (kind) {
         .scalar => |scalar| try writeScalar(scalar, value, writer),
-        .enumeration => |name| try writeEnum(file, name, value, options, writer),
-        .message, .group, .map => return error.TypeMismatch,
+        .enumeration => |name| try writeEnum(file, registry, name, value, options, writer),
+        .message => |name| {
+            if (value == .enumeration and registryEnumDescriptor(file, registry, null, name) != null) return try writeEnum(file, registry, name, value, options, writer);
+            return error.TypeMismatch;
+        },
+        .group, .map => return error.TypeMismatch,
     }
 }
 
@@ -264,6 +303,7 @@ fn writeScalar(scalar: schema.ScalarType, value: dynamic.Value, writer: *std.Io.
 
 fn writeEnum(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     name: []const u8,
     value: dynamic.Value,
     options: Options,
@@ -274,13 +314,24 @@ fn writeEnum(
         else => return error.TypeMismatch,
     };
     if (options.enum_as_name) {
-        if (file.findEnumDeep(name)) |enumeration| {
+        if (registryEnumDescriptor(file, registry, null, name) orelse file.findEnumDeep(name)) |enumeration| {
             for (enumeration.values.items) |enum_value| {
                 if (enum_value.number == number) return try writer.writeAll(enum_value.name);
             }
         }
     }
     try writer.print("{d}", .{number});
+}
+
+fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
+    if (registry) |reg| {
+        if (field) |descriptor| {
+            if (reg.findEnum(name, descriptor.name)) |enumeration| return enumeration;
+        }
+        if (reg.findEnum(name, null)) |enumeration| return enumeration;
+    }
+    const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    return file.findEnumDeep(trimmed);
 }
 
 fn writeQuoted(bytes: []const u8, writer: *std.Io.Writer) Error!void {
@@ -343,6 +394,35 @@ test "text format writes dynamic messages" {
         \\kind: ADMIN
         \\
     , text);
+}
+
+test "text format formats imported enum names with registry" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.Kind kind = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const desc = app.findMessage("Event").?;
+    var msg = dynamic.DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("kind").?, .{ .enumeration = 1 });
+
+    const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &msg, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "kind: ADMIN\n", rendered);
 }
 
 pub fn parseAlloc(
