@@ -13,6 +13,7 @@ pub const ParseError = error{
     DuplicateEnumValue,
     DuplicateField,
     DuplicateOneof,
+    DuplicateSymbol,
     InvalidRange,
     ReservedField,
     InvalidEscape,
@@ -157,6 +158,7 @@ pub const Parser = struct {
         var self = try Parser.init(allocator, input);
         errdefer self.file.deinit();
         try self.parseFile();
+        try self.validateTypeSymbols();
         try self.resolveFieldKinds();
         try self.validateExtensions();
         try self.validateDefaults();
@@ -685,6 +687,46 @@ pub const Parser = struct {
 
     fn validateFieldPackedOption(field: *const schema.FieldDescriptor) ParseError!void {
         if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
+    }
+
+    fn validateTypeSymbols(self: *Parser) ParseError!void {
+        try validateFileTypeSymbols(&self.file);
+        for (self.file.messages.items) |*message| try validateMessageTypeSymbols(message);
+    }
+
+    fn validateFileTypeSymbols(file: *const schema.FileDescriptor) ParseError!void {
+        for (file.messages.items) |*message| {
+            for (file.messages.items) |*other| {
+                if (message == other) continue;
+                if (std.mem.eql(u8, message.name, other.name)) return error.DuplicateSymbol;
+            }
+            for (file.enums.items) |*enumeration| {
+                if (std.mem.eql(u8, message.name, enumeration.name)) return error.DuplicateSymbol;
+            }
+        }
+        for (file.enums.items, 0..) |enumeration, i| {
+            for (file.enums.items[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
+            }
+        }
+    }
+
+    fn validateMessageTypeSymbols(message: *const schema.MessageDescriptor) ParseError!void {
+        for (message.messages.items) |*nested| {
+            for (message.messages.items) |*other| {
+                if (nested == other) continue;
+                if (std.mem.eql(u8, nested.name, other.name)) return error.DuplicateSymbol;
+            }
+            for (message.enums.items) |*enumeration| {
+                if (std.mem.eql(u8, nested.name, enumeration.name)) return error.DuplicateSymbol;
+            }
+        }
+        for (message.enums.items, 0..) |enumeration, i| {
+            for (message.enums.items[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
+            }
+        }
+        for (message.messages.items) |*nested| try validateMessageTypeSymbols(nested);
     }
 
     fn validateExtensions(self: *Parser) Error!void {
@@ -1228,6 +1270,28 @@ test "parser rejects invalid field defaults" {
         \\syntax = "proto2";
         \\enum Kind { UNKNOWN = 0; }
         \\message Bad { optional Kind kind = 1 [default = MISSING]; }
+    ));
+}
+
+test "parser rejects duplicate type symbols in the same scope" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message User {}
+        \\message User {}
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message User {}
+        \\enum User { UNKNOWN = 0; }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Outer { message Item {} enum Item { UNKNOWN = 0; } }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Outer { message Item {} message Item {} }
     ));
 }
 
