@@ -286,6 +286,7 @@ fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("try ");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
     try writer.writeAll(".append(allocator, entry);\n");
     try indent(writer, depth);
@@ -621,7 +622,7 @@ fn writeSetPresence(field: *const schema.FieldDescriptor, writer: *std.Io.Writer
     if (hasPresence(field.*)) {
         try writer.writeAll(" self.");
         try writePresenceIdent(field.name, writer);
-        try writer.writeAll(" = true");
+        try writer.writeAll(" = true;");
     }
 }
 
@@ -839,4 +840,29 @@ test "codegen emits presence flags for optional required and proto3 optional fie
     defer allocator.free(content3);
     try std.testing.expect(std.mem.indexOf(u8, content3, "@\"has_a\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content3, "@\"has_b\": bool = false") == null);
+}
+
+test "codegen output parses as Zig source" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Child { int32 id = 1; }
+        \\message Person {
+        \\  optional int32 id = 1;
+        \\  string name = 2;
+        \\  repeated string tags = 3;
+        \\  Kind kind = 4;
+        \\  Child child = 5;
+        \\  map<string, int32> counts = 6;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
