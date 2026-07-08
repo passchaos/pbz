@@ -34,7 +34,7 @@ validated feature set.
   - proto2 MessageSet wire-format encode/decode for known registry extensions plus unknown item preservation
   - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries, including imported enums resolved through Registry
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
-  - editions `features.repeated_field_encoding` packed/expanded behavior, `features.message_encoding` delimited/length-prefixed message wire behavior, enum-level `features.enum_type` open/closed override behavior, string UTF-8 validation via `features.utf8_validation`, and implicit/explicit `features.field_presence` default-value encoding behavior
+  - editions `features.repeated_field_encoding` packed/expanded behavior, `features.message_encoding` delimited/length-prefixed message wire behavior, enum-level `features.enum_type` open/closed override behavior, string UTF-8 validation via `features.utf8_validation`, and implicit/explicit/legacy-required `features.field_presence` behavior
   - descriptor encode/decode for common `FileOptions` fields, `MessageOptions.map_entry`, `FeatureSet` on file/message/field/oneof/enum/enum-value/service/method/extension-range options, `FeatureSetDefaults` with closest-edition lookup helpers, plus `FieldOptions.edition_defaults` and `FieldOptions.feature_support`, preserving protobuf edition feature metadata as structured schema fields
   - nested message and group round-trips, including imported message and enum decode through Registry
   - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
