@@ -126,6 +126,7 @@ pub const MapType = struct {
 pub const FieldOption = struct {
     name: []const u8,
     value: OptionValue,
+    name_owned: bool = false,
 };
 
 pub const OptionValue = union(enum) {
@@ -609,6 +610,9 @@ pub fn deinitKind(kind: *FieldKind, allocator: std.mem.Allocator) void {
 }
 
 pub fn deinitOptions(options: *OptionList, allocator: std.mem.Allocator) void {
+    for (options.items) |option| {
+        if (option.name_owned) allocator.free(option.name);
+    }
     options.deinit(allocator);
 }
 

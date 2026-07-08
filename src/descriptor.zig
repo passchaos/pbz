@@ -509,10 +509,34 @@ fn methodIdempotencyLevel(options: []const schema.FieldOption) ?i32 {
 }
 
 fn writeOptionName(allocator: std.mem.Allocator, name: []const u8, writer: *wire.Writer) Error!void {
+    var index: usize = 0;
+    var wrote_any = false;
+    while (index < name.len) {
+        if (name[index] == '.') {
+            index += 1;
+            continue;
+        }
+        if (name[index] == '(') {
+            const start = index + 1;
+            const end = std.mem.indexOfScalarPos(u8, name, start, ')') orelse return error.InvalidFieldType;
+            try writeOptionNamePart(allocator, name[start..end], true, writer);
+            wrote_any = true;
+            index = end + 1;
+            continue;
+        }
+        const start = index;
+        while (index < name.len and name[index] != '.' and name[index] != '(') index += 1;
+        if (index == start) return error.InvalidFieldType;
+        try writeOptionNamePart(allocator, name[start..index], false, writer);
+        wrote_any = true;
+    }
+    if (!wrote_any) return error.InvalidFieldType;
+}
+
+fn writeOptionNamePart(allocator: std.mem.Allocator, name_part: []const u8, is_extension: bool, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
-    const is_extension = std.mem.indexOfScalar(u8, name, '(') != null;
-    try tmp.writeString(1, name);
+    try tmp.writeString(1, name_part);
     try tmp.writeBool(2, is_extension);
     try writer.writeMessage(2, tmp.slice());
 }
@@ -1310,13 +1334,25 @@ fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!Dec
 }
 
 fn decodeUninterpretedOption(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldOption {
-    _ = allocator;
-    var name: []const u8 = "";
+    var name_bytes: std.ArrayList(u8) = .empty;
+    errdefer name_bytes.deinit(allocator);
+    var saw_name = false;
     var value: schema.OptionValue = .{ .identifier = "" };
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            2 => name = try decodeUninterpretedNamePart(try reader.readBytes()),
+            2 => {
+                if (saw_name) try name_bytes.append(allocator, '.');
+                const part = try decodeUninterpretedNamePart(try reader.readBytes());
+                if (part.is_extension and !(std.mem.startsWith(u8, part.name, "(") and std.mem.endsWith(u8, part.name, ")"))) {
+                    try name_bytes.append(allocator, '(');
+                    try name_bytes.appendSlice(allocator, part.name);
+                    try name_bytes.append(allocator, ')');
+                } else {
+                    try name_bytes.appendSlice(allocator, part.name);
+                }
+                saw_name = true;
+            },
             3 => value = .{ .identifier = try reader.readBytes() },
             4 => {
                 const v = try reader.readUInt64();
@@ -1330,16 +1366,22 @@ fn decodeUninterpretedOption(allocator: std.mem.Allocator, bytes: []const u8) Er
             else => try reader.skipValue(tag),
         }
     }
-    return .{ .name = name, .value = value };
+    const name = try name_bytes.toOwnedSlice(allocator);
+    return .{ .name = name, .value = value, .name_owned = true };
 }
 
-fn decodeUninterpretedNamePart(bytes: []const u8) Error![]const u8 {
+fn decodeUninterpretedNamePart(bytes: []const u8) Error!struct { name: []const u8, is_extension: bool } {
     var name: []const u8 = "";
+    var is_extension = false;
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
-        if (tag.number == 1) name = try reader.readBytes() else try reader.skipValue(tag);
+        switch (tag.number) {
+            1 => name = try reader.readBytes(),
+            2 => is_extension = try reader.readBool(),
+            else => try reader.skipValue(tag),
+        }
     }
-    return name;
+    return .{ .name = name, .is_extension = is_extension };
 }
 
 fn decodeMessageOptionsMapEntry(bytes: []const u8) Error!bool {
@@ -1741,37 +1783,86 @@ test "descriptor decoded schema owns descriptor bytes" {
     try std.testing.expectEqualStrings("value", decoded.findMessage("Owned").?.findField("value").?.name);
 }
 
+const ExpectedNamePart = struct {
+    name: []const u8,
+    is_extension: bool,
+};
+
+fn expectFirstFileOptionNameParts(file_bytes: []const u8, expected: []const ExpectedNamePart) !void {
+    var file_reader = wire.Reader.init(file_bytes);
+    while (try file_reader.nextTag()) |file_tag| {
+        if (file_tag.number == 8) {
+            var options_reader = wire.Reader.init(try file_reader.readBytes());
+            while (try options_reader.nextTag()) |options_tag| {
+                if (options_tag.number == 999) {
+                    var option_reader = wire.Reader.init(try options_reader.readBytes());
+                    var index: usize = 0;
+                    while (try option_reader.nextTag()) |option_tag| {
+                        if (option_tag.number == 2) {
+                            try std.testing.expect(index < expected.len);
+                            const actual = try readTestNamePart(try option_reader.readBytes());
+                            try std.testing.expectEqualStrings(expected[index].name, actual.name);
+                            try std.testing.expectEqual(expected[index].is_extension, actual.is_extension);
+                            index += 1;
+                        } else try option_reader.skipValue(option_tag);
+                    }
+                    try std.testing.expectEqual(expected.len, index);
+                    return;
+                } else try options_reader.skipValue(options_tag);
+            }
+        } else try file_reader.skipValue(file_tag);
+    }
+    return error.TestUnexpectedResult;
+}
+
+fn readTestNamePart(bytes: []const u8) !ExpectedNamePart {
+    var part = ExpectedNamePart{ .name = "", .is_extension = false };
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => part.name = try reader.readBytes(),
+            2 => part.is_extension = try reader.readBool(),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return part;
+}
+
 test "descriptor preserves custom options as uninterpreted options" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
-        \\option (demo.file_opt) = "file-value";
-        \\message M { optional int32 id = 1 [(demo.field_opt) = 123]; }
+        \\option (demo.file_opt).child = "file-value";
+        \\message M { optional int32 id = 1 [(demo.field_opt).nested.leaf = 123]; }
     );
     defer file.deinit();
     const bytes = try encodeFileDescriptorProto(allocator, &file, "custom.proto");
     defer allocator.free(bytes);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "(demo.file_opt)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "demo.file_opt") != null);
+    try expectFirstFileOptionNameParts(bytes, &.{
+        .{ .name = "demo.file_opt", .is_extension = true },
+        .{ .name = "child", .is_extension = false },
+    });
     try std.testing.expect(std.mem.indexOf(u8, bytes, "file-value") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "(demo.field_opt)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "demo.field_opt") != null);
 }
 
 test "descriptor decodes uninterpreted options" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
-        \\option (demo.file_opt) = "file-value";
-        \\message M { optional int32 id = 1 [(demo.field_opt) = 123]; }
+        \\option (demo.file_opt).child = "file-value";
+        \\message M { optional int32 id = 1 [(demo.field_opt).nested.leaf = 123]; }
     );
     defer file.deinit();
     const bytes = try encodeFileDescriptorProto(allocator, &file, "custom.proto");
     defer allocator.free(bytes);
     var decoded = try decodeFileDescriptorProto(allocator, bytes);
     defer decoded.deinit();
-    try std.testing.expectEqualStrings("(demo.file_opt)", decoded.options.items[0].name);
+    try std.testing.expectEqualStrings("(demo.file_opt).child", decoded.options.items[0].name);
     try std.testing.expectEqualSlices(u8, "file-value", decoded.options.items[0].value.string);
     const field = decoded.findMessage("M").?.findField("id").?;
-    try std.testing.expectEqualStrings("(demo.field_opt)", field.options.items[0].name);
+    try std.testing.expectEqualStrings("(demo.field_opt).nested.leaf", field.options.items[0].name);
     try std.testing.expectEqual(@as(i64, 123), field.options.items[0].value.integer);
 }
 
