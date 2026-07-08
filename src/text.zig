@@ -895,6 +895,50 @@ test "text format formats and parses proto2 extensions" {
     try std.testing.expectEqualSlices(u8, "parsed body", parsed.get("note").?.values.items[0].message.get("text").?.values.items[0].string);
 }
 
+test "text format formats and parses MessageSet extensions" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Note { optional string text = 1; }
+        \\extend Host { optional Note note = 100; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const note_desc = file.findMessage("Note").?;
+    const note = registry.findExtension("demo.Host", 100).?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    const nested = try allocator.create(dynamic.DynamicMessage);
+    nested.* = dynamic.DynamicMessage.init(allocator, note_desc);
+    try nested.add(note_desc.findField("text").?, .{ .string = try allocator.dupe(u8, "body") });
+    try msg.add(note, .{ .message = nested });
+
+    const text = try formatAlloc(allocator, &file, &msg, .{});
+    defer allocator.free(text);
+    try std.testing.expectEqualSlices(u8,
+        \\[demo.note] {
+        \\  text: "body"
+        \\}
+        \\
+    , text);
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, host,
+        \\[demo.note] { text: "parsed" }
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(u8, "parsed", parsed.get("note").?.values.items[0].message.get("text").?.values.items[0].string);
+    const encoded = try parsed.encoded(&file);
+    defer allocator.free(encoded);
+    try std.testing.expectEqual(@as(u8, 0x0b), encoded[0]); // MessageSet item start group.
+}
+
 test "text format formats and parses numeric unknown fields" {
     const allocator = std.testing.allocator;
     const source =
