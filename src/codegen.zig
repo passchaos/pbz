@@ -30,10 +30,14 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
 
 fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.print("pub const {s} = struct {{\n", .{message.name});
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(message.name, writer);
+    try writer.writeAll(" = struct {\n");
     for (message.fields.items) |*field| {
         try indent(writer, depth + 1);
-        try writer.print("pub const {s}_number = {d};\n", .{ field.name, field.number });
+        try writer.writeAll("pub const ");
+        try writeQuotedFieldNumber(field.name, writer);
+        try writer.print(" = {d};\n", .{field.number});
     }
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
@@ -44,13 +48,34 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
 
 fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.print("pub const {s} = enum(i32) {{\n", .{enumeration.name});
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(enumeration.name, writer);
+    try writer.writeAll(" = enum(i32) {\n");
     for (enumeration.values.items) |value| {
         try indent(writer, depth + 1);
-        try writer.print("{s} = {d},\n", .{ value.name, value.number });
+        try writeQuotedIdent(value.name, writer);
+        try writer.print(" = {d},\n", .{value.number});
     }
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
+}
+
+fn writeQuotedIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"");
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll("\"");
+}
+
+fn writeQuotedFieldNumber(name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"");
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll("_number\"");
 }
 
 fn indent(writer: *std.Io.Writer, depth: usize) Error!void {
@@ -74,9 +99,9 @@ test "codegen emits zig message and enum skeletons" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const Kind = enum(i32)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const User = struct") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const name_number = 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Kind\" = enum(i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"User\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"name_number\" = 1") != null);
 }
 
 test "codegen emits protoc response" {
@@ -88,4 +113,19 @@ test "codegen emits protoc response" {
     const response = try generatePluginResponse(allocator, &files);
     defer allocator.free(response);
     try std.testing.expect(response.len != 0);
+}
+
+test "codegen quotes zig identifiers" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.setSyntax(.proto3);
+    var msg = schema.MessageDescriptor{ .name = "struct" };
+    try msg.fields.append(allocator, .{ .name = "fn", .number = 1, .kind = .{ .scalar = .int32 } });
+    try file.messages.append(allocator, msg);
+
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"struct\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"fn_number\" = 1") != null);
 }
