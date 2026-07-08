@@ -26,6 +26,8 @@ validated feature set.
   - editions `features.repeated_field_encoding` packed/expanded behavior
   - nested message and group round-trips
   - unknown field preservation
+- JSON output
+  - dynamic message stringify for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 
 ## Quick example
 
@@ -60,6 +62,19 @@ pub fn example(allocator: std.mem.Allocator) !void {
     defer allocator.free(bytes);
 }
 ```
+
+## JSON output
+
+Dynamic messages can be written using protobuf JSON mapping basics:
+
+```zig
+const json_bytes = try pbz.stringifyJsonAlloc(allocator, &file, &msg, .{});
+defer allocator.free(json_bytes);
+```
+
+The current JSON writer emits present fields from dynamic messages, quotes 64-bit
+integers, base64-encodes bytes, writes repeated fields as arrays, maps as JSON
+objects, enum values by name when known, and nested messages recursively.
 
 ## Descriptor encoding
 

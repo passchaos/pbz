@@ -9,6 +9,7 @@ pub const schema = @import("schema.zig");
 pub const parser = @import("parser.zig");
 pub const dynamic = @import("dynamic.zig");
 pub const descriptor = @import("descriptor.zig");
+pub const json = @import("json.zig");
 
 pub const Allocator = @import("std").mem.Allocator;
 pub const FieldNumber = wire.FieldNumber;
@@ -22,6 +23,8 @@ pub const ProtoParser = parser.Parser;
 pub const DynamicMessage = dynamic.DynamicMessage;
 pub const encodeFileDescriptorProto = descriptor.encodeFileDescriptorProto;
 pub const encodeFileDescriptorSet = descriptor.encodeFileDescriptorSet;
+pub const stringifyJson = json.stringify;
+pub const stringifyJsonAlloc = json.stringifyAlloc;
 
 test {
     _ = wire;
@@ -29,4 +32,5 @@ test {
     _ = parser;
     _ = dynamic;
     _ = descriptor;
+    _ = json;
 }
