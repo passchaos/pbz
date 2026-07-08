@@ -393,6 +393,15 @@ pub const Parser = struct {
         return path;
     }
 
+    fn addRepeatedLocations(self: *Parser, base: []const i32, field_number: i32, start_index: usize, end_index: usize, start: usize, end: usize) Error!void {
+        var index = start_index;
+        while (index < end_index) : (index += 1) {
+            const path = try self.childPath(base, field_number, @intCast(index));
+            defer self.allocator.free(path);
+            try self.addSourceLocation(path, start, end);
+        }
+    }
+
     fn lineColumn(self: *const Parser, byte_index: usize) struct { line: i32, column: i32 } {
         var line: i32 = 0;
         var column: i32 = 0;
@@ -438,11 +447,24 @@ pub const Parser = struct {
                 const enum_start = self.previous_end;
                 try message.enums.append(self.allocator, try self.parseEnumAfterKeyword(path, enum_start));
             } else if (self.matchIdent("oneof")) {
-                try self.parseOneof(&message);
+                const oneof_start = self.previous_end;
+                const index: i32 = @intCast(message.oneofs.items.len);
+                const path = try self.childPath(source_path, 8, index);
+                defer self.allocator.free(path);
+                try self.parseOneof(&message, source_path);
+                try self.addSourceLocation(path, oneof_start, self.previousEnd());
             } else if (self.matchIdent("extensions")) {
+                const range_start = self.previous_end;
+                const start_index = message.extension_ranges.items.len;
                 try self.parseExtensionRanges(&message.extension_ranges);
+                try self.addRepeatedLocations(source_path, 5, start_index, message.extension_ranges.items.len, range_start, self.previousEnd());
             } else if (self.matchIdent("reserved")) {
+                const reserved_start = self.previous_end;
+                const range_start_index = message.reserved_ranges.items.len;
+                const name_start_index = message.reserved_names.items.len;
                 try self.parseReserved(&message.reserved_ranges, &message.reserved_names);
+                try self.addRepeatedLocations(source_path, 9, range_start_index, message.reserved_ranges.items.len, reserved_start, self.previousEnd());
+                try self.addRepeatedLocations(source_path, 10, name_start_index, message.reserved_names.items.len, reserved_start, self.previousEnd());
             } else if (self.matchIdent("extend")) {
                 try self.parseExtend(&message.extensions);
             } else if (self.consumeSymbol(';')) {
@@ -470,7 +492,12 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 try enumeration.options.append(self.allocator, try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("reserved")) {
+                const reserved_start = self.previous_end;
+                const range_start_index = enumeration.reserved_ranges.items.len;
+                const name_start_index = enumeration.reserved_names.items.len;
                 try self.parseReserved(&enumeration.reserved_ranges, &enumeration.reserved_names);
+                try self.addRepeatedLocations(source_path, 4, range_start_index, enumeration.reserved_ranges.items.len, reserved_start, self.previousEnd());
+                try self.addRepeatedLocations(source_path, 5, name_start_index, enumeration.reserved_names.items.len, reserved_start, self.previousEnd());
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -539,7 +566,7 @@ pub const Parser = struct {
         return method;
     }
 
-    fn parseOneof(self: *Parser, message: *schema.MessageDescriptor) Error!void {
+    fn parseOneof(self: *Parser, message: *schema.MessageDescriptor, message_path: []const i32) Error!void {
         const oneof_name = try self.expectIdentifier();
         try message.oneofs.append(self.allocator, .{ .name = oneof_name });
         try self.expectSymbol('{');
@@ -550,7 +577,12 @@ pub const Parser = struct {
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
+                const field_start = self.current.start;
+                const index: i32 = @intCast(message.fields.items.len);
                 try message.fields.append(self.allocator, try self.parseField(oneof_name, message));
+                const path = try self.childPath(message_path, 2, index);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, field_start, self.previousEnd());
             }
         }
     }
@@ -1654,8 +1686,8 @@ test "parser records basic source code info locations" {
         \\syntax = "proto2";
         \\package demo;
         \\import "common.proto";
-        \\message Person { optional string name = 1; message Child { optional int32 id = 1; } }
-        \\enum Kind { A = 0; }
+        \\message Person { optional string name = 1; message Child { optional int32 id = 1; } oneof pick { string nick = 2; } extensions 100 to 199; reserved 50 to 60; reserved "old"; }
+        \\enum Kind { A = 0; reserved 5 to 6; reserved "OLD"; }
         \\service Api { rpc Get (Person) returns (Person); }
     ;
     var file = try Parser.parse(allocator, source);
@@ -1668,8 +1700,15 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{ 4, 0, 2, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 8, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 2, 1 });
+    try expectLocationPath(&file, &.{ 4, 0, 5, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 9, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 10, 0 });
     try expectLocationPath(&file, &.{ 5, 0 });
     try expectLocationPath(&file, &.{ 5, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 5, 0, 4, 0 });
+    try expectLocationPath(&file, &.{ 5, 0, 5, 0 });
     try expectLocationPath(&file, &.{ 6, 0 });
     try expectLocationPath(&file, &.{ 6, 0, 2, 0 });
 }
