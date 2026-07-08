@@ -20,7 +20,7 @@ pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schem
     for (file.enums.items) |*enumeration| try writeEnumDescriptor(allocator, enumeration, 5, writer);
     for (file.services.items) |*service| try writeServiceDescriptor(allocator, service, 6, writer);
     for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, null, field, 7, writer);
-    if (file.syntax == .editions or hasFeatureOptions(file)) try writeFileOptions(allocator, file, 8, writer);
+    if (file.syntax == .editions or file.options.items.len != 0) try writeFileOptions(allocator, file, 8, writer);
     try writer.writeString(12, switch (file.syntax) {
         .proto2 => "proto2",
         .proto3 => "proto3",
@@ -146,7 +146,7 @@ fn writeFieldDescriptor(
         else => {},
     }
     if (field.default_value) |value| try writeDefaultValue(allocator, value, 7, &tmp);
-    if (field.packed_override != null) try writeFieldOptions(allocator, field, 8, &tmp);
+    if (field.packed_override != null or field.options.items.len != 0) try writeFieldOptions(allocator, field, 8, &tmp);
     if (field.oneof_name) |oneof_name| {
         if (containing_message) |message| {
             if (oneofIndex(message, oneof_name)) |index| try tmp.writeInt32(9, @intCast(index));
@@ -234,6 +234,7 @@ fn writeFileOptions(allocator: std.mem.Allocator, file: *const schema.FileDescri
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     if (file.syntax == .editions or hasFeatureOptions(file)) try writeFeatureSet(allocator, file.features, 50, &tmp);
+    try writeUninterpretedOptions(allocator, file.options.items, &tmp, .file);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -248,7 +249,49 @@ fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDes
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     if (field.packed_override) |is_packed| try tmp.writeBool(2, is_packed);
+    try writeUninterpretedOptions(allocator, field.options.items, &tmp, .field);
     try writer.writeMessage(field_number, tmp.slice());
+}
+
+const OptionScope = enum { file, field };
+
+fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const schema.FieldOption, writer: *wire.Writer, scope: OptionScope) Error!void {
+    for (options) |option| {
+        if (isKnownOption(option.name, scope)) continue;
+        var tmp = wire.Writer.init(allocator);
+        defer tmp.deinit();
+        try writeOptionName(allocator, option.name, &tmp);
+        try writeOptionValue(option.value, &tmp);
+        try writer.writeMessage(999, tmp.slice());
+    }
+}
+
+fn isKnownOption(name: []const u8, scope: OptionScope) bool {
+    if (std.mem.startsWith(u8, name, "features.")) return true;
+    return switch (scope) {
+        .file => false,
+        .field => std.mem.eql(u8, name, "packed") or std.mem.eql(u8, name, "default") or std.mem.eql(u8, name, "json_name"),
+    };
+}
+
+fn writeOptionName(allocator: std.mem.Allocator, name: []const u8, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    const is_extension = std.mem.indexOfScalar(u8, name, '(') != null;
+    try tmp.writeString(1, name);
+    try tmp.writeBool(2, is_extension);
+    try writer.writeMessage(2, tmp.slice());
+}
+
+fn writeOptionValue(value: schema.OptionValue, writer: *wire.Writer) Error!void {
+    switch (value) {
+        .identifier => |text| try writer.writeString(3, text),
+        .integer => |v| if (v >= 0) try writer.writeUInt64(4, @intCast(v)) else try writer.writeInt64(5, v),
+        .float => |v| try writer.writeDouble(6, v),
+        .string => |text| try writer.writeBytes(7, text),
+        .boolean => |v| try writer.writeString(3, if (v) "true" else "false"),
+        .aggregate => |text| try writer.writeString(8, text),
+    }
 }
 
 fn writeFeatureSet(allocator: std.mem.Allocator, features: schema.FeatureSet, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -911,4 +954,19 @@ test "descriptor decoded schema owns descriptor bytes" {
     try std.testing.expectEqualStrings("own", decoded.package);
     try std.testing.expectEqualStrings("Owned", decoded.findMessage("Owned").?.name);
     try std.testing.expectEqualStrings("value", decoded.findMessage("Owned").?.findField("value").?.name);
+}
+
+test "descriptor preserves custom options as uninterpreted options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\option (demo.file_opt) = "file-value";
+        \\message M { optional int32 id = 1 [(demo.field_opt) = 123]; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "custom.proto");
+    defer allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "(demo.file_opt)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "file-value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "(demo.field_opt)") != null);
 }

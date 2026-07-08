@@ -170,8 +170,8 @@ defer decoded_file.deinit();
 ```
 
 The current descriptor support covers core file/message/field/enum/service
-metadata, map-entry descriptors, packed field options, and edition feature
-metadata.
+metadata, map-entry descriptors, packed field options, custom uninterpreted
+options, and edition feature metadata.
 
 ## Build and test
 
