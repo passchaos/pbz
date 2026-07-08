@@ -705,6 +705,20 @@ pub const Parser = struct {
             if (std.mem.eql(u8, leaf, "default")) field.default_value = option.value;
             if (std.mem.eql(u8, leaf, "json_name") and option.value == .string) field.json_name = option.value.string;
             if (std.mem.eql(u8, leaf, "packed")) field.packed_override = schema.optionAsBool(option.value);
+            if (std.mem.eql(u8, leaf, "edition_defaults")) {
+                const aggregate = switch (option.value) {
+                    .aggregate => |text| text,
+                    else => return error.InvalidFieldType,
+                };
+                try field.edition_defaults.append(self.allocator, try self.parseFieldEditionDefaultAggregate(aggregate));
+            }
+            if (std.mem.eql(u8, leaf, "feature_support")) {
+                const aggregate = switch (option.value) {
+                    .aggregate => |text| text,
+                    else => return error.InvalidFieldType,
+                };
+                field.feature_support = try self.parseFeatureSupportAggregate(aggregate);
+            }
             if (std.mem.eql(u8, leaf, "repeated_field_encoding")) {
                 if (schema.optionAsIdentifier(option.value)) |ident| {
                     if (std.ascii.eqlIgnoreCase(ident, "PACKED")) field.packed_override = true;
@@ -823,6 +837,16 @@ pub const Parser = struct {
     fn parseExtensionDeclarationAggregate(self: *Parser, aggregate: []const u8) Error!schema.ExtensionDeclaration {
         var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
         return try parser.parseExtensionDeclaration();
+    }
+
+    fn parseFieldEditionDefaultAggregate(self: *Parser, aggregate: []const u8) Error!schema.FieldEditionDefault {
+        var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
+        return try parser.parseFieldEditionDefault();
+    }
+
+    fn parseFeatureSupportAggregate(self: *Parser, aggregate: []const u8) Error!schema.FeatureSupport {
+        var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
+        return try parser.parseFeatureSupport();
     }
 
     fn parseReserved(self: *Parser, ranges: *std.ArrayList(schema.ReservedRange), names: *std.ArrayList([]const u8)) Error!void {
@@ -1342,6 +1366,50 @@ const AggregateOptionParser = struct {
         return declaration;
     }
 
+    fn parseFieldEditionDefault(self: *AggregateOptionParser) Error!schema.FieldEditionDefault {
+        _ = self.consumeSymbol('{') or self.consumeSymbol('<');
+        var edition_default = schema.FieldEditionDefault{};
+        while (!self.consumeSymbol('}') and !self.consumeSymbol('>')) {
+            if (self.current.tag == .eof) break;
+            const name = try self.expectIdentifier();
+            try self.expectSymbol(':');
+            if (std.mem.eql(u8, name, "edition")) {
+                edition_default.edition = try self.expectEdition();
+            } else if (std.mem.eql(u8, name, "value")) {
+                edition_default.value = try self.expectString();
+            } else {
+                try self.skipValue();
+            }
+            _ = self.consumeSymbol(',') or self.consumeSymbol(';');
+        }
+        return edition_default;
+    }
+
+    fn parseFeatureSupport(self: *AggregateOptionParser) Error!schema.FeatureSupport {
+        _ = self.consumeSymbol('{') or self.consumeSymbol('<');
+        var feature_support = schema.FeatureSupport{};
+        while (!self.consumeSymbol('}') and !self.consumeSymbol('>')) {
+            if (self.current.tag == .eof) break;
+            const name = try self.expectIdentifier();
+            try self.expectSymbol(':');
+            if (std.mem.eql(u8, name, "edition_introduced")) {
+                feature_support.edition_introduced = try self.expectEdition();
+            } else if (std.mem.eql(u8, name, "edition_deprecated")) {
+                feature_support.edition_deprecated = try self.expectEdition();
+            } else if (std.mem.eql(u8, name, "deprecation_warning")) {
+                feature_support.deprecation_warning = try self.expectString();
+            } else if (std.mem.eql(u8, name, "edition_removed")) {
+                feature_support.edition_removed = try self.expectEdition();
+            } else if (std.mem.eql(u8, name, "removal_error")) {
+                feature_support.removal_error = try self.expectString();
+            } else {
+                try self.skipValue();
+            }
+            _ = self.consumeSymbol(',') or self.consumeSymbol(';');
+        }
+        return feature_support;
+    }
+
     fn skipValue(self: *AggregateOptionParser) Error!void {
         if (self.current.tag == .symbol and (self.current.symbol == '{' or self.current.symbol == '<')) {
             const open = self.current.symbol;
@@ -1362,6 +1430,15 @@ const AggregateOptionParser = struct {
         try self.advanceVoid();
     }
 
+    fn expectEdition(self: *AggregateOptionParser) Error!schema.Edition {
+        if (self.current.tag == .identifier) {
+            const text = try self.expectIdentifier();
+            return schema.Edition.fromProtoName(text) orelse error.InvalidEdition;
+        }
+        const number = try self.parseSignedInt32();
+        return std.enums.fromInt(schema.Edition, number) orelse error.InvalidEdition;
+    }
+
     fn expectIdentifier(self: *AggregateOptionParser) Error![]const u8 {
         if (self.current.tag != .identifier) return error.UnexpectedToken;
         const text = self.current.text;
@@ -1370,11 +1447,28 @@ const AggregateOptionParser = struct {
     }
 
     fn expectString(self: *AggregateOptionParser) Error![]const u8 {
+        const decoded = try self.consumeStringLiteral();
+        if (self.current.tag != .string_literal) return decoded;
+
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        try out.appendSlice(self.allocator, decoded);
+        while (self.current.tag == .string_literal) {
+            const part = try self.consumeStringLiteral();
+            try out.appendSlice(self.allocator, part);
+        }
+        const joined = try out.toOwnedSlice(self.allocator);
+        errdefer self.allocator.free(joined);
+        try self.owned_strings.append(self.allocator, joined);
+        return joined;
+    }
+
+    fn consumeStringLiteral(self: *AggregateOptionParser) Error![]const u8 {
         if (self.current.tag != .string_literal) return error.UnexpectedToken;
         const decoded = try decodeStringLiteralAlloc(self.allocator, self.current.text);
         errdefer self.allocator.free(decoded);
-        try self.owned_strings.append(self.allocator, decoded);
         try self.advanceVoid();
+        try self.owned_strings.append(self.allocator, decoded);
         return decoded;
     }
 
@@ -2142,6 +2236,57 @@ test "parser preserves extension range declarations verification and features" {
     try std.testing.expect(range.declarations.items[0].repeated);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
     try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, range.features.?.repeated_field_encoding);
+}
+
+test "parser parses field edition_defaults and feature_support aggregates" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message FeatureSetLike {
+        \\  optional int32 field_presence = 1 [
+        \\    edition_defaults = { edition: EDITION_LEGACY, value: "EXPLICIT" },
+        \\    edition_defaults = { edition: EDITION_PROTO3, value: "IMPLICIT" },
+        \\    feature_support = {
+        \\      edition_introduced: EDITION_2023
+        \\      edition_deprecated: EDITION_2024
+        \\      deprecation_warning: "use " "new presence"
+        \\      edition_removed: EDITION_2026
+        \\      removal_error: "removed"
+        \\    }
+        \\  ];
+        \\}
+    );
+    defer file.deinit();
+
+    const field = file.findMessage("FeatureSetLike").?.findField("field_presence").?;
+    try std.testing.expectEqual(@as(usize, 2), field.edition_defaults.items.len);
+    try std.testing.expectEqual(schema.Edition.legacy, field.edition_defaults.items[0].edition);
+    try std.testing.expectEqualStrings("EXPLICIT", field.edition_defaults.items[0].value);
+    try std.testing.expectEqual(schema.Edition.proto3, field.edition_defaults.items[1].edition);
+    try std.testing.expectEqualStrings("IMPLICIT", field.edition_defaults.items[1].value);
+    try std.testing.expectEqual(schema.Edition.edition_2023, field.feature_support.?.edition_introduced.?);
+    try std.testing.expectEqual(schema.Edition.edition_2024, field.feature_support.?.edition_deprecated.?);
+    try std.testing.expectEqualStrings("use new presence", field.feature_support.?.deprecation_warning);
+    try std.testing.expectEqual(schema.Edition.edition_2026, field.feature_support.?.edition_removed.?);
+    try std.testing.expectEqualStrings("removed", field.feature_support.?.removal_error);
+}
+
+test "parser rejects invalid field edition_defaults and feature_support aggregates" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidEdition, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 field_presence = 1 [
+        \\    edition_defaults = { edition: EDITION_DOES_NOT_EXIST, value: "EXPLICIT" }
+        \\  ];
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 field_presence = 1 [feature_support = EDITION_2023];
+        \\}
+    ));
 }
 
 test "parser validates extension range declarations against defined extensions" {

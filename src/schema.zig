@@ -17,6 +17,8 @@ pub const Syntax = enum {
 
 pub const Edition = enum(i32) {
     unknown = 0,
+    edition_1_test_only = 1,
+    edition_2_test_only = 2,
     legacy = 900,
     proto2 = 998,
     proto3 = 999,
@@ -24,12 +26,33 @@ pub const Edition = enum(i32) {
     edition_2024 = 1001,
     edition_2026 = 1002,
     unstable = 9999,
+    edition_99997_test_only = 99997,
+    edition_99998_test_only = 99998,
+    edition_99999_test_only = 99999,
     max = 0x7fffffff,
 
     pub fn fromYear(year: []const u8) ?Edition {
         if (std.mem.eql(u8, year, "2023")) return .edition_2023;
         if (std.mem.eql(u8, year, "2024")) return .edition_2024;
         if (std.mem.eql(u8, year, "2026")) return .edition_2026;
+        return null;
+    }
+
+    pub fn fromProtoName(name: []const u8) ?Edition {
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_UNKNOWN")) return .unknown;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_LEGACY")) return .legacy;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_PROTO2")) return .proto2;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_PROTO3")) return .proto3;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_2023")) return .edition_2023;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_2024")) return .edition_2024;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_2026")) return .edition_2026;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_UNSTABLE")) return .unstable;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_1_TEST_ONLY")) return .edition_1_test_only;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_2_TEST_ONLY")) return .edition_2_test_only;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_99997_TEST_ONLY")) return .edition_99997_test_only;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_99998_TEST_ONLY")) return .edition_99998_test_only;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_99999_TEST_ONLY")) return .edition_99999_test_only;
+        if (std.ascii.eqlIgnoreCase(name, "EDITION_MAX")) return .max;
         return null;
     }
 };
@@ -151,10 +174,13 @@ pub const FieldDescriptor = struct {
     oneof_name: ?[]const u8 = null,
     proto3_optional: bool = false,
     packed_override: ?bool = null,
+    edition_defaults: std.ArrayList(FieldEditionDefault) = .empty,
+    feature_support: ?FeatureSupport = null,
     options: OptionList = .empty,
 
     pub fn deinit(self: *FieldDescriptor, allocator: std.mem.Allocator) void {
         deinitKind(&self.kind, allocator);
+        self.edition_defaults.deinit(allocator);
         deinitOptions(&self.options, allocator);
         self.* = undefined;
     }
@@ -176,6 +202,19 @@ pub const FieldDescriptor = struct {
             .editions => file.features.repeated_field_encoding == FeatureSet.RepeatedFieldEncoding.packed_encoding,
         };
     }
+};
+
+pub const FieldEditionDefault = struct {
+    edition: Edition = .unknown,
+    value: []const u8 = "",
+};
+
+pub const FeatureSupport = struct {
+    edition_introduced: ?Edition = null,
+    edition_deprecated: ?Edition = null,
+    deprecation_warning: []const u8 = "",
+    edition_removed: ?Edition = null,
+    removal_error: []const u8 = "",
 };
 
 pub const OneofDescriptor = struct {

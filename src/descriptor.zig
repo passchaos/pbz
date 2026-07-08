@@ -170,7 +170,7 @@ fn writeFieldDescriptor(
         else => {},
     }
     if (field.default_value) |value| try writeDefaultValue(allocator, file, field.kind, value, 7, &tmp);
-    if (field.packed_override != null or field.options.items.len != 0) try writeFieldOptions(allocator, field, 8, &tmp);
+    if (hasFieldOptions(field)) try writeFieldOptions(allocator, field, 8, &tmp);
     if (containing_message) |message| {
         if (field.oneof_name) |oneof_name| {
             if (oneofIndex(message, oneof_name)) |index| try tmp.writeInt32(9, @intCast(index));
@@ -182,6 +182,13 @@ fn writeFieldDescriptor(
     if (field.proto3_optional) try tmp.writeBool(17, true);
 
     try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn hasFieldOptions(field: *const schema.FieldDescriptor) bool {
+    return field.packed_override != null or
+        field.options.items.len != 0 or
+        field.edition_defaults.items.len != 0 or
+        field.feature_support != null;
 }
 
 fn writeSyntheticOneofDescriptor(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -466,7 +473,28 @@ fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDes
             if (optionEnumNumberValue(option.value)) |value| try tmp.writeInt32(19, value);
         }
     }
+    for (field.edition_defaults.items) |edition_default| try writeFieldEditionDefault(allocator, edition_default, 20, &tmp);
+    if (field.feature_support) |feature_support| try writeFeatureSupport(allocator, feature_support, 22, &tmp);
     try writeUninterpretedOptions(allocator, field.options.items, &tmp, .field);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeFieldEditionDefault(allocator: std.mem.Allocator, edition_default: schema.FieldEditionDefault, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (edition_default.value.len != 0) try tmp.writeString(2, edition_default.value);
+    if (edition_default.edition != .unknown) try tmp.writeInt32(3, @intFromEnum(edition_default.edition));
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeFeatureSupport(allocator: std.mem.Allocator, feature_support: schema.FeatureSupport, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (feature_support.edition_introduced) |edition| try tmp.writeInt32(1, @intFromEnum(edition));
+    if (feature_support.edition_deprecated) |edition| try tmp.writeInt32(2, @intFromEnum(edition));
+    if (feature_support.deprecation_warning.len != 0) try tmp.writeString(3, feature_support.deprecation_warning);
+    if (feature_support.edition_removed) |edition| try tmp.writeInt32(4, @intFromEnum(edition));
+    if (feature_support.removal_error.len != 0) try tmp.writeString(5, feature_support.removal_error);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -494,7 +522,7 @@ fn isKnownOption(name: []const u8, scope: OptionScope) bool {
         .oneof => false,
         .service => std.mem.eql(u8, trimmed, "deprecated"),
         .method => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "idempotency_level"),
-        .field => std.mem.eql(u8, trimmed, "ctype") or std.mem.eql(u8, trimmed, "packed") or std.mem.eql(u8, trimmed, "default") or std.mem.eql(u8, trimmed, "json_name") or std.mem.eql(u8, trimmed, "jstype") or std.mem.eql(u8, trimmed, "lazy") or std.mem.eql(u8, trimmed, "unverified_lazy") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "weak") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "retention") or std.mem.eql(u8, trimmed, "targets"),
+        .field => std.mem.eql(u8, trimmed, "ctype") or std.mem.eql(u8, trimmed, "packed") or std.mem.eql(u8, trimmed, "default") or std.mem.eql(u8, trimmed, "json_name") or std.mem.eql(u8, trimmed, "jstype") or std.mem.eql(u8, trimmed, "lazy") or std.mem.eql(u8, trimmed, "unverified_lazy") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "weak") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "retention") or std.mem.eql(u8, trimmed, "targets") or std.mem.eql(u8, trimmed, "edition_defaults") or std.mem.eql(u8, trimmed, "feature_support"),
         .extension_range => std.mem.eql(u8, schema.optionLeaf(name), "declaration") or std.mem.eql(u8, schema.optionLeaf(name), "verification"),
     };
 }
@@ -996,7 +1024,10 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     var proto3_optional = false;
     var packed_override: ?bool = null;
     var field_options: schema.OptionList = .empty;
+    var edition_defaults: std.ArrayList(schema.FieldEditionDefault) = .empty;
+    var feature_support: ?schema.FeatureSupport = null;
     errdefer field_options.deinit(allocator);
+    errdefer edition_defaults.deinit(allocator);
 
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
@@ -1009,9 +1040,16 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
             6 => type_name = try reader.readBytes(),
             7 => default_value_text = try reader.readBytes(),
             8 => {
-                const decoded_options = try decodeFieldOptions(allocator, try reader.readBytes());
+                var decoded_options = try decodeFieldOptions(allocator, try reader.readBytes());
+                errdefer decoded_options.deinit(allocator);
+                if (field_options.items.len != 0) field_options.deinit(allocator);
+                if (edition_defaults.items.len != 0) edition_defaults.deinit(allocator);
                 packed_override = decoded_options.packed_override;
                 field_options = decoded_options.options;
+                edition_defaults = decoded_options.edition_defaults;
+                feature_support = decoded_options.feature_support;
+                decoded_options.options = .empty;
+                decoded_options.edition_defaults = .empty;
             },
             9 => oneof_index_text = try oneofIndexText(try reader.readInt32()),
             10 => json_name = try reader.readBytes(),
@@ -1032,10 +1070,13 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         .json_name = json_name,
         .proto3_optional = proto3_optional,
         .packed_override = packed_override,
+        .edition_defaults = edition_defaults,
+        .feature_support = feature_support,
         .options = field_options,
     };
     if (field.name.len == 0 or field.number == 0) return error.InvalidFieldType;
     field_options = .empty;
+    edition_defaults = .empty;
     return field;
 }
 
@@ -1369,11 +1410,18 @@ fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor,
 const DecodedFieldOptions = struct {
     packed_override: ?bool = null,
     options: schema.OptionList = .empty,
+    edition_defaults: std.ArrayList(schema.FieldEditionDefault) = .empty,
+    feature_support: ?schema.FeatureSupport = null,
+
+    fn deinit(self: *DecodedFieldOptions, allocator: std.mem.Allocator) void {
+        self.options.deinit(allocator);
+        self.edition_defaults.deinit(allocator);
+    }
 };
 
 fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!DecodedFieldOptions {
     var result = DecodedFieldOptions{};
-    errdefer result.options.deinit(allocator);
+    errdefer result.deinit(allocator);
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
@@ -1387,7 +1435,38 @@ fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!Dec
             16 => try result.options.append(allocator, .{ .name = "debug_redact", .value = .{ .boolean = try reader.readBool() } }),
             17 => try result.options.append(allocator, .{ .name = "retention", .value = .{ .integer = try reader.readInt32() } }),
             19 => try result.options.append(allocator, .{ .name = "targets", .value = .{ .integer = try reader.readInt32() } }),
+            20 => try result.edition_defaults.append(allocator, try decodeFieldEditionDefault(try reader.readBytes())),
+            22 => result.feature_support = try decodeFeatureSupport(try reader.readBytes()),
             999 => try result.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return result;
+}
+
+fn decodeFieldEditionDefault(bytes: []const u8) Error!schema.FieldEditionDefault {
+    var result = schema.FieldEditionDefault{};
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            2 => result.value = try reader.readBytes(),
+            3 => result.edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            else => try reader.skipValue(tag),
+        }
+    }
+    return result;
+}
+
+fn decodeFeatureSupport(bytes: []const u8) Error!schema.FeatureSupport {
+    var result = schema.FeatureSupport{};
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => result.edition_introduced = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            2 => result.edition_deprecated = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            3 => result.deprecation_warning = try reader.readBytes(),
+            4 => result.edition_removed = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType,
+            5 => result.removal_error = try reader.readBytes(),
             else => try reader.skipValue(tag),
         }
     }
@@ -2233,6 +2312,53 @@ test "descriptor preserves message field and enum known options" {
     try std.testing.expect(enum_options[1].value.boolean);
     try std.testing.expectEqualStrings("deprecated_legacy_json_field_conflicts", enum_options[2].name);
     try std.testing.expect(enum_options[2].value.boolean);
+}
+
+test "descriptor preserves field edition defaults and feature support" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.name = "features.proto";
+
+    var message = schema.MessageDescriptor{ .name = "FeatureSetLike" };
+    var field = schema.FieldDescriptor{
+        .name = "field_presence",
+        .number = 1,
+        .cardinality = .optional,
+        .kind = .{ .scalar = .int32 },
+        .feature_support = .{
+            .edition_introduced = .edition_2023,
+            .edition_deprecated = .edition_2024,
+            .deprecation_warning = "prefer explicit presence",
+            .edition_removed = .edition_2026,
+            .removal_error = "field_presence override removed",
+        },
+    };
+    try field.edition_defaults.append(allocator, .{ .edition = .legacy, .value = "EXPLICIT" });
+    try field.edition_defaults.append(allocator, .{ .edition = .proto3, .value = "IMPLICIT" });
+    try field.edition_defaults.append(allocator, .{ .edition = .edition_2023, .value = "EXPLICIT" });
+    try message.fields.append(allocator, field);
+    try file.messages.append(allocator, message);
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, file.name);
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const decoded_field = decoded.findMessage("FeatureSetLike").?.findField("field_presence").?;
+    try std.testing.expectEqual(@as(usize, 3), decoded_field.edition_defaults.items.len);
+    try std.testing.expectEqual(schema.Edition.legacy, decoded_field.edition_defaults.items[0].edition);
+    try std.testing.expectEqualStrings("EXPLICIT", decoded_field.edition_defaults.items[0].value);
+    try std.testing.expectEqual(schema.Edition.proto3, decoded_field.edition_defaults.items[1].edition);
+    try std.testing.expectEqualStrings("IMPLICIT", decoded_field.edition_defaults.items[1].value);
+    try std.testing.expectEqual(schema.Edition.edition_2023, decoded_field.edition_defaults.items[2].edition);
+    try std.testing.expectEqualStrings("EXPLICIT", decoded_field.edition_defaults.items[2].value);
+    try std.testing.expectEqual(@as(usize, 0), decoded_field.options.items.len);
+    try std.testing.expectEqual(schema.Edition.edition_2023, decoded_field.feature_support.?.edition_introduced.?);
+    try std.testing.expectEqual(schema.Edition.edition_2024, decoded_field.feature_support.?.edition_deprecated.?);
+    try std.testing.expectEqualStrings("prefer explicit presence", decoded_field.feature_support.?.deprecation_warning);
+    try std.testing.expectEqual(schema.Edition.edition_2026, decoded_field.feature_support.?.edition_removed.?);
+    try std.testing.expectEqualStrings("field_presence override removed", decoded_field.feature_support.?.removal_error);
 }
 
 test "descriptor preserves oneof enum value service and method options" {
