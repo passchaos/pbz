@@ -45,7 +45,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
-  - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, and Zig value type strings
+  - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, and typed `write`/`writeAll` helpers
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
@@ -193,8 +193,9 @@ or structured `GeneratedCodeInfo` annotations.
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
-`cardinality`, `value_type`, and `zig_type`) so applications can wire them into
-dynamic registries or custom typed wrappers.
+`cardinality`, `value_type`, and `zig_type`) plus typed `write`/`writeAll`
+helpers so applications can encode extension values or wire them into dynamic
+registries and custom typed wrappers.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
 including generated message payload fields when their types are available.
