@@ -149,7 +149,7 @@ names/numbers including unknown numeric enum values, default lowerCamelCase fiel
 nested messages recursively; `parseJsonAllocWithRegistry` resolves imported
 message and enum field types through a `Registry`, `stringifyJsonAllocWithRegistry`
 uses the same registry to print imported enum names, and ignore-unknown parsing
-also skips unknown enum names.
+also skips unknown enum names for local and imported enum fields.
 
 ## Well-known types
 

@@ -132,7 +132,7 @@ fn fillMessageObject(
             };
             for (array.items) |item| {
                 var value = parseValue(allocator, file, registry, message.descriptor, field.kind, item, options) catch |err| {
-                    if (shouldIgnoreEnumParseError(options, field.kind, err)) continue;
+                    if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, field.kind, err)) continue;
                     return err;
                 };
                 message.add(field, value) catch |err| {
@@ -142,7 +142,7 @@ fn fillMessageObject(
             }
         } else {
             var value = parseValue(allocator, file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
-                if (shouldIgnoreEnumParseError(options, field.kind, err)) continue;
+                if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, field.kind, err)) continue;
                 return err;
             };
             message.add(field, value) catch |err| {
@@ -175,7 +175,7 @@ fn parseMapField(
         var key = try parseMapKey(allocator, map_type.key, entry.key_ptr.*);
         errdefer dynamic.deinitValue(&key, allocator);
         var map_value = parseValue(allocator, file, registry, message.descriptor, map_type.value.*, entry.value_ptr.*, options) catch |err| {
-            if (shouldIgnoreEnumParseError(options, map_type.value.*, err)) {
+            if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, map_type.value.*, err)) {
                 dynamic.deinitValue(&key, allocator);
                 continue;
             }
@@ -192,8 +192,13 @@ fn parseMapField(
     }
 }
 
-fn shouldIgnoreEnumParseError(options: Options, kind: schema.FieldKind, err: anyerror) bool {
-    return options.ignore_unknown_fields and kind == .enumeration and err == error.InvalidEnumValue;
+fn shouldIgnoreEnumParseError(options: Options, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind, err: anyerror) bool {
+    if (!options.ignore_unknown_fields or err != error.InvalidEnumValue) return false;
+    return switch (kind) {
+        .enumeration => true,
+        .message => |name| registryEnumDescriptor(file, registry, current, name) != null,
+        else => false,
+    };
 }
 
 fn parseValue(
@@ -1400,6 +1405,41 @@ test "json ignore unknown fields skips unknown enum names" {
     try std.testing.expectEqual(@as(i32, 1), parsed.get("roles").?.values.items[1].enumeration);
     try std.testing.expectEqual(@as(usize, 1), parsed.get("keyed").?.values.items.len);
     try std.testing.expectEqualSlices(u8, "ok", parsed.get("keyed").?.values.items[0].map_entry.key.string);
+}
+
+test "json ignore unknown fields skips imported enum names" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event {
+        \\  common.Kind kind = 1;
+        \\  repeated common.Kind roles = 2;
+        \\  map<string, common.Kind> keyed = 3;
+        \\}
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    const desc = app.findMessage("Event").?;
+
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, desc,
+        \\{"kind":"BOGUS","roles":["ADMIN","BOGUS"],"keyed":{"ok":"ADMIN","bad":"BOGUS"}}
+    , .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try std.testing.expect(parsed.get("kind") == null);
+    try std.testing.expectEqual(@as(usize, 1), parsed.get("roles").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("roles").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(usize, 1), parsed.get("keyed").?.values.items.len);
+    try std.testing.expectEqualStrings("ok", parsed.get("keyed").?.values.items[0].map_entry.key.string);
 }
 
 test "json parse ignores null fields" {
