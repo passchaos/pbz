@@ -76,14 +76,20 @@ pub fn fillMessage(
                 else => return error.TypeMismatch,
             };
             for (array.items) |item| {
-                var value = try parseValue(allocator, file, message.descriptor, field.kind, item, options);
+                var value = parseValue(allocator, file, message.descriptor, field.kind, item, options) catch |err| {
+                    if (shouldIgnoreEnumParseError(options, field.kind, err)) continue;
+                    return err;
+                };
                 message.add(field, value) catch |err| {
                     dynamic.deinitValue(&value, allocator);
                     return err;
                 };
             }
         } else {
-            var value = try parseValue(allocator, file, message.descriptor, field.kind, entry.value_ptr.*, options);
+            var value = parseValue(allocator, file, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
+                if (shouldIgnoreEnumParseError(options, field.kind, err)) continue;
+                return err;
+            };
             message.add(field, value) catch |err| {
                 dynamic.deinitValue(&value, allocator);
                 return err;
@@ -112,7 +118,13 @@ fn parseMapField(
     while (it.next()) |entry| {
         var key = try parseMapKey(allocator, map_type.key, entry.key_ptr.*);
         errdefer dynamic.deinitValue(&key, allocator);
-        var map_value = try parseValue(allocator, file, message.descriptor, map_type.value.*, entry.value_ptr.*, options);
+        var map_value = parseValue(allocator, file, message.descriptor, map_type.value.*, entry.value_ptr.*, options) catch |err| {
+            if (shouldIgnoreEnumParseError(options, map_type.value.*, err)) {
+                dynamic.deinitValue(&key, allocator);
+                continue;
+            }
+            return err;
+        };
         errdefer dynamic.deinitValue(&map_value, allocator);
         const map_entry = try allocator.create(dynamic.MapEntry);
         map_entry.* = .{ .key = key, .value = map_value };
@@ -122,6 +134,10 @@ fn parseMapField(
             return err;
         };
     }
+}
+
+fn shouldIgnoreEnumParseError(options: Options, kind: schema.FieldKind, err: anyerror) bool {
+    return options.ignore_unknown_fields and kind == .enumeration and err == error.InvalidEnumValue;
 }
 
 fn parseValue(
@@ -1115,6 +1131,35 @@ test "json parses and prints enum numbers and unknown enum values" {
     const rendered_numbers = try stringifyAlloc(allocator, &file, &numeric, .{ .enum_as_name = false });
     defer allocator.free(rendered_numbers);
     try std.testing.expectEqualSlices(u8, "{\"kind\":123,\"roles\":[1,123]}", rendered_numbers);
+}
+
+test "json ignore unknown fields skips unknown enum names" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message M {
+        \\  Kind kind = 1;
+        \\  repeated Kind roles = 2;
+        \\  map<string, Kind> keyed = 3;
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "{\"kind\":\"BOGUS\"}", .{}));
+
+    var parsed = try parseAlloc(allocator, &file, desc,
+        \\{"kind":"BOGUS","roles":["ADMIN","BOGUS",1],"keyed":{"ok":"ADMIN","bad":"BOGUS"}}
+    , .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+    try std.testing.expect(parsed.get("kind") == null);
+    try std.testing.expectEqual(@as(usize, 2), parsed.get("roles").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("roles").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("roles").?.values.items[1].enumeration);
+    try std.testing.expectEqual(@as(usize, 1), parsed.get("keyed").?.values.items.len);
+    try std.testing.expectEqualSlices(u8, "ok", parsed.get("keyed").?.values.items[0].map_entry.key.string);
 }
 
 test "json parse ignores null fields" {
