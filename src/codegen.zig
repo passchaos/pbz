@@ -53,6 +53,8 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writer.writeAll("\n");
     try writeDecode(message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeValidateRequired(message, writer, depth + 1);
+    try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(nested, writer, depth + 1);
     try indent(writer, depth);
@@ -135,6 +137,27 @@ fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     }
     try indent(writer, depth + 1);
     try writer.writeAll("self.* = undefined;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeValidateRequired(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn validateRequired(self: @This()) !void {\n");
+    var has_required = false;
+    for (message.fields.items) |*field| {
+        if (field.cardinality == .required) {
+            has_required = true;
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (!self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") return error.MissingRequiredField;\n");
+        }
+    }
+    if (!has_required) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = self;\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -865,4 +888,18 @@ test "codegen output parses as Zig source" {
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
     defer tree.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits required validation" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M { required int32 id = 1; optional string name = 2; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequired(self: @This()) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_id\") return error.MissingRequiredField") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "has_name") != null);
 }

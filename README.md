@@ -160,7 +160,7 @@ structures and a dynamic-message runner for integrating with protobuf conformanc
 
 `pbz.CodeGeneratorRequest` and `pbz.CodeGeneratorResponse` provide the basic
 wire types needed to build protoc-style generators; `pbz.generateZigFile` emits
-a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode, and basic decode methods including repeated scalar/enum/message payload and map storage and optional/required presence flags for parsed descriptors.
+a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required presence flags for parsed descriptors.
 
 ## Descriptor encoding
 
