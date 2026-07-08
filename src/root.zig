@@ -25,6 +25,7 @@ pub const encodeFileDescriptorProto = descriptor.encodeFileDescriptorProto;
 pub const encodeFileDescriptorSet = descriptor.encodeFileDescriptorSet;
 pub const stringifyJson = json.stringify;
 pub const stringifyJsonAlloc = json.stringifyAlloc;
+pub const parseJsonAlloc = json.parseAlloc;
 
 test {
     _ = wire;

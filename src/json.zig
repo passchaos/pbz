@@ -7,6 +7,7 @@ pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{TypeMi
 pub const Options = struct {
     enum_as_name: bool = true,
     preserve_proto_field_names: bool = true,
+    ignore_unknown_fields: bool = false,
 };
 
 pub fn stringifyAlloc(
@@ -28,6 +29,258 @@ pub fn stringify(
     writer: *std.Io.Writer,
 ) Error!void {
     try writeMessage(file, message, options, writer);
+}
+
+pub fn parseAlloc(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    descriptor: *const schema.MessageDescriptor,
+    bytes: []const u8,
+    options: Options,
+) anyerror!dynamic.DynamicMessage {
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
+    defer parsed.deinit();
+
+    var message = dynamic.DynamicMessage.init(allocator, descriptor);
+    errdefer message.deinit();
+    try fillMessage(allocator, file, &message, parsed.value, options);
+    return message;
+}
+
+pub fn fillMessage(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    message: *dynamic.DynamicMessage,
+    json_value: std.json.Value,
+    options: Options,
+) anyerror!void {
+    const object = switch (json_value) {
+        .object => |object| object,
+        else => return error.TypeMismatch,
+    };
+
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const field = findJsonField(message.descriptor, entry.key_ptr.*, options) orelse {
+            if (options.ignore_unknown_fields) continue;
+            return error.UnknownField;
+        };
+        if (field.kind == .map) {
+            try parseMapField(allocator, file, message, field, entry.value_ptr.*, options);
+        } else if (field.cardinality == .repeated) {
+            const array = switch (entry.value_ptr.*) {
+                .array => |array| array,
+                else => return error.TypeMismatch,
+            };
+            for (array.items) |item| {
+                var value = try parseValue(allocator, file, message.descriptor, field.kind, item, options);
+                message.add(field, value) catch |err| {
+                    dynamic.deinitValue(&value, allocator);
+                    return err;
+                };
+            }
+        } else {
+            var value = try parseValue(allocator, file, message.descriptor, field.kind, entry.value_ptr.*, options);
+            message.add(field, value) catch |err| {
+                dynamic.deinitValue(&value, allocator);
+                return err;
+            };
+        }
+    }
+}
+
+fn parseMapField(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    message: *dynamic.DynamicMessage,
+    field: *const schema.FieldDescriptor,
+    json_value: std.json.Value,
+    options: Options,
+) anyerror!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return error.TypeMismatch,
+    };
+    const object = switch (json_value) {
+        .object => |object| object,
+        else => return error.TypeMismatch,
+    };
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        var key = try parseMapKey(allocator, map_type.key, entry.key_ptr.*);
+        errdefer dynamic.deinitValue(&key, allocator);
+        var map_value = try parseValue(allocator, file, message.descriptor, map_type.value.*, entry.value_ptr.*, options);
+        errdefer dynamic.deinitValue(&map_value, allocator);
+        const map_entry = try allocator.create(dynamic.MapEntry);
+        map_entry.* = .{ .key = key, .value = map_value };
+        message.add(field, .{ .map_entry = map_entry }) catch |err| {
+            map_entry.deinit(allocator);
+            allocator.destroy(map_entry);
+            return err;
+        };
+    }
+}
+
+fn parseValue(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    current: *const schema.MessageDescriptor,
+    kind: schema.FieldKind,
+    json_value: std.json.Value,
+    options: Options,
+) anyerror!dynamic.Value {
+    return switch (kind) {
+        .scalar => |scalar| try parseScalar(allocator, scalar, json_value),
+        .enumeration => |name| try parseEnum(file, name, json_value),
+        .message => |name| blk: {
+            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            const nested = try allocator.create(dynamic.DynamicMessage);
+            nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
+            errdefer {
+                nested.deinit();
+                allocator.destroy(nested);
+            }
+            try fillMessage(allocator, file, nested, json_value, options);
+            break :blk .{ .message = nested };
+        },
+        .group => |name| blk: {
+            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            const nested = try allocator.create(dynamic.DynamicMessage);
+            nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
+            errdefer {
+                nested.deinit();
+                allocator.destroy(nested);
+            }
+            try fillMessage(allocator, file, nested, json_value, options);
+            break :blk .{ .group = nested };
+        },
+        .map => error.TypeMismatch,
+    };
+}
+
+fn parseScalar(allocator: std.mem.Allocator, scalar: schema.ScalarType, json_value: std.json.Value) !dynamic.Value {
+    return switch (scalar) {
+        .double => .{ .double = try numberAsFloat(f64, json_value) },
+        .float => .{ .float = try numberAsFloat(f32, json_value) },
+        .int32 => .{ .int32 = try numberAsInt(i32, json_value) },
+        .int64 => .{ .int64 = try numberAsInt(i64, json_value) },
+        .uint32 => .{ .uint32 = try numberAsInt(u32, json_value) },
+        .uint64 => .{ .uint64 = try numberAsInt(u64, json_value) },
+        .sint32 => .{ .sint32 = try numberAsInt(i32, json_value) },
+        .sint64 => .{ .sint64 = try numberAsInt(i64, json_value) },
+        .fixed32 => .{ .fixed32 = try numberAsInt(u32, json_value) },
+        .fixed64 => .{ .fixed64 = try numberAsInt(u64, json_value) },
+        .sfixed32 => .{ .sfixed32 = try numberAsInt(i32, json_value) },
+        .sfixed64 => .{ .sfixed64 = try numberAsInt(i64, json_value) },
+        .bool => switch (json_value) {
+            .bool => |value| .{ .boolean = value },
+            else => error.TypeMismatch,
+        },
+        .string => switch (json_value) {
+            .string => |value| .{ .string = try allocator.dupe(u8, value) },
+            else => error.TypeMismatch,
+        },
+        .bytes => switch (json_value) {
+            .string => |value| .{ .bytes = try decodeBase64(allocator, value) },
+            else => error.TypeMismatch,
+        },
+    };
+}
+
+fn parseEnum(file: *const schema.FileDescriptor, name: []const u8, json_value: std.json.Value) !dynamic.Value {
+    switch (json_value) {
+        .string => |value| {
+            if (file.findEnumDeep(name)) |enumeration| {
+                for (enumeration.values.items) |enum_value| {
+                    if (std.mem.eql(u8, enum_value.name, value)) return .{ .enumeration = enum_value.number };
+                }
+            }
+            return error.InvalidEnumValue;
+        },
+        else => return .{ .enumeration = try numberAsInt(i32, json_value) },
+    }
+}
+
+fn parseMapKey(allocator: std.mem.Allocator, scalar: schema.ScalarType, key: []const u8) !dynamic.Value {
+    return switch (scalar) {
+        .bool => if (std.mem.eql(u8, key, "true"))
+            .{ .boolean = true }
+        else if (std.mem.eql(u8, key, "false"))
+            .{ .boolean = false }
+        else
+            error.TypeMismatch,
+        .string => .{ .string = try allocator.dupe(u8, key) },
+        .int32 => .{ .int32 = try std.fmt.parseInt(i32, key, 10) },
+        .int64 => .{ .int64 = try std.fmt.parseInt(i64, key, 10) },
+        .uint32 => .{ .uint32 = try std.fmt.parseInt(u32, key, 10) },
+        .uint64 => .{ .uint64 = try std.fmt.parseInt(u64, key, 10) },
+        .sint32 => .{ .sint32 = try std.fmt.parseInt(i32, key, 10) },
+        .sint64 => .{ .sint64 = try std.fmt.parseInt(i64, key, 10) },
+        .fixed32 => .{ .fixed32 = try std.fmt.parseInt(u32, key, 10) },
+        .fixed64 => .{ .fixed64 = try std.fmt.parseInt(u64, key, 10) },
+        .sfixed32 => .{ .sfixed32 = try std.fmt.parseInt(i32, key, 10) },
+        .sfixed64 => .{ .sfixed64 = try std.fmt.parseInt(i64, key, 10) },
+        .double, .float, .bytes => error.TypeMismatch,
+    };
+}
+
+fn numberAsInt(comptime T: type, json_value: std.json.Value) !T {
+    const info = @typeInfo(T).int;
+    switch (json_value) {
+        .integer => |value| {
+            if (value < std.math.minInt(T) or value > std.math.maxInt(T)) return error.Overflow;
+            return @intCast(value);
+        },
+        .number_string, .string => |value| return try std.fmt.parseInt(T, value, 10),
+        else => {
+            _ = info;
+            return error.TypeMismatch;
+        },
+    }
+}
+
+fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
+    return switch (json_value) {
+        .integer => |value| @floatFromInt(value),
+        .float => |value| @floatCast(value),
+        .number_string => |value| try std.fmt.parseFloat(T, value),
+        .string => |value| if (std.mem.eql(u8, value, "NaN"))
+            std.math.nan(T)
+        else if (std.mem.eql(u8, value, "Infinity"))
+            std.math.inf(T)
+        else if (std.mem.eql(u8, value, "-Infinity"))
+            -std.math.inf(T)
+        else
+            try std.fmt.parseFloat(T, value),
+        else => error.TypeMismatch,
+    };
+}
+
+fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
+    const size = try std.base64.standard.Decoder.calcSizeForSlice(value);
+    const out = try allocator.alloc(u8, size);
+    errdefer allocator.free(out);
+    try std.base64.standard.Decoder.decode(out, value);
+    return out;
+}
+
+fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
+    const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+    if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
+    if (current.findMessageDeep(trimmed)) |message| return message;
+    return file.findMessageDeep(trimmed);
+}
+
+fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, options: Options) ?*const schema.FieldDescriptor {
+    _ = options;
+    for (message.fields.items) |*field| {
+        if (std.mem.eql(u8, field.name, key)) return field;
+        if (field.json_name) |json_name| {
+            if (std.mem.eql(u8, json_name, key)) return field;
+        }
+    }
+    return null;
 }
 
 fn writeMessage(
@@ -321,4 +574,49 @@ test "json stringify dynamic message with scalars repeated maps enums and nested
     const json = try stringifyAlloc(allocator, &file, &bag, .{});
     defer allocator.free(json);
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", json);
+}
+
+test "json parse dynamic message with scalars repeated maps enums and nested messages" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Child { string label = 1; }
+        \\message Bag {
+        \\  int32 id = 1;
+        \\  int64 big = 2;
+        \\  bytes raw = 3;
+        \\  repeated string tags = 4;
+        \\  map<string, int32> counts = 5;
+        \\  Child child = 6;
+        \\  Kind kind = 7;
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const bag_desc = file.findMessage("Bag").?;
+
+    var bag = try parseAlloc(allocator, &file, bag_desc,
+        \\{"id":7,"big":"9007199254740993","raw":"aGk=","tags":["a","b"],"counts":{"red":3},"child":{"label":"kid"},"kind":"ADMIN"}
+    , .{});
+    defer bag.deinit();
+
+    try std.testing.expectEqual(@as(i32, 7), bag.get("id").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i64, 9007199254740993), bag.get("big").?.values.items[0].int64);
+    try std.testing.expectEqualSlices(u8, "hi", bag.get("raw").?.values.items[0].bytes);
+    try std.testing.expectEqual(@as(usize, 2), bag.get("tags").?.values.items.len);
+    try std.testing.expectEqualSlices(u8, "a", bag.get("tags").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, "b", bag.get("tags").?.values.items[1].string);
+
+    const count = bag.get("counts").?.values.items[0].map_entry;
+    try std.testing.expectEqualSlices(u8, "red", count.key.string);
+    try std.testing.expectEqual(@as(i32, 3), count.value.int32);
+
+    try std.testing.expectEqualSlices(u8, "kid", bag.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 1), bag.get("kind").?.values.items[0].enumeration);
+
+    const rendered = try stringifyAlloc(allocator, &file, &bag, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", rendered);
 }
