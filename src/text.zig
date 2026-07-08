@@ -431,16 +431,27 @@ const TextParser = struct {
     }
 
     fn readString(self: *TextParser) ![]u8 {
-        self.skipSpace();
-        if (self.eof() or (self.peek() != '"' and self.peek() != '\'')) return error.UnexpectedToken;
-        const quote = self.peek();
-        self.index += 1;
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
+        var read_any = false;
+        while (true) {
+            self.skipSpace();
+            if (self.eof() or (self.peek() != '"' and self.peek() != '\'')) {
+                if (read_any) return try out.toOwnedSlice(self.allocator);
+                return error.UnexpectedToken;
+            }
+            read_any = true;
+            try self.readQuotedStringPart(&out);
+        }
+    }
+
+    fn readQuotedStringPart(self: *TextParser, out: *std.ArrayList(u8)) !void {
+        const quote = self.peek();
+        self.index += 1;
         while (!self.eof()) {
             const c = self.input[self.index];
             self.index += 1;
-            if (c == quote) return try out.toOwnedSlice(self.allocator);
+            if (c == quote) return;
             if (c == '\\') {
                 if (self.eof()) return error.UnexpectedEof;
                 const esc = self.input[self.index];
@@ -674,6 +685,24 @@ test "text format parser decodes single quoted hex octal and C escapes" {
     defer msg.deinit();
     try std.testing.expectEqualSlices(u8, "line\nAA", msg.get("text").?.values.items[0].string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02, 0x07, 0x08, 0x0c, 0x0b, '?' }, msg.get("raw").?.values.items[0].bytes);
+}
+
+test "text format parser concatenates adjacent string literals" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message M { optional string text = 1; optional bytes raw = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\text: "hello" ' ' "world"
+        \\raw: "\001" '\x02'
+    );
+    defer msg.deinit();
+    try std.testing.expectEqualSlices(u8, "hello world", msg.get("text").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.get("raw").?.values.items[0].bytes);
 }
 
 test "text format parser accepts bool aliases" {
