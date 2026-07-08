@@ -661,6 +661,12 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
 
         pub fn jsonStringify(self: Self, writer: *std.Io.Writer) !void {
             switch (scalar) {
+                .double, .float => {
+                    if (std.math.isNan(self.value)) return try std.json.Stringify.value("NaN", .{}, writer);
+                    if (std.math.isPositiveInf(self.value)) return try std.json.Stringify.value("Infinity", .{}, writer);
+                    if (std.math.isNegativeInf(self.value)) return try std.json.Stringify.value("-Infinity", .{}, writer);
+                    try std.json.Stringify.value(self.value, .{}, writer);
+                },
                 .int64, .uint64 => {
                     try writer.writeAll("\"");
                     try writer.print("{d}", .{self.value});
@@ -787,6 +793,15 @@ test "wrapper json parse helpers" {
     try std.testing.expectEqual(false, (try BoolValue.jsonParse(allocator, "null")).value);
     try std.testing.expect(std.math.isNan((try DoubleValue.jsonParse(allocator, "\"NaN\"")).value));
     try std.testing.expect(std.math.isPositiveInf((try FloatValue.jsonParse(allocator, "\"Infinity\"")).value));
+    const nan_json = try (DoubleValue{ .value = std.math.nan(f64) }).jsonStringifyAlloc(allocator);
+    defer allocator.free(nan_json);
+    try std.testing.expectEqualSlices(u8, "\"NaN\"", nan_json);
+    const inf_json = try (FloatValue{ .value = std.math.inf(f32) }).jsonStringifyAlloc(allocator);
+    defer allocator.free(inf_json);
+    try std.testing.expectEqualSlices(u8, "\"Infinity\"", inf_json);
+    const neg_inf_json = try (DoubleValue{ .value = -std.math.inf(f64) }).jsonStringifyAlloc(allocator);
+    defer allocator.free(neg_inf_json);
+    try std.testing.expectEqualSlices(u8, "\"-Infinity\"", neg_inf_json);
     const parsed_string = try StringValue.jsonParse(allocator, "\"zig\"");
     defer allocator.free(parsed_string.value);
     try std.testing.expectEqualSlices(u8, "zig", parsed_string.value);
