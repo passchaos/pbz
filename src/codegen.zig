@@ -132,11 +132,6 @@ fn writeOneofValueEncode(field: *const schema.FieldDescriptor, value_expr: []con
     try writer.writeAll(")");
 }
 
-fn findOneofName(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
-    _ = message;
-    return field.oneof_name;
-}
-
 fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writeQuotedIdent(field.name, writer);
@@ -176,55 +171,6 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("pub fn init() @This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return .{};\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeOneofHelpers(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    for (message.oneofs.items) |oneof| {
-        try indent(writer, depth);
-        try writer.writeAll("pub fn ");
-        try writeQuotedIdentWithPrefix("clear_", oneof.name, writer);
-        try writer.writeAll("(self: *@This()) void {\n");
-        for (message.fields.items) |*field| {
-            if (field.oneof_name) |name| {
-                if (std.mem.eql(u8, name, oneof.name)) {
-                    try indent(writer, depth + 1);
-                    try writer.writeAll("self.");
-                    try writePresenceIdent(field.name, writer);
-                    try writer.writeAll(" = false;\n");
-                }
-            }
-        }
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-        for (message.fields.items) |*field| {
-            if (field.oneof_name) |name| {
-                if (std.mem.eql(u8, name, oneof.name)) try writeOneofSetter(oneof.name, field, writer, depth);
-            }
-        }
-    }
-}
-
-fn writeOneofSetter(oneof_name: []const u8, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("pub fn ");
-    try writeQuotedIdentWithPrefix("set_", field.name, writer);
-    try writer.writeAll("(self: *@This(), value: ");
-    try writeFieldType(field.*, writer);
-    try writer.writeAll(") void {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self.");
-    try writeQuotedIdentWithPrefix("clear_", oneof_name, writer);
-    try writer.writeAll("();\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" = value;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self.");
-    try writePresenceIdent(field.name, writer);
-    try writer.writeAll(" = true;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -787,26 +733,11 @@ fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
 }
 
 fn writeSetPresence(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
-    if (field.oneof_name) |oneof_name| {
-        try writer.writeAll(" self.");
-        try writeQuotedIdentWithPrefix("clear_", oneof_name, writer);
-        try writer.writeAll("();");
-    }
     if (hasPresence(field.*)) {
         try writer.writeAll(" self.");
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" = true;");
     }
-}
-
-fn writeQuotedIdentWithPrefix(prefix: []const u8, name: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("@\"");
-    try writer.writeAll(prefix);
-    for (name) |c| {
-        if (c == '\\' or c == '"') try writer.writeByte('\\');
-        try writer.writeByte(c);
-    }
-    try writer.writeAll("\"");
 }
 
 fn writeQuotedFieldNumber(name: []const u8, writer: *std.Io.Writer) Error!void {
