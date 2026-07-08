@@ -61,7 +61,9 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writer.writeAll("\n");
     try writeDecodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
-    try writeValidateRequired(message, writer, depth + 1);
+    try writeMissingRequiredFieldName(message, writer, depth + 1);
+    try writer.writeAll("\n");
+    try writeValidateRequired(writer, depth + 1);
     try writer.writeAll("\n");
     try writeJsonMethods(message, writer, depth + 1);
     try writer.writeAll("\n");
@@ -238,9 +240,9 @@ fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("}\n");
 }
 
-fn writeValidateRequired(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMissingRequiredFieldName(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("pub fn validateRequired(self: @This()) !void {\n");
+    try writer.writeAll("pub fn missingRequiredFieldName(self: @This()) ?[]const u8 {\n");
     var has_required = false;
     for (message.fields.items) |*field| {
         if (field.cardinality == .required) {
@@ -248,13 +250,26 @@ fn writeValidateRequired(message: *const schema.MessageDescriptor, writer: *std.
             try indent(writer, depth + 1);
             try writer.writeAll("if (!self.");
             try writePresenceIdent(field.name, writer);
-            try writer.writeAll(") return error.MissingRequiredField;\n");
+            try writer.writeAll(") return ");
+            try writeZigStringLiteral(field.name, writer);
+            try writer.writeAll(";\n");
         }
     }
     if (!has_required) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = self;\n");
     }
+    try indent(writer, depth + 1);
+    try writer.writeAll("return null;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeValidateRequired(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn validateRequired(self: @This()) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self.missingRequiredFieldName() != null) return error.MissingRequiredField;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -1361,9 +1376,16 @@ test "codegen emits required validation" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().decode(allocator, bytes);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "errdefer self.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn missingRequiredFieldName(self: @This()) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_id\") return \"id\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequired(self: @This()) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_id\") return error.MissingRequiredField") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.missingRequiredFieldName() != null) return error.MissingRequiredField") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "has_name") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen maps oneof to tagged union" {
