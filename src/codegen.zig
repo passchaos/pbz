@@ -102,7 +102,7 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     }
     for (message.oneofs.items) |oneof| try writeOneofUnion(message, oneof, writer, depth + 1);
     for (message.fields.items) |*field| {
-        if (field.oneof_name == null) try writeFieldDecl(field, writer, depth + 1);
+        if (field.oneof_name == null) try writeFieldDecl(file, field, writer, depth + 1);
     }
     for (message.oneofs.items) |oneof| try writeOneofField(oneof, writer, depth + 1);
     try indent(writer, depth + 1);
@@ -118,7 +118,7 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeEncodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
-    try writeDecode(message, writer, depth + 1);
+    try writeDecode(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeDecodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
@@ -201,7 +201,7 @@ fn writeOneofValueEncode(field: *const schema.FieldDescriptor, value_expr: []con
     try writer.writeAll(")");
 }
 
-fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFieldDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(": ");
@@ -209,7 +209,7 @@ fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, 
     try writer.writeAll(" = ");
     try writeFieldDefault(field.*, writer);
     try writer.writeAll(",\n");
-    if (hasPresence(field.*)) {
+    if (hasPresence(file, field.*)) {
         try indent(writer, depth);
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(": bool = false,\n");
@@ -369,7 +369,7 @@ fn writeMissingRequiredFieldName(message: *const schema.MessageDescriptor, write
     try writer.writeAll("pub fn missingRequiredFieldName(self: @This()) ?[]const u8 {\n");
     var has_required = false;
     for (message.fields.items) |*field| {
-        if (field.cardinality == .required) {
+        if (isRequired(field.*)) {
             has_required = true;
             try indent(writer, depth + 1);
             try writer.writeAll("if (!self.");
@@ -514,7 +514,7 @@ fn writeMessageTypeReference(type_name: []const u8, writer: *std.Io.Writer) Erro
     try writeQuotedIdent(leaf, writer);
 }
 
-fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
@@ -530,7 +530,7 @@ fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("while (try r.nextTag()) |tag| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("switch (tag.number) {\n");
-    for (message.fields.items) |*field| try writeDecodeField(field, writer, depth + 3);
+    for (message.fields.items) |*field| try writeDecodeField(file, field, writer, depth + 3);
     try indent(writer, depth + 3);
     try writer.writeAll("else => try r.skipValue(tag),\n");
     try indent(writer, depth + 2);
@@ -600,17 +600,17 @@ fn writeRepeatedElementType(field: schema.FieldDescriptor, writer: *std.Io.Write
     }
 }
 
-fn writeDecodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
-        .scalar => |scalar| try writeDecodeScalarField(field, scalar, writer, depth),
-        .enumeration => try writeDecodeEnumField(field, writer, depth),
-        .message => try writeDecodeMessageField(field, writer, depth),
+        .scalar => |scalar| try writeDecodeScalarField(file, field, scalar, writer, depth),
+        .enumeration => try writeDecodeEnumField(file, field, writer, depth),
+        .message => try writeDecodeMessageField(file, field, writer, depth),
         .map => try writeDecodeMapField(field, writer, depth),
         else => return,
     }
 }
 
-fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
@@ -626,12 +626,12 @@ fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
         try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
         try writer.print(" = try r.{s}();", .{scalarReaderName(scalar)});
-        try writeSetPresence(field, writer);
+        try writeSetPresence(file, field, writer);
         try writer.writeAll(" },\n");
     }
 }
 
-fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
@@ -642,12 +642,12 @@ fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
         try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = try r.readInt32();");
-        try writeSetPresence(field, writer);
+        try writeSetPresence(file, field, writer);
         try writer.writeAll(" },\n");
     }
 }
 
-fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
@@ -659,7 +659,7 @@ fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
         try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = try r.readBytes();");
-        try writeSetPresence(field, writer);
+        try writeSetPresence(file, field, writer);
         try writer.writeAll(" },\n");
     }
 }
@@ -792,7 +792,7 @@ fn writeEncodeField(file: *const schema.FileDescriptor, field: *const schema.Fie
     switch (field.kind) {
         .scalar => |scalar| try writeEncodeScalarField(file, field, scalar, writer, depth),
         .enumeration => try writeEncodeEnumField(file, field, writer, depth),
-        .message => try writeEncodeMessageField(field, writer, depth),
+        .message => try writeEncodeMessageField(file, field, writer, depth),
         .map => try writeEncodeMapField(field, writer, depth),
         else => return,
     }
@@ -812,7 +812,7 @@ fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const sche
         }
     } else {
         try indent(writer, depth);
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
             try writer.writeAll(") ");
@@ -839,7 +839,7 @@ fn writeEncodeEnumField(file: *const schema.FileDescriptor, field: *const schema
         }
     } else {
         try indent(writer, depth);
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
             try writer.writeAll(") ");
@@ -917,7 +917,7 @@ fn writePackedEnumPayload(value_expr: []const u8, writer: *std.Io.Writer) Error!
     try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr});
 }
 
-fn writeEncodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("for (self.");
@@ -926,7 +926,7 @@ fn writeEncodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
     } else {
         try indent(writer, depth);
         try writer.writeAll("if (self.");
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try writePresenceIdent(field.name, writer);
             try writer.writeAll(") ");
         } else {
@@ -1525,7 +1525,7 @@ fn writeJsonParseField(file: *const schema.FileDescriptor, field: *const schema.
         try writer.writeAll(" = ");
         try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
         try writer.writeAll(";\n");
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
             try writer.writeAll("self.");
             try writePresenceIdent(field.name, writer);
@@ -1578,7 +1578,7 @@ fn writeJsonParseMessageField(file: *const schema.FileDescriptor, field: *const 
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = try nested.encode(arena_allocator);\n");
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
             try writer.writeAll("self.");
             try writePresenceIdent(field.name, writer);
@@ -1818,7 +1818,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
 
 fn writeJsonField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
-        .scalar => |scalar| try writeJsonScalarField(field, scalar, writer, depth),
+        .scalar => |scalar| try writeJsonScalarField(file, field, scalar, writer, depth),
         .enumeration => |name| try writeJsonEnumField(file, field, name, writer, depth),
         .map => try writeJsonMapField(file, field, writer, depth),
         .message => |name| try writeJsonMessageField(file, field, name, writer, depth),
@@ -1835,7 +1835,7 @@ fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("\\\":\");\n");
 }
 
-fn writeJsonScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("if (self.");
@@ -1856,7 +1856,7 @@ fn writeJsonScalarField(field: *const schema.FieldDescriptor, scalar: schema.Sca
         try writer.writeAll("}\n");
     } else {
         try indent(writer, depth);
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
             try writer.writeAll(") {\n");
@@ -1900,7 +1900,7 @@ fn writeJsonEnumField(file: *const schema.FileDescriptor, field: *const schema.F
         try writer.writeAll("}\n");
     } else {
         try indent(writer, depth);
-        if (hasPresence(field.*)) {
+        if (hasPresence(file, field.*)) {
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
             try writer.writeAll(") {\n");
@@ -2311,8 +2311,17 @@ fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std
     try writer.writeAll("\"");
 }
 
-fn hasPresence(field: schema.FieldDescriptor) bool {
-    return field.cardinality == .optional or field.cardinality == .required or field.proto3_optional;
+fn hasPresence(file: *const schema.FileDescriptor, field: schema.FieldDescriptor) bool {
+    if (field.cardinality == .required or field.proto3_optional or field.oneof_name != null or field.kind == .message or field.kind == .group) return true;
+    if (field.cardinality == .repeated or field.kind == .map) return false;
+    if (field.features) |features| return features.field_presence != .implicit;
+    return file.features.field_presence != .implicit;
+}
+
+fn isRequired(field: schema.FieldDescriptor) bool {
+    if (field.cardinality == .required) return true;
+    if (field.features) |features| return features.field_presence == .legacy_required;
+    return false;
 }
 
 fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -2324,8 +2333,8 @@ fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("\"");
 }
 
-fn writeSetPresence(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
-    if (hasPresence(field.*)) {
+fn writeSetPresence(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (hasPresence(file, field.*)) {
         try writer.writeAll(" self.");
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" = true;");
@@ -2625,7 +2634,8 @@ test "codegen emits message payload fields and encoders" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": []const u8 = \"\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\".len != 0) try w.writeMessage(1, self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_child\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\") try w.writeMessage(1, self.@\"child\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
@@ -3092,4 +3102,30 @@ test "codegen skips proto3 implicit default scalar and enum values" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"active\") try w.writeBool(2, self.@\"active\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"kind\" != 0) try w.writeInt32(3, self.@\"kind\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_opt\") try w.writeInt32(4, self.@\"opt\")") != null);
+}
+
+test "codegen honors editions field presence features" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.field_presence = EXPLICIT;
+        \\message M {
+        \\  int32 explicit_id = 1;
+        \\  int32 implicit_id = 2 [features.field_presence = IMPLICIT];
+        \\  int32 required_id = 3 [features.field_presence = LEGACY_REQUIRED];
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_explicit_id\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_implicit_id\": bool = false") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_required_id\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_explicit_id\") try w.writeInt32(1, self.@\"explicit_id\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"implicit_id\" != 0) try w.writeInt32(2, self.@\"implicit_id\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_required_id\") try w.writeInt32(3, self.@\"required_id\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"explicit_id\" = try r.readInt32(); self.@\"has_explicit_id\" = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"required_id\" = try r.readInt32(); self.@\"has_required_id\" = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_required_id\") return \"required_id\";") != null);
 }

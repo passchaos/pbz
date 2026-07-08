@@ -50,10 +50,10 @@ validated feature set.
   - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
-  - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
+  - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
-  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults
+  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence features
   - generated typed JSON stringify/parse helpers for scalar, enum names with unknown-number fallback, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, and scalar/enum oneof fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
