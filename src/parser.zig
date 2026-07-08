@@ -537,6 +537,7 @@ pub const Parser = struct {
     fn parseFieldNumber(self: *Parser) Error!wire.FieldNumber {
         const value = try self.parseSignedInt64();
         if (value <= 0 or value > std.math.maxInt(wire.FieldNumber)) return error.InvalidNumber;
+        if (value >= 19000 and value <= 19999) return error.InvalidNumber;
         return @intCast(value);
     }
 
@@ -938,4 +939,16 @@ test "parser resolves enum symbolic defaults" {
     var file = try Parser.parse(allocator, source);
     defer file.deinit();
     try std.testing.expectEqual(@as(i64, 7), file.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "parser rejects invalid and reserved field numbers" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 zero = 0; }
+    ));
+    try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 reserved = 19000; }
+    ));
 }
