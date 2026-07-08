@@ -221,6 +221,7 @@ pub const Parser = struct {
         const end_pos = self.lineColumn(end);
         try location.span.appendSlice(self.allocator, &.{ start_pos.line, start_pos.column, end_pos.line, end_pos.column });
         location.leading_comments = try self.leadingLineComments(start);
+        try self.leadingDetachedLineComments(start, &location.leading_detached_comments);
         location.trailing_comments = try self.trailingLineComment(end);
         try self.file.source_code_info.locations.append(self.allocator, location);
     }
@@ -258,6 +259,63 @@ pub const Parser = struct {
         return owned;
     }
 
+    fn leadingDetachedLineComments(self: *Parser, start: usize, output: *std.ArrayList([]const u8)) Error!void {
+        var cursor = lineStart(self.input, start);
+        // Skip the attached leading comment block first.
+        while (previousLine(self.input, cursor)) |prev| {
+            const line = std.mem.trim(u8, self.input[prev.start..prev.end], " \t\r");
+            if (line.len == 0 or !std.mem.startsWith(u8, line, "//")) break;
+            cursor = prev.start;
+        }
+
+        var paragraphs: std.ArrayList([]const u8) = .empty;
+        defer paragraphs.deinit(self.allocator);
+        while (true) {
+            var saw_blank = false;
+            while (previousLine(self.input, cursor)) |prev| {
+                const line = std.mem.trim(u8, self.input[prev.start..prev.end], " \t\r");
+                if (line.len != 0) break;
+                saw_blank = true;
+                cursor = prev.start;
+            }
+            if (!saw_blank) break;
+
+            var lines: std.ArrayList([]const u8) = .empty;
+            defer lines.deinit(self.allocator);
+            while (previousLine(self.input, cursor)) |prev| {
+                const line = std.mem.trim(u8, self.input[prev.start..prev.end], " \t\r");
+                if (line.len == 0 or !std.mem.startsWith(u8, line, "//")) break;
+                var text = line[2..];
+                if (text.len != 0 and text[0] == ' ') text = text[1..];
+                try lines.append(self.allocator, text);
+                cursor = prev.start;
+            }
+            if (lines.items.len == 0) break;
+            try paragraphs.append(self.allocator, try self.joinCommentLines(lines.items));
+        }
+
+        var i = paragraphs.items.len;
+        while (i > 0) {
+            i -= 1;
+            try output.append(self.allocator, paragraphs.items[i]);
+        }
+    }
+
+    fn joinCommentLines(self: *Parser, lines_reversed: []const []const u8) Error![]const u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var i = lines_reversed.len;
+        while (i > 0) {
+            i -= 1;
+            try out.appendSlice(self.allocator, lines_reversed[i]);
+            try out.append(self.allocator, '\n');
+        }
+        const owned = try out.toOwnedSlice(self.allocator);
+        errdefer self.allocator.free(owned);
+        try self.file.owned_strings.append(self.allocator, owned);
+        return owned;
+    }
+
     fn trailingLineComment(self: *Parser, end: usize) Error!?[]const u8 {
         var cursor = end;
         while (cursor < self.input.len and (self.input[cursor] == ' ' or self.input[cursor] == '\t' or self.input[cursor] == '\r')) cursor += 1;
@@ -275,6 +333,20 @@ pub const Parser = struct {
         errdefer self.allocator.free(owned);
         try self.file.owned_strings.append(self.allocator, owned);
         return owned;
+    }
+
+    fn lineStart(input: []const u8, index: usize) usize {
+        var start = @min(index, input.len);
+        while (start > 0 and input[start - 1] != '\n') start -= 1;
+        return start;
+    }
+
+    fn previousLine(input: []const u8, cursor: usize) ?struct { start: usize, end: usize } {
+        if (cursor == 0) return null;
+        const end = cursor - 1;
+        var start = end;
+        while (start > 0 and input[start - 1] != '\n') start -= 1;
+        return .{ .start = start, .end = end };
     }
 
     fn childPath(self: *Parser, base: []const i32, field_number: i32, index: i32) std.mem.Allocator.Error![]i32 {
@@ -1570,6 +1642,8 @@ test "parser records source code info line comments" {
     const allocator = std.testing.allocator;
     const source =
         \\syntax = "proto2";
+        \\// detached paragraph
+        \\
         \\// Person leading one
         \\// Person leading two
         \\message Person {
@@ -1580,6 +1654,8 @@ test "parser records source code info line comments" {
     var file = try Parser.parse(allocator, source);
     defer file.deinit();
     const message_location = findLocationPath(&file, &.{ 4, 0 }).?;
+    try std.testing.expectEqual(@as(usize, 1), message_location.leading_detached_comments.items.len);
+    try std.testing.expectEqualStrings("detached paragraph\n", message_location.leading_detached_comments.items[0]);
     try std.testing.expectEqualStrings("Person leading one\nPerson leading two\n", message_location.leading_comments.?);
     const field_location = findLocationPath(&file, &.{ 4, 0, 2, 0 }).?;
     try std.testing.expectEqualStrings("name leading\n", field_location.leading_comments.?);
