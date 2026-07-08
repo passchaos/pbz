@@ -2,8 +2,9 @@ const std = @import("std");
 const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
 const registry_mod = @import("registry.zig");
+const wire = @import("wire.zig");
 
-pub const Error = std.Io.Writer.Error || error{TypeMismatch};
+pub const Error = std.Io.Writer.Error || wire.Error || error{TypeMismatch};
 
 pub const Options = struct {
     indent: []const u8 = "  ",
@@ -46,6 +47,61 @@ fn writeMessageFields(
         } else if (entry.values.items.len != 0) {
             try writeField(file, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
         }
+    }
+    for (message.unknown_fields.items) |*unknown| try writeUnknownRaw(unknown.data, options, writer, depth);
+}
+
+fn writeUnknownRaw(
+    raw: []const u8,
+    options: Options,
+    writer: *std.Io.Writer,
+    depth: usize,
+) Error!void {
+    var reader = wire.Reader.init(raw);
+    while (try reader.nextTag()) |tag| try writeUnknownField(tag, &reader, options, writer, depth);
+}
+
+fn writeUnknownField(
+    tag: wire.Tag,
+    reader: *wire.Reader,
+    options: Options,
+    writer: *std.Io.Writer,
+    depth: usize,
+) Error!void {
+    switch (tag.wire_type) {
+        .varint => {
+            try writeIndent(writer, options, depth);
+            try writer.print("{d}: {d}\n", .{ tag.number, try reader.readVarint() });
+        },
+        .fixed32 => {
+            try writeIndent(writer, options, depth);
+            try writer.print("{d}: {d}\n", .{ tag.number, try reader.readFixed32() });
+        },
+        .fixed64 => {
+            try writeIndent(writer, options, depth);
+            try writer.print("{d}: {d}\n", .{ tag.number, try reader.readFixed64() });
+        },
+        .length_delimited => {
+            try writeIndent(writer, options, depth);
+            try writer.print("{d}: ", .{tag.number});
+            try writeQuoted(try reader.readBytes(), writer);
+            try writer.writeAll("\n");
+        },
+        .start_group => {
+            try writeIndent(writer, options, depth);
+            try writer.print("{d} {{\n", .{tag.number});
+            while (try reader.nextTag()) |inner| {
+                if (inner.wire_type == .end_group) {
+                    if (inner.number != tag.number) return error.TypeMismatch;
+                    try writeIndent(writer, options, depth);
+                    try writer.writeAll("}\n");
+                    return;
+                }
+                try writeUnknownField(inner, reader, options, writer, depth + 1);
+            }
+            return error.TypeMismatch;
+        },
+        .end_group => return error.TypeMismatch,
     }
 }
 
@@ -331,26 +387,53 @@ const TextParser = struct {
                     return;
                 }
             }
-            const field = try self.readFieldReference(message.descriptor);
+            const unknown_number = if (self.peekIsDigit() != null) try self.readUnknownNumber() else null;
+            const field = if (unknown_number != null) null else try self.readFieldReference(message.descriptor);
             self.skipSpace();
             if (self.consume(':')) {
                 self.skipSpace();
-                if (field.kind == .map or field.kind == .message or field.kind == .group) {
+                if (field == null) {
+                    try self.parseUnknownField(message, unknown_number.?);
+                    self.consumeSeparator();
+                } else if (field.?.kind == .map or field.?.kind == .message or field.?.kind == .group) {
                     const close = try self.consumeAggregateStart();
-                    try self.parseAggregateField(file, message, field, close);
+                    try self.parseAggregateField(file, message, field.?, close);
                 } else {
-                    var value = try self.parseValue(file, message.descriptor, field.kind);
-                    message.add(field, value) catch |err| {
+                    var value = try self.parseValue(file, message.descriptor, field.?.kind);
+                    message.add(field.?, value) catch |err| {
                         dynamic.deinitValue(&value, self.allocator);
                         return err;
                     };
                     self.consumeSeparator();
                 }
             } else if (self.peek() == '{' or self.peek() == '<') {
+                if (field == null) return error.UnexpectedToken;
                 const close = try self.consumeAggregateStart();
-                try self.parseAggregateField(file, message, field, close);
+                try self.parseAggregateField(file, message, field.?, close);
             } else return error.UnexpectedToken;
         }
+    }
+
+    fn parseUnknownField(self: *TextParser, message: *dynamic.DynamicMessage, number: wire.FieldNumber) !void {
+        var raw = wire.Writer.init(self.allocator);
+        defer raw.deinit();
+        if (!self.eof() and (self.peek() == '"' or self.peek() == '\'')) {
+            const bytes = try self.readString();
+            defer self.allocator.free(bytes);
+            try raw.writeBytes(number, bytes);
+        } else {
+            const value = try parseTextInt(u64, try self.readAtom());
+            try raw.writeUInt64(number, value);
+        }
+        const owned = try self.allocator.dupe(u8, raw.slice());
+        errdefer self.allocator.free(owned);
+        var raw_reader = wire.Reader.init(owned);
+        const tag = (try raw_reader.nextTag()) orelse return error.UnexpectedToken;
+        try message.unknown_fields.append(self.allocator, .{
+            .number = number,
+            .wire_type = tag.wire_type,
+            .data = owned,
+        });
     }
 
     fn readFieldReference(self: *TextParser, descriptor: *const schema.MessageDescriptor) !*const schema.FieldDescriptor {
@@ -572,6 +655,30 @@ const TextParser = struct {
         return self.input[start..self.index];
     }
 
+    fn readUnknownNumber(self: *TextParser) !wire.FieldNumber {
+        self.skipSpace();
+        const start = self.index;
+        var value: u64 = 0;
+        while (!self.eof() and std.ascii.isDigit(self.peek())) {
+            value = value * 10 + (self.peek() - '0');
+            if (value == 0 or value > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldNumber;
+            self.index += 1;
+        }
+        if (self.index == start) return error.UnexpectedToken;
+        return @intCast(value);
+    }
+
+    fn peekIsDigit(self: *const TextParser) ?wire.FieldNumber {
+        if (self.eof() or !std.ascii.isDigit(self.input[self.index])) return null;
+        var idx = self.index;
+        var value: u64 = 0;
+        while (idx < self.input.len and std.ascii.isDigit(self.input[idx])) : (idx += 1) {
+            value = value * 10 + (self.input[idx] - '0');
+            if (value > std.math.maxInt(wire.FieldNumber)) return null;
+        }
+        return @intCast(value);
+    }
+
     fn consumeSeparator(self: *TextParser) void {
         self.skipSpace();
         _ = self.consume(';') or self.consume(',');
@@ -746,6 +853,49 @@ test "text format formats and parses proto2 extensions" {
     try std.testing.expectEqual(@as(i32, 3), parsed.get("nums").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 4), parsed.get("nums").?.values.items[1].int32);
     try std.testing.expectEqualSlices(u8, "parsed body", parsed.get("note").?.values.items[0].message.get("text").?.values.items[0].string);
+}
+
+test "text format formats and parses numeric unknown fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message M { optional int32 id = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("id").?, .{ .int32 = 7 });
+    var raw_varint = wire.Writer.init(allocator);
+    defer raw_varint.deinit();
+    try raw_varint.writeUInt64(100, 123);
+    try msg.unknown_fields.append(allocator, .{ .number = 100, .wire_type = .varint, .data = try allocator.dupe(u8, raw_varint.slice()) });
+    var raw_bytes = wire.Writer.init(allocator);
+    defer raw_bytes.deinit();
+    try raw_bytes.writeBytes(101, "blob");
+    try msg.unknown_fields.append(allocator, .{ .number = 101, .wire_type = .length_delimited, .data = try allocator.dupe(u8, raw_bytes.slice()) });
+
+    const text = try formatAlloc(allocator, &file, &msg, .{});
+    defer allocator.free(text);
+    try std.testing.expectEqualSlices(u8,
+        \\id: 7
+        \\100: 123
+        \\101: "blob"
+        \\
+    , text);
+
+    var parsed = try parseAlloc(allocator, &file, desc,
+        \\id: 8
+        \\100: 123
+        \\101: "blob"
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 8), parsed.get("id").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 2), parsed.unknownCount());
+    try std.testing.expectEqualSlices(u8, raw_varint.slice(), parsed.unknown_fields.items[0].data);
+    try std.testing.expectEqualSlices(u8, raw_bytes.slice(), parsed.unknown_fields.items[1].data);
 }
 
 test "text format parser accepts comma and semicolon separators" {
