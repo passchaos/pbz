@@ -38,6 +38,7 @@ validated feature set.
   - basic ConformanceRequest decode, ConformanceResponse encode, and dynamic runner
 - Protoc plugin and codegen helpers
   - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
+  - generated typed JSON stringify helpers for scalar, enum, repeated scalar/enum, optional presence, and scalar/enum oneof fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, and common separators and # comments
 
@@ -161,6 +162,9 @@ structures and a dynamic-message runner for integrating with protobuf conformanc
 `pbz.CodeGeneratorRequest` and `pbz.CodeGeneratorResponse` provide the basic
 wire types needed to build protoc-style generators; `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
+Generated message structs also include basic `jsonStringify` and `jsonStringifyAlloc`
+methods for scalar/enum fields, repeated scalar/enum fields, presence-aware optional
+fields, and scalar/enum oneof arms.
 
 ## Descriptor encoding
 

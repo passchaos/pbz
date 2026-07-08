@@ -59,6 +59,8 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writer.writeAll("\n");
     try writeValidateRequired(message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeJsonMethods(message, writer, depth + 1);
+    try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(nested, writer, depth + 1);
     try indent(writer, depth);
@@ -686,6 +688,184 @@ fn fieldDefault(field: schema.FieldDescriptor) []const u8 {
     };
 }
 
+fn writeJsonMethods(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer out.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.jsonStringify(&out.writer);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try out.toOwnedSlice();\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try writer.writeAll(\"{\");\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var first = true;\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeJsonField(field, writer, depth + 1);
+    }
+    for (message.oneofs.items) |oneof| try writeJsonOneof(message, oneof, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("try writer.writeAll(\"}\");\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeJsonField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    switch (field.kind) {
+        .scalar => |scalar| try writeJsonScalarField(field, scalar, writer, depth),
+        .enumeration => try writeJsonEnumField(field, writer, depth),
+        else => return,
+    }
+}
+
+fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (!first) try writer.writeAll(\",\"); first = false;\n");
+    try indent(writer, depth);
+    try writer.print("try writer.writeAll(\"\\\"{s}\\\":\");\n", .{field.name});
+}
+
+fn writeJsonScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) {\n");
+        try writeJsonPrefix(field, writer, depth + 1);
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.writeAll(\"[\");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); ");
+        try writeJsonScalarValue(scalar, "item", writer);
+        try writer.writeAll("; }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.writeAll(\"]\");\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    } else {
+        try indent(writer, depth);
+        if (hasPresence(field.*)) {
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") {\n");
+        } else {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(defaultSkipCondition(scalar));
+            try writer.writeAll("{\n");
+        }
+        try writeJsonPrefix(field, writer, depth + 1);
+        try indent(writer, depth + 1);
+        try writer.writeAll("const value = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writeJsonScalarValue(scalar, "value", writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+}
+
+fn writeJsonEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) {\n");
+        try writeJsonPrefix(field, writer, depth + 1);
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.writeAll(\"[\");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); try writer.print(\"{d}\", .{item}); }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.writeAll(\"]\");\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    } else {
+        try indent(writer, depth);
+        if (hasPresence(field.*)) {
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") {\n");
+        } else {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" != 0) {\n");
+        }
+        try writeJsonPrefix(field, writer, depth + 1);
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writer.print(\"{d}\", .{self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll("});\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+}
+
+fn writeJsonOneof(message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".none => {},\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            if (std.mem.eql(u8, name, oneof.name)) {
+                try indent(writer, depth + 1);
+                try writer.writeAll(".");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" => |value| {\n");
+                switch (field.kind) {
+                    .scalar => |scalar| {
+                        try writeJsonPrefix(field, writer, depth + 2);
+                        try indent(writer, depth + 2);
+                        try writeJsonScalarValue(scalar, "value", writer);
+                        try writer.writeAll(";\n");
+                    },
+                    .enumeration => {
+                        try writeJsonPrefix(field, writer, depth + 2);
+                        try indent(writer, depth + 2);
+                        try writer.writeAll("try writer.print(\"{d}\", .{value});\n");
+                    },
+                    else => {
+                        try indent(writer, depth + 2);
+                        try writer.writeAll("_ = value;\n");
+                    },
+                }
+                try indent(writer, depth + 1);
+                try writer.writeAll("},\n");
+            }
+        }
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeJsonScalarValue(scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .string => try writer.print("try std.json.Stringify.value({s}, .{{}}, writer)", .{prefix}),
+        .bytes => try writer.print("try writer.writeByte('\"'); try std.base64.standard.Encoder.encodeWriter(writer, {s}); try writer.writeByte('\"')", .{prefix}),
+        .int64, .uint64, .sint64, .fixed64, .sfixed64 => try writer.print("try writer.print(\"\\\"{{d}}\\\"\", .{{{s}}})", .{prefix}),
+        .bool => try writer.print("try writer.writeAll(if ({s}) \"true\" else \"false\")", .{prefix}),
+        .double, .float => try writer.print("if (std.math.isNan({s})) try writer.writeAll(\"\\\"NaN\\\"\") else if (std.math.isPositiveInf({s})) try writer.writeAll(\"\\\"Infinity\\\"\") else if (std.math.isNegativeInf({s})) try writer.writeAll(\"\\\"-Infinity\\\"\") else try writer.print(\"{{d}}\", .{{{s}}})", .{ prefix, prefix, prefix, prefix }),
+        else => try writer.print("try writer.print(\"{{d}}\", .{{{s}}})", .{prefix}),
+    }
+}
+
 fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const ");
@@ -969,6 +1149,13 @@ test "codegen output parses as Zig source" {
         \\  Kind kind = 4;
         \\  Child child = 5;
         \\  map<string, int32> counts = 6;
+        \\  bytes raw = 7;
+        \\  repeated int64 nums = 8;
+        \\  double ratio = 9;
+        \\  oneof pick {
+        \\    bool active = 10;
+        \\    string alias = 11;
+        \\  }
         \\}
     );
     defer file.deinit();
@@ -979,6 +1166,40 @@ test "codegen output parses as Zig source" {
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
     defer tree.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits typed json stringify methods" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message M {
+        \\  int32 id = 1;
+        \\  string name = 2;
+        \\  int64 big = 3;
+        \\  bytes raw = 4;
+        \\  repeated string tags = 5;
+        \\  optional bool active = 6;
+        \\  Kind kind = 7;
+        \\  oneof choice {
+        \\    string alias = 8;
+        \\    int32 code = 9;
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"id\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{value});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.base64.standard.Encoder.encodeWriter(writer, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\", 0..) |item, i|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_active\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "switch (self.@\"choice\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"alias\" => |value|") != null);
 }
 
 test "codegen emits required validation" {
