@@ -266,6 +266,7 @@ pub const DynamicMessage = struct {
     }
 
     pub fn encode(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
+        if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, writer, false);
         for (self.fields.items) |*entry| {
             if (entry.descriptor.resolvedPacked(file)) {
                 try encodePacked(entry.descriptor, entry.values.items, writer);
@@ -282,6 +283,7 @@ pub const DynamicMessage = struct {
     }
 
     pub fn encodeDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
+        if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, writer, true);
         const indexes = try self.allocator.alloc(usize, self.fields.items.len);
         defer self.allocator.free(indexes);
         for (indexes, 0..) |*index, i| index.* = i;
@@ -379,6 +381,11 @@ pub const DynamicMessage = struct {
                 return error.InvalidWireType;
             }
 
+            if (self.descriptor.messageSetWireFormat() and tag.number == 1 and tag.wire_type == .start_group) {
+                try self.decodeMessageSetItem(file, registry, reader);
+                continue;
+            }
+
             const start = reader.position() - wire.encodedVarintSize(try tag.encode());
             const field = self.descriptor.findFieldByNumber(tag.number) orelse registryExtension(registry, self.descriptor, tag.number) orelse {
                 try reader.skipValue(tag);
@@ -406,7 +413,7 @@ pub const DynamicMessage = struct {
 
             if (field.kind == .map) {
                 if (tag.wire_type != .length_delimited) return error.InvalidWireType;
-                var value = try decodeMapEntryValue(self.allocator, file, self.descriptor, field.kind.map, reader);
+                var value = try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field.kind.map, reader);
                 self.add(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
@@ -429,7 +436,7 @@ pub const DynamicMessage = struct {
             }
 
             if (tag.wire_type != field.kind.wireType()) return error.InvalidWireType;
-            var value = try decodeValue(self.allocator, file, self.descriptor, field.kind, reader);
+            var value = try decodeValue(self.allocator, file, registry, self.descriptor, field.kind, reader);
             self.add(field, value) catch |err| {
                 deinitValue(&value, self.allocator);
                 return err;
@@ -437,11 +444,138 @@ pub const DynamicMessage = struct {
         }
         if (end_group != null) return error.TruncatedInput;
     }
+
+    fn encodeMessageSet(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer, deterministic: bool) EncodeError!void {
+        if (deterministic) {
+            const indexes = try self.allocator.alloc(usize, self.fields.items.len);
+            defer self.allocator.free(indexes);
+            for (indexes, 0..) |*index, i| index.* = i;
+            std.mem.sort(usize, indexes, self, struct {
+                fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
+                    return message.fields.items[a].descriptor.number < message.fields.items[b].descriptor.number;
+                }
+            }.lessThan);
+            for (indexes) |index| try encodeMessageSetEntry(self.descriptor, &self.fields.items[index], file, writer, true);
+
+            const unknown_indexes = try self.allocator.alloc(usize, self.unknown_fields.items.len);
+            defer self.allocator.free(unknown_indexes);
+            for (unknown_indexes, 0..) |*index, i| index.* = i;
+            std.mem.sort(usize, unknown_indexes, self, struct {
+                fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
+                    return message.unknown_fields.items[a].number < message.unknown_fields.items[b].number;
+                }
+            }.lessThan);
+            for (unknown_indexes) |index| try encodeUnknownMessageSetField(&self.unknown_fields.items[index], writer);
+            return;
+        }
+
+        for (self.fields.items) |*entry| try encodeMessageSetEntry(self.descriptor, entry, file, writer, false);
+        for (self.unknown_fields.items) |*unknown| try encodeUnknownMessageSetField(unknown, writer);
+    }
+
+    fn decodeMessageSetItem(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, reader: *wire.Reader) DecodeError!void {
+        var type_id: ?wire.FieldNumber = null;
+        var payload: ?[]const u8 = null;
+
+        while (try reader.nextTag()) |tag| {
+            if (tag.wire_type == .end_group) {
+                if (tag.number != 1) return error.InvalidFieldNumber;
+                if (type_id) |number| {
+                    if (payload) |bytes| try self.addMessageSetPayload(file, registry, number, bytes);
+                }
+                return;
+            }
+            switch (tag.number) {
+                2 => {
+                    if (tag.wire_type != .varint) return error.InvalidWireType;
+                    const raw = try reader.readUInt32();
+                    if (raw == 0 or raw > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldNumber;
+                    type_id = @intCast(raw);
+                },
+                3 => {
+                    if (tag.wire_type != .length_delimited) return error.InvalidWireType;
+                    payload = try reader.readBytes();
+                },
+                else => try reader.skipValue(tag),
+            }
+        }
+        return error.TruncatedInput;
+    }
+
+    fn addMessageSetPayload(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, number: wire.FieldNumber, payload: []const u8) DecodeError!void {
+        const field = registryExtension(registry, self.descriptor, number) orelse {
+            var raw_writer = wire.Writer.init(self.allocator);
+            defer raw_writer.deinit();
+            try raw_writer.writeBytes(number, payload);
+            const raw = try self.allocator.dupe(u8, raw_writer.slice());
+            errdefer self.allocator.free(raw);
+            try self.unknown_fields.append(self.allocator, .{
+                .number = number,
+                .wire_type = .length_delimited,
+                .data = raw,
+            });
+            return;
+        };
+        if (field.kind != .message or field.cardinality == .repeated or field.cardinality == .required) return error.TypeMismatch;
+        var value = try decodeMessagePayload(self.allocator, file, registry, self.descriptor, field.kind.message, payload);
+        self.add(field, value) catch |err| {
+            deinitValue(&value, self.allocator);
+            return err;
+        };
+    }
 };
 
 fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
     const reg = registry orelse return null;
     return reg.findExtension(descriptor.name, number);
+}
+
+fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const FieldValue, file: *const schema.FileDescriptor, writer: *wire.Writer, deterministic: bool) EncodeError!void {
+    if (entry.descriptor.kind != .message or entry.descriptor.extendee == null or entry.descriptor.cardinality == .repeated or entry.descriptor.cardinality == .required) return error.TypeMismatch;
+    if (!extensionExtendsMessage(entry.descriptor.extendee.?, host)) return error.TypeMismatch;
+    for (entry.values.items) |value| {
+        const message = switch (value) {
+            .message => |message_value| message_value,
+            else => return error.TypeMismatch,
+        };
+        var payload_writer = wire.Writer.init(writer.allocator);
+        defer payload_writer.deinit();
+        if (deterministic) {
+            try message.encodeDeterministic(file, &payload_writer);
+        } else {
+            try message.encode(file, &payload_writer);
+        }
+        try writeMessageSetItem(writer, entry.descriptor.number, payload_writer.slice());
+    }
+}
+
+fn encodeUnknownMessageSetField(unknown: *const UnknownField, writer: *wire.Writer) EncodeError!void {
+    if (unknown.wire_type == .length_delimited) {
+        var reader = wire.Reader.init(unknown.data);
+        if ((try reader.nextTag())) |tag| {
+            if (tag.number == unknown.number and tag.wire_type == .length_delimited) {
+                const payload = try reader.readBytes();
+                if (reader.eof()) {
+                    try writeMessageSetItem(writer, unknown.number, payload);
+                    return;
+                }
+            }
+        }
+    }
+    try writer.appendSlice(unknown.data);
+}
+
+fn writeMessageSetItem(writer: *wire.Writer, type_id: wire.FieldNumber, payload: []const u8) EncodeError!void {
+    try writer.writeTag(1, .start_group);
+    try writer.writeUInt32(2, @intCast(type_id));
+    try writer.writeMessage(3, payload);
+    try writer.writeTag(1, .end_group);
+}
+
+fn extensionExtendsMessage(extendee: []const u8, message: *const schema.MessageDescriptor) bool {
+    const trimmed = if (std.mem.startsWith(u8, extendee, ".")) extendee[1..] else extendee;
+    const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+    return std.mem.eql(u8, trimmed, message.name) or std.mem.eql(u8, leaf, message.name);
 }
 
 fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
@@ -569,6 +703,7 @@ fn encodeScalarPayload(kind: schema.FieldKind, value: Value, writer: *wire.Write
 fn decodeValue(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     kind: schema.FieldKind,
     reader: *wire.Reader,
@@ -582,24 +717,40 @@ fn decodeValue(
         .enumeration => try decodeScalarLike(kind, reader),
         .message => |name| blk: {
             const payload = try reader.readBytes();
-            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
-            const message = try allocator.create(DynamicMessage);
-            message.* = DynamicMessage.init(allocator, descriptor);
-            errdefer {
-                message.deinit();
-                allocator.destroy(message);
-            }
-            try message.decode(file, payload);
-            break :blk .{ .message = message };
+            break :blk try decodeMessagePayload(allocator, file, registry, current, name, payload);
         },
         .group => error.TypeMismatch,
         .map => error.TypeMismatch,
     };
 }
 
+fn decodeMessagePayload(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    current: *const schema.MessageDescriptor,
+    name: []const u8,
+    payload: []const u8,
+) DecodeError!Value {
+    const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+    const message = try allocator.create(DynamicMessage);
+    message.* = DynamicMessage.init(allocator, descriptor);
+    errdefer {
+        message.deinit();
+        allocator.destroy(message);
+    }
+    if (registry) |reg| {
+        try message.decodeWithRegistry(file, reg, payload);
+    } else {
+        try message.decode(file, payload);
+    }
+    return .{ .message = message };
+}
+
 fn decodeMapEntryValue(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     map_type: schema.MapType,
     reader: *wire.Reader,
@@ -619,12 +770,12 @@ fn decodeMapEntryValue(
             1 => {
                 if (tag.wire_type != map_type.key.wireType()) return error.InvalidWireType;
                 if (maybe_key) |*old| deinitValue(old, allocator);
-                maybe_key = try decodeValue(allocator, file, current, .{ .scalar = map_type.key }, &entry_reader);
+                maybe_key = try decodeValue(allocator, file, registry, current, .{ .scalar = map_type.key }, &entry_reader);
             },
             2 => {
                 if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
                 if (maybe_value) |*old| deinitValue(old, allocator);
-                maybe_value = try decodeValue(allocator, file, current, map_type.value.*, &entry_reader);
+                maybe_value = try decodeValue(allocator, file, registry, current, map_type.value.*, &entry_reader);
             },
             else => try entry_reader.skipValue(tag),
         }
@@ -1429,6 +1580,92 @@ test "dynamic encodes extension fields using extension descriptors" {
     defer decoded.deinit();
     try decoded.decodeWithRegistry(&file, &registry, encoded);
     try std.testing.expectEqual(@as(i32, 123), decoded.get("score").?.values.items[0].int32);
+}
+
+test "dynamic encodes and decodes proto2 MessageSet items" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Ext { optional int32 value = 1; }
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const ext_desc = file.findMessage("Ext").?;
+    const ext_field = registry.findExtension("demo.Host", 100).?;
+
+    const ext_msg = try allocator.create(DynamicMessage);
+    ext_msg.* = DynamicMessage.init(allocator, ext_desc);
+    try ext_msg.add(ext_desc.findField("value").?, .{ .int32 = 7 });
+
+    var msg = DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.add(ext_field, .{ .message = ext_msg });
+
+    const encoded = try msg.encoded(&file);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0b, 0x10, 0x64, 0x1a, 0x02, 0x08, 0x07, 0x0c }, encoded);
+
+    const deterministic = try msg.encodedDeterministic(&file);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, encoded, deterministic);
+
+    var decoded = DynamicMessage.init(allocator, host);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&file, &registry, encoded);
+    const decoded_ext = decoded.get("ext").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 7), decoded_ext.get("value").?.values.items[0].int32);
+}
+
+test "dynamic MessageSet accepts payload before type id and preserves unknown items" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Ext { optional int32 value = 1; }
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+
+    var reordered = wire.Writer.init(allocator);
+    defer reordered.deinit();
+    try reordered.writeTag(1, .start_group);
+    try reordered.writeMessage(3, &.{ 0x08, 0x09 });
+    try reordered.writeUInt32(2, 100);
+    try reordered.writeTag(1, .end_group);
+
+    var decoded = DynamicMessage.init(allocator, host);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&file, &registry, reordered.slice());
+    try std.testing.expectEqual(@as(i32, 9), decoded.get("ext").?.values.items[0].message.get("value").?.values.items[0].int32);
+
+    var unknown = wire.Writer.init(allocator);
+    defer unknown.deinit();
+    try unknown.writeTag(1, .start_group);
+    try unknown.writeUInt32(2, 150);
+    try unknown.writeMessage(3, &.{ 0x08, 0x2a });
+    try unknown.writeTag(1, .end_group);
+
+    var unknown_msg = DynamicMessage.init(allocator, host);
+    defer unknown_msg.deinit();
+    try unknown_msg.decodeWithRegistry(&file, &registry, unknown.slice());
+    try std.testing.expectEqual(@as(usize, 1), unknown_msg.unknownCount());
+    try std.testing.expectEqual(@as(wire.FieldNumber, 150), unknown_msg.unknown_fields.items[0].number);
+    try std.testing.expectEqual(wire.WireType.length_delimited, unknown_msg.unknown_fields.items[0].wire_type);
+
+    const unknown_roundtrip = try unknown_msg.encoded(&file);
+    defer allocator.free(unknown_roundtrip);
+    try std.testing.expectEqualSlices(u8, unknown.slice(), unknown_roundtrip);
 }
 
 test "dynamic deterministic encoding sorts fields and unknowns by number" {

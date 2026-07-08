@@ -276,6 +276,7 @@ fn writeFileOptions(allocator: std.mem.Allocator, file: *const schema.FileDescri
 fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
+    if (message.messageSetWireFormat()) try tmp.writeBool(1, true);
     try writeUninterpretedOptions(allocator, message.options.items, &tmp, .message);
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -326,7 +327,8 @@ fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const sche
 fn isKnownOption(name: []const u8, scope: OptionScope) bool {
     if (std.mem.startsWith(u8, name, "features.")) return true;
     return switch (scope) {
-        .file, .message => false,
+        .file => false,
+        .message => std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), "message_set_wire_format"),
         .enumeration => std.mem.eql(u8, name, "allow_alias"),
         .field => std.mem.eql(u8, name, "packed") or std.mem.eql(u8, name, "default") or std.mem.eql(u8, name, "json_name"),
     };
@@ -687,7 +689,7 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
             4 => try message.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             5 => try message.extension_ranges.append(allocator, try decodeExtensionRange(allocator, try reader.readBytes())),
             6 => try message.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
-            7 => try decodeGenericOptions(allocator, &message.options, try reader.readBytes()),
+            7 => try decodeMessageOptions(allocator, &message.options, try reader.readBytes()),
             8 => try message.oneofs.append(allocator, try decodeOneofDescriptor(allocator, try reader.readBytes())),
             9 => try message.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), false)),
             10 => try message.reserved_names.append(allocator, try reader.readBytes()),
@@ -974,6 +976,17 @@ fn decodeGenericOptions(allocator: std.mem.Allocator, options: *schema.OptionLis
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         if (tag.number == 999) try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())) else try reader.skipValue(tag);
+    }
+}
+
+fn decodeMessageOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try options.append(allocator, .{ .name = "message_set_wire_format", .value = .{ .boolean = try reader.readBool() } }),
+            999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
     }
 }
 
@@ -1722,6 +1735,26 @@ test "descriptor preserves enum allow_alias option" {
     try std.testing.expectEqualStrings("allow_alias", enumeration.options.items[0].name);
     try std.testing.expect(enumeration.options.items[0].value.boolean);
     try std.testing.expectEqual(@as(i32, 0), enumeration.findValue("B").?.number);
+}
+
+test "descriptor preserves proto2 MessageSet message option" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "mset.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    const host = decoded.findMessage("Host").?;
+    try std.testing.expect(host.messageSetWireFormat());
+    try std.testing.expectEqual(@as(usize, 1), host.options.items.len);
+    try std.testing.expectEqualStrings("message_set_wire_format", host.options.items[0].name);
+    try std.testing.expect(host.options.items[0].value.boolean);
 }
 
 test "descriptor rejects invalid enum descriptors" {

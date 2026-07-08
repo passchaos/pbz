@@ -162,6 +162,7 @@ pub const Parser = struct {
         try self.validateServices();
         try self.resolveFieldKinds();
         try self.validateExtensions();
+        try self.validateMessageSets();
         try self.validateDefaults();
         try self.validatePackedOptions();
         return self.file;
@@ -799,6 +800,43 @@ pub const Parser = struct {
         return error.ReservedField;
     }
 
+    fn validateMessageSets(self: *Parser) ParseError!void {
+        for (self.file.messages.items) |*message| try self.validateMessageSetMessage(message);
+    }
+
+    fn validateMessageSetMessage(self: *Parser, message: *const schema.MessageDescriptor) ParseError!void {
+        if (message.messageSetWireFormat()) {
+            if (self.file.syntax == .proto3) return error.InvalidFieldType;
+            if (message.fields.items.len != 0) return error.InvalidFieldType;
+            var has_message_set_range = false;
+            for (message.extension_ranges.items) |range| {
+                const end = range.end orelse std.math.maxInt(i64);
+                if (range.start <= 4 and end > 4) has_message_set_range = true;
+            }
+            if (!has_message_set_range) return error.InvalidRange;
+        }
+        for (self.file.extensions.items) |*field| try self.validateMessageSetExtension(message, field);
+        for (self.file.messages.items) |*scope| try self.validateMessageSetExtensionsInMessage(message, scope);
+        for (message.messages.items) |*nested| try self.validateMessageSetMessage(nested);
+    }
+
+    fn validateMessageSetExtensionsInMessage(self: *Parser, message_set: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) ParseError!void {
+        for (scope.extensions.items) |*field| try self.validateMessageSetExtension(message_set, field);
+        for (scope.messages.items) |*nested| try self.validateMessageSetExtensionsInMessage(message_set, nested);
+    }
+
+    fn validateMessageSetExtension(self: *Parser, message_set: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ParseError!void {
+        if (!message_set.messageSetWireFormat()) return;
+        const extendee = field.extendee orelse return;
+        const extendee_message = self.file.findMessageDeep(extendee) orelse return;
+        if (extendee_message != message_set) return;
+        if (field.cardinality == .repeated or field.cardinality == .required) return error.InvalidFieldType;
+        switch (field.kind) {
+            .message => {},
+            else => return error.InvalidFieldType,
+        }
+    }
+
     fn resolveEnumDefault(self: *Parser, field: *schema.FieldDescriptor, context: ?*schema.MessageDescriptor) void {
         const enum_name = switch (field.kind) {
             .enumeration => |name| name,
@@ -1040,7 +1078,7 @@ fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8)
 }
 
 fn optionLeaf(name: []const u8) []const u8 {
-    return if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
+    return schema.optionLeaf(name);
 }
 
 fn messageContainsEnum(message: *const schema.MessageDescriptor, leaf: []const u8) bool {
@@ -1495,6 +1533,43 @@ test "parser validates extension field numbers against extension ranges" {
         \\syntax = "proto2";
         \\message Target { extensions 100 to 200; }
         \\extend Target { optional int32 bad = 99; }
+    ));
+}
+
+test "parser validates proto2 MessageSet declarations and extensions" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host {
+        \\  option message_set_wire_format = true;
+        \\  extensions 4 to 529999999;
+        \\}
+        \\message Ext { optional int32 value = 1; }
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer file.deinit();
+    try std.testing.expect(file.findMessage("Host").?.messageSetWireFormat());
+    try std.testing.expectEqual(@as(u29, 100), file.extensions.items[0].number);
+    try std.testing.expectEqualStrings("Ext", file.extensions.items[0].kind.message);
+
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { option message_set_wire_format = true; extensions 4 to max; optional int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { option message_set_wire_format = true; extensions 5 to max; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\extend Host { optional int32 bad = 100; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Ext {}
+        \\extend Host { repeated Ext bad = 100; }
     ));
 }
 

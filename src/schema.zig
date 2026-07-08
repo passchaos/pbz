@@ -316,6 +316,13 @@ pub const MessageDescriptor = struct {
         }
         return null;
     }
+
+    pub fn messageSetWireFormat(self: *const MessageDescriptor) bool {
+        for (self.options.items) |option| {
+            if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), "message_set_wire_format")) return optionAsBool(option.value) orelse false;
+        }
+        return false;
+    }
 };
 
 pub const ServiceDescriptor = struct {
@@ -542,6 +549,19 @@ pub fn optionAsIdentifier(value: OptionValue) ?[]const u8 {
         .string => |s| s,
         else => null,
     };
+}
+
+pub fn optionBool(options: []const FieldOption, name: []const u8) ?bool {
+    for (options) |option| {
+        if (std.mem.eql(u8, optionLeaf(option.name), name)) return optionAsBool(option.value);
+    }
+    return null;
+}
+
+pub fn optionLeaf(name: []const u8) []const u8 {
+    const trimmed = std.mem.trim(u8, name, " \t\r\n");
+    if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| return trimmed[idx + 1 ..];
+    return trimmed;
 }
 
 test "schema resolves feature defaults for proto2 proto3 and editions" {

@@ -21,6 +21,7 @@ validated feature set.
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, and enum validation including allow_alias
+  - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
@@ -28,6 +29,7 @@ validated feature set.
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation, missing required field path reporting, encode/decodeInitialized helpers, repeated packed fields
+  - proto2 MessageSet wire-format encode/decode for known registry extensions plus unknown item preservation
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
   - nested message and group round-trips
@@ -213,7 +215,8 @@ metadata, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode,
 file/message/enum/field uninterpreted options, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name validation, enum allow_alias, enum descriptor validation,
-service/method validation, and edition feature metadata.
+service/method validation, proto2 MessageOptions.message_set_wire_format, and
+edition feature metadata.
 
 ## Build and test
 
