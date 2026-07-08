@@ -877,13 +877,14 @@ fn decodeMapEntryValue(
                 maybe_key = try decodeValue(allocator, file, registry, current, field, .{ .scalar = map_type.key }, &entry_reader);
             },
             2 => {
-                if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
                 if (maybe_value) |*old| deinitValue(old, allocator);
-                if (closedEnumDescriptor(file, current, map_type.value.*)) |enumeration| {
+                if (registryEnumDescriptor(file, registry, current, map_type.value.*)) |enumeration| {
+                    if (tag.wire_type != .varint) return error.InvalidWireType;
                     const value = try entry_reader.readInt32();
-                    if (!enumHasNumber(enumeration, value)) return null;
+                    if (enumIsClosed(file, enumeration) and !enumHasNumber(enumeration, value)) return null;
                     maybe_value = .{ .enumeration = value };
                 } else {
+                    if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
                     maybe_value = try decodeValue(allocator, file, registry, current, field, map_type.value.*, &entry_reader);
                 }
             },
@@ -893,7 +894,10 @@ fn decodeMapEntryValue(
 
     var key = maybe_key orelse try defaultValue(allocator, file, current, .{ .scalar = map_type.key });
     maybe_key = null;
-    var map_value = maybe_value orelse try defaultValue(allocator, file, current, map_type.value.*);
+    var map_value = maybe_value orelse blk: {
+        if (registryEnumDescriptor(file, registry, current, map_type.value.*) != null) break :blk Value{ .enumeration = 0 };
+        break :blk try defaultValue(allocator, file, current, map_type.value.*);
+    };
     maybe_value = null;
     defer {
         if (!success) {
@@ -2119,6 +2123,54 @@ test "dynamic decodeWithRegistry resolves imported enum fields" {
     try std.testing.expectEqual(@as(i32, 1), event.get("many").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(usize, 1), event.get("many").?.values.items.len);
     try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
+}
+
+test "dynamic decodeWithRegistry resolves imported enum map entries" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { A = 1; B = 2; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Event { map<string, common.Kind> kinds = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    var bad_entry = wire.Writer.init(allocator);
+    defer bad_entry.deinit();
+    try bad_entry.writeString(1, "bad");
+    try bad_entry.writeInt32(2, 123);
+
+    var good_entry = wire.Writer.init(allocator);
+    defer good_entry.deinit();
+    try good_entry.writeString(1, "ok");
+    try good_entry.writeInt32(2, 2);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeMessage(1, bad_entry.slice());
+    const bad_raw = try allocator.dupe(u8, encoded.slice());
+    defer allocator.free(bad_raw);
+    try encoded.writeMessage(1, good_entry.slice());
+
+    const event_desc = app.findMessage("Event").?;
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    try event.decodeWithRegistry(&app, &registry, encoded.slice());
+    try std.testing.expectEqual(@as(usize, 1), event.get("kinds").?.values.items.len);
+    const entry = event.get("kinds").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("ok", entry.key.string);
+    try std.testing.expectEqual(@as(i32, 2), entry.value.enumeration);
+    try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
+    try std.testing.expectEqualSlices(u8, bad_raw, event.unknown_fields.items[0].data);
 }
 
 test "dynamic encodes extension fields using extension descriptors" {
