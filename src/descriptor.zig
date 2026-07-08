@@ -616,7 +616,35 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     }
     try collapseMapEntryMessages(allocator, &file);
     resolveDecodedEnumDefaults(&file);
+    try validateDecodedFileDescriptor(&file);
     return file;
+}
+
+fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void {
+    for (file.messages.items, 0..) |message, i| {
+        for (file.messages.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, message.name, other.name)) return error.InvalidFieldType;
+        }
+        for (file.enums.items) |enumeration| {
+            if (std.mem.eql(u8, message.name, enumeration.name)) return error.InvalidFieldType;
+        }
+        for (file.services.items) |service| {
+            if (std.mem.eql(u8, message.name, service.name)) return error.InvalidFieldType;
+        }
+    }
+    for (file.enums.items, 0..) |enumeration, i| {
+        for (file.enums.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
+        }
+        for (file.services.items) |service| {
+            if (std.mem.eql(u8, enumeration.name, service.name)) return error.InvalidFieldType;
+        }
+    }
+    for (file.services.items, 0..) |service, i| {
+        for (file.services.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, service.name, other.name)) return error.InvalidFieldType;
+        }
+    }
 }
 
 pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) Error![]schema.FileDescriptor {
@@ -1576,6 +1604,51 @@ test "descriptor rejects invalid message descriptors" {
         defer file.deinit();
         try file.writeString(1, "dup-nested.proto");
         try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects duplicate top-level file symbols" {
+    const allocator = std.testing.allocator;
+    {
+        var msg = wire.Writer.init(allocator);
+        defer msg.deinit();
+        try msg.writeString(1, "Thing");
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-message.proto");
+        try file.writeMessage(4, msg.slice());
+        try file.writeMessage(4, msg.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var msg = wire.Writer.init(allocator);
+        defer msg.deinit();
+        try msg.writeString(1, "Thing");
+        var enum_value = wire.Writer.init(allocator);
+        defer enum_value.deinit();
+        try enum_value.writeString(1, "UNKNOWN");
+        try enum_value.writeInt32(2, 0);
+        var enumeration = wire.Writer.init(allocator);
+        defer enumeration.deinit();
+        try enumeration.writeString(1, "Thing");
+        try enumeration.writeMessage(2, enum_value.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "message-enum-conflict.proto");
+        try file.writeMessage(4, msg.slice());
+        try file.writeMessage(5, enumeration.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        try service.writeString(1, "Api");
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-service.proto");
+        try file.writeMessage(6, service.slice());
+        try file.writeMessage(6, service.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
