@@ -312,6 +312,7 @@ const TextParser = struct {
                     dynamic.deinitValue(&value, self.allocator);
                     return err;
                 };
+                self.consumeSeparator();
             } else if (self.consume('{') or self.consume('<')) {
                 if (field.kind == .map) {
                     var value = try self.parseMapEntry(file, message.descriptor, field.kind.map);
@@ -319,6 +320,7 @@ const TextParser = struct {
                         dynamic.deinitValue(&value, self.allocator);
                         return err;
                     };
+                    self.consumeSeparator();
                 } else {
                     const nested_desc = switch (field.kind) {
                         .message => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
@@ -333,6 +335,7 @@ const TextParser = struct {
                     }
                     try self.parseMessage(file, nested, '}');
                     try message.add(field, if (field.kind == .group) .{ .group = nested } else .{ .message = nested });
+                    self.consumeSeparator();
                 }
             } else return error.UnexpectedToken;
         }
@@ -356,6 +359,7 @@ const TextParser = struct {
             } else if (std.mem.eql(u8, name, "value")) {
                 value = try self.parseValue(file, current, map_type.value.*);
             } else return error.UnknownField;
+            self.consumeSeparator();
         }
         const entry = try self.allocator.create(dynamic.MapEntry);
         entry.* = .{ .key = key orelse return error.TypeMismatch, .value = value orelse return error.TypeMismatch };
@@ -446,9 +450,14 @@ const TextParser = struct {
     fn readAtom(self: *TextParser) ![]const u8 {
         self.skipSpace();
         const start = self.index;
-        while (!self.eof() and !std.ascii.isWhitespace(self.peek()) and self.peek() != '}' and self.peek() != '>') self.index += 1;
+        while (!self.eof() and !std.ascii.isWhitespace(self.peek()) and self.peek() != '}' and self.peek() != '>' and self.peek() != ',' and self.peek() != ';') self.index += 1;
         if (self.index == start) return error.UnexpectedToken;
         return self.input[start..self.index];
+    }
+
+    fn consumeSeparator(self: *TextParser) void {
+        self.skipSpace();
+        _ = self.consume(';') or self.consume(',');
     }
 
     fn expect(self: *TextParser, c: u8) !void {
@@ -509,4 +518,20 @@ test "text format parses dynamic messages" {
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
     try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 1), msg.get("kind").?.values.items[0].enumeration);
+}
+
+test "text format parser accepts comma and semicolon separators" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { int32 a = 1; int32 b = 2; map<string, int32> counts = 3; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc, "a: 1; b: 2, counts { key: \"x\"; value: 3; },");
+    defer msg.deinit();
+    try std.testing.expectEqual(@as(i32, 1), msg.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), msg.get("b").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
 }

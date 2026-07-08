@@ -39,7 +39,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig skeleton generation
 - TextFormat support
-  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, and nested messages
+  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, and common separators
 
 ## Quick example
 
