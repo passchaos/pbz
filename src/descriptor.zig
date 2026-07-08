@@ -438,6 +438,25 @@ fn hasMethodOptions(method: *const schema.MethodDescriptor) bool {
 fn writeFileOptions(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
+    if (exactOptionString(file.options.items, "java_package")) |value| try tmp.writeString(1, value);
+    if (exactOptionString(file.options.items, "java_outer_classname")) |value| try tmp.writeString(8, value);
+    if (fileOptimizeMode(file.options.items)) |value| try tmp.writeInt32(9, value);
+    if (exactOptionBool(file.options.items, "java_multiple_files")) |value| try tmp.writeBool(10, value);
+    if (exactOptionString(file.options.items, "go_package")) |value| try tmp.writeString(11, value);
+    if (exactOptionBool(file.options.items, "cc_generic_services")) |value| try tmp.writeBool(16, value);
+    if (exactOptionBool(file.options.items, "java_generic_services")) |value| try tmp.writeBool(17, value);
+    if (exactOptionBool(file.options.items, "py_generic_services")) |value| try tmp.writeBool(18, value);
+    if (exactOptionBool(file.options.items, "java_generate_equals_and_hash")) |value| try tmp.writeBool(20, value);
+    if (exactOptionBool(file.options.items, "deprecated")) |value| try tmp.writeBool(23, value);
+    if (exactOptionBool(file.options.items, "java_string_check_utf8")) |value| try tmp.writeBool(27, value);
+    if (exactOptionBool(file.options.items, "cc_enable_arenas")) |value| try tmp.writeBool(31, value);
+    if (exactOptionString(file.options.items, "objc_class_prefix")) |value| try tmp.writeString(36, value);
+    if (exactOptionString(file.options.items, "csharp_namespace")) |value| try tmp.writeString(37, value);
+    if (exactOptionString(file.options.items, "swift_prefix")) |value| try tmp.writeString(39, value);
+    if (exactOptionString(file.options.items, "php_class_prefix")) |value| try tmp.writeString(40, value);
+    if (exactOptionString(file.options.items, "php_namespace")) |value| try tmp.writeString(41, value);
+    if (exactOptionString(file.options.items, "php_metadata_namespace")) |value| try tmp.writeString(44, value);
+    if (exactOptionString(file.options.items, "ruby_package")) |value| try tmp.writeString(45, value);
     if (file.syntax == .editions or hasFeatureOptions(file) or !file.features.eql(schema.FeatureSet.defaults(file.syntax))) try writeFeatureSet(allocator, file.features, 50, &tmp);
     try writeUninterpretedOptions(allocator, file.options.items, &tmp, .file);
     try writer.writeMessage(field_number, tmp.slice());
@@ -554,7 +573,7 @@ fn isKnownOption(name: []const u8, scope: OptionScope) bool {
     const trimmed = std.mem.trim(u8, name, " \t\r\n");
     if (std.mem.startsWith(u8, trimmed, "features.")) return true;
     return switch (scope) {
-        .file => false,
+        .file => isKnownFileOption(trimmed),
         .message => std.mem.eql(u8, trimmed, "message_set_wire_format") or std.mem.eql(u8, trimmed, "no_standard_descriptor_accessor") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
         .enumeration => std.mem.eql(u8, trimmed, "allow_alias") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
         .enum_value => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "feature_support"),
@@ -566,6 +585,28 @@ fn isKnownOption(name: []const u8, scope: OptionScope) bool {
     };
 }
 
+fn isKnownFileOption(trimmed: []const u8) bool {
+    return std.mem.eql(u8, trimmed, "java_package") or
+        std.mem.eql(u8, trimmed, "java_outer_classname") or
+        std.mem.eql(u8, trimmed, "java_multiple_files") or
+        std.mem.eql(u8, trimmed, "java_generate_equals_and_hash") or
+        std.mem.eql(u8, trimmed, "java_string_check_utf8") or
+        std.mem.eql(u8, trimmed, "optimize_for") or
+        std.mem.eql(u8, trimmed, "go_package") or
+        std.mem.eql(u8, trimmed, "cc_generic_services") or
+        std.mem.eql(u8, trimmed, "java_generic_services") or
+        std.mem.eql(u8, trimmed, "py_generic_services") or
+        std.mem.eql(u8, trimmed, "deprecated") or
+        std.mem.eql(u8, trimmed, "cc_enable_arenas") or
+        std.mem.eql(u8, trimmed, "objc_class_prefix") or
+        std.mem.eql(u8, trimmed, "csharp_namespace") or
+        std.mem.eql(u8, trimmed, "swift_prefix") or
+        std.mem.eql(u8, trimmed, "php_class_prefix") or
+        std.mem.eql(u8, trimmed, "php_namespace") or
+        std.mem.eql(u8, trimmed, "php_metadata_namespace") or
+        std.mem.eql(u8, trimmed, "ruby_package");
+}
+
 fn exactOptionBool(options: []const schema.FieldOption, name: []const u8) ?bool {
     for (options) |option| {
         if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) return schema.optionAsBool(option.value);
@@ -573,9 +614,40 @@ fn exactOptionBool(options: []const schema.FieldOption, name: []const u8) ?bool 
     return null;
 }
 
+fn exactOptionString(options: []const schema.FieldOption, name: []const u8) ?[]const u8 {
+    for (options) |option| {
+        if (!std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) continue;
+        return switch (option.value) {
+            .string, .identifier => |value| value,
+            else => null,
+        };
+    }
+    return null;
+}
+
 fn optionEnumNumber(options: []const schema.FieldOption, name: []const u8) ?i32 {
     for (options) |option| {
         if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) return optionEnumNumberValue(option.value);
+    }
+    return null;
+}
+
+fn fileOptimizeMode(options: []const schema.FieldOption) ?i32 {
+    for (options) |option| {
+        if (!std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), "optimize_for")) continue;
+        switch (option.value) {
+            .integer => |value| {
+                if (value < std.math.minInt(i32) or value > std.math.maxInt(i32)) return null;
+                return @intCast(value);
+            },
+            .identifier, .string => |value| {
+                if (std.mem.eql(u8, value, "SPEED")) return 1;
+                if (std.mem.eql(u8, value, "CODE_SIZE")) return 2;
+                if (std.mem.eql(u8, value, "LITE_RUNTIME")) return 3;
+                return null;
+            },
+            else => return null,
+        }
     }
     return null;
 }
@@ -1506,6 +1578,25 @@ fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor,
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
+            1 => try file.options.append(allocator, .{ .name = "java_package", .value = .{ .string = try reader.readBytes() } }),
+            8 => try file.options.append(allocator, .{ .name = "java_outer_classname", .value = .{ .string = try reader.readBytes() } }),
+            9 => try file.options.append(allocator, .{ .name = "optimize_for", .value = .{ .integer = try reader.readInt32() } }),
+            10 => try file.options.append(allocator, .{ .name = "java_multiple_files", .value = .{ .boolean = try reader.readBool() } }),
+            11 => try file.options.append(allocator, .{ .name = "go_package", .value = .{ .string = try reader.readBytes() } }),
+            16 => try file.options.append(allocator, .{ .name = "cc_generic_services", .value = .{ .boolean = try reader.readBool() } }),
+            17 => try file.options.append(allocator, .{ .name = "java_generic_services", .value = .{ .boolean = try reader.readBool() } }),
+            18 => try file.options.append(allocator, .{ .name = "py_generic_services", .value = .{ .boolean = try reader.readBool() } }),
+            20 => try file.options.append(allocator, .{ .name = "java_generate_equals_and_hash", .value = .{ .boolean = try reader.readBool() } }),
+            23 => try file.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            27 => try file.options.append(allocator, .{ .name = "java_string_check_utf8", .value = .{ .boolean = try reader.readBool() } }),
+            31 => try file.options.append(allocator, .{ .name = "cc_enable_arenas", .value = .{ .boolean = try reader.readBool() } }),
+            36 => try file.options.append(allocator, .{ .name = "objc_class_prefix", .value = .{ .string = try reader.readBytes() } }),
+            37 => try file.options.append(allocator, .{ .name = "csharp_namespace", .value = .{ .string = try reader.readBytes() } }),
+            39 => try file.options.append(allocator, .{ .name = "swift_prefix", .value = .{ .string = try reader.readBytes() } }),
+            40 => try file.options.append(allocator, .{ .name = "php_class_prefix", .value = .{ .string = try reader.readBytes() } }),
+            41 => try file.options.append(allocator, .{ .name = "php_namespace", .value = .{ .string = try reader.readBytes() } }),
+            44 => try file.options.append(allocator, .{ .name = "php_metadata_namespace", .value = .{ .string = try reader.readBytes() } }),
+            45 => try file.options.append(allocator, .{ .name = "ruby_package", .value = .{ .string = try reader.readBytes() } }),
             50 => {
                 file.features = try decodeFeatureSet(try reader.readBytes());
                 saw_features = true;
@@ -2373,6 +2464,59 @@ test "descriptor preserves message and enum custom options" {
     try std.testing.expectEqualSlices(u8, "m", decoded.findMessage("M").?.options.items[0].value.string);
     try std.testing.expectEqualStrings("(demo.enum_opt)", decoded.findEnum("E").?.options.items[0].name);
     try std.testing.expectEqualSlices(u8, "e", decoded.findEnum("E").?.options.items[0].value.string);
+}
+
+test "descriptor preserves known file options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\option java_package = "com.example.demo";
+        \\option java_outer_classname = "DemoProto";
+        \\option optimize_for = CODE_SIZE;
+        \\option java_multiple_files = true;
+        \\option go_package = "example.com/demo;demopb";
+        \\option cc_generic_services = true;
+        \\option java_generic_services = true;
+        \\option py_generic_services = true;
+        \\option java_generate_equals_and_hash = true;
+        \\option deprecated = true;
+        \\option java_string_check_utf8 = true;
+        \\option cc_enable_arenas = true;
+        \\option objc_class_prefix = "DEM";
+        \\option csharp_namespace = "Example.Demo";
+        \\option swift_prefix = "Demo";
+        \\option php_class_prefix = "Demo";
+        \\option php_namespace = "Example\\Demo";
+        \\option php_metadata_namespace = "Example\\Demo\\Metadata";
+        \\option ruby_package = "Example::Demo";
+        \\message M { optional int32 id = 1; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "file-options.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    try std.testing.expectEqualStrings("com.example.demo", exactOptionString(decoded.options.items, "java_package").?);
+    try std.testing.expectEqualStrings("DemoProto", exactOptionString(decoded.options.items, "java_outer_classname").?);
+    try std.testing.expectEqual(@as(i32, 2), fileOptimizeMode(decoded.options.items).?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "java_multiple_files").?);
+    try std.testing.expectEqualStrings("example.com/demo;demopb", exactOptionString(decoded.options.items, "go_package").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "cc_generic_services").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "java_generic_services").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "py_generic_services").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "java_generate_equals_and_hash").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "deprecated").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "java_string_check_utf8").?);
+    try std.testing.expect(exactOptionBool(decoded.options.items, "cc_enable_arenas").?);
+    try std.testing.expectEqualStrings("DEM", exactOptionString(decoded.options.items, "objc_class_prefix").?);
+    try std.testing.expectEqualStrings("Example.Demo", exactOptionString(decoded.options.items, "csharp_namespace").?);
+    try std.testing.expectEqualStrings("Demo", exactOptionString(decoded.options.items, "swift_prefix").?);
+    try std.testing.expectEqualStrings("Demo", exactOptionString(decoded.options.items, "php_class_prefix").?);
+    try std.testing.expectEqualStrings("Example\\Demo", exactOptionString(decoded.options.items, "php_namespace").?);
+    try std.testing.expectEqualStrings("Example\\Demo\\Metadata", exactOptionString(decoded.options.items, "php_metadata_namespace").?);
+    try std.testing.expectEqualStrings("Example::Demo", exactOptionString(decoded.options.items, "ruby_package").?);
+    try std.testing.expectEqual(@as(usize, 19), decoded.options.items.len);
 }
 
 test "descriptor preserves message field and enum known options" {
