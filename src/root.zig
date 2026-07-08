@@ -42,6 +42,7 @@ pub const loadPath = loader.loadPath;
 pub const loadDir = loader.loadDir;
 pub const Timestamp = wkt.Timestamp;
 pub const Duration = wkt.Duration;
+pub const FieldMask = wkt.FieldMask;
 
 test {
     _ = wire;

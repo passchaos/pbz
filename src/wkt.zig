@@ -243,3 +243,107 @@ test "duration wire and json roundtrip" {
     try std.testing.expectEqual(duration.seconds, parsed.seconds);
     try std.testing.expectEqual(duration.nanos, parsed.nanos);
 }
+
+pub const FieldMask = struct {
+    paths: []const []const u8 = &.{},
+
+    pub fn encode(self: FieldMask, allocator: std.mem.Allocator) ![]u8 {
+        var writer = wire.Writer.init(allocator);
+        errdefer writer.deinit();
+        for (self.paths) |path| try writer.writeString(1, path);
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) ![][]const u8 {
+        var paths: std.ArrayList([]const u8) = .empty;
+        errdefer paths.deinit(allocator);
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| {
+            if (tag.number == 1) {
+                try wire.Reader.expectWireType(tag, .length_delimited);
+                try paths.append(allocator, try allocator.dupe(u8, try reader.readBytes()));
+            } else try reader.skipValue(tag);
+        }
+        return try paths.toOwnedSlice(allocator);
+    }
+
+    pub fn jsonStringifyAlloc(self: FieldMask, allocator: std.mem.Allocator) ![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try self.jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
+    pub fn jsonStringify(self: FieldMask, writer: *std.Io.Writer) !void {
+        try writer.writeAll("\"");
+        for (self.paths, 0..) |path, index| {
+            if (index != 0) try writer.writeAll(",");
+            try writeLowerCamelPath(path, writer);
+        }
+        try writer.writeAll("\"");
+    }
+
+    pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) ![][]const u8 {
+        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
+        var paths: std.ArrayList([]const u8) = .empty;
+        errdefer {
+            for (paths.items) |path| allocator.free(path);
+            paths.deinit(allocator);
+        }
+        var it = std.mem.splitScalar(u8, unquoted, ',');
+        while (it.next()) |part| {
+            try paths.append(allocator, try lowerCamelToSnake(allocator, part));
+        }
+        return try paths.toOwnedSlice(allocator);
+    }
+};
+
+fn writeLowerCamelPath(path: []const u8, writer: *std.Io.Writer) !void {
+    var upper_next = false;
+    for (path) |c| {
+        if (c == '_') {
+            upper_next = true;
+        } else if (upper_next) {
+            try writer.writeByte(std.ascii.toUpper(c));
+            upper_next = false;
+        } else try writer.writeByte(c);
+    }
+}
+
+fn lowerCamelToSnake(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    for (text) |c| {
+        if (std.ascii.isUpper(c)) {
+            if (out.items.len != 0) try out.append(allocator, '_');
+            try out.append(allocator, std.ascii.toLower(c));
+        } else try out.append(allocator, c);
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+test "field mask wire and json helpers" {
+    const allocator = std.testing.allocator;
+    const paths = [_][]const u8{ "foo_bar", "baz.qux_value" };
+    const mask = FieldMask{ .paths = &paths };
+    const bytes = try mask.encode(allocator);
+    defer allocator.free(bytes);
+    const decoded = try FieldMask.decode(allocator, bytes);
+    defer {
+        for (decoded) |path| allocator.free(path);
+        allocator.free(decoded);
+    }
+    try std.testing.expectEqualSlices(u8, paths[0], decoded[0]);
+    try std.testing.expectEqualSlices(u8, paths[1], decoded[1]);
+
+    const json = try mask.jsonStringifyAlloc(allocator);
+    defer allocator.free(json);
+    try std.testing.expectEqualSlices(u8, "\"fooBar,baz.quxValue\"", json);
+    const parsed = try FieldMask.jsonParse(allocator, json);
+    defer {
+        for (parsed) |path| allocator.free(path);
+        allocator.free(parsed);
+    }
+    try std.testing.expectEqualSlices(u8, paths[0], parsed[0]);
+    try std.testing.expectEqualSlices(u8, paths[1], parsed[1]);
+}
