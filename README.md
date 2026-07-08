@@ -37,7 +37,7 @@ validated feature set.
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON helpers with validation plus dynamic JSON mapping
 - Conformance helpers
-  - basic ConformanceRequest decode, ConformanceResponse encode, and dynamic runner with missing-required path parse errors
+  - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output and missing-required path parse errors
 - Protoc plugin and codegen helpers
   - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
@@ -165,7 +165,8 @@ defer parsed_text_msg.deinit();
 
 `pbz.ConformanceRequest` and `pbz.ConformanceResponse` provide basic wire
 structures and a dynamic-message runner for integrating with protobuf conformance-style runners,
-including parse errors that identify missing proto2 required field paths when available.
+including safe handling for unknown request enum values, deterministic protobuf output,
+and parse errors that identify missing proto2 required field paths when available.
 
 ## Protoc plugin helpers
 

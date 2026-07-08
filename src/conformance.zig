@@ -46,9 +46,9 @@ pub const ConformanceRequest = struct {
             switch (tag.number) {
                 1 => out.payload = .{ .protobuf_payload = try reader.readBytes() },
                 2 => out.payload = .{ .json_payload = try reader.readBytes() },
-                3 => out.requested_output_format = @enumFromInt(try reader.readInt32()),
+                3 => out.requested_output_format = std.enums.fromInt(WireFormat, try reader.readInt32()) orelse .unspecified,
                 4 => out.message_type = try reader.readBytes(),
-                5 => out.test_category = @enumFromInt(try reader.readInt32()),
+                5 => out.test_category = std.enums.fromInt(TestCategory, try reader.readInt32()) orelse .unspecified,
                 7 => out.payload = .{ .jspb_payload = try reader.readBytes() },
                 8 => out.payload = .{ .text_payload = try reader.readBytes() },
                 else => try reader.skipValue(tag),
@@ -124,7 +124,11 @@ pub fn runDynamic(
     }
 
     return switch (request.requested_output_format) {
-        .protobuf => try (ConformanceResponse{ .result = .{ .protobuf_payload = try message.encodedDeterministic(file) } }).encode(allocator),
+        .protobuf => blk: {
+            const payload = message.encodedDeterministicInitialized(file) catch |err| return try serializeError(allocator, err);
+            defer allocator.free(payload);
+            break :blk try (ConformanceResponse{ .result = .{ .protobuf_payload = payload } }).encode(allocator);
+        },
         .json => blk: {
             const payload = json.stringifyAlloc(allocator, file, &message, .{}) catch |err| return try serializeError(allocator, err);
             defer allocator.free(payload);
@@ -202,6 +206,13 @@ test "conformance request decodes and response encodes" {
     try std.testing.expectEqualSlices(u8, "demo.Message", request.message_type);
     try std.testing.expectEqualSlices(u8, "\x08\x01", request.payload.protobuf_payload);
 
+    writer.clearRetainingCapacity();
+    try writer.writeInt32(3, 99);
+    try writer.writeInt32(5, 99);
+    const invalid_enums = try ConformanceRequest.decode(writer.slice());
+    try std.testing.expectEqual(WireFormat.unspecified, invalid_enums.requested_output_format);
+    try std.testing.expectEqual(TestCategory.unspecified, invalid_enums.test_category);
+
     const response = try (ConformanceResponse{ .result = .{ .json_payload = "{}" } }).encode(allocator);
     defer allocator.free(response);
     try std.testing.expectEqualSlices(u8, &.{ 0x22, 0x02, '{', '}' }, response);
@@ -228,6 +239,26 @@ test "conformance dynamic runner converts protobuf to json" {
     const tag = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(wire.FieldNumber, 4), tag.number);
     try std.testing.expectEqualSlices(u8, "{\"id\":7}", try reader.readBytes());
+}
+
+test "conformance dynamic runner converts json to deterministic protobuf" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto3\"; package demo; message Msg { int32 id = 1; int32 count = 2; }");
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"count\":2,\"id\":1}" },
+        .requested_output_format = .protobuf,
+        .message_type = "demo.Msg",
+        .test_category = .json_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 3), tag.number);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02 }, try reader.readBytes());
 }
 
 test "conformance dynamic runner reports missing required fields" {
