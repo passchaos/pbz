@@ -220,7 +220,61 @@ pub const Parser = struct {
         const start_pos = self.lineColumn(start);
         const end_pos = self.lineColumn(end);
         try location.span.appendSlice(self.allocator, &.{ start_pos.line, start_pos.column, end_pos.line, end_pos.column });
+        location.leading_comments = try self.leadingLineComments(start);
+        location.trailing_comments = try self.trailingLineComment(end);
         try self.file.source_code_info.locations.append(self.allocator, location);
+    }
+
+    fn leadingLineComments(self: *Parser, start: usize) Error!?[]const u8 {
+        var line_start = start;
+        while (line_start > 0 and self.input[line_start - 1] != '\n') line_start -= 1;
+        var cursor = line_start;
+        var lines: std.ArrayList([]const u8) = .empty;
+        defer lines.deinit(self.allocator);
+        while (cursor > 0) {
+            const prev_end = cursor - 1;
+            var prev_start = prev_end;
+            while (prev_start > 0 and self.input[prev_start - 1] != '\n') prev_start -= 1;
+            const line = std.mem.trim(u8, self.input[prev_start..prev_end], " \t\r");
+            if (line.len == 0) break;
+            if (!std.mem.startsWith(u8, line, "//")) break;
+            var text = line[2..];
+            if (text.len != 0 and text[0] == ' ') text = text[1..];
+            try lines.append(self.allocator, text);
+            cursor = prev_start;
+        }
+        if (lines.items.len == 0) return null;
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var i = lines.items.len;
+        while (i > 0) {
+            i -= 1;
+            try out.appendSlice(self.allocator, lines.items[i]);
+            try out.append(self.allocator, '\n');
+        }
+        const owned = try out.toOwnedSlice(self.allocator);
+        errdefer self.allocator.free(owned);
+        try self.file.owned_strings.append(self.allocator, owned);
+        return owned;
+    }
+
+    fn trailingLineComment(self: *Parser, end: usize) Error!?[]const u8 {
+        var cursor = end;
+        while (cursor < self.input.len and (self.input[cursor] == ' ' or self.input[cursor] == '\t' or self.input[cursor] == '\r')) cursor += 1;
+        if (cursor + 1 >= self.input.len or self.input[cursor] != '/' or self.input[cursor + 1] != '/') return null;
+        cursor += 2;
+        if (cursor < self.input.len and self.input[cursor] == ' ') cursor += 1;
+        const comment_start = cursor;
+        while (cursor < self.input.len and self.input[cursor] != '\n') cursor += 1;
+        const comment = std.mem.trim(u8, self.input[comment_start..cursor], "\r");
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        try out.appendSlice(self.allocator, comment);
+        try out.append(self.allocator, '\n');
+        const owned = try out.toOwnedSlice(self.allocator);
+        errdefer self.allocator.free(owned);
+        try self.file.owned_strings.append(self.allocator, owned);
+        return owned;
     }
 
     fn childPath(self: *Parser, base: []const i32, field_number: i32, index: i32) std.mem.Allocator.Error![]i32 {
@@ -1512,14 +1566,38 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{ 6, 0, 2, 0 });
 }
 
+test "parser records source code info line comments" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\// Person leading one
+        \\// Person leading two
+        \\message Person {
+        \\  // name leading
+        \\  optional string name = 1; // name trailing
+        \\}
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    const message_location = findLocationPath(&file, &.{ 4, 0 }).?;
+    try std.testing.expectEqualStrings("Person leading one\nPerson leading two\n", message_location.leading_comments.?);
+    const field_location = findLocationPath(&file, &.{ 4, 0, 2, 0 }).?;
+    try std.testing.expectEqualStrings("name leading\n", field_location.leading_comments.?);
+    try std.testing.expectEqualStrings("name trailing\n", field_location.trailing_comments.?);
+}
+
 fn expectLocationPath(file: *const schema.FileDescriptor, path: []const i32) !void {
-    for (file.source_code_info.locations.items) |location| {
+    const location = findLocationPath(file, path) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 4), location.span.items.len);
+}
+
+fn findLocationPath(file: *const schema.FileDescriptor, path: []const i32) ?*const schema.SourceCodeInfo.Location {
+    for (file.source_code_info.locations.items) |*location| {
         if (std.mem.eql(i32, location.path.items, path)) {
-            try std.testing.expectEqual(@as(usize, 4), location.span.items.len);
-            return;
+            return location;
         }
     }
-    return error.TestUnexpectedResult;
+    return null;
 }
 
 test "parser handles proto3 optional and map fields" {
