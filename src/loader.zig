@@ -31,6 +31,7 @@ pub const LoadResult = struct {
     allocator: std.mem.Allocator,
     files: std.ArrayList(schema.FileDescriptor) = .empty,
     registry: registry_mod.Registry,
+    owned_sources: std.ArrayList([]u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) LoadResult {
         return .{ .allocator = allocator, .registry = registry_mod.Registry.init(allocator) };
@@ -40,6 +41,8 @@ pub const LoadResult = struct {
         self.registry.deinit();
         for (self.files.items) |*file| file.deinit();
         self.files.deinit(self.allocator);
+        for (self.owned_sources.items) |source| self.allocator.free(source);
+        self.owned_sources.deinit(self.allocator);
         self.* = undefined;
     }
 };
@@ -117,4 +120,74 @@ test "memory loader rejects missing imports and cycles" {
     try cycle.add("a.proto", "syntax = \"proto3\"; import \"b.proto\"; message A {}");
     try cycle.add("b.proto", "syntax = \"proto3\"; import \"a.proto\"; message B {}");
     try std.testing.expectError(error.ImportCycle, loadMemory(allocator, &cycle, "a.proto"));
+}
+
+pub fn loadPath(allocator: std.mem.Allocator, root_dir_path: []const u8, root_path: []const u8) Error!LoadResult {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const root_dir = std.fs.openDirAbsolute(io, root_dir_path, .{}) catch return error.FileNotFound;
+    defer root_dir.close(io);
+    return try loadDir(allocator, root_dir, root_path);
+}
+
+pub fn loadDir(allocator: std.mem.Allocator, root_dir: std.Io.Dir, root_path: []const u8) Error!LoadResult {
+    var result = LoadResult.init(allocator);
+    errdefer result.deinit();
+    var loading = std.StringHashMap(void).init(allocator);
+    defer loading.deinit();
+    var loaded = std.StringHashMap(void).init(allocator);
+    defer loaded.deinit();
+    try loadDirOne(allocator, root_dir, root_path, &result, &loading, &loaded);
+    for (result.files.items) |*file| try result.registry.addFile(file);
+    return result;
+}
+
+fn loadDirOne(
+    allocator: std.mem.Allocator,
+    root_dir: std.Io.Dir,
+    path: []const u8,
+    result: *LoadResult,
+    loading: *std.StringHashMap(void),
+    loaded: *std.StringHashMap(void),
+) Error!void {
+    if (loaded.contains(path)) return;
+    if (loading.contains(path)) return error.ImportCycle;
+    try loading.put(path, {});
+    defer _ = loading.remove(path);
+
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const source = root_dir.readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024)) catch return error.FileNotFound;
+    var source_owned = false;
+    errdefer if (!source_owned) allocator.free(source);
+
+    var file = try parser.Parser.parse(allocator, source);
+    errdefer file.deinit();
+    file.name = path;
+    try result.owned_sources.append(allocator, source);
+    source_owned = true;
+    for (file.imports.items) |import| try loadDirOne(allocator, root_dir, import.path, result, loading, loaded);
+    try result.files.append(allocator, file);
+    try loaded.put(path, {});
+}
+
+test "filesystem loader recursively loads imports" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    try tmp.dir.writeFile(io, .{ .sub_path = "common.proto", .data =
+        \\syntax = "proto3";
+        \\package fs.common;
+        \\message User { string name = 1; }
+    });
+    try tmp.dir.writeFile(io, .{ .sub_path = "app.proto", .data =
+        \\syntax = "proto3";
+        \\package fs.app;
+        \\import "common.proto";
+        \\message Request { fs.common.User user = 1; }
+    });
+    var loaded = try loadDir(allocator, tmp.dir, "app.proto");
+    defer loaded.deinit();
+    try std.testing.expectEqual(@as(usize, 2), loaded.files.items.len);
+    try std.testing.expect(loaded.registry.findMessage(".fs.common.User", null) != null);
+    try std.testing.expect(loaded.registry.findMessage(".fs.app.Request", null) != null);
 }

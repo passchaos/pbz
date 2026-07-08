@@ -37,6 +37,8 @@ pub const formatTextAlloc = text.formatAlloc;
 pub const parseTextAlloc = text.parseAlloc;
 pub const MemorySourceTree = loader.MemorySourceTree;
 pub const loadMemory = loader.loadMemory;
+pub const loadPath = loader.loadPath;
+pub const loadDir = loader.loadDir;
 
 test {
     _ = wire;
