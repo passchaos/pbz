@@ -35,7 +35,7 @@ validated feature set.
   - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
-  - nested message and group round-trips
+  - nested message and group round-trips, including imported message decode through Registry
   - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages

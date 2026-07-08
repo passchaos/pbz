@@ -766,7 +766,7 @@ fn decodeMessagePayload(
     name: []const u8,
     payload: []const u8,
 ) DecodeError!Value {
-    const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+    const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
     const message = try allocator.create(DynamicMessage);
     message.* = DynamicMessage.init(allocator, descriptor);
     errdefer {
@@ -887,7 +887,7 @@ fn decodeGroupValue(
         .group => |group_name| group_name,
         else => return error.TypeMismatch,
     };
-    const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+    const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
     const message = try allocator.create(DynamicMessage);
     message.* = DynamicMessage.init(allocator, descriptor);
     errdefer {
@@ -904,6 +904,14 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
     if (current.findMessageDeep(trimmed)) |message| return message;
     return file.findMessageDeep(trimmed);
+}
+
+fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
+    if (registry) |reg| {
+        if (reg.findMessage(name, current.name)) |message| return message;
+        if (reg.findMessage(name, null)) |message| return message;
+    }
+    return resolveMessageDescriptor(file, current, name);
 }
 
 fn closedEnumDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
@@ -1617,6 +1625,45 @@ test "dynamic decodeWithRegistry decodes proto2 extensions" {
     try msg.decodeWithRegistry(&file, &registry, writer.slice());
     try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
     try std.testing.expectEqualSlices(u8, "hello", msg.get("note").?.values.items[0].string);
+}
+
+test "dynamic decodeWithRegistry resolves imported message fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message User { optional string name = 1; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Request { optional common.User user = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const user_desc = common.findMessage("User").?;
+    var user_msg = DynamicMessage.init(allocator, user_desc);
+    defer user_msg.deinit();
+    try user_msg.add(user_desc.findField("name").?, .{ .string = try allocator.dupe(u8, "Ada") });
+    const user_bytes = try user_msg.encoded(&common);
+    defer allocator.free(user_bytes);
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeMessage(1, user_bytes);
+
+    const request_desc = app.findMessage("Request").?;
+    var request = DynamicMessage.init(allocator, request_desc);
+    defer request.deinit();
+    try request.decodeWithRegistry(&app, &registry, writer.slice());
+    const decoded_user = request.get("user").?.values.items[0].message;
+    try std.testing.expectEqualStrings("User", decoded_user.descriptor.name);
+    try std.testing.expectEqualSlices(u8, "Ada", decoded_user.get("name").?.values.items[0].string);
 }
 
 test "dynamic encodes extension fields using extension descriptors" {
