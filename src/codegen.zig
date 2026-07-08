@@ -85,6 +85,7 @@ fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer
     switch (field.kind) {
         .scalar => |scalar| try writeEncodeScalarField(field, scalar, writer, depth),
         .enumeration => try writeEncodeEnumField(field, writer, depth),
+        .message => try writeEncodeMessageField(field, writer, depth),
         else => return,
     }
 }
@@ -119,6 +120,22 @@ fn writeEncodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
     } else {
         try indent(writer, depth);
         try writer.print("try w.writeInt32({d}, self.", .{field.number});
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+    }
+}
+
+fn writeEncodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(") |item| try w.writeMessage({d}, item);\n", .{field.number});
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(".len != 0) try w.writeMessage({d}, self.", .{field.number});
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     }
@@ -167,12 +184,14 @@ fn fieldType(field: schema.FieldDescriptor) []const u8 {
     const base = switch (field.kind) {
         .scalar => |scalar| scalarZigType(scalar),
         .enumeration => "i32",
+        .message => "[]const u8",
         else => "void",
     };
     if (field.cardinality != .repeated) return base;
     return switch (field.kind) {
         .scalar => |scalar| repeatedScalarZigType(scalar),
         .enumeration => "[]const i32",
+        .message => "[]const []const u8",
         else => "[]const void",
     };
 }
@@ -217,6 +236,7 @@ fn fieldDefault(field: schema.FieldDescriptor) []const u8 {
             else => "0",
         },
         .enumeration => "0",
+        .message => "\"\"",
         else => "{}",
     };
 }
@@ -349,4 +369,20 @@ test "codegen encodes enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"kind\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"roles\") |item| try w.writeInt32(2, item);") != null);
+}
+
+test "codegen emits message payload fields and encoders" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Child { int32 id = 1; }
+        \\message Parent { Child child = 1; repeated Child children = 2; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": []const u8 = \"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\".len != 0) try w.writeMessage(1, self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
 }
