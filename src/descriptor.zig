@@ -665,17 +665,44 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
         }
     }
 
-    for (message.oneofs.items, 0..) |oneof, i| {
-        if (oneof.name.len == 0) return error.InvalidFieldType;
-        for (message.oneofs.items[i + 1 ..]) |other| {
-            if (std.mem.eql(u8, oneof.name, other.name)) return error.InvalidFieldType;
-        }
-    }
+    try validateDecodedMessageDescriptor(&message);
     for (oneof_indexes.items) |item| {
         if (item.oneof_index >= message.oneofs.items.len) return error.InvalidFieldType;
         message.fields.items[item.field_index].oneof_name = message.oneofs.items[item.oneof_index].name;
     }
     return message;
+}
+
+fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Error!void {
+    if (message.name.len == 0) return error.InvalidFieldType;
+    for (message.fields.items, 0..) |field, i| {
+        if (field.name.len == 0 or field.number == 0) return error.InvalidFieldType;
+        for (message.fields.items[i + 1 ..]) |other| {
+            if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
+        }
+    }
+    for (message.oneofs.items, 0..) |oneof, i| {
+        if (oneof.name.len == 0) return error.InvalidFieldType;
+        for (message.oneofs.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, oneof.name, other.name)) return error.InvalidFieldType;
+        }
+        for (message.fields.items) |field| {
+            if (std.mem.eql(u8, oneof.name, field.name)) return error.InvalidFieldType;
+        }
+    }
+    for (message.messages.items, 0..) |nested, i| {
+        for (message.messages.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, nested.name, other.name)) return error.InvalidFieldType;
+        }
+        for (message.enums.items) |enumeration| {
+            if (std.mem.eql(u8, nested.name, enumeration.name)) return error.InvalidFieldType;
+        }
+    }
+    for (message.enums.items, 0..) |enumeration, i| {
+        for (message.enums.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldDescriptor {
@@ -729,6 +756,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         .packed_override = packed_override,
         .options = field_options,
     };
+    if (field.name.len == 0 or field.number == 0) return error.InvalidFieldType;
     field_options = .empty;
     return field;
 }
@@ -1501,6 +1529,52 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, "bad-oneof-index.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects invalid message descriptors" {
+    const allocator = std.testing.allocator;
+    {
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-message.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "same");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-field.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var nested = wire.Writer.init(allocator);
+        defer nested.deinit();
+        try nested.writeString(1, "Item");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(3, nested.slice());
+        try message.writeMessage(3, nested.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-nested.proto");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
