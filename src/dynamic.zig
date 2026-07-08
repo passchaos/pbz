@@ -40,6 +40,26 @@ pub const Value = union(enum) {
     map_entry: *MapEntry,
 };
 
+pub const DefaultValue = union(enum) {
+    double: f64,
+    float: f32,
+    int32: i32,
+    int64: i64,
+    uint32: u32,
+    uint64: u64,
+    sint32: i32,
+    sint64: i64,
+    fixed32: u32,
+    fixed64: u64,
+    sfixed32: i32,
+    sfixed64: i64,
+    boolean: bool,
+    string: []const u8,
+    bytes: []const u8,
+    enumeration: i32,
+    none,
+};
+
 pub const FieldValue = struct {
     descriptor: *const schema.FieldDescriptor,
     values: std.ArrayList(Value) = .empty,
@@ -99,6 +119,17 @@ pub const DynamicMessage = struct {
             if (field.descriptor.number == number) return field;
         }
         return null;
+    }
+
+    pub fn has(self: *const DynamicMessage, field: *const schema.FieldDescriptor) bool {
+        return if (self.getByNumber(field.number)) |value| value.values.items.len != 0 else false;
+    }
+
+    pub fn getOrDefault(self: *const DynamicMessage, field: *const schema.FieldDescriptor) DefaultValue {
+        if (self.getByNumber(field.number)) |field_value| {
+            if (field_value.values.items.len != 0) return valueAsDefault(field_value.values.items[field_value.values.items.len - 1]);
+        }
+        return defaultForField(field);
     }
 
     pub fn unknownCount(self: *const DynamicMessage) usize {
@@ -646,6 +677,104 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
     };
 }
 
+fn valueAsDefault(value: Value) DefaultValue {
+    return switch (value) {
+        .double => |v| .{ .double = v },
+        .float => |v| .{ .float = v },
+        .int32 => |v| .{ .int32 = v },
+        .int64 => |v| .{ .int64 = v },
+        .uint32 => |v| .{ .uint32 = v },
+        .uint64 => |v| .{ .uint64 = v },
+        .sint32 => |v| .{ .sint32 = v },
+        .sint64 => |v| .{ .sint64 = v },
+        .fixed32 => |v| .{ .fixed32 = v },
+        .fixed64 => |v| .{ .fixed64 = v },
+        .sfixed32 => |v| .{ .sfixed32 = v },
+        .sfixed64 => |v| .{ .sfixed64 = v },
+        .boolean => |v| .{ .boolean = v },
+        .string => |v| .{ .string = v },
+        .bytes => |v| .{ .bytes = v },
+        .enumeration => |v| .{ .enumeration = v },
+        else => .none,
+    };
+}
+
+fn defaultForField(field: *const schema.FieldDescriptor) DefaultValue {
+    if (field.default_value) |value| {
+        return defaultFromOption(field.kind, value);
+    }
+    return switch (field.kind) {
+        .scalar => |scalar| switch (scalar) {
+            .double => .{ .double = 0 },
+            .float => .{ .float = 0 },
+            .int32 => .{ .int32 = 0 },
+            .int64 => .{ .int64 = 0 },
+            .uint32 => .{ .uint32 = 0 },
+            .uint64 => .{ .uint64 = 0 },
+            .sint32 => .{ .sint32 = 0 },
+            .sint64 => .{ .sint64 = 0 },
+            .fixed32 => .{ .fixed32 = 0 },
+            .fixed64 => .{ .fixed64 = 0 },
+            .sfixed32 => .{ .sfixed32 = 0 },
+            .sfixed64 => .{ .sfixed64 = 0 },
+            .bool => .{ .boolean = false },
+            .string => .{ .string = "" },
+            .bytes => .{ .bytes = "" },
+        },
+        .enumeration => .{ .enumeration = 0 },
+        else => .none,
+    };
+}
+
+fn defaultFromOption(kind: schema.FieldKind, value: schema.OptionValue) DefaultValue {
+    return switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .double => .{ .double = optionFloat(f64, value) orelse 0 },
+            .float => .{ .float = optionFloat(f32, value) orelse 0 },
+            .int32 => .{ .int32 = optionInt(i32, value) orelse 0 },
+            .int64 => .{ .int64 = optionInt(i64, value) orelse 0 },
+            .uint32 => .{ .uint32 = optionInt(u32, value) orelse 0 },
+            .uint64 => .{ .uint64 = optionInt(u64, value) orelse 0 },
+            .sint32 => .{ .sint32 = optionInt(i32, value) orelse 0 },
+            .sint64 => .{ .sint64 = optionInt(i64, value) orelse 0 },
+            .fixed32 => .{ .fixed32 = optionInt(u32, value) orelse 0 },
+            .fixed64 => .{ .fixed64 = optionInt(u64, value) orelse 0 },
+            .sfixed32 => .{ .sfixed32 = optionInt(i32, value) orelse 0 },
+            .sfixed64 => .{ .sfixed64 = optionInt(i64, value) orelse 0 },
+            .bool => .{ .boolean = schema.optionAsBool(value) orelse false },
+            .string => .{ .string = optionText(value) orelse "" },
+            .bytes => .{ .bytes = optionText(value) orelse "" },
+        },
+        .enumeration => .{ .enumeration = optionInt(i32, value) orelse 0 },
+        else => .none,
+    };
+}
+
+fn optionText(value: schema.OptionValue) ?[]const u8 {
+    return switch (value) {
+        .string => |text| text,
+        .identifier => |text| text,
+        else => null,
+    };
+}
+
+fn optionInt(comptime T: type, value: schema.OptionValue) ?T {
+    return switch (value) {
+        .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
+        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch null,
+        else => null,
+    };
+}
+
+fn optionFloat(comptime T: type, value: schema.OptionValue) ?T {
+    return switch (value) {
+        .float => |v| @floatCast(v),
+        .integer => |v| @floatFromInt(v),
+        .identifier, .string => |text| std.fmt.parseFloat(T, text) catch null,
+        else => null,
+    };
+}
+
 test "dynamic message encodes decodes scalar and preserves unknown fields" {
     const allocator = std.testing.allocator;
     var file = schema.FileDescriptor.init(allocator);
@@ -937,4 +1066,36 @@ test "dynamic unknown field API preserves queries and clears raw fields" {
     const encoded_clean = try message.encoded(&file);
     defer allocator.free(encoded_clean);
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x05 }, encoded_clean);
+}
+
+test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Defaults {
+        \\  optional int32 count = 1 [default = 42];
+        \\  optional string name = 2 [default = "anon"];
+        \\  optional bool enabled = 3 [default = true];
+        \\  optional Kind kind = 4 [default = ADMIN];
+        \\  optional bytes blob = 5;
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Defaults").?;
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try std.testing.expect(!message.has(desc.findField("count").?));
+    try std.testing.expectEqual(@as(i32, 42), message.getOrDefault(desc.findField("count").?).int32);
+    try std.testing.expectEqualStrings("anon", message.getOrDefault(desc.findField("name").?).string);
+    try std.testing.expect(message.getOrDefault(desc.findField("enabled").?).boolean);
+    // Enum symbolic defaults are kept as schema option text today; unknown numeric fallback is 0.
+    try std.testing.expectEqual(@as(i32, 0), message.getOrDefault(desc.findField("kind").?).enumeration);
+    try std.testing.expectEqualStrings("", message.getOrDefault(desc.findField("blob").?).bytes);
+
+    try message.add(desc.findField("count").?, .{ .int32 = 7 });
+    try std.testing.expect(message.has(desc.findField("count").?));
+    try std.testing.expectEqual(@as(i32, 7), message.getOrDefault(desc.findField("count").?).int32);
 }
