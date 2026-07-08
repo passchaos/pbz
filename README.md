@@ -197,7 +197,8 @@ namespace containing per-extension metadata constants (`number`, `extendee`,
 `decodeValue`/`decodeAppend` helpers so applications can encode/decode extension
 values or wire them into dynamic registries and custom typed wrappers.
 Extensions of `message_set_wire_format` messages emit MessageSet item groups
-from their generated `write` helper.
+from their generated `write` helper and expose a `decodeMessageSetItem` helper
+for extracting matching item payloads.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
 including generated message payload fields when their types are available.

@@ -2110,7 +2110,7 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
     try writeExtensionWriteHelpers(file, field, writer, depth + 1);
-    try writeExtensionDecodeHelpers(field, writer, depth + 1);
+    try writeExtensionDecodeHelpers(file, field, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n");
 }
@@ -2155,7 +2155,7 @@ fn extensionUsesMessageSet(file: *const schema.FileDescriptor, field: *const sch
     return message.messageSetWireFormat();
 }
 
-fn writeExtensionDecodeHelpers(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeValue(r: *pbz.Reader) !");
     try writer.writeAll(extensionSingleZigType(field.kind));
@@ -2173,6 +2173,40 @@ fn writeExtensionDecodeHelpers(field: *const schema.FieldDescriptor, writer: *st
         try writer.writeAll("), r: *pbz.Reader) !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try list.append(allocator, try decodeValue(r));\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+    if (extensionUsesMessageSet(file, field)) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8 {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var type_id: ?u32 = null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var payload: ?[]const u8 = null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("while (try r.nextTag()) |tag| {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (tag.wire_type == .end_group) {\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("if (tag.number != 1) return error.InvalidFieldNumber;\n");
+        try indent(writer, depth + 3);
+        try writer.print("return if (type_id != null and type_id.? == {d}) payload else null;\n", .{field.number});
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("switch (tag.number) {\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("2 => { if (tag.wire_type != .varint) return error.InvalidWireType; type_id = try r.readUInt32(); },\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("3 => { if (tag.wire_type != .length_delimited) return error.InvalidWireType; payload = try r.readBytes(); },\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("else => try r.skipValue(tag),\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return error.TruncatedInput;\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -2830,6 +2864,8 @@ test "codegen emits MessageSet extension write helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeUInt32(2, 100);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(3, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .end_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) payload else null;") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
