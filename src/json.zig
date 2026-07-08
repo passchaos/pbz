@@ -9,6 +9,7 @@ pub const Options = struct {
     enum_as_name: bool = true,
     preserve_proto_field_names: bool = true,
     ignore_unknown_fields: bool = false,
+    always_print_primitive_fields: bool = false,
 };
 
 pub fn stringifyAlloc(
@@ -320,7 +321,41 @@ fn writeMessage(
             try writeValue(file, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer);
         }
     }
+    if (options.always_print_primitive_fields) {
+        for (message.descriptor.fields.items) |*field| {
+            if (message.getByNumber(field.number) != null) continue;
+            if (!shouldPrintAbsentField(field)) continue;
+            if (!first) try writer.writeAll(",");
+            first = false;
+            try writeFieldName(field, options, writer);
+            try writer.writeAll(":");
+            try writeAbsentFieldDefault(file, field, options, writer);
+        }
+    }
     try writer.writeAll("}");
+}
+
+fn shouldPrintAbsentField(field: *const schema.FieldDescriptor) bool {
+    if (field.oneof_name != null) return false;
+    return switch (field.kind) {
+        .scalar, .enumeration, .map => true,
+        else => field.cardinality == .repeated,
+    };
+}
+
+fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, options: Options, writer: *std.Io.Writer) Error!void {
+    if (field.kind == .map or field.cardinality == .repeated) return writer.writeAll(if (field.kind == .map) "{}" else "[]");
+    switch (field.kind) {
+        .scalar => |scalar| try writeDefaultScalar(scalar, field.default_value, writer),
+        .enumeration => |name| {
+            const number: i32 = if (field.default_value) |value| switch (value) {
+                .integer => |v| @intCast(v),
+                else => 0,
+            } else 0;
+            try writeEnum(file, name, .{ .enumeration = number }, options, writer);
+        },
+        else => try writer.writeAll("null"),
+    }
 }
 
 fn writeMap(
@@ -781,6 +816,51 @@ fn writeScalar(scalar: schema.ScalarType, value: dynamic.Value, writer: *std.Io.
     }
 }
 
+fn writeDefaultScalar(scalar: schema.ScalarType, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double, .float => try writeFloat(defaultFloat(default_value), writer),
+        .int32, .sint32, .sfixed32 => try writer.print("{d}", .{defaultInt(i32, default_value)}),
+        .int64, .sint64, .sfixed64 => try writeJsonStringFmt(writer, "{d}", .{defaultInt(i64, default_value)}),
+        .uint32, .fixed32 => try writer.print("{d}", .{defaultInt(u32, default_value)}),
+        .uint64, .fixed64 => try writeJsonStringFmt(writer, "{d}", .{defaultInt(u64, default_value)}),
+        .bool => try writer.writeAll(if (defaultBool(default_value)) "true" else "false"),
+        .string => try writeJsonString(defaultText(default_value), writer),
+        .bytes => try writeBase64String(defaultText(default_value), writer),
+    }
+}
+
+fn defaultText(default_value: ?schema.OptionValue) []const u8 {
+    const value = default_value orelse return "";
+    return switch (value) {
+        .string, .identifier => |text| text,
+        else => "",
+    };
+}
+
+fn defaultBool(default_value: ?schema.OptionValue) bool {
+    const value = default_value orelse return false;
+    return schema.optionAsBool(value) orelse false;
+}
+
+fn defaultInt(comptime T: type, default_value: ?schema.OptionValue) T {
+    const value = default_value orelse return 0;
+    return switch (value) {
+        .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else 0,
+        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch 0,
+        else => 0,
+    };
+}
+
+fn defaultFloat(default_value: ?schema.OptionValue) f64 {
+    const value = default_value orelse return 0;
+    return switch (value) {
+        .float => |v| v,
+        .integer => |v| @floatFromInt(v),
+        .identifier, .string => |text| std.fmt.parseFloat(f64, text) catch 0,
+        else => 0,
+    };
+}
+
 fn writeEnum(
     file: *const schema.FileDescriptor,
     name: []const u8,
@@ -1050,6 +1130,33 @@ test "json uses default lowerCamelCase field names" {
     defer parsed.deinit();
     try std.testing.expectEqual(@as(i32, 8), parsed.get("user_id").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "Trae", parsed.get("display_name").?.values.items[0].string);
+}
+
+test "json stringify can always print absent primitive repeated and map fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Defaults {
+        \\  optional int32 count = 1 [default = 42];
+        \\  optional string name = 2 [default = "anon"];
+        \\  optional bool enabled = 3 [default = true];
+        \\  optional Kind kind = 4 [default = ADMIN];
+        \\  repeated string tags = 5;
+        \\  map<string, int32> counts = 6;
+        \\  optional bytes raw = 7 [default = "hi"];
+        \\  optional int64 big = 8 [default = 9007199254740993];
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Defaults").?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .always_print_primitive_fields = true });
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\"}", rendered);
 }
 
 test "json parses bytes from base64 variants" {
