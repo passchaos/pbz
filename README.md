@@ -53,7 +53,7 @@ validated feature set.
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
-  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence features
+  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence and message-encoding features
   - generated typed JSON stringify/parse helpers for scalar, enum names with unknown-number fallback, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, and scalar/enum oneof fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation

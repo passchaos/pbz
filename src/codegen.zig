@@ -168,7 +168,7 @@ fn writeOneofTypeName(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writeQuotedIdentWithSuffix(name, "Oneof", writer);
 }
 
-fn writeEncodeOneof(message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof.name, writer);
@@ -182,7 +182,7 @@ fn writeEncodeOneof(message: *const schema.MessageDescriptor, oneof: schema.Oneo
                 try writer.writeAll(".");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |value| ");
-                try writeOneofValueEncode(field, "value", writer);
+                try writeOneofValueEncode(file, field, "value", writer);
                 try writer.writeAll(",\n");
             }
         }
@@ -191,14 +191,22 @@ fn writeEncodeOneof(message: *const schema.MessageDescriptor, oneof: schema.Oneo
     try writer.writeAll("}\n");
 }
 
-fn writeOneofValueEncode(field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+fn writeOneofValueEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (field.kind) {
-        .scalar => |scalar| try writeScalarWriteCall(field.number, scalar, value_expr, writer),
-        .enumeration => try writer.print("try w.writeInt32({d}, {s}", .{ field.number, value_expr }),
-        .message => try writer.print("try w.writeMessage({d}, {s}", .{ field.number, value_expr }),
+        .scalar => |scalar| {
+            try writeScalarWriteCall(field.number, scalar, value_expr, writer);
+            try writer.writeAll(")");
+        },
+        .enumeration => try writer.print("try w.writeInt32({d}, {s})", .{ field.number, value_expr }),
+        .message => {
+            if (fieldMessageEncoding(file, field) == .delimited) {
+                try writer.print("{{ try w.writeTag({d}, .start_group); try w.appendSlice({s}); try w.writeTag({d}, .end_group); }}", .{ field.number, value_expr, field.number });
+            } else {
+                try writer.print("try w.writeMessage({d}, {s})", .{ field.number, value_expr });
+            }
+        },
         else => try writer.writeAll("@compileError(\"unsupported oneof field\")"),
     }
-    try writer.writeAll(")");
 }
 
 fn writeFieldDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -260,7 +268,7 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodeField(file, field, writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeEncodeOneof(message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeEncodeOneof(file, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -302,7 +310,7 @@ fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const
         const field = next orelse break;
         previous = field.number;
         if (field.oneof_name) |oneof_name| {
-            try writeEncodeOneofSingleField(field, oneof_name, writer, depth);
+            try writeEncodeOneofSingleField(file, field, oneof_name, writer, depth);
         } else if (field.kind == .map) {
             try writeEncodeMapFieldDeterministic(field, writer, depth);
         } else {
@@ -311,7 +319,7 @@ fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const
     }
 }
 
-fn writeEncodeOneofSingleField(field: *const schema.FieldDescriptor, oneof_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeOneofSingleField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, oneof_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof_name, writer);
@@ -320,7 +328,7 @@ fn writeEncodeOneofSingleField(field: *const schema.FieldDescriptor, oneof_name:
     try writer.writeAll(".");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" => |value| ");
-    try writeOneofValueEncode(field, "value", writer);
+    try writeOneofValueEncode(file, field, "value", writer);
     try writer.writeAll(",\n");
     try indent(writer, depth + 1);
     try writer.writeAll("else => {},\n");
@@ -652,13 +660,16 @@ fn writeDecodeMessageField(file: *const schema.FileDescriptor, field: *const sch
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
         try writeRepeatedAppendPrefix(field, writer);
-        try writer.writeAll("try r.readBytes()),\n");
+        try writeMessagePayloadRead(file, field, "r", writer);
+        try writer.writeAll("),\n");
     } else if (field.oneof_name != null) {
-        try writeOneofDecodeAssign(field, "readBytes", writer);
+        try writeOneofMessageDecodeAssign(file, field, writer);
     } else {
         try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try r.readBytes();");
+        try writer.writeAll(" = ");
+        try writeMessagePayloadRead(file, field, "r", writer);
+        try writer.writeAll(";");
         try writeSetPresence(file, field, writer);
         try writer.writeAll(" },\n");
     }
@@ -752,6 +763,17 @@ fn writeOneofDecodeAssign(field: *const schema.FieldDescriptor, reader_method: [
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
     try writer.print(" = try r.{s}() }},\n", .{reader_method});
+}
+
+fn writeOneofMessageDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    const oneof_name = field.oneof_name orelse return;
+    try writer.writeAll("self.");
+    try writeQuotedIdent(oneof_name, writer);
+    try writer.writeAll(" = .{ .");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = ");
+    try writeMessagePayloadRead(file, field, "r", writer);
+    try writer.writeAll(" },\n");
 }
 
 fn writeEntryReadExpr(kind: schema.FieldKind, reader_name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -920,22 +942,42 @@ fn writePackedEnumPayload(value_expr: []const u8, writer: *std.Io.Writer) Error!
 fn writeEncodeMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.print(") |item| try w.writeMessage({d}, item);\n", .{field.number});
+        if (fieldMessageEncoding(file, field) == .delimited) {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |item| {{ try w.writeTag({d}, .start_group); try w.appendSlice(item); try w.writeTag({d}, .end_group); }}\n", .{ field.number, field.number });
+        } else {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |item| try w.writeMessage({d}, item);\n", .{field.number});
+        }
     } else {
         try indent(writer, depth);
-        try writer.writeAll("if (self.");
-        if (hasPresence(file, field.*)) {
-            try writePresenceIdent(field.name, writer);
-            try writer.writeAll(") ");
-        } else {
+        if (fieldMessageEncoding(file, field) == .delimited) {
+            try writer.writeAll("if (self.");
+            if (hasPresence(file, field.*)) {
+                try writePresenceIdent(field.name, writer);
+                try writer.writeAll(") { ");
+            } else {
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(".len != 0) { ");
+            }
+            try writer.print("try w.writeTag({d}, .start_group); try w.appendSlice(self.", .{field.number});
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(".len != 0) ");
+            try writer.print("); try w.writeTag({d}, .end_group); }}\n", .{field.number});
+        } else {
+            try writer.writeAll("if (self.");
+            if (hasPresence(file, field.*)) {
+                try writePresenceIdent(field.name, writer);
+                try writer.writeAll(") ");
+            } else {
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(".len != 0) ");
+            }
+            try writer.print("try w.writeMessage({d}, self.", .{field.number});
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(");\n");
         }
-        try writer.print("try w.writeMessage({d}, self.", .{field.number});
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(");\n");
     }
 }
 
@@ -1027,6 +1069,19 @@ fn writeKindWriteCall(number: u29, kind: schema.FieldKind, value_expr: []const u
         .message => try writer.print("try {s}.writeMessage({d}, {s}", .{ writer_name, number, value_expr }),
         else => try writer.writeAll("@compileError(\"unsupported map field kind\")"),
     }
+}
+
+fn writeMessagePayloadRead(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, reader_name: []const u8, writer: *std.Io.Writer) Error!void {
+    if (fieldMessageEncoding(file, field) == .delimited) {
+        try writer.print("try {s}.readGroupBytes({d})", .{ reader_name, field.number });
+    } else {
+        try writer.print("try {s}.readBytes()", .{reader_name});
+    }
+}
+
+fn fieldMessageEncoding(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.MessageEncoding {
+    if (field.features) |features| return features.message_encoding;
+    return file.features.message_encoding;
 }
 
 fn writeScalarWriteCall(number: u29, scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
@@ -3128,4 +3183,34 @@ test "codegen honors editions field presence features" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"explicit_id\" = try r.readInt32(); self.@\"has_explicit_id\" = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"required_id\" = try r.readInt32(); self.@\"has_required_id\" = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_required_id\") return \"required_id\";") != null);
+}
+
+test "codegen honors editions message encoding features" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.message_encoding = DELIMITED;
+        \\message Child { int32 id = 1; }
+        \\message Parent {
+        \\  Child delimited = 1;
+        \\  Child length_prefixed = 2 [features.message_encoding = LENGTH_PREFIXED];
+        \\  oneof pick { Child picked = 3 [features.message_encoding = DELIMITED]; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .start_group); try w.appendSlice(self.@\"delimited\"); try w.writeTag(1, .end_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(2, self.@\"length_prefixed\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(3, .start_group); try w.appendSlice(value); try w.writeTag(3, .end_group)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"delimited\" = try r.readGroupBytes(1); self.@\"has_delimited\" = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"length_prefixed\" = try r.readBytes(); self.@\"has_length_prefixed\" = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try r.readGroupBytes(3) }") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }

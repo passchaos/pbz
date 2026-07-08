@@ -354,6 +354,23 @@ pub const Reader = struct {
         }
     }
 
+    pub fn readGroupBytes(self: *Reader, number: FieldNumber) Error![]const u8 {
+        if (self.recursion_depth >= self.recursion_limit) return error.RecursionLimitExceeded;
+        self.recursion_depth += 1;
+        defer self.recursion_depth -= 1;
+
+        const start = self.index;
+        while (true) {
+            const tag = (try self.nextTag()) orelse return error.TruncatedInput;
+            if (tag.wire_type == .end_group) {
+                if (tag.number != number) return error.InvalidFieldNumber;
+                const end = self.index - try tagSize(tag.number, tag.wire_type);
+                return self.input[start..end];
+            }
+            try self.skipValue(tag);
+        }
+    }
+
     fn checkedAvailable(self: *Reader, len: usize) Error!usize {
         if (self.input.len - self.index < len) return error.TruncatedInput;
         return len;
@@ -427,4 +444,22 @@ test "wire skips nested groups and length-delimited values" {
     const second = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(FieldNumber, 3), second.number);
     try std.testing.expect(try reader.readBool());
+}
+
+test "wire reads group payload bytes" {
+    var writer = Writer.init(std.testing.allocator);
+    defer writer.deinit();
+    try writer.writeTag(3, .start_group);
+    try writer.writeInt32(1, 7);
+    try writer.writeTag(3, .end_group);
+    try writer.writeString(4, "tail");
+
+    var reader = Reader.init(writer.slice());
+    const group_tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(FieldNumber, 3), group_tag.number);
+    try std.testing.expectEqual(WireType.start_group, group_tag.wire_type);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x07 }, try reader.readGroupBytes(3));
+    const tail_tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(FieldNumber, 4), tail_tag.number);
+    try std.testing.expectEqualStrings("tail", try reader.readBytes());
 }
