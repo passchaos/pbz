@@ -2,7 +2,7 @@ const std = @import("std");
 const wire = @import("wire.zig");
 const schema = @import("schema.zig");
 
-pub const Error = wire.Error || std.mem.Allocator.Error || error{InvalidFieldType};
+pub const Error = wire.Error || std.mem.Allocator.Error || error{ InvalidFieldType, InvalidCharacter };
 
 pub fn encodeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, name: []const u8) Error![]u8 {
     var writer = wire.Writer.init(allocator);
@@ -429,4 +429,440 @@ test "descriptor encodes proto3 map entry and editions feature metadata" {
         }
     }
     try std.testing.expect(saw_edition);
+}
+
+pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FileDescriptor {
+    var file = schema.FileDescriptor.init(allocator);
+    errdefer file.deinit();
+
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => file.name = try reader.readBytes(),
+            2 => file.package = try reader.readBytes(),
+            3 => try file.imports.append(allocator, .{ .path = try reader.readBytes() }),
+            4 => try file.messages.append(allocator, try decodeMessageDescriptor(allocator, try reader.readBytes())),
+            5 => try file.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
+            6 => try file.services.append(allocator, try decodeServiceDescriptor(allocator, try reader.readBytes())),
+            7 => try file.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
+            8 => try decodeFileOptions(&file, try reader.readBytes()),
+            12 => {
+                const syntax = try reader.readBytes();
+                if (std.mem.eql(u8, syntax, "proto2")) file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) file.setSyntax(.proto3) else if (std.mem.eql(u8, syntax, "editions")) file.setSyntax(.editions);
+            },
+            14 => {
+                file.syntax = .editions;
+                file.edition = @enumFromInt(try reader.readInt32());
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    try collapseMapEntryMessages(allocator, &file);
+    return file;
+}
+
+pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) Error![]schema.FileDescriptor {
+    var files: std.ArrayList(schema.FileDescriptor) = .empty;
+    errdefer {
+        for (files.items) |*file| file.deinit();
+        files.deinit(allocator);
+    }
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 1) {
+            try files.append(allocator, try decodeFileDescriptorProto(allocator, try reader.readBytes()));
+        } else try reader.skipValue(tag);
+    }
+    return try files.toOwnedSlice(allocator);
+}
+
+fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.MessageDescriptor {
+    var message = schema.MessageDescriptor{ .name = "" };
+    errdefer message.deinit(allocator);
+    var oneof_indexes: std.ArrayList(struct { field_index: usize, oneof_index: usize }) = .empty;
+    defer oneof_indexes.deinit(allocator);
+
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => message.name = try reader.readBytes(),
+            2 => {
+                var field = try decodeFieldDescriptor(allocator, try reader.readBytes());
+                if (field.oneof_name) |idx_text| {
+                    const idx = try std.fmt.parseInt(usize, idx_text, 10);
+                    field.oneof_name = null;
+                    try oneof_indexes.append(allocator, .{ .field_index = message.fields.items.len, .oneof_index = idx });
+                }
+                try message.fields.append(allocator, field);
+            },
+            3 => try message.messages.append(allocator, try decodeMessageDescriptor(allocator, try reader.readBytes())),
+            4 => try message.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
+            5 => try message.extension_ranges.append(allocator, try decodeExtensionRange(allocator, try reader.readBytes())),
+            6 => try message.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
+            8 => try message.oneofs.append(allocator, try decodeOneofDescriptor(allocator, try reader.readBytes())),
+            9 => try message.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), false)),
+            10 => try message.reserved_names.append(allocator, try reader.readBytes()),
+            else => try reader.skipValue(tag),
+        }
+    }
+
+    for (oneof_indexes.items) |item| {
+        if (item.oneof_index < message.oneofs.items.len) {
+            message.fields.items[item.field_index].oneof_name = message.oneofs.items[item.oneof_index].name;
+        }
+    }
+    return message;
+}
+
+fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldDescriptor {
+    var name: []const u8 = "";
+    var number: wire.FieldNumber = 0;
+    var cardinality: schema.Cardinality = .optional;
+    var field_type: i32 = 0;
+    var type_name: ?[]const u8 = null;
+    var extendee: ?[]const u8 = null;
+    var default_value: ?schema.OptionValue = null;
+    var oneof_index_text: ?[]const u8 = null;
+    var json_name: ?[]const u8 = null;
+    var proto3_optional = false;
+    var packed_override: ?bool = null;
+
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => name = try reader.readBytes(),
+            2 => extendee = try reader.readBytes(),
+            3 => number = @intCast(try reader.readInt32()),
+            4 => cardinality = labelFromNumber(try reader.readInt32()),
+            5 => field_type = try reader.readInt32(),
+            6 => type_name = try reader.readBytes(),
+            7 => default_value = .{ .string = try reader.readBytes() },
+            8 => packed_override = try decodeFieldOptions(try reader.readBytes()),
+            9 => oneof_index_text = try oneofIndexText(try reader.readInt32()),
+            10 => json_name = try reader.readBytes(),
+            17 => proto3_optional = try reader.readBool(),
+            else => try reader.skipValue(tag),
+        }
+    }
+
+    return .{
+        .name = name,
+        .number = number,
+        .cardinality = cardinality,
+        .kind = try kindFromType(allocator, field_type, type_name),
+        .extendee = extendee,
+        .default_value = default_value,
+        .oneof_name = oneof_index_text,
+        .json_name = json_name,
+        .proto3_optional = proto3_optional,
+        .packed_override = packed_override,
+    };
+}
+
+fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.EnumDescriptor {
+    var enumeration = schema.EnumDescriptor{ .name = "" };
+    errdefer enumeration.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => enumeration.name = try reader.readBytes(),
+            2 => try enumeration.values.append(allocator, try decodeEnumValueDescriptor(allocator, try reader.readBytes())),
+            4 => try enumeration.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), true)),
+            5 => try enumeration.reserved_names.append(allocator, try reader.readBytes()),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return enumeration;
+}
+
+fn decodeEnumValueDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.EnumValueDescriptor {
+    _ = allocator;
+    var value = schema.EnumValueDescriptor{ .name = "", .number = 0 };
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => value.name = try reader.readBytes(),
+            2 => value.number = try reader.readInt32(),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return value;
+}
+
+fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.OneofDescriptor {
+    _ = allocator;
+    var oneof = schema.OneofDescriptor{ .name = "" };
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 1) oneof.name = try reader.readBytes() else try reader.skipValue(tag);
+    }
+    return oneof;
+}
+
+fn decodeExtensionRange(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.ExtensionRange {
+    var range = schema.ExtensionRange{ .start = 0, .end = null };
+    _ = allocator;
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => range.start = try reader.readInt32(),
+            2 => range.end = try reader.readInt32(),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return range;
+}
+
+fn decodeReservedRange(allocator: std.mem.Allocator, bytes: []const u8, inclusive_end: bool) Error!schema.ReservedRange {
+    var range = schema.ReservedRange{ .start = 0, .end = null };
+    _ = allocator;
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => range.start = try reader.readInt32(),
+            2 => {
+                const end = try reader.readInt32();
+                range.end = if (inclusive_end) end + 1 else end;
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    return range;
+}
+
+fn decodeServiceDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.ServiceDescriptor {
+    var service = schema.ServiceDescriptor{ .name = "" };
+    errdefer service.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => service.name = try reader.readBytes(),
+            2 => try service.methods.append(allocator, try decodeMethodDescriptor(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return service;
+}
+
+fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.MethodDescriptor {
+    _ = allocator;
+    var method = schema.MethodDescriptor{ .name = "", .input_type = "", .output_type = "" };
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => method.name = try reader.readBytes(),
+            2 => method.input_type = try reader.readBytes(),
+            3 => method.output_type = try reader.readBytes(),
+            5 => method.client_streaming = try reader.readBool(),
+            6 => method.server_streaming = try reader.readBool(),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return method;
+}
+
+fn decodeFileOptions(file: *schema.FileDescriptor, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 50) file.features = try decodeFeatureSet(try reader.readBytes()) else try reader.skipValue(tag);
+    }
+}
+
+fn decodeFieldOptions(bytes: []const u8) Error!?bool {
+    var result: ?bool = null;
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 2) result = try reader.readBool() else try reader.skipValue(tag);
+    }
+    return result;
+}
+
+fn decodeMessageOptionsMapEntry(bytes: []const u8) Error!bool {
+    var result = false;
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 7) result = try reader.readBool() else try reader.skipValue(tag);
+    }
+    return result;
+}
+
+fn decodeFeatureSet(bytes: []const u8) Error!schema.FeatureSet {
+    var features = schema.FeatureSet{};
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => features.field_presence = switch (try reader.readInt32()) {
+                2 => .implicit,
+                3 => .legacy_required,
+                else => .explicit,
+            },
+            2 => features.enum_type = switch (try reader.readInt32()) {
+                2 => .closed,
+                else => .open,
+            },
+            3 => features.repeated_field_encoding = switch (try reader.readInt32()) {
+                2 => .expanded,
+                else => .packed_encoding,
+            },
+            4 => features.utf8_validation = switch (try reader.readInt32()) {
+                3 => .none,
+                else => .verify,
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    return features;
+}
+
+fn oneofIndexText(index: i32) Error![]const u8 {
+    return switch (index) {
+        0 => "0",
+        1 => "1",
+        2 => "2",
+        3 => "3",
+        4 => "4",
+        5 => "5",
+        6 => "6",
+        7 => "7",
+        8 => "8",
+        9 => "9",
+        else => error.InvalidFieldType,
+    };
+}
+
+fn labelFromNumber(value: i32) schema.Cardinality {
+    return switch (value) {
+        2 => .required,
+        3 => .repeated,
+        else => .optional,
+    };
+}
+
+fn kindFromType(allocator: std.mem.Allocator, field_type: i32, type_name: ?[]const u8) Error!schema.FieldKind {
+    return switch (field_type) {
+        1 => .{ .scalar = .double },
+        2 => .{ .scalar = .float },
+        3 => .{ .scalar = .int64 },
+        4 => .{ .scalar = .uint64 },
+        5 => .{ .scalar = .int32 },
+        6 => .{ .scalar = .fixed64 },
+        7 => .{ .scalar = .fixed32 },
+        8 => .{ .scalar = .bool },
+        9 => .{ .scalar = .string },
+        10 => .{ .group = type_name orelse "" },
+        11 => .{ .message = type_name orelse "" },
+        12 => .{ .scalar = .bytes },
+        13 => .{ .scalar = .uint32 },
+        14 => .{ .enumeration = type_name orelse "" },
+        15 => .{ .scalar = .sfixed32 },
+        16 => .{ .scalar = .sfixed64 },
+        17 => .{ .scalar = .sint32 },
+        18 => .{ .scalar = .sint64 },
+        else => blk: {
+            _ = allocator;
+            break :blk error.InvalidFieldType;
+        },
+    };
+}
+
+fn collapseMapEntryMessages(allocator: std.mem.Allocator, file: *schema.FileDescriptor) Error!void {
+    for (file.messages.items) |*message| try collapseMapEntriesInMessage(allocator, message);
+}
+
+fn collapseMapEntriesInMessage(allocator: std.mem.Allocator, message: *schema.MessageDescriptor) Error!void {
+    var index: usize = 0;
+    while (index < message.messages.items.len) {
+        if (try isMapEntryMessage(message.messages.items[index])) {
+            const entry = &message.messages.items[index];
+            if (entry.fields.items.len >= 2) {
+                const key_field = entry.findField("key").?;
+                const value_field = entry.findField("value").?;
+                for (message.fields.items) |*field| {
+                    if (field.kind == .message and typeNameMatches(field.kind.message, entry.name)) {
+                        const value_kind = try allocator.create(schema.FieldKind);
+                        value_kind.* = value_field.kind;
+                        field.kind = .{ .map = .{ .key = key_field.kind.scalar, .value = value_kind } };
+                    }
+                }
+            }
+            var removed = message.messages.swapRemove(index);
+            removed.deinit(allocator);
+            continue;
+        }
+        try collapseMapEntriesInMessage(allocator, &message.messages.items[index]);
+        index += 1;
+    }
+}
+
+fn isMapEntryMessage(message: schema.MessageDescriptor) Error!bool {
+    for (message.options.items) |_| {}
+    // The encoder emits MessageOptions.map_entry=true as field 7, but this
+    // lightweight schema model does not store MessageOptions yet. Use the
+    // canonical synthetic shape as a fallback.
+    return std.mem.endsWith(u8, message.name, "Entry") and message.fields.items.len == 2 and message.findField("key") != null and message.findField("value") != null;
+}
+
+fn typeNameMatches(encoded_type_name: []const u8, entry_name: []const u8) bool {
+    const leaf = if (std.mem.lastIndexOfScalar(u8, encoded_type_name, '.')) |idx| encoded_type_name[idx + 1 ..] else encoded_type_name;
+    return std.mem.eql(u8, leaf, entry_name);
+}
+
+test "descriptor decodes encoded FileDescriptorProto back to schema" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Bag {
+        \\  oneof pick { string name = 1; int32 id = 2; }
+        \\  repeated int32 nums = 3;
+        \\  map<string, int32> counts = 4;
+        \\  Kind kind = 5;
+        \\}
+        \\service Bags { rpc Get (Bag) returns (Bag); }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    file.name = "bag.proto";
+
+    const encoded = try encodeFileDescriptorProto(allocator, &file, file.name);
+    defer allocator.free(encoded);
+
+    var decoded = try decodeFileDescriptorProto(allocator, encoded);
+    defer decoded.deinit();
+
+    try std.testing.expectEqualStrings("bag.proto", decoded.name);
+    try std.testing.expectEqualStrings("demo", decoded.package);
+    try std.testing.expectEqual(schema.Syntax.proto3, decoded.syntax);
+    const bag = decoded.findMessage("Bag").?;
+    try std.testing.expectEqual(@as(usize, 5), bag.fields.items.len);
+    try std.testing.expectEqual(@as(usize, 1), bag.oneofs.items.len);
+    try std.testing.expectEqualStrings("pick", bag.findField("name").?.oneof_name.?);
+    try std.testing.expect(bag.findField("counts").?.kind == .map);
+    try std.testing.expect(bag.findField("kind").?.kind == .enumeration);
+    try std.testing.expectEqual(@as(usize, 1), decoded.services.items.len);
+}
+
+test "descriptor decodes FileDescriptorSet" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message A { optional string s = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    file.name = "a.proto";
+    const files = [_]*const schema.FileDescriptor{&file};
+    const set_bytes = try encodeFileDescriptorSet(allocator, &files);
+    defer allocator.free(set_bytes);
+
+    const decoded_files = try decodeFileDescriptorSet(allocator, set_bytes);
+    defer {
+        for (decoded_files) |*decoded_file| decoded_file.deinit();
+        allocator.free(decoded_files);
+    }
+    try std.testing.expectEqual(@as(usize, 1), decoded_files.len);
+    try std.testing.expectEqualStrings("a.proto", decoded_files[0].name);
+    try std.testing.expect(decoded_files[0].findMessage("A") != null);
 }

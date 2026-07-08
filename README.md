@@ -82,14 +82,18 @@ objects, enum names/numbers, and nested messages recursively.
 ## Descriptor encoding
 
 `pbz.descriptor` can encode parsed schemas into descriptor.proto-compatible
-wire bytes for `FileDescriptorProto` and `FileDescriptorSet` workflows:
+wire bytes for `FileDescriptorProto` and `FileDescriptorSet` workflows, and decode
+basic descriptor bytes back into the schema model:
 
 ```zig
 const descriptor_bytes = try pbz.encodeFileDescriptorProto(allocator, &file, "schema.proto");
 defer allocator.free(descriptor_bytes);
+
+var decoded_file = try pbz.decodeFileDescriptorProto(allocator, descriptor_bytes);
+defer decoded_file.deinit();
 ```
 
-The current descriptor encoder covers core file/message/field/enum/service
+The current descriptor support covers core file/message/field/enum/service
 metadata, map-entry descriptors, packed field options, and edition feature
 metadata.
 
