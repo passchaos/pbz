@@ -434,8 +434,10 @@ test "descriptor encodes proto3 map entry and editions feature metadata" {
 pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FileDescriptor {
     var file = schema.FileDescriptor.init(allocator);
     errdefer file.deinit();
+    const owned_bytes = try allocator.dupe(u8, bytes);
+    try file.owned_strings.append(allocator, owned_bytes);
 
-    var reader = wire.Reader.init(bytes);
+    var reader = wire.Reader.init(owned_bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => file.name = try reader.readBytes(),
@@ -889,4 +891,24 @@ test "descriptor rejects invalid synthetic map entry key type" {
     const bytes = try encodeFileDescriptorProto(allocator, &file, "bad.proto");
     defer allocator.free(bytes);
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+}
+
+test "descriptor decoded schema owns descriptor bytes" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package own;
+        \\message Owned { optional string value = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    var bytes = try encodeFileDescriptorProto(allocator, &file, "owned.proto");
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    allocator.free(bytes);
+    bytes = &.{};
+    defer decoded.deinit();
+
+    try std.testing.expectEqualStrings("own", decoded.package);
+    try std.testing.expectEqualStrings("Owned", decoded.findMessage("Owned").?.name);
+    try std.testing.expectEqualStrings("value", decoded.findMessage("Owned").?.findField("value").?.name);
 }
