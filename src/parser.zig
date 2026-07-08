@@ -12,6 +12,7 @@ pub const ParseError = error{
     InvalidEnum,
     DuplicateEnumValue,
     DuplicateField,
+    DuplicateOneof,
     InvalidRange,
     ReservedField,
     InvalidEscape,
@@ -842,6 +843,7 @@ fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
 fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
     try validateReserved(message);
     try validateExtensionRanges(message);
+    try validateOneofs(message);
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
@@ -852,6 +854,17 @@ fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!vo
         }
         for (message.reserved_names.items) |name| {
             if (std.mem.eql(u8, field.name, name)) return error.ReservedField;
+        }
+    }
+}
+
+fn validateOneofs(message: *const schema.MessageDescriptor) ParseError!void {
+    for (message.oneofs.items, 0..) |oneof, i| {
+        for (message.oneofs.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, oneof.name, other.name)) return error.DuplicateOneof;
+        }
+        for (message.fields.items) |field| {
+            if (std.mem.eql(u8, oneof.name, field.name)) return error.DuplicateOneof;
         }
     }
 }
@@ -1234,5 +1247,23 @@ test "parser rejects labelled and group fields inside oneof" {
     try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { oneof pick { group Legacy = 1 {} } }
+    ));
+}
+
+test "parser rejects duplicate oneof names" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateOneof, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  oneof pick { int32 id = 1; }
+        \\  oneof pick { string name = 2; }
+        \\}
+    ));
+    try std.testing.expectError(error.DuplicateOneof, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 pick = 1;
+        \\  oneof pick { string name = 2; }
+        \\}
     ));
 }
