@@ -106,19 +106,19 @@ pub fn runDynamic(
     switch (request.payload) {
         .protobuf_payload => |payload| {
             message.decodeWithRegistry(file, registry, payload) catch |err| return try parseError(allocator, err);
-            message.validateRequired() catch |err| return try parseError(allocator, err);
+            if (try validateRequiredResponse(allocator, &message)) |response| return response;
         },
         .json_payload => |payload| {
             var parsed = json.parseAlloc(allocator, file, descriptor, payload, .{ .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test }) catch |err| return try parseError(allocator, err);
             defer parsed.deinit();
             try message.mergeFrom(&parsed);
-            message.validateRequired() catch |err| return try parseError(allocator, err);
+            if (try validateRequiredResponse(allocator, &message)) |response| return response;
         },
         .text_payload => |payload| {
             var parsed = text.parseAlloc(allocator, file, descriptor, payload) catch |err| return try parseError(allocator, err);
             defer parsed.deinit();
             try message.mergeFrom(&parsed);
-            message.validateRequired() catch |err| return try parseError(allocator, err);
+            if (try validateRequiredResponse(allocator, &message)) |response| return response;
         },
         else => return try (ConformanceResponse{ .result = .{ .skipped = "unsupported input format" } }).encode(allocator),
     }
@@ -142,7 +142,27 @@ pub fn runDynamic(
 fn parseError(allocator: std.mem.Allocator, err: anyerror) ![]u8 {
     const msg = try std.fmt.allocPrint(allocator, "{t}", .{err});
     defer allocator.free(msg);
+    return try parseErrorText(allocator, msg);
+}
+
+fn parseErrorText(allocator: std.mem.Allocator, msg: []const u8) ![]u8 {
     return try (ConformanceResponse{ .result = .{ .parse_error = msg } }).encode(allocator);
+}
+
+fn validateRequiredResponse(allocator: std.mem.Allocator, message: *const dynamic.DynamicMessage) !?[]u8 {
+    message.validateRequired() catch |err| switch (err) {
+        error.MissingRequiredField => {
+            const path = try message.missingRequiredFieldPath(allocator);
+            defer if (path) |p| allocator.free(p);
+            const msg = if (path) |p|
+                try std.fmt.allocPrint(allocator, "MissingRequiredField: {s}", .{p})
+            else
+                try allocator.dupe(u8, "MissingRequiredField");
+            defer allocator.free(msg);
+            return try parseErrorText(allocator, msg);
+        },
+    };
+    return null;
 }
 
 fn serializeError(allocator: std.mem.Allocator, err: anyerror) ![]u8 {
@@ -227,5 +247,7 @@ test "conformance dynamic runner reports missing required fields" {
     var reader = wire.Reader.init(response_bytes);
     const tag = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(wire.FieldNumber, 1), tag.number);
-    try std.testing.expect(std.mem.indexOf(u8, try reader.readBytes(), "MissingRequiredField") != null);
+    const message = try reader.readBytes();
+    try std.testing.expect(std.mem.indexOf(u8, message, "MissingRequiredField") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "id") != null);
 }
