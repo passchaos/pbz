@@ -159,6 +159,7 @@ pub const Parser = struct {
         errdefer self.file.deinit();
         try self.parseFile();
         try self.validateTypeSymbols();
+        try self.validateServices();
         try self.resolveFieldKinds();
         try self.validateExtensions();
         try self.validateDefaults();
@@ -729,6 +730,32 @@ pub const Parser = struct {
         for (message.messages.items) |*nested| try validateMessageTypeSymbols(nested);
     }
 
+    fn validateServices(self: *Parser) ParseError!void {
+        for (self.file.services.items, 0..) |service, i| {
+            for (self.file.services.items[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, service.name, other.name)) return error.DuplicateSymbol;
+            }
+            for (self.file.messages.items) |message| {
+                if (std.mem.eql(u8, service.name, message.name)) return error.DuplicateSymbol;
+            }
+            for (self.file.enums.items) |enumeration| {
+                if (std.mem.eql(u8, service.name, enumeration.name)) return error.DuplicateSymbol;
+            }
+            for (service.methods.items, 0..) |method, method_index| {
+                for (service.methods.items[method_index + 1 ..]) |other| {
+                    if (std.mem.eql(u8, method.name, other.name)) return error.DuplicateSymbol;
+                }
+                try self.validateRpcType(method.input_type);
+                try self.validateRpcType(method.output_type);
+            }
+        }
+    }
+
+    fn validateRpcType(self: *Parser, type_name: []const u8) ParseError!void {
+        if (self.file.findMessageDeep(type_name) != null) return;
+        if (self.file.findEnumDeep(type_name) != null) return error.InvalidFieldType;
+    }
+
     fn validateExtensions(self: *Parser) Error!void {
         for (self.file.extensions.items) |*field| try self.validateExtensionField(field);
         for (self.file.messages.items) |*message| try self.validateMessageExtensions(message);
@@ -1293,6 +1320,39 @@ test "parser rejects duplicate type symbols in the same scope" {
         \\syntax = "proto2";
         \\message Outer { message Item {} message Item {} }
     ));
+}
+
+test "parser validates service and rpc symbols and local message types" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Api {}
+        \\service Api { rpc Get (Req) returns (Req); }
+        \\message Req {}
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Req {}
+        \\service Api { rpc Get (Req) returns (Req); }
+        \\service Api { rpc Put (Req) returns (Req); }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Req {}
+        \\service Api { rpc Get (Req) returns (Req); rpc Get (Req) returns (Req); }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Req { UNKNOWN = 0; }
+        \\service Api { rpc Get (Req) returns (Req); }
+    ));
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Req {}
+        \\service Api { rpc Get (Req) returns (External); }
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(@as(usize, 1), file.services.items.len);
 }
 
 test "parser rejects invalid packed field options" {
