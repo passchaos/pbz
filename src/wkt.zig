@@ -415,3 +415,31 @@ test "any wire and json helpers" {
     defer allocator.free(json);
     try std.testing.expectEqualSlices(u8, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}", json);
 }
+
+pub const Empty = struct {
+    pub fn encode(allocator: std.mem.Allocator) ![]u8 {
+        return try allocator.dupe(u8, "");
+    }
+
+    pub fn decode(bytes: []const u8) !Empty {
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| try reader.skipValue(tag);
+        return .{};
+    }
+
+    pub fn jsonStringify(writer: *std.Io.Writer) !void {
+        try writer.writeAll("{}");
+    }
+};
+
+test "empty wire and json helper" {
+    const allocator = std.testing.allocator;
+    const bytes = try Empty.encode(allocator);
+    defer allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 0), bytes.len);
+    _ = try Empty.decode(bytes);
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try Empty.jsonStringify(&out.writer);
+    try std.testing.expectEqualSlices(u8, "{}", out.written());
+}

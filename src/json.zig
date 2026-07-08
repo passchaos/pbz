@@ -404,6 +404,10 @@ fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, w
         try writeFieldMaskMessage(message, writer);
         return true;
     }
+    if (typeNameEquals(name, "google.protobuf.Empty")) {
+        try wkt.Empty.jsonStringify(writer);
+        return true;
+    }
     if (wrapperKind(name)) |kind| {
         if (message.get("value")) |field| {
             if (field.values.items.len != 0) try writeWrapperValue(kind, field.values.items[field.values.items.len - 1], writer) else try writer.writeAll("null");
@@ -429,6 +433,10 @@ fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.Mes
         };
         return message;
     }
+    if (typeNameEquals(name, "google.protobuf.Empty")) {
+        if (json_value != .object) return error.TypeMismatch;
+        return try emptyKnownMessage(allocator, descriptor);
+    }
     const text = switch (json_value) {
         .string => |value| value,
         else => return null,
@@ -449,6 +457,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.Mes
         try addKnownTimeFields(message, duration.seconds, duration.nanos);
         return message;
     }
+    if (typeNameEquals(name, "google.protobuf.Empty")) return message;
     if (typeNameEquals(name, "google.protobuf.FieldMask")) {
         const paths = try wkt.FieldMask.jsonParse(allocator, text);
         defer {
@@ -1011,4 +1020,29 @@ test "json maps FieldMask message as comma-separated string" {
     const parsed_mask = parsed.get("mask").?.values.items[0].message;
     try std.testing.expectEqualSlices(u8, "foo_bar", parsed_mask.get("paths").?.values.items[0].string);
     try std.testing.expectEqualSlices(u8, "baz.qux_value", parsed_mask.get("paths").?.values.items[1].string);
+}
+
+test "json maps Empty message as empty object" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\message Empty {}
+        \\message Holder { .google.protobuf.Empty empty = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+    const empty_desc = file.findMessage("Empty").?;
+    var holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer holder.deinit();
+    const empty = try allocator.create(dynamic.DynamicMessage);
+    empty.* = dynamic.DynamicMessage.init(allocator, empty_desc);
+    try holder.add(holder_desc.findField("empty").?, .{ .message = empty });
+    const rendered = try stringifyAlloc(allocator, &file, &holder, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"empty\":{}}", rendered);
+    var parsed = try parseAlloc(allocator, &file, holder_desc, rendered, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.get("empty") != null);
 }

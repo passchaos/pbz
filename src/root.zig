@@ -44,6 +44,7 @@ pub const Timestamp = wkt.Timestamp;
 pub const Duration = wkt.Duration;
 pub const FieldMask = wkt.FieldMask;
 pub const Any = wkt.Any;
+pub const Empty = wkt.Empty;
 
 test {
     _ = wire;
