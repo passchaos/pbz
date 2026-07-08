@@ -194,8 +194,16 @@ fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.M
 fn writeOneofValueEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (field.kind) {
         .scalar => |scalar| {
-            try writeScalarWriteCall(field.number, scalar, value_expr, writer);
-            try writer.writeAll(")");
+            if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+                try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(");
+                try writer.writeAll(value_expr);
+                try writer.writeAll(")) return error.InvalidUtf8; ");
+                try writeScalarWriteCall(field.number, scalar, value_expr, writer);
+                try writer.writeAll("); }");
+            } else {
+                try writeScalarWriteCall(field.number, scalar, value_expr, writer);
+                try writer.writeAll(")");
+            }
         },
         .enumeration => try writer.print("try w.writeInt32({d}, {s})", .{ field.number, value_expr }),
         .message => {
@@ -625,15 +633,26 @@ fn writeDecodeScalarField(file: *const schema.FileDescriptor, field: *const sche
         if (scalar.packable()) {
             try writeDecodePackedScalarField(field, scalar, writer, depth);
         } else {
-            try writeRepeatedAppendPrefix(field, writer);
-            try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
+            if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+                try writer.writeAll("{ const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; ");
+                try writeRepeatedAppendPrefix(field, writer);
+                try writer.writeAll("value); },\n");
+            } else {
+                try writeRepeatedAppendPrefix(field, writer);
+                try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
+            }
         }
     } else if (field.oneof_name != null) {
-        try writeOneofDecodeAssign(field, scalarReaderName(scalar), writer);
+        try writeOneofDecodeAssign(file, field, scalarReaderName(scalar), writer);
     } else {
         try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
         try writer.print(" = try r.{s}();", .{scalarReaderName(scalar)});
+        if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+            try writer.writeAll(" if (!std.unicode.utf8ValidateSlice(self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(")) return error.InvalidUtf8;");
+        }
         try writeSetPresence(file, field, writer);
         try writer.writeAll(" },\n");
     }
@@ -645,7 +664,7 @@ fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema
     if (field.cardinality == .repeated) {
         try writeDecodePackedEnumField(field, writer, depth);
     } else if (field.oneof_name != null) {
-        try writeOneofDecodeAssign(field, "readInt32", writer);
+        try writeOneofDecodeAssign(file, field, "readInt32", writer);
     } else {
         try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
@@ -756,8 +775,18 @@ fn writeDecodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try writer.writeAll("},\n");
 }
 
-fn writeOneofDecodeAssign(field: *const schema.FieldDescriptor, reader_method: []const u8, writer: *std.Io.Writer) Error!void {
+fn writeOneofDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, reader_method: []const u8, writer: *std.Io.Writer) Error!void {
     const oneof_name = field.oneof_name orelse return;
+    if (field.kind == .scalar and field.kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+        try writer.writeAll("{ const value = try r.");
+        try writer.writeAll(reader_method);
+        try writer.writeAll("(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.");
+        try writeQuotedIdent(oneof_name, writer);
+        try writer.writeAll(" = .{ .");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = value }; },\n");
+        return;
+    }
     try writer.writeAll("self.");
     try writeQuotedIdent(oneof_name, writer);
     try writer.writeAll(" = .{ .");
@@ -826,11 +855,19 @@ fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const sche
             try writeEncodePackedScalarField(field, scalar, writer, depth);
         } else {
             try indent(writer, depth);
-            try writer.writeAll("for (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |item| ");
-            try writeScalarWriteCall(field.number, scalar, "item", writer);
-            try writer.writeAll(");\n");
+            if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+                try writer.writeAll("for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; ");
+                try writeScalarWriteCall(field.number, scalar, "item", writer);
+                try writer.writeAll("); }\n");
+            } else {
+                try writer.writeAll("for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| ");
+                try writeScalarWriteCall(field.number, scalar, "item", writer);
+                try writer.writeAll(");\n");
+            }
         }
     } else {
         try indent(writer, depth);
@@ -843,9 +880,15 @@ fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const sche
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(defaultSkipCondition(scalar));
         }
+        if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+            try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(")) return error.InvalidUtf8; ");
+        }
         try writeScalarWriteCall(field.number, scalar, "self.", writer);
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(");\n");
+        try writer.writeAll(")");
+        if (scalar == .string and fieldUtf8Validation(file, field) == .verify) try writer.writeAll("; }\n") else try writer.writeAll(";\n");
     }
 }
 
@@ -1082,6 +1125,11 @@ fn writeMessagePayloadRead(file: *const schema.FileDescriptor, field: *const sch
 fn fieldMessageEncoding(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.MessageEncoding {
     if (field.features) |features| return features.message_encoding;
     return file.features.message_encoding;
+}
+
+fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
+    if (field.features) |features| return features.utf8_validation;
+    return file.features.utf8_validation;
 }
 
 fn writeScalarWriteCall(number: u29, scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
@@ -2634,7 +2682,7 @@ test "codegen emits typed scalar fields and encode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"id\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) try w.writeString(2, self.@\"name\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; try w.writeString(2, self.@\"name\"); }") != null);
 }
 
 test "codegen emits repeated scalar slice types" {
@@ -2809,7 +2857,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "_ = allocator;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"id\" = try r.readInt32(); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"name\" = try r.readBytes(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"name\" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { self.@\"kind\" = try r.readInt32(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.@\"payload\" = try r.readBytes(); }") != null);
 }
@@ -3062,8 +3110,8 @@ test "codegen maps oneof to tagged union" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"pick\": @\"pickOneof\" = .none") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (self.@\"pick\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"name\" => |value| try w.writeString(1, value)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => self.@\"pick\" = .{ .@\"name\" = try r.readBytes() }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"name\" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(1, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.@\"pick\" = .{ .@\"name\" = value }; }") != null);
 }
 
 test "codegen emits proto2 extension metadata" {
@@ -3234,6 +3282,31 @@ test "codegen honors editions message encoding features" {
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
     defer tree.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen honors utf8 validation features for wire strings" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  string strict = 1;
+        \\  string relaxed = 2 [features.utf8_validation = NONE];
+        \\  repeated string tags = 3;
+        \\  oneof pick { string alias = 4; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"strict\".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@\"strict\")) return error.InvalidUtf8; try w.writeString(1, self.@\"strict\"); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"relaxed\".len != 0) try w.writeString(2, self.@\"relaxed\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\") |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; try w.writeString(3, item); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"alias\" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"strict\" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@\"strict\")) return error.InvalidUtf8; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"relaxed\" = try r.readBytes(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @\"tags_list\".append(allocator, value); },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.@\"pick\" = .{ .@\"alias\" = value }; }") != null);
 }
 
 test "codegen honors editions enum type features in JSON parse" {
