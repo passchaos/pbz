@@ -435,7 +435,7 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 const option = try self.parseOptionAssignmentStatement();
                 try message.options.append(self.allocator, option);
-                self.applyFeatureOption(&message.features, option);
+                try self.applyMessageOption(&message, option);
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(message.messages.items.len);
                 const path = try self.childPath(source_path, 3, index);
@@ -743,6 +743,14 @@ pub const Parser = struct {
                 }
             }
         }
+    }
+
+    fn applyMessageOption(self: *Parser, message: *schema.MessageDescriptor, option: schema.FieldOption) Error!void {
+        const leaf = optionLeaf(option.name);
+        if (std.mem.eql(u8, leaf, "map_entry")) {
+            message.map_entry = schema.optionAsBool(option.value) orelse return error.InvalidFieldType;
+        }
+        self.applyFeatureOption(&message.features, option);
     }
 
     fn applyEnumValueOptions(self: *Parser, enum_value: *schema.EnumValueDescriptor) Error!void {

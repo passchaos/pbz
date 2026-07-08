@@ -111,32 +111,30 @@ fn writeMapEntryDescriptor(
         .map => |map| map,
         else => return error.InvalidFieldType,
     };
-    var tmp = wire.Writer.init(allocator);
-    defer tmp.deinit();
 
     const entry_name = try mapEntryName(allocator, field.name);
     defer allocator.free(entry_name);
-    try tmp.writeString(1, entry_name);
+    var entry_message = schema.MessageDescriptor{ .name = entry_name, .map_entry = true };
+    defer entry_message.fields.deinit(allocator);
 
-    var key_field = schema.FieldDescriptor{
+    const key_field = schema.FieldDescriptor{
         .name = "key",
         .number = 1,
         .cardinality = .optional,
         .kind = .{ .scalar = map_type.key },
     };
-    try writeFieldDescriptor(allocator, file, null, &key_field, 2, &tmp);
+    try entry_message.fields.append(allocator, key_field);
 
-    var value_field = schema.FieldDescriptor{
+    const value_field = schema.FieldDescriptor{
         .name = "value",
         .number = 2,
         .cardinality = .optional,
         .kind = map_type.value.*,
     };
-    try writeFieldDescriptor(allocator, file, null, &value_field, 2, &tmp);
+    try entry_message.fields.append(allocator, value_field);
 
-    try writeMessageOptionsMapEntry(allocator, 7, &tmp);
     _ = parent_scope;
-    try writer.writeMessage(field_number, tmp.slice());
+    try writeMessageDescriptor(allocator, file, &entry_message, "", field_number, writer);
 }
 
 fn writeFieldDescriptor(
@@ -472,6 +470,7 @@ fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.Mess
     if (message.messageSetWireFormat()) try tmp.writeBool(1, true);
     if (exactOptionBool(message.options.items, "no_standard_descriptor_accessor")) |value| try tmp.writeBool(2, value);
     if (exactOptionBool(message.options.items, "deprecated")) |value| try tmp.writeBool(3, value);
+    if (message.map_entry) try tmp.writeBool(7, true);
     if (exactOptionBool(message.options.items, "deprecated_legacy_json_field_conflicts")) |value| try tmp.writeBool(11, value);
     if (message.features) |features| try writeFeatureSet(allocator, features, 12, &tmp);
     try writeUninterpretedOptions(allocator, message.options.items, &tmp, .message);
@@ -479,7 +478,7 @@ fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.Mess
 }
 
 fn hasMessageOptions(message: *const schema.MessageDescriptor) bool {
-    return message.options.items.len != 0 or message.features != null;
+    return message.options.items.len != 0 or message.map_entry or message.features != null;
 }
 
 fn writeEnumOptions(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -502,13 +501,6 @@ fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
         if (std.mem.eql(u8, option.name, "allow_alias")) return schema.optionAsBool(option.value) orelse false;
     }
     return false;
-}
-
-fn writeMessageOptionsMapEntry(allocator: std.mem.Allocator, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
-    var tmp = wire.Writer.init(allocator);
-    defer tmp.deinit();
-    try tmp.writeBool(7, true);
-    try writer.writeMessage(field_number, tmp.slice());
 }
 
 fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -574,7 +566,7 @@ fn isKnownOption(name: []const u8, scope: OptionScope) bool {
     if (std.mem.startsWith(u8, trimmed, "features.")) return true;
     return switch (scope) {
         .file => isKnownFileOption(trimmed),
-        .message => std.mem.eql(u8, trimmed, "message_set_wire_format") or std.mem.eql(u8, trimmed, "no_standard_descriptor_accessor") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
+        .message => std.mem.eql(u8, trimmed, "message_set_wire_format") or std.mem.eql(u8, trimmed, "no_standard_descriptor_accessor") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "map_entry") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
         .enumeration => std.mem.eql(u8, trimmed, "allow_alias") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
         .enum_value => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "feature_support"),
         .oneof => false,
@@ -1565,6 +1557,7 @@ fn decodeMessageOptions(allocator: std.mem.Allocator, message: *schema.MessageDe
             1 => try message.options.append(allocator, .{ .name = "message_set_wire_format", .value = .{ .boolean = try reader.readBool() } }),
             2 => try message.options.append(allocator, .{ .name = "no_standard_descriptor_accessor", .value = .{ .boolean = try reader.readBool() } }),
             3 => try message.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            7 => message.map_entry = try reader.readBool(),
             11 => try message.options.append(allocator, .{ .name = "deprecated_legacy_json_field_conflicts", .value = .{ .boolean = try reader.readBool() } }),
             12 => message.features = try decodeFeatureSet(try reader.readBytes()),
             999 => try message.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
@@ -1727,15 +1720,6 @@ fn decodeUninterpretedNamePart(bytes: []const u8) Error!struct { name: []const u
     return .{ .name = name, .is_extension = is_extension };
 }
 
-fn decodeMessageOptionsMapEntry(bytes: []const u8) Error!bool {
-    var result = false;
-    var reader = wire.Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == 7) result = try reader.readBool() else try reader.skipValue(tag);
-    }
-    return result;
-}
-
 fn decodeFeatureSet(bytes: []const u8) Error!schema.FeatureSet {
     var features = schema.FeatureSet{};
     var reader = wire.Reader.init(bytes);
@@ -1854,23 +1838,27 @@ fn collapseMapEntriesInMessage(allocator: std.mem.Allocator, message: *schema.Me
     while (index < message.messages.items.len) {
         if (try isMapEntryMessage(message.messages.items[index])) {
             const entry = &message.messages.items[index];
-            if (entry.fields.items.len >= 2) {
-                const key_field = entry.findField("key").?;
-                const value_field = entry.findField("value").?;
-                const key_scalar = switch (key_field.kind) {
-                    .scalar => |scalar| scalar,
-                    else => return error.InvalidFieldType,
-                };
-                if (!key_scalar.validMapKey()) return error.InvalidFieldType;
-                if (value_field.kind == .map or value_field.kind == .group) return error.InvalidFieldType;
-                for (message.fields.items) |*field| {
-                    if (field.kind == .message and typeNameMatches(field.kind.message, entry.name)) {
-                        const value_kind = try allocator.create(schema.FieldKind);
-                        value_kind.* = value_field.kind;
-                        field.kind = .{ .map = .{ .key = key_scalar, .value = value_kind } };
-                    }
+            if (entry.fields.items.len != 2) return error.InvalidFieldType;
+            const key_field = entry.findField("key") orelse return error.InvalidFieldType;
+            const value_field = entry.findField("value") orelse return error.InvalidFieldType;
+            if (key_field.number != 1 or value_field.number != 2) return error.InvalidFieldType;
+            const key_scalar = switch (key_field.kind) {
+                .scalar => |scalar| scalar,
+                else => return error.InvalidFieldType,
+            };
+            if (!key_scalar.validMapKey()) return error.InvalidFieldType;
+            if (value_field.kind == .map or value_field.kind == .group) return error.InvalidFieldType;
+            var matched = false;
+            for (message.fields.items) |*field| {
+                if (field.kind == .message and typeNameMatches(field.kind.message, entry.name)) {
+                    if (field.cardinality != .repeated) return error.InvalidFieldType;
+                    const value_kind = try allocator.create(schema.FieldKind);
+                    value_kind.* = value_field.kind;
+                    field.kind = .{ .map = .{ .key = key_scalar, .value = value_kind } };
+                    matched = true;
                 }
             }
+            if (!matched) return error.InvalidFieldType;
             var removed = message.messages.swapRemove(index);
             removed.deinit(allocator);
             continue;
@@ -1881,11 +1869,7 @@ fn collapseMapEntriesInMessage(allocator: std.mem.Allocator, message: *schema.Me
 }
 
 fn isMapEntryMessage(message: schema.MessageDescriptor) Error!bool {
-    for (message.options.items) |_| {}
-    // The encoder emits MessageOptions.map_entry=true as field 7, but this
-    // lightweight schema model does not store MessageOptions yet. Use the
-    // canonical synthetic shape as a fallback.
-    return std.mem.endsWith(u8, message.name, "Entry") and message.fields.items.len == 2 and message.findField("key") != null and message.findField("value") != null;
+    return message.map_entry;
 }
 
 fn typeNameMatches(encoded_type_name: []const u8, entry_name: []const u8) bool {
@@ -2051,7 +2035,7 @@ test "descriptor rejects invalid synthetic map entry key type" {
     file.setSyntax(.proto3);
     var msg = schema.MessageDescriptor{ .name = "Bad" };
     try msg.fields.append(allocator, .{ .name = "bad", .number = 1, .cardinality = .repeated, .kind = .{ .message = "Bad.BadEntry" } });
-    var entry = schema.MessageDescriptor{ .name = "BadEntry" };
+    var entry = schema.MessageDescriptor{ .name = "BadEntry", .map_entry = true };
     try entry.fields.append(allocator, .{ .name = "key", .number = 1, .kind = .{ .scalar = .bytes } });
     try entry.fields.append(allocator, .{ .name = "value", .number = 2, .kind = .{ .scalar = .int32 } });
     try msg.messages.append(allocator, entry);
@@ -2060,6 +2044,28 @@ test "descriptor rejects invalid synthetic map entry key type" {
     const bytes = try encodeFileDescriptorProto(allocator, &file, "bad.proto");
     defer allocator.free(bytes);
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+}
+
+test "descriptor preserves non map nested Entry messages" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.setSyntax(.proto3);
+    var host = schema.MessageDescriptor{ .name = "Host" };
+    try host.fields.append(allocator, .{ .name = "entry", .number = 1, .cardinality = .optional, .kind = .{ .message = "Host.Entry" } });
+    var entry = schema.MessageDescriptor{ .name = "Entry" };
+    try entry.fields.append(allocator, .{ .name = "key", .number = 1, .kind = .{ .scalar = .string } });
+    try entry.fields.append(allocator, .{ .name = "value", .number = 2, .kind = .{ .scalar = .int32 } });
+    try host.messages.append(allocator, entry);
+    try file.messages.append(allocator, host);
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "entry.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    const decoded_host = decoded.findMessage("Host").?;
+    try std.testing.expect(decoded_host.findField("entry").?.kind == .message);
+    try std.testing.expect(decoded_host.findMessage("Entry") != null);
 }
 
 test "descriptor rejects invalid field labels" {

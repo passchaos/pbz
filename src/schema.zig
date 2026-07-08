@@ -369,6 +369,7 @@ pub const MessageDescriptor = struct {
     extension_ranges: std.ArrayList(ExtensionRange) = .empty,
     reserved_ranges: std.ArrayList(ReservedRange) = .empty,
     reserved_names: std.ArrayList([]const u8) = .empty,
+    map_entry: bool = false,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
 
