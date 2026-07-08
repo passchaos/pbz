@@ -216,11 +216,11 @@ fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
         try writeRepeatedAppendPrefix(field, writer);
         try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
     } else {
-        try writer.writeAll("self.");
+        try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.print(" = try r.{s}(); ", .{scalarReaderName(scalar)});
+        try writer.print(" = try r.{s}();", .{scalarReaderName(scalar)});
         try writeSetPresence(field, writer);
-        try writer.writeAll(",\n");
+        try writer.writeAll(" },\n");
     }
 }
 
@@ -231,11 +231,11 @@ fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
         try writeRepeatedAppendPrefix(field, writer);
         try writer.writeAll("try r.readInt32()),\n");
     } else {
-        try writer.writeAll("self.");
+        try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try r.readInt32(); ");
+        try writer.writeAll(" = try r.readInt32();");
         try writeSetPresence(field, writer);
-        try writer.writeAll(",\n");
+        try writer.writeAll(" },\n");
     }
 }
 
@@ -246,11 +246,11 @@ fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
         try writeRepeatedAppendPrefix(field, writer);
         try writer.writeAll("try r.readBytes()),\n");
     } else {
-        try writer.writeAll("self.");
+        try writer.writeAll("{ self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try r.readBytes(); ");
+        try writer.writeAll(" = try r.readBytes();");
         try writeSetPresence(field, writer);
-        try writer.writeAll(",\n");
+        try writer.writeAll(" },\n");
     }
 }
 
@@ -619,11 +619,9 @@ fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
 
 fn writeSetPresence(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     if (hasPresence(field.*)) {
-        try writer.writeAll("self.");
+        try writer.writeAll(" self.");
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" = true");
-    } else {
-        try writer.writeAll("{}");
     }
 }
 
@@ -777,10 +775,10 @@ test "codegen emits basic decode method" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => self.@\"id\" = try r.readInt32()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => self.@\"name\" = try r.readBytes()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => self.@\"kind\" = try r.readInt32()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "4 => self.@\"payload\" = try r.readBytes()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"id\" = try r.readInt32(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"name\" = try r.readBytes(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { self.@\"kind\" = try r.readInt32(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.@\"payload\" = try r.readBytes(); }") != null);
 }
 
 test "codegen decodes repeated scalar enum and message payload fields" {
