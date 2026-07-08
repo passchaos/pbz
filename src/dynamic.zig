@@ -200,7 +200,7 @@ pub const DynamicMessage = struct {
 
     pub fn validateRequired(self: *const DynamicMessage) ValidationError!void {
         for (self.descriptor.fields.items) |*field| {
-            if (field.cardinality == .required and self.getByNumber(field.number) == null) return error.MissingRequiredField;
+            if (field.cardinality == .required and !self.has(field)) return error.MissingRequiredField;
         }
         for (self.fields.items) |*entry| {
             for (entry.values.items) |value| switch (value) {
@@ -214,6 +214,33 @@ pub const DynamicMessage = struct {
                 else => {},
             };
         }
+    }
+
+    pub fn missingRequiredFieldPath(self: *const DynamicMessage, allocator: std.mem.Allocator) std.mem.Allocator.Error!?[]u8 {
+        for (self.descriptor.fields.items) |*field| {
+            if (field.cardinality == .required and !self.has(field)) return try allocator.dupe(u8, field.name);
+        }
+        for (self.fields.items) |*entry| {
+            for (entry.values.items) |value| {
+                const nested = switch (value) {
+                    .message => |message| message,
+                    .group => |message| message,
+                    .map_entry => |map_entry| switch (map_entry.value) {
+                        .message => |message| message,
+                        .group => |message| message,
+                        else => null,
+                    },
+                    else => null,
+                };
+                if (nested) |message| {
+                    if (try message.missingRequiredFieldPath(allocator)) |suffix| {
+                        defer allocator.free(suffix);
+                        return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ entry.descriptor.name, suffix });
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     fn getOrCreateMutable(self: *DynamicMessage, field: *const schema.FieldDescriptor) std.mem.Allocator.Error!*FieldValue {
@@ -1228,6 +1255,38 @@ test "dynamic decodeInitialized enforces proto2 required fields" {
     try writer.writeInt32(1, 9);
     try message.decodeInitialized(&file, writer.slice());
     try std.testing.expectEqual(@as(i32, 9), message.get("id").?.values.items[0].int32);
+}
+
+test "dynamic reports missing required field path" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Child { required int32 id = 1; }
+        \\message Parent { required string name = 1; optional Child child = 2; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+    const child_desc = file.findMessage("Child").?;
+
+    var parent = DynamicMessage.init(allocator, parent_desc);
+    defer parent.deinit();
+    const missing_name = (try parent.missingRequiredFieldPath(allocator)).?;
+    defer allocator.free(missing_name);
+    try std.testing.expectEqualStrings("name", missing_name);
+
+    try parent.add(parent_desc.findField("name").?, .{ .string = try allocator.dupe(u8, "p") });
+    const child = try allocator.create(DynamicMessage);
+    child.* = DynamicMessage.init(allocator, child_desc);
+    try parent.add(parent_desc.findField("child").?, .{ .message = child });
+    const missing_child = (try parent.missingRequiredFieldPath(allocator)).?;
+    defer allocator.free(missing_child);
+    try std.testing.expectEqualStrings("child.id", missing_child);
+    try std.testing.expectError(error.MissingRequiredField, parent.validateRequired());
+
+    try child.add(child_desc.findField("id").?, .{ .int32 = 1 });
+    try parent.validateRequired();
+    try std.testing.expectEqual(@as(?[]u8, null), try parent.missingRequiredFieldPath(allocator));
 }
 
 test "dynamic mergeFrom appends repeated fields overrides singular and preserves unknown" {
