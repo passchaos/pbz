@@ -20,7 +20,7 @@ validated feature set.
   - in-memory source tree loader that recursively parses imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
-  - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges, field-number, reserved overlap/reuse, duplicate-field, and enum validation including allow_alias
+  - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges, field-number, reserved/extension range, duplicate-field, and enum validation including allow_alias
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
 - Dynamic message runtime

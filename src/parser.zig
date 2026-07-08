@@ -768,6 +768,18 @@ fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
     return false;
 }
 
+fn validateExtensionRanges(message: *const schema.MessageDescriptor) ParseError!void {
+    for (message.extension_ranges.items, 0..) |range, i| {
+        const end = range.end orelse std.math.maxInt(i64);
+        if (range.start <= 0 or range.start >= end) return error.InvalidRange;
+        for (message.extension_ranges.items[i + 1 ..]) |other| {
+            const other_end = other.end orelse std.math.maxInt(i64);
+            if (other.start <= 0 or other.start >= other_end) return error.InvalidRange;
+            if (range.start < other_end and other.start < end) return error.InvalidRange;
+        }
+    }
+}
+
 fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
     for (message.reserved_ranges.items, 0..) |range, i| {
         const end = range.end orelse std.math.maxInt(i64);
@@ -787,6 +799,7 @@ fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
 
 fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
     try validateReserved(message);
+    try validateExtensionRanges(message);
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
@@ -1069,5 +1082,13 @@ test "parser rejects overlapping reserved declarations" {
     try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { reserved "old", "old"; }
+    ));
+}
+
+test "parser rejects overlapping extension ranges" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { extensions 100 to 200, 150 to 250; }
     ));
 }
