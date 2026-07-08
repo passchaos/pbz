@@ -399,7 +399,7 @@ const TextParser = struct {
                     const close = try self.consumeAggregateStart();
                     try self.parseAggregateField(file, message, field.?, close);
                 } else {
-                    var value = try self.parseValue(file, message.descriptor, field.?.kind);
+                    var value = try self.parseValue(file, message.descriptor, field.?, field.?.kind);
                     message.add(field.?, value) catch |err| {
                         dynamic.deinitValue(&value, self.allocator);
                         return err;
@@ -517,7 +517,7 @@ const TextParser = struct {
 
     fn parseAggregateField(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, close: u8) anyerror!void {
         if (field.kind == .map) {
-            var value = try self.parseMapEntry(file, message.descriptor, field.kind.map, close);
+            var value = try self.parseMapEntry(file, message.descriptor, field, field.kind.map, close);
             message.add(field, value) catch |err| {
                 dynamic.deinitValue(&value, self.allocator);
                 return err;
@@ -541,7 +541,7 @@ const TextParser = struct {
         }
     }
 
-    fn parseMapEntry(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, map_type: schema.MapType, end: u8) !dynamic.Value {
+    fn parseMapEntry(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, map_type: schema.MapType, end: u8) !dynamic.Value {
         var key: ?dynamic.Value = null;
         var value: ?dynamic.Value = null;
         errdefer {
@@ -556,9 +556,9 @@ const TextParser = struct {
             self.skipSpace();
             try self.expect(':');
             if (std.mem.eql(u8, name, "key")) {
-                key = try self.parseValue(file, current, .{ .scalar = map_type.key });
+                key = try self.parseValue(file, current, field, .{ .scalar = map_type.key });
             } else if (std.mem.eql(u8, name, "value")) {
-                value = try self.parseValue(file, current, map_type.value.*);
+                value = try self.parseValue(file, current, field, map_type.value.*);
             } else return error.UnknownField;
             self.consumeSeparator();
         }
@@ -567,18 +567,23 @@ const TextParser = struct {
         return .{ .map_entry = entry };
     }
 
-    fn parseValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, kind: schema.FieldKind) !dynamic.Value {
+    fn parseValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind) !dynamic.Value {
         self.skipSpace();
         return switch (kind) {
-            .scalar => |scalar| try self.parseScalar(scalar),
+            .scalar => |scalar| try self.parseScalar(file, field, scalar),
             .enumeration => |name| try self.parseEnum(file, current, name),
             .message, .group, .map => error.TypeMismatch,
         };
     }
 
-    fn parseScalar(self: *TextParser, scalar: schema.ScalarType) !dynamic.Value {
+    fn parseScalar(self: *TextParser, file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, scalar: schema.ScalarType) !dynamic.Value {
         return switch (scalar) {
-            .string => .{ .string = try self.readString() },
+            .string => blk: {
+                const value = try self.readString();
+                errdefer self.allocator.free(value);
+                if (fieldUtf8Validation(file, field) == .verify and !std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+                break :blk .{ .string = value };
+            },
             .bytes => .{ .bytes = try self.readString() },
             .bool => .{ .boolean = try self.readBool() },
             .double => .{ .double = try std.fmt.parseFloat(f64, try self.readAtom()) },
@@ -785,6 +790,13 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
     return false;
 }
 
+fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
+    if (field) |descriptor| {
+        if (descriptor.features) |features| return features.utf8_validation;
+    }
+    return file.features.utf8_validation;
+}
+
 fn parseTextInt(comptime T: type, atom: []const u8) !T {
     var text = atom;
     var negative = false;
@@ -873,6 +885,48 @@ test "text format honors closed enum feature for numeric values" {
         const desc = file.findMessage("M").?;
         try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "kind: 123"));
         try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "keyed { key: \"bad\" value: 123 }"));
+    }
+}
+
+test "text format validates string utf8 according to syntax and features" {
+    const allocator = std.testing.allocator;
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\syntax = "proto3";
+            \\message M { string name = 1; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        try std.testing.expectError(error.InvalidUtf8, parseAlloc(allocator, &file, desc, "name: '\xc0'"));
+    }
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\syntax = "proto2";
+            \\message M { optional string name = 1; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = try parseAlloc(allocator, &file, desc, "name: '\xc0'");
+        defer msg.deinit();
+        try std.testing.expectEqualSlices(u8, &.{0xc0}, msg.get("name").?.values.items[0].string);
+    }
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\syntax = "proto3";
+            \\message M {
+            \\  string relaxed = 1 [features.utf8_validation = NONE];
+            \\  string strict = 2;
+            \\  map<string, string> labels = 3 [features.utf8_validation = NONE];
+            \\}
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var relaxed = try parseAlloc(allocator, &file, desc, "relaxed: '\xc0' labels { key: '\xc0' value: '\xc0' }");
+        defer relaxed.deinit();
+        try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed.get("relaxed").?.values.items[0].string);
+        try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed.get("labels").?.values.items[0].map_entry.key.string);
+        try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed.get("labels").?.values.items[0].map_entry.value.string);
+        try std.testing.expectError(error.InvalidUtf8, parseAlloc(allocator, &file, desc, "strict: '\xc0'"));
     }
 }
 
