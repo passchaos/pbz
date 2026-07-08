@@ -474,7 +474,17 @@ const TextParser = struct {
     }
 
     fn skipSpace(self: *TextParser) void {
-        while (!self.eof() and std.ascii.isWhitespace(self.peek())) self.index += 1;
+        while (!self.eof()) {
+            if (std.ascii.isWhitespace(self.peek())) {
+                self.index += 1;
+                continue;
+            }
+            if (self.peek() == '#') {
+                while (!self.eof() and self.peek() != '\n') self.index += 1;
+                continue;
+            }
+            break;
+        }
     }
 
     fn peek(self: *const TextParser) u8 {
@@ -534,4 +544,23 @@ test "text format parser accepts comma and semicolon separators" {
     try std.testing.expectEqual(@as(i32, 1), msg.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), msg.get("b").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
+}
+
+test "text format parser skips hash comments" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { int32 a = 1; string b = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\# before
+        \\a: 1 # inline
+        \\b: "x"
+    );
+    defer msg.deinit();
+    try std.testing.expectEqual(@as(i32, 1), msg.get("a").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "x", msg.get("b").?.values.items[0].string);
 }
