@@ -55,7 +55,11 @@ fn writeMessage(message: *const schema.MessageDescriptor, writer: *std.Io.Writer
     try writer.writeAll("\n");
     try writeEncode(message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeEncodeInitialized(writer, depth + 1);
+    try writer.writeAll("\n");
     try writeDecode(message, writer, depth + 1);
+    try writer.writeAll("\n");
+    try writeDecodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
     try writeValidateRequired(message, writer, depth + 1);
     try writer.writeAll("\n");
@@ -200,6 +204,17 @@ fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("}\n");
 }
 
+fn writeEncodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.validateRequired();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.encode(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
@@ -264,6 +279,21 @@ fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var self = try @This().decode(allocator, bytes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.validateRequired();\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -1325,6 +1355,12 @@ test "codegen emits required validation" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequired();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try self.encode(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().decode(allocator, bytes);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer self.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequired(self: @This()) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!self.@\"has_id\") return error.MissingRequiredField") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "has_name") != null);
