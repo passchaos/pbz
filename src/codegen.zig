@@ -124,7 +124,35 @@ fn writeOneofHelpers(message: *const schema.MessageDescriptor, writer: *std.Io.W
         }
         try indent(writer, depth);
         try writer.writeAll("}\n");
+        for (message.fields.items) |*field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name)) try writeOneofSetter(oneof.name, field, writer, depth);
+            }
+        }
     }
+}
+
+fn writeOneofSetter(oneof_name: []const u8, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix("set_", field.name, writer);
+    try writer.writeAll("(self: *@This(), value: ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(") void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdentWithPrefix("clear_", oneof_name, writer);
+    try writer.writeAll("();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = value;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writePresenceIdent(field.name, writer);
+    try writer.writeAll(" = true;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -972,4 +1000,20 @@ test "codegen emits oneof clear helpers and decode clears siblings" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"has_id\" = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"clear_pick\"(); self.@\"has_name\" = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"clear_pick\"(); self.@\"has_id\" = true") != null);
+}
+
+test "codegen emits oneof setter helpers" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Choice { oneof pick { string name = 1; int32 id = 2; } }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"set_name\"(self: *@This(), value: []const u8) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"set_id\"(self: *@This(), value: i32) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"clear_pick\"();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"name\" = value") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"has_name\" = true") != null);
 }
