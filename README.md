@@ -33,7 +33,7 @@ validated feature set.
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - Well-known types
-  - basic google.protobuf.Timestamp and Duration wire/JSON helpers
+  - basic google.protobuf.Timestamp and Duration wire/JSON helpers plus dynamic JSON mapping
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, and nested messages
 

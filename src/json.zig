@@ -1,8 +1,9 @@
 const std = @import("std");
 const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
+const wkt = @import("wkt.zig");
 
-pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{TypeMismatch};
+pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{ TypeMismatch, UnsupportedNegativeTimestamp };
 
 pub const Options = struct {
     enum_as_name: bool = true,
@@ -135,6 +136,7 @@ fn parseValue(
         .enumeration => |name| try parseEnum(file, name, json_value),
         .message => |name| blk: {
             const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            if (try parseKnownMessage(allocator, descriptor, name, json_value)) |known| break :blk .{ .message = known };
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
             errdefer {
@@ -356,8 +358,8 @@ fn writeValue(
     switch (kind) {
         .scalar => |scalar| try writeScalar(scalar, value, writer),
         .enumeration => |name| try writeEnum(file, name, value, options, writer),
-        .message => switch (value) {
-            .message => |message| try writeMessage(file, message, options, writer),
+        .message => |name| switch (value) {
+            .message => |message| if (try writeKnownMessage(name, message, writer)) {} else try writeMessage(file, message, options, writer),
             else => return error.TypeMismatch,
         },
         .group => switch (value) {
@@ -366,6 +368,66 @@ fn writeValue(
         },
         .map => return error.TypeMismatch,
     }
+}
+
+fn writeKnownMessage(name: []const u8, message: *const dynamic.DynamicMessage, writer: *std.Io.Writer) !bool {
+    if (typeNameEquals(name, "google.protobuf.Timestamp")) {
+        const ts = wkt.Timestamp{ .seconds = readInt64Field(message, "seconds"), .nanos = readInt32Field(message, "nanos") };
+        try ts.jsonStringify(writer);
+        return true;
+    }
+    if (typeNameEquals(name, "google.protobuf.Duration")) {
+        const duration = wkt.Duration{ .seconds = readInt64Field(message, "seconds"), .nanos = readInt32Field(message, "nanos") };
+        try duration.jsonStringify(writer);
+        return true;
+    }
+    return false;
+}
+
+fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value) !?*dynamic.DynamicMessage {
+    const text = switch (json_value) {
+        .string => |value| value,
+        else => return null,
+    };
+    const message = try allocator.create(dynamic.DynamicMessage);
+    message.* = dynamic.DynamicMessage.init(allocator, descriptor);
+    errdefer {
+        message.deinit();
+        allocator.destroy(message);
+    }
+    if (typeNameEquals(name, "google.protobuf.Timestamp")) {
+        const ts = try wkt.Timestamp.jsonParse(text);
+        try addKnownTimeFields(message, ts.seconds, ts.nanos);
+        return message;
+    }
+    if (typeNameEquals(name, "google.protobuf.Duration")) {
+        const duration = try wkt.Duration.jsonParse(text);
+        try addKnownTimeFields(message, duration.seconds, duration.nanos);
+        return message;
+    }
+    message.deinit();
+    allocator.destroy(message);
+    return null;
+}
+
+fn addKnownTimeFields(message: *dynamic.DynamicMessage, seconds: i64, nanos: i32) !void {
+    if (seconds != 0) try message.add(message.descriptor.findField("seconds") orelse return error.TypeMismatch, .{ .int64 = seconds });
+    if (nanos != 0) try message.add(message.descriptor.findField("nanos") orelse return error.TypeMismatch, .{ .int32 = nanos });
+}
+
+fn readInt64Field(message: *const dynamic.DynamicMessage, name: []const u8) i64 {
+    if (message.get(name)) |field| if (field.values.items.len != 0 and field.values.items[0] == .int64) return field.values.items[0].int64;
+    return 0;
+}
+
+fn readInt32Field(message: *const dynamic.DynamicMessage, name: []const u8) i32 {
+    if (message.get(name)) |field| if (field.values.items.len != 0 and field.values.items[0] == .int32) return field.values.items[0].int32;
+    return 0;
+}
+
+fn typeNameEquals(name: []const u8, expected: []const u8) bool {
+    const normalized = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    return std.mem.eql(u8, normalized, expected) or std.mem.endsWith(u8, normalized, expected);
 }
 
 fn writeScalar(scalar: schema.ScalarType, value: dynamic.Value, writer: *std.Io.Writer) Error!void {
@@ -721,4 +783,44 @@ test "json parses bytes from base64 variants" {
     var url_safe_no_pad = try parseAlloc(allocator, &file, desc, "{\"raw\":\"--8\"}", .{});
     defer url_safe_no_pad.deinit();
     try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xef }, url_safe_no_pad.get("raw").?.values.items[0].bytes);
+}
+
+test "json maps Timestamp and Duration messages as well-known strings" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Timestamp { int64 seconds = 1; int32 nanos = 2; }
+        \\message Duration { int64 seconds = 1; int32 nanos = 2; }
+        \\message Event { google.protobuf.Timestamp at = 1; google.protobuf.Duration span = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const event_desc = file.findMessage("Event").?;
+    const ts_desc = file.findMessage("Timestamp").?;
+    const dur_desc = file.findMessage("Duration").?;
+
+    var event = dynamic.DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    const ts = try allocator.create(dynamic.DynamicMessage);
+    ts.* = dynamic.DynamicMessage.init(allocator, ts_desc);
+    try ts.add(ts_desc.findField("seconds").?, .{ .int64 = 1_577_836_800 });
+    try ts.add(ts_desc.findField("nanos").?, .{ .int32 = 123_000_000 });
+    try event.add(event_desc.findField("at").?, .{ .message = ts });
+    const dur = try allocator.create(dynamic.DynamicMessage);
+    dur.* = dynamic.DynamicMessage.init(allocator, dur_desc);
+    try dur.add(dur_desc.findField("seconds").?, .{ .int64 = -3 });
+    try dur.add(dur_desc.findField("nanos").?, .{ .int32 = -250_000_000 });
+    try event.add(event_desc.findField("span").?, .{ .message = dur });
+
+    const rendered = try stringifyAlloc(allocator, &file, &event, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"at\":\"2020-01-01T00:00:00.123Z\",\"span\":\"-3.25s\"}", rendered);
+
+    var parsed = try parseAlloc(allocator, &file, event_desc, rendered, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i64, 1_577_836_800), parsed.get("at").?.values.items[0].message.get("seconds").?.values.items[0].int64);
+    try std.testing.expectEqual(@as(i32, 123_000_000), parsed.get("at").?.values.items[0].message.get("nanos").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i64, -3), parsed.get("span").?.values.items[0].message.get("seconds").?.values.items[0].int64);
+    try std.testing.expectEqual(@as(i32, -250_000_000), parsed.get("span").?.values.items[0].message.get("nanos").?.values.items[0].int32);
 }
