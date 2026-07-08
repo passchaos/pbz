@@ -425,6 +425,42 @@ test "text format formats imported enum names with registry" {
     try std.testing.expectEqualSlices(u8, "kind: ADMIN\n", rendered);
 }
 
+test "text format parses imported message and enum fields with registry" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\message User { string name = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event {
+        \\  common.User user = 1;
+        \\  common.Kind kind = 2;
+        \\  map<string, common.Kind> roles = 3;
+        \\}
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const desc = app.findMessage("Event").?;
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, desc,
+        \\user { name: "Ada" }
+        \\kind: ADMIN
+        \\roles { key: "root" value: ADMIN }
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(u8, "Ada", parsed.get("user").?.values.items[0].message.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("roles").?.values.items[0].map_entry.value.enumeration);
+}
+
 pub fn parseAlloc(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
@@ -475,7 +511,7 @@ const TextParser = struct {
                 if (field == null) {
                     try self.parseUnknownField(message, unknown_number.?);
                     self.consumeSeparator();
-                } else if (field.?.kind == .map or field.?.kind == .message or field.?.kind == .group) {
+                } else if (field.?.kind == .map or field.?.kind == .group or (field.?.kind == .message and !self.fieldIsRegistryEnum(file, message.descriptor, field.?))) {
                     const close = try self.consumeAggregateStart();
                     try self.parseAggregateField(file, message, field.?, close);
                 } else {
@@ -556,6 +592,14 @@ const TextParser = struct {
         });
     }
 
+    fn fieldIsRegistryEnum(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+        const name = switch (field.kind) {
+            .message => |type_name| type_name,
+            else => return false,
+        };
+        return registryEnumDescriptor(file, self.registry, field, name) != null or current.findEnumDeep(name) != null;
+    }
+
     fn readFieldReference(self: *TextParser, descriptor: *const schema.MessageDescriptor) !*const schema.FieldDescriptor {
         self.skipSpace();
         if (self.consume('[')) {
@@ -605,8 +649,8 @@ const TextParser = struct {
             self.consumeSeparator();
         } else {
             const nested_desc = switch (field.kind) {
-                .message => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
-                .group => |type_name| resolveMessageDescriptor(file, message.descriptor, type_name) orelse return error.TypeMismatch,
+                .message => |type_name| resolveMessageDescriptorWithRegistry(file, self.registry, message.descriptor, type_name) orelse return error.TypeMismatch,
+                .group => |type_name| resolveMessageDescriptorWithRegistry(file, self.registry, message.descriptor, type_name) orelse return error.TypeMismatch,
                 else => return error.TypeMismatch,
             };
             const nested = try self.allocator.create(dynamic.DynamicMessage);
@@ -652,7 +696,8 @@ const TextParser = struct {
         return switch (kind) {
             .scalar => |scalar| try self.parseScalar(file, field, scalar),
             .enumeration => |name| try self.parseEnum(file, current, name),
-            .message, .group, .map => error.TypeMismatch,
+            .message => |name| if (registryEnumDescriptor(file, self.registry, field, name) != null) try self.parseEnum(file, current, name) else error.TypeMismatch,
+            .group, .map => error.TypeMismatch,
         };
     }
 
@@ -683,7 +728,7 @@ const TextParser = struct {
 
     fn parseEnum(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) !dynamic.Value {
         const atom = try self.readAtom();
-        const enumeration = current.findEnumDeep(name) orelse file.findEnumDeep(name);
+        const enumeration = registryEnumDescriptor(file, self.registry, null, name) orelse current.findEnumDeep(name) orelse file.findEnumDeep(name);
         if (std.fmt.parseInt(i32, atom, 10)) |number| {
             if (enumeration) |enum_desc| {
                 if (enumIsClosed(file, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
@@ -856,6 +901,14 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
     if (current.findMessageDeep(trimmed)) |message| return message;
     return file.findMessageDeep(trimmed);
+}
+
+fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
+    if (registry) |reg| {
+        if (reg.findMessage(name, current.name)) |message| return message;
+        if (reg.findMessage(name, null)) |message| return message;
+    }
+    return resolveMessageDescriptor(file, current, name);
 }
 
 fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
