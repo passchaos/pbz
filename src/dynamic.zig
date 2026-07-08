@@ -240,10 +240,45 @@ pub const DynamicMessage = struct {
         for (self.unknown_fields.items) |unknown| try writer.appendSlice(unknown.data);
     }
 
+    pub fn encodeDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
+        const indexes = try self.allocator.alloc(usize, self.fields.items.len);
+        defer self.allocator.free(indexes);
+        for (indexes, 0..) |*index, i| index.* = i;
+        std.mem.sort(usize, indexes, self, struct {
+            fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
+                return message.fields.items[a].descriptor.number < message.fields.items[b].descriptor.number;
+            }
+        }.lessThan);
+        for (indexes) |index| {
+            const entry = &self.fields.items[index];
+            if (entry.descriptor.resolvedPacked(file)) {
+                try encodePacked(entry.descriptor, entry.values.items, writer);
+            } else {
+                for (entry.values.items) |value| try encodeField(entry.descriptor, value, file, writer);
+            }
+        }
+        const unknown_indexes = try self.allocator.alloc(usize, self.unknown_fields.items.len);
+        defer self.allocator.free(unknown_indexes);
+        for (unknown_indexes, 0..) |*index, i| index.* = i;
+        std.mem.sort(usize, unknown_indexes, self, struct {
+            fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
+                return message.unknown_fields.items[a].number < message.unknown_fields.items[b].number;
+            }
+        }.lessThan);
+        for (unknown_indexes) |index| try writer.appendSlice(self.unknown_fields.items[index].data);
+    }
+
     pub fn encoded(self: *const DynamicMessage, file: *const schema.FileDescriptor) EncodeError![]u8 {
         var writer = wire.Writer.init(self.allocator);
         errdefer writer.deinit();
         try self.encode(file, &writer);
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn encodedDeterministic(self: *const DynamicMessage, file: *const schema.FileDescriptor) EncodeError![]u8 {
+        var writer = wire.Writer.init(self.allocator);
+        errdefer writer.deinit();
+        try self.encodeDeterministic(file, &writer);
         return try writer.toOwnedSlice();
     }
 
@@ -1239,4 +1274,31 @@ test "dynamic encodes extension fields using extension descriptors" {
     defer decoded.deinit();
     try decoded.decodeWithRegistry(&file, &registry, encoded);
     try std.testing.expectEqual(@as(i32, 123), decoded.get("score").?.values.items[0].int32);
+}
+
+test "dynamic deterministic encoding sorts fields and unknowns by number" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Order { int32 a = 1; int32 b = 2; repeated int32 c = 3; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Order").?;
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("b").?, .{ .int32 = 2 });
+    try msg.add(desc.findField("a").?, .{ .int32 = 1 });
+    try msg.add(desc.findField("c").?, .{ .int32 = 3 });
+    try msg.unknown_fields.append(allocator, .{ .number = 50, .wire_type = .varint, .data = try allocator.dupe(u8, &.{ 0x90, 0x03, 0x01 }) });
+    try msg.unknown_fields.append(allocator, .{ .number = 40, .wire_type = .varint, .data = try allocator.dupe(u8, &.{ 0xc0, 0x02, 0x01 }) });
+
+    const normal = try msg.encoded(&file);
+    defer allocator.free(normal);
+    try std.testing.expectEqualSlices(u8, &.{ 0x10, 0x02, 0x08, 0x01, 0x1a, 0x01, 0x03, 0x90, 0x03, 0x01, 0xc0, 0x02, 0x01 }, normal);
+
+    const deterministic = try msg.encodedDeterministic(&file);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02, 0x1a, 0x01, 0x03, 0xc0, 0x02, 0x01, 0x90, 0x03, 0x01 }, deterministic);
 }
