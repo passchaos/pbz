@@ -10,6 +10,7 @@ pub const parser = @import("parser.zig");
 pub const dynamic = @import("dynamic.zig");
 pub const descriptor = @import("descriptor.zig");
 pub const json = @import("json.zig");
+pub const registry = @import("registry.zig");
 
 pub const Allocator = @import("std").mem.Allocator;
 pub const FieldNumber = wire.FieldNumber;
@@ -28,6 +29,7 @@ pub const decodeFileDescriptorSet = descriptor.decodeFileDescriptorSet;
 pub const stringifyJson = json.stringify;
 pub const stringifyJsonAlloc = json.stringifyAlloc;
 pub const parseJsonAlloc = json.parseAlloc;
+pub const Registry = registry.Registry;
 
 test {
     _ = wire;
@@ -36,4 +38,5 @@ test {
     _ = dynamic;
     _ = descriptor;
     _ = json;
+    _ = registry;
 }

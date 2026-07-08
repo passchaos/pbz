@@ -15,6 +15,8 @@ validated feature set.
   - files, messages, fields, oneofs, enums, services, imports, options
   - proto2/proto3/editions syntax flags and feature defaults
   - proto2 required/optional/repeated cardinality and packed override handling
+- Multi-file registry
+  - package/import-aware lookup for messages/enums across FileDescriptor values
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges
@@ -61,6 +63,20 @@ pub fn example(allocator: std.mem.Allocator) !void {
     const bytes = try msg.encoded(&file);
     defer allocator.free(bytes);
 }
+```
+
+## Type registry
+
+Use `pbz.Registry` to register multiple parsed files and resolve message/enum
+types by absolute or scoped names:
+
+```zig
+var registry = pbz.Registry.init(allocator);
+defer registry.deinit();
+try registry.addFile(&common_file);
+try registry.addFile(&app_file);
+
+const user = registry.findMessage(".demo.common.User", null).?;
 ```
 
 ## JSON support
