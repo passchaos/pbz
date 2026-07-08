@@ -395,6 +395,16 @@ pub const DynamicMessage = struct {
                 continue;
             };
 
+            if (field.kind == .message and fieldMessageEncoding(file, field) == .delimited) {
+                if (tag.wire_type != .start_group) return error.InvalidWireType;
+                var value = try decodeDelimitedMessageValue(self.allocator, file, registry, self.descriptor, field, reader);
+                self.add(field, value) catch |err| {
+                    deinitValue(&value, self.allocator);
+                    return err;
+                };
+                continue;
+            }
+
             if (field.kind == .group) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
                 var value = try decodeGroupValue(self.allocator, file, registry, self.descriptor, field, reader);
@@ -652,11 +662,17 @@ fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const 
         },
         .message => switch (value) {
             .message => |message| {
-                var nested_writer = wire.Writer.init(writer.allocator);
-                defer nested_writer.deinit();
-                // Nested message packing depends on its own file-level features only for repeated scalar fields.
-                try message.encode(file, &nested_writer);
-                try writer.writeMessage(field.number, nested_writer.slice());
+                if (fieldMessageEncoding(file, field) == .delimited) {
+                    try writer.writeTag(field.number, .start_group);
+                    try message.encode(file, writer);
+                    try writer.writeTag(field.number, .end_group);
+                } else {
+                    var nested_writer = wire.Writer.init(writer.allocator);
+                    defer nested_writer.deinit();
+                    // Nested message packing depends on its own file-level features only for repeated scalar fields.
+                    try message.encode(file, &nested_writer);
+                    try writer.writeMessage(field.number, nested_writer.slice());
+                }
             },
             else => return error.TypeMismatch,
         },
@@ -950,6 +966,29 @@ fn decodeGroupValue(
     return .{ .group = message };
 }
 
+fn decodeDelimitedMessageValue(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    current: *const schema.MessageDescriptor,
+    field: *const schema.FieldDescriptor,
+    reader: *wire.Reader,
+) DecodeError!Value {
+    const name = switch (field.kind) {
+        .message => |message_name| message_name,
+        else => return error.TypeMismatch,
+    };
+    const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
+    const message = try allocator.create(DynamicMessage);
+    message.* = DynamicMessage.init(allocator, descriptor);
+    errdefer {
+        message.deinit();
+        allocator.destroy(message);
+    }
+    try message.decodeStream(file, registry, reader, field.number);
+    return .{ .message = message };
+}
+
 fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
@@ -1004,6 +1043,11 @@ fn fieldUtf8Validation(file: ?*const schema.FileDescriptor, field: *const schema
     if (field.features) |features| return features.utf8_validation;
     if (file) |f| return f.features.utf8_validation;
     return .verify;
+}
+
+fn fieldMessageEncoding(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.MessageEncoding {
+    if (field.features) |features| return features.message_encoding;
+    return file.features.message_encoding;
 }
 
 fn fieldHasPresence(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
@@ -1533,6 +1577,87 @@ test "dynamic implicit presence skips default values while explicit presence kee
         const encoded = try msg.encodedDeterministic(&file);
         defer allocator.free(encoded);
         try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x00 }, encoded);
+    }
+}
+
+test "dynamic honors message_encoding delimited for message fields" {
+    const allocator = std.testing.allocator;
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\edition = "2023";
+            \\message Child { int32 id = 1; }
+            \\message Parent {
+            \\  Child child = 1 [features.message_encoding = DELIMITED];
+            \\  Child normal = 2;
+            \\}
+        );
+        defer file.deinit();
+        const child_desc = file.findMessage("Child").?;
+        const parent_desc = file.findMessage("Parent").?;
+
+        const child = try allocator.create(DynamicMessage);
+        child.* = DynamicMessage.init(allocator, child_desc);
+        try child.add(child_desc.findField("id").?, .{ .int32 = 7 });
+        const normal = try allocator.create(DynamicMessage);
+        normal.* = DynamicMessage.init(allocator, child_desc);
+        try normal.add(child_desc.findField("id").?, .{ .int32 = 8 });
+
+        var parent = DynamicMessage.init(allocator, parent_desc);
+        defer parent.deinit();
+        try parent.add(parent_desc.findField("child").?, .{ .message = child });
+        try parent.add(parent_desc.findField("normal").?, .{ .message = normal });
+
+        const encoded = try parent.encoded(&file);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{ 0x0b, 0x08, 0x07, 0x0c, 0x12, 0x02, 0x08, 0x08 }, encoded);
+
+        var decoded = DynamicMessage.init(allocator, parent_desc);
+        defer decoded.deinit();
+        try decoded.decode(&file, encoded);
+        try std.testing.expectEqual(@as(i32, 7), decoded.get("child").?.values.items[0].message.get("id").?.values.items[0].int32);
+        try std.testing.expectEqual(@as(i32, 8), decoded.get("normal").?.values.items[0].message.get("id").?.values.items[0].int32);
+
+        var bad = wire.Writer.init(allocator);
+        defer bad.deinit();
+        var payload = wire.Writer.init(allocator);
+        defer payload.deinit();
+        try payload.writeInt32(1, 9);
+        try bad.writeMessage(1, payload.slice());
+        var bad_msg = DynamicMessage.init(allocator, parent_desc);
+        defer bad_msg.deinit();
+        try std.testing.expectError(error.InvalidWireType, bad_msg.decode(&file, bad.slice()));
+    }
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.message_encoding = DELIMITED;
+            \\message Child { int32 id = 1; }
+            \\message Parent {
+            \\  Child delimited = 1;
+            \\  Child length_prefixed = 2 [features.message_encoding = LENGTH_PREFIXED];
+            \\}
+        );
+        defer file.deinit();
+        const child_desc = file.findMessage("Child").?;
+        const parent_desc = file.findMessage("Parent").?;
+
+        const delimited_child = try allocator.create(DynamicMessage);
+        delimited_child.* = DynamicMessage.init(allocator, child_desc);
+        try delimited_child.add(child_desc.findField("id").?, .{ .int32 = 1 });
+        const length_child = try allocator.create(DynamicMessage);
+        length_child.* = DynamicMessage.init(allocator, child_desc);
+        try length_child.add(child_desc.findField("id").?, .{ .int32 = 2 });
+
+        var parent = DynamicMessage.init(allocator, parent_desc);
+        defer parent.deinit();
+        try parent.add(parent_desc.findField("delimited").?, .{ .message = delimited_child });
+        try parent.add(parent_desc.findField("length_prefixed").?, .{ .message = length_child });
+
+        const encoded = try parent.encoded(&file);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{ 0x0b, 0x08, 0x01, 0x0c, 0x12, 0x02, 0x08, 0x02 }, encoded);
     }
 }
 
