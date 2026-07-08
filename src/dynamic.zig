@@ -253,6 +253,16 @@ pub const DynamicMessage = struct {
             const entry = &self.fields.items[index];
             if (entry.descriptor.resolvedPacked(file)) {
                 try encodePacked(entry.descriptor, entry.values.items, writer);
+            } else if (entry.descriptor.kind == .map) {
+                const value_indexes = try self.allocator.alloc(usize, entry.values.items.len);
+                defer self.allocator.free(value_indexes);
+                for (value_indexes, 0..) |*value_index, i| value_index.* = i;
+                std.mem.sort(usize, value_indexes, entry, struct {
+                    fn lessThan(field_value: *const FieldValue, a: usize, b: usize) bool {
+                        return mapEntryLessThan(field_value.values.items[a], field_value.values.items[b]);
+                    }
+                }.lessThan);
+                for (value_indexes) |value_index| try encodeField(entry.descriptor, entry.values.items[value_index], file, writer);
             } else {
                 for (entry.values.items) |value| try encodeField(entry.descriptor, value, file, writer);
             }
@@ -738,6 +748,29 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
             break :blk .{ .map_entry = cloned };
         },
         else => value,
+    };
+}
+
+fn mapEntryLessThan(a: Value, b: Value) bool {
+    if (a != .map_entry or b != .map_entry) return false;
+    return valueLessThan(a.map_entry.key, b.map_entry.key);
+}
+
+fn valueLessThan(a: Value, b: Value) bool {
+    return switch (a) {
+        .boolean => |av| b == .boolean and !av and b.boolean,
+        .int32 => |av| b == .int32 and av < b.int32,
+        .int64 => |av| b == .int64 and av < b.int64,
+        .uint32 => |av| b == .uint32 and av < b.uint32,
+        .uint64 => |av| b == .uint64 and av < b.uint64,
+        .sint32 => |av| b == .sint32 and av < b.sint32,
+        .sint64 => |av| b == .sint64 and av < b.sint64,
+        .fixed32 => |av| b == .fixed32 and av < b.fixed32,
+        .fixed64 => |av| b == .fixed64 and av < b.fixed64,
+        .sfixed32 => |av| b == .sfixed32 and av < b.sfixed32,
+        .sfixed64 => |av| b == .sfixed64 and av < b.sfixed64,
+        .string => |av| b == .string and std.mem.lessThan(u8, av, b.string),
+        else => false,
     };
 }
 
@@ -1301,4 +1334,29 @@ test "dynamic deterministic encoding sorts fields and unknowns by number" {
     const deterministic = try msg.encodedDeterministic(&file);
     defer allocator.free(deterministic);
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02, 0x1a, 0x01, 0x03, 0xc0, 0x02, 0x01, 0x90, 0x03, 0x01 }, deterministic);
+}
+
+test "dynamic deterministic encoding sorts map entries by key" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { map<string, int32> counts = 1; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    const field = desc.findField("counts").?;
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    const b = try allocator.create(MapEntry);
+    b.* = .{ .key = .{ .string = try allocator.dupe(u8, "b") }, .value = .{ .int32 = 2 } };
+    try msg.add(field, .{ .map_entry = b });
+    const a = try allocator.create(MapEntry);
+    a.* = .{ .key = .{ .string = try allocator.dupe(u8, "a") }, .value = .{ .int32 = 1 } };
+    try msg.add(field, .{ .map_entry = a });
+
+    const deterministic = try msg.encodedDeterministic(&file);
+    defer allocator.free(deterministic);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, &.{ 'a', 0x10, 0x01 }).? < std.mem.indexOf(u8, deterministic, &.{ 'b', 0x10, 0x02 }).?);
 }
