@@ -15,7 +15,26 @@ pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schem
     const file_name = if (file.name.len != 0) file.name else name;
     if (file_name.len != 0) try writer.writeString(1, file_name);
     if (file.package.len != 0) try writer.writeString(2, file.package);
-    for (file.imports.items) |import| try writer.writeString(3, import.path);
+    var dependency_index: i32 = 0;
+    for (file.imports.items) |import| {
+        switch (import.kind) {
+            .option => try writer.writeString(15, import.path),
+            .public => {
+                try writer.writeString(3, import.path);
+                try writer.writeInt32(10, dependency_index);
+                dependency_index += 1;
+            },
+            .weak => {
+                try writer.writeString(3, import.path);
+                try writer.writeInt32(11, dependency_index);
+                dependency_index += 1;
+            },
+            .normal => {
+                try writer.writeString(3, import.path);
+                dependency_index += 1;
+            },
+        }
+    }
     for (file.messages.items) |*message| try writeMessageDescriptor(allocator, file, message, "", 4, writer);
     for (file.enums.items) |*enumeration| try writeEnumDescriptor(allocator, enumeration, 5, writer);
     for (file.services.items) |*service| try writeServiceDescriptor(allocator, service, 6, writer);
@@ -477,6 +496,10 @@ test "descriptor encodes proto3 map entry and editions feature metadata" {
 pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FileDescriptor {
     var file = schema.FileDescriptor.init(allocator);
     errdefer file.deinit();
+    var public_deps: std.ArrayList(i32) = .empty;
+    defer public_deps.deinit(allocator);
+    var weak_deps: std.ArrayList(i32) = .empty;
+    defer weak_deps.deinit(allocator);
     const owned_bytes = try allocator.dupe(u8, bytes);
     try file.owned_strings.append(allocator, owned_bytes);
 
@@ -486,6 +509,9 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             1 => file.name = try reader.readBytes(),
             2 => file.package = try reader.readBytes(),
             3 => try file.imports.append(allocator, .{ .path = try reader.readBytes() }),
+            10 => try public_deps.append(allocator, try reader.readInt32()),
+            11 => try weak_deps.append(allocator, try reader.readInt32()),
+            15 => try file.imports.append(allocator, .{ .path = try reader.readBytes(), .kind = .option }),
             4 => try file.messages.append(allocator, try decodeMessageDescriptor(allocator, try reader.readBytes())),
             5 => try file.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             6 => try file.services.append(allocator, try decodeServiceDescriptor(allocator, try reader.readBytes())),
@@ -501,6 +527,12 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             },
             else => try reader.skipValue(tag),
         }
+    }
+    for (public_deps.items) |idx| {
+        if (idx >= 0 and idx < file.imports.items.len) file.imports.items[@intCast(idx)].kind = .public;
+    }
+    for (weak_deps.items) |idx| {
+        if (idx >= 0 and idx < file.imports.items.len) file.imports.items[@intCast(idx)].kind = .weak;
     }
     try collapseMapEntryMessages(allocator, &file);
     return file;
@@ -1044,4 +1076,23 @@ test "descriptor decodes uninterpreted options" {
     const field = decoded.findMessage("M").?.findField("id").?;
     try std.testing.expectEqualStrings("(demo.field_opt)", field.options.items[0].name);
     try std.testing.expectEqual(@as(i64, 123), field.options.items[0].value.integer);
+}
+
+test "descriptor preserves import dependency kinds" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\import public "public.proto";
+        \\import weak "weak.proto";
+        \\import option "options.proto";
+        \\message M {}
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "imports.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    try std.testing.expectEqual(schema.Import.Kind.public, decoded.imports.items[0].kind);
+    try std.testing.expectEqual(schema.Import.Kind.weak, decoded.imports.items[1].kind);
+    try std.testing.expectEqual(schema.Import.Kind.option, decoded.imports.items[2].kind);
 }

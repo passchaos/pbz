@@ -176,7 +176,7 @@ var decoded_file = try pbz.decodeFileDescriptorProto(allocator, descriptor_bytes
 defer decoded_file.deinit();
 ```
 
-The current descriptor support covers core file/message/field/enum/service
+The current descriptor support covers core file/message/import/field/enum/service
 metadata, map-entry descriptors, packed field options, custom uninterpreted
 options, and edition feature metadata.
 
