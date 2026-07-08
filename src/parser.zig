@@ -10,6 +10,7 @@ pub const ParseError = error{
     InvalidNumber,
     InvalidFieldType,
     InvalidRange,
+    InvalidEscape,
     UnterminatedString,
     UnterminatedComment,
 };
@@ -461,9 +462,7 @@ pub const Parser = struct {
 
     fn parseOptionValue(self: *Parser) Error!schema.OptionValue {
         if (self.current.tag == .string_literal) {
-            const value = self.current.text;
-            try self.advanceVoid();
-            return .{ .string = value };
+            return .{ .string = try self.expectString() };
         }
         if (self.current.tag == .identifier) {
             const value = self.current.text;
@@ -656,11 +655,18 @@ pub const Parser = struct {
         return text;
     }
 
+    fn decodeStringLiteral(self: *Parser, text: []const u8) Error![]const u8 {
+        const decoded = try decodeStringLiteralAlloc(self.allocator, text);
+        errdefer self.allocator.free(decoded);
+        try self.file.owned_strings.append(self.allocator, decoded);
+        return decoded;
+    }
+
     fn expectString(self: *Parser) Error![]const u8 {
         if (self.current.tag != .string_literal) return error.UnexpectedToken;
         const text = self.current.text;
         try self.advanceVoid();
-        return text;
+        return try self.decodeStringLiteral(text);
     }
 
     fn expectSymbol(self: *Parser, symbol: u8) Error!void {
@@ -777,4 +783,82 @@ test "parser handles proto3 optional and map fields" {
     const bag = file.findMessage("Bag").?;
     try std.testing.expect(bag.findField("label").?.proto3_optional);
     try std.testing.expect(bag.findField("counts").?.kind == .map);
+}
+
+fn decodeStringLiteralAlloc(allocator: std.mem.Allocator, text: []const u8) Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var i: usize = 0;
+    while (i < text.len) {
+        const c = text[i];
+        if (c != '\\') {
+            try out.append(allocator, c);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        if (i >= text.len) return error.InvalidEscape;
+        const esc = text[i];
+        i += 1;
+        switch (esc) {
+            'a' => try out.append(allocator, 0x07),
+            'b' => try out.append(allocator, 0x08),
+            'f' => try out.append(allocator, 0x0c),
+            'n' => try out.append(allocator, '\n'),
+            'r' => try out.append(allocator, '\r'),
+            't' => try out.append(allocator, '\t'),
+            'v' => try out.append(allocator, 0x0b),
+            '\\' => try out.append(allocator, '\\'),
+            '\'' => try out.append(allocator, '\''),
+            '"' => try out.append(allocator, '"'),
+            '?' => try out.append(allocator, '?'),
+            'x', 'X' => {
+                var value: u8 = 0;
+                var digits: usize = 0;
+                while (i < text.len and digits < 2) : (digits += 1) {
+                    const digit = hexValue(text[i]) orelse break;
+                    value = value * 16 + digit;
+                    i += 1;
+                }
+                if (digits == 0) return error.InvalidEscape;
+                try out.append(allocator, value);
+            },
+            '0'...'7' => {
+                var value: u8 = esc - '0';
+                var digits: usize = 1;
+                while (i < text.len and digits < 3 and text[i] >= '0' and text[i] <= '7') : (digits += 1) {
+                    value = value * 8 + (text[i] - '0');
+                    i += 1;
+                }
+                try out.append(allocator, value);
+            },
+            else => return error.InvalidEscape,
+        }
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn hexValue(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0',
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
+}
+
+test "parser decodes string and bytes escapes" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Escapes {
+        \\  optional string text = 1 [default = "line\n\x41\101"];
+        \\  optional bytes raw = 2 [default = "\001\x02"];
+        \\}
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    const msg = file.findMessage("Escapes").?;
+    try std.testing.expectEqualSlices(u8, "line\nAA", msg.findField("text").?.default_value.?.string);
+    try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
 }

@@ -424,6 +424,7 @@ pub const FileDescriptor = struct {
     services: std.ArrayList(ServiceDescriptor) = .empty,
     options: OptionList = .empty,
     features: FeatureSet = FeatureSet.defaults(.proto2),
+    owned_strings: std.ArrayList([]u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) FileDescriptor {
         return .{ .allocator = allocator };
@@ -440,6 +441,8 @@ pub const FileDescriptor = struct {
         self.services.deinit(self.allocator);
         self.imports.deinit(self.allocator);
         deinitOptions(&self.options, self.allocator);
+        for (self.owned_strings.items) |owned| self.allocator.free(owned);
+        self.owned_strings.deinit(self.allocator);
         self.* = undefined;
     }
 
