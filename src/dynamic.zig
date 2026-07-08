@@ -2,6 +2,7 @@ const std = @import("std");
 const wire = @import("wire.zig");
 const schema = @import("schema.zig");
 const parser = @import("parser.zig");
+const registry_mod = @import("registry.zig");
 
 pub const DecodeError = wire.Error || std.mem.Allocator.Error || error{TypeMismatch};
 pub const EncodeError = wire.Error || std.mem.Allocator.Error || error{TypeMismatch};
@@ -249,7 +250,13 @@ pub const DynamicMessage = struct {
     pub fn decode(self: *DynamicMessage, file: *const schema.FileDescriptor, bytes: []const u8) DecodeError!void {
         self.clear();
         var reader = wire.Reader.init(bytes);
-        try self.decodeStream(file, &reader, null);
+        try self.decodeStream(file, null, &reader, null);
+    }
+
+    pub fn decodeWithRegistry(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry, bytes: []const u8) DecodeError!void {
+        self.clear();
+        var reader = wire.Reader.init(bytes);
+        try self.decodeStream(file, registry, &reader, null);
     }
 
     pub fn decodeInitialized(self: *DynamicMessage, file: *const schema.FileDescriptor, bytes: []const u8) (DecodeError || ValidationError)!void {
@@ -257,7 +264,7 @@ pub const DynamicMessage = struct {
         try self.validateRequired();
     }
 
-    fn decodeStream(self: *DynamicMessage, file: *const schema.FileDescriptor, reader: *wire.Reader, end_group: ?wire.FieldNumber) DecodeError!void {
+    fn decodeStream(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, reader: *wire.Reader, end_group: ?wire.FieldNumber) DecodeError!void {
         while (try reader.nextTag()) |tag| {
             if (tag.wire_type == .end_group) {
                 if (end_group) |expected| {
@@ -268,7 +275,7 @@ pub const DynamicMessage = struct {
             }
 
             const start = reader.position() - wire.encodedVarintSize(try tag.encode());
-            const field = self.descriptor.findFieldByNumber(tag.number) orelse {
+            const field = self.descriptor.findFieldByNumber(tag.number) orelse registryExtension(registry, self.descriptor, tag.number) orelse {
                 try reader.skipValue(tag);
                 const raw = try self.allocator.dupe(u8, reader.input[start..reader.position()]);
                 self.unknown_fields.append(self.allocator, .{
@@ -284,7 +291,7 @@ pub const DynamicMessage = struct {
 
             if (field.kind == .group) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
-                var value = try decodeGroupValue(self.allocator, file, self.descriptor, field, reader);
+                var value = try decodeGroupValue(self.allocator, file, registry, self.descriptor, field, reader);
                 self.add(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
@@ -326,6 +333,11 @@ pub const DynamicMessage = struct {
         if (end_group != null) return error.TruncatedInput;
     }
 };
+
+fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
+    const reg = registry orelse return null;
+    return reg.findExtension(descriptor.name, number);
+}
 
 fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
     switch (field.kind) {
@@ -561,6 +573,7 @@ fn defaultValue(
 fn decodeGroupValue(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     field: *const schema.FieldDescriptor,
     reader: *wire.Reader,
@@ -576,7 +589,7 @@ fn decodeGroupValue(
         message.deinit();
         allocator.destroy(message);
     }
-    try message.decodeStream(file, reader, field.number);
+    try message.decodeStream(file, registry, reader, field.number);
     return .{ .group = message };
 }
 
@@ -1172,4 +1185,30 @@ test "dynamic mergeFrom appends repeated fields overrides singular and preserves
     try std.testing.expect(left.get("name") == null);
     try std.testing.expectEqual(@as(i32, 9), left.get("code").?.values.items[0].int32);
     try std.testing.expectEqual(@as(usize, 1), left.unknownCount());
+}
+
+test "dynamic decodeWithRegistry decodes proto2 extensions" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { optional int32 id = 1; extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeInt32(1, 7);
+    try writer.writeString(100, "hello");
+
+    var msg = DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.decodeWithRegistry(&file, &registry, writer.slice());
+    try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
+    try std.testing.expectEqualSlices(u8, "hello", msg.get("note").?.values.items[0].string);
 }

@@ -16,7 +16,7 @@ validated feature set.
   - proto2/proto3/editions syntax flags and feature defaults
   - proto2 required/optional/repeated cardinality, enum defaults, and packed override handling
 - Multi-file registry and loader
-  - package/import-aware lookup for messages/enums across FileDescriptor values
+  - package/import-aware lookup for messages/enums/extensions across FileDescriptor values
   - in-memory source tree loader that recursively parses imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
@@ -29,7 +29,7 @@ validated feature set.
   - proto3 default-packed repeated numeric fields and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
   - nested message and group round-trips
-  - unknown field preservation and message merging
+  - unknown field preservation, extension decoding with Registry, and message merging
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - TextFormat support

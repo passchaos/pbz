@@ -41,6 +41,19 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+        const normalized = normalizeName(extendee);
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (field.number == number and field.extendee != null and namesMatch(field.extendee.?, normalized)) return field;
+            }
+            for (file.messages.items) |*message| {
+                if (findExtensionInMessage(message, normalized, number)) |field| return field;
+            }
+        }
+        return null;
+    }
+
     pub fn findType(self: *const Registry, name: []const u8, scope: ?[]const u8) ?TypeRef {
         if (std.mem.startsWith(u8, name, ".")) return self.findAbsolute(name[1..]);
         if (scope) |scope_name| {
@@ -85,6 +98,26 @@ pub const Registry = struct {
         return null;
     }
 };
+
+fn findExtensionInMessage(message: *const schema.MessageDescriptor, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+    for (message.extensions.items) |*field| {
+        if (field.number == number and field.extendee != null and namesMatch(field.extendee.?, extendee)) return field;
+    }
+    for (message.messages.items) |*nested| {
+        if (findExtensionInMessage(nested, extendee, number)) |field| return field;
+    }
+    return null;
+}
+
+fn normalizeName(name: []const u8) []const u8 {
+    return if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+}
+
+fn namesMatch(a: []const u8, b: []const u8) bool {
+    const na = normalizeName(a);
+    const nb = normalizeName(b);
+    return std.mem.eql(u8, na, nb) or std.mem.endsWith(u8, na, nb) or std.mem.endsWith(u8, nb, na);
+}
 
 fn findInFile(file: *const schema.FileDescriptor, relative_name: []const u8) ?TypeRef {
     if (relative_name.len == 0) return null;
@@ -161,4 +194,20 @@ test "registry resolves absolute relative nested and imported types" {
     try std.testing.expect(registry.findEnum("Role", "demo.common.User") != null);
     try std.testing.expect(registry.findMessage("Request", "demo.app") != null);
     try std.testing.expect(registry.findMessage("demo.common.User", "demo.app.Request") != null);
+}
+
+test "registry finds extension fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer file.deinit();
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const ext = registry.findExtension(".demo.Host", 100).?;
+    try std.testing.expectEqualStrings("note", ext.name);
 }
