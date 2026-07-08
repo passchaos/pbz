@@ -268,6 +268,7 @@ pub const DynamicMessage = struct {
     pub fn encode(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
         if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, writer, false);
         for (self.fields.items) |*entry| {
+            if (!fieldHasPresence(file, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValue(entry.descriptor, entry.values.items[0])) continue;
             if (entry.descriptor.resolvedPacked(file)) {
                 try encodePacked(entry.descriptor, entry.values.items, file, writer);
             } else {
@@ -294,6 +295,7 @@ pub const DynamicMessage = struct {
         }.lessThan);
         for (indexes) |index| {
             const entry = &self.fields.items[index];
+            if (!fieldHasPresence(file, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValue(entry.descriptor, entry.values.items[0])) continue;
             if (entry.descriptor.resolvedPacked(file)) {
                 try encodePacked(entry.descriptor, entry.values.items, file, writer);
             } else if (entry.descriptor.kind == .map) {
@@ -1004,6 +1006,38 @@ fn fieldUtf8Validation(file: ?*const schema.FileDescriptor, field: *const schema
     return .verify;
 }
 
+fn fieldHasPresence(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
+    if (field.cardinality == .required or field.proto3_optional or field.oneof_name != null or field.kind == .message or field.kind == .group) return true;
+    if (field.cardinality == .repeated or field.kind == .map) return false;
+    if (field.features) |features| return features.field_presence != .implicit;
+    return file.features.field_presence != .implicit;
+}
+
+fn isDefaultSingularValue(field: *const schema.FieldDescriptor, value: Value) bool {
+    if (field.default_value != null) return false;
+    return switch (field.kind) {
+        .scalar => |scalar| switch (scalar) {
+            .double => value == .double and value.double == 0,
+            .float => value == .float and value.float == 0,
+            .int32 => value == .int32 and value.int32 == 0,
+            .int64 => value == .int64 and value.int64 == 0,
+            .uint32 => value == .uint32 and value.uint32 == 0,
+            .uint64 => value == .uint64 and value.uint64 == 0,
+            .sint32 => value == .sint32 and value.sint32 == 0,
+            .sint64 => value == .sint64 and value.sint64 == 0,
+            .fixed32 => value == .fixed32 and value.fixed32 == 0,
+            .fixed64 => value == .fixed64 and value.fixed64 == 0,
+            .sfixed32 => value == .sfixed32 and value.sfixed32 == 0,
+            .sfixed64 => value == .sfixed64 and value.sfixed64 == 0,
+            .bool => value == .boolean and !value.boolean,
+            .string => value == .string and value.string.len == 0,
+            .bytes => value == .bytes and value.bytes.len == 0,
+        },
+        .enumeration => value == .enumeration and value.enumeration == 0,
+        else => false,
+    };
+}
+
 fn decodeScalarLike(kind: schema.FieldKind, reader: *wire.Reader) DecodeError!Value {
     return switch (kind) {
         .scalar => |scalar| switch (scalar) {
@@ -1446,6 +1480,60 @@ test "dynamic editions honors repeated field encoding features and accepts packe
     try std.testing.expectEqual(@as(usize, 2), packed_decoded_from_expanded.get("values").?.values.items.len);
     try std.testing.expectEqual(@as(i32, 1), packed_decoded_from_expanded.get("values").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), packed_decoded_from_expanded.get("values").?.values.items[1].int32);
+}
+
+test "dynamic implicit presence skips default values while explicit presence keeps them" {
+    const allocator = std.testing.allocator;
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\syntax = "proto3";
+            \\message M {
+            \\  enum Kind { A = 0; B = 1; }
+            \\  int32 id = 1;
+            \\  string name = 2;
+            \\  bool ok = 3;
+            \\  Kind kind = 4;
+            \\  optional int32 opt = 5;
+            \\  oneof pick { int32 code = 6; }
+            \\}
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.add(desc.findField("id").?, .{ .int32 = 0 });
+        try msg.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, "") });
+        try msg.add(desc.findField("ok").?, .{ .boolean = false });
+        try msg.add(desc.findField("kind").?, .{ .enumeration = 0 });
+        try msg.add(desc.findField("opt").?, .{ .int32 = 0 });
+        try msg.add(desc.findField("code").?, .{ .int32 = 0 });
+
+        const encoded = try msg.encoded(&file);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{ 0x28, 0x00, 0x30, 0x00 }, encoded);
+    }
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.field_presence = EXPLICIT;
+            \\message M {
+            \\  int32 explicit_id = 1;
+            \\  int32 implicit_id = 2 [features.field_presence = IMPLICIT];
+            \\}
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.add(desc.findField("explicit_id").?, .{ .int32 = 0 });
+        try msg.add(desc.findField("implicit_id").?, .{ .int32 = 0 });
+
+        const encoded = try msg.encodedDeterministic(&file);
+        defer allocator.free(encoded);
+        try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x00 }, encoded);
+    }
 }
 
 test "dynamic validates string utf8 according to syntax and features" {
