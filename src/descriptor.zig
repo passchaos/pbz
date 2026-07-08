@@ -168,7 +168,7 @@ fn writeFieldDescriptor(
         },
         else => {},
     }
-    if (field.default_value) |value| try writeDefaultValue(allocator, value, 7, &tmp);
+    if (field.default_value) |value| try writeDefaultValue(allocator, file, field.kind, value, 7, &tmp);
     if (field.packed_override != null or field.options.items.len != 0) try writeFieldOptions(allocator, field, 8, &tmp);
     if (containing_message) |message| {
         if (field.oneof_name) |oneof_name| {
@@ -429,10 +429,36 @@ fn oneofIndex(message: *const schema.MessageDescriptor, name: []const u8) ?usize
     return null;
 }
 
-fn writeDefaultValue(allocator: std.mem.Allocator, value: schema.OptionValue, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
-    const text = try optionValueText(allocator, value);
+fn writeDefaultValue(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, kind: schema.FieldKind, value: schema.OptionValue, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    const text = try defaultValueText(allocator, file, kind, value);
     defer allocator.free(text);
     try writer.writeString(field_number, text);
+}
+
+fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, kind: schema.FieldKind, value: schema.OptionValue) std.mem.Allocator.Error![]u8 {
+    if (kind == .enumeration) {
+        if (enumDefaultName(file, kind.enumeration, value)) |name| return try allocator.dupe(u8, name);
+    }
+    return optionValueText(allocator, value);
+}
+
+fn enumDefaultName(file: *const schema.FileDescriptor, enum_name: []const u8, value: schema.OptionValue) ?[]const u8 {
+    const number: i32 = switch (value) {
+        .integer => |v| if (v >= std.math.minInt(i32) and v <= std.math.maxInt(i32)) @intCast(v) else return null,
+        .identifier, .string => |text| {
+            if (file.findEnumDeep(enum_name)) |enumeration| {
+                if (enumeration.findValue(text)) |enum_value| return enum_value.name;
+            }
+            return null;
+        },
+        else => return null,
+    };
+    if (file.findEnumDeep(enum_name)) |enumeration| {
+        for (enumeration.values.items) |enum_value| {
+            if (enum_value.number == number) return enum_value.name;
+        }
+    }
+    return null;
 }
 
 fn optionValueText(allocator: std.mem.Allocator, value: schema.OptionValue) std.mem.Allocator.Error![]u8 {
@@ -581,6 +607,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
         if (idx >= 0 and idx < file.imports.items.len) file.imports.items[@intCast(idx)].kind = .weak;
     }
     try collapseMapEntryMessages(allocator, &file);
+    resolveDecodedEnumDefaults(&file);
     return file;
 }
 
@@ -705,6 +732,30 @@ fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) schema.OptionVal
         .enumeration => .{ .identifier = text },
         else => .{ .string = text },
     };
+}
+
+fn resolveDecodedEnumDefaults(file: *schema.FileDescriptor) void {
+    for (file.messages.items) |*message| resolveMessageEnumDefaults(file, message);
+    for (file.extensions.items) |*field| resolveFieldEnumDefault(file, field);
+}
+
+fn resolveMessageEnumDefaults(file: *schema.FileDescriptor, message: *schema.MessageDescriptor) void {
+    for (message.fields.items) |*field| resolveFieldEnumDefault(file, field);
+    for (message.extensions.items) |*field| resolveFieldEnumDefault(file, field);
+    for (message.messages.items) |*nested| resolveMessageEnumDefaults(file, nested);
+}
+
+fn resolveFieldEnumDefault(file: *schema.FileDescriptor, field: *schema.FieldDescriptor) void {
+    const enum_name = switch (field.kind) {
+        .enumeration => |name| name,
+        else => return,
+    };
+    const default_name = switch (field.default_value orelse return) {
+        .identifier, .string => |text| text,
+        else => return,
+    };
+    const enumeration = file.findEnumDeep(enum_name) orelse return;
+    if (enumeration.findValue(default_name)) |value| field.default_value = .{ .integer = value.number };
 }
 
 fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.EnumDescriptor {
@@ -1076,6 +1127,26 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expectEqual(@as(f64, 1.5), msg.findField("ratio").?.default_value.?.float);
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
+}
+
+test "descriptor encodes enum defaults using enum value names" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+        \\message Defaults { optional Kind kind = 1 [default = ADMIN]; }
+    );
+    defer file.deinit();
+    const field = file.findMessage("Defaults").?.findField("kind").?;
+    const default_text = try defaultValueText(allocator, &file, field.kind, field.default_value.?);
+    defer allocator.free(default_text);
+    try std.testing.expectEqualStrings("ADMIN", default_text);
+
+    const encoded = try encodeFileDescriptorProto(allocator, &file, "enum-default.proto");
+    defer allocator.free(encoded);
+    var decoded = try decodeFileDescriptorProto(allocator, encoded);
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(i64, 7), decoded.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
 }
 
 test "descriptor decodes FileDescriptorSet" {
