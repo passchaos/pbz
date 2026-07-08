@@ -27,7 +27,7 @@ validated feature set.
   - string/bytes literal escape decoding and adjacent literal concatenation
   - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
   - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
-  - packed field option validation for repeated packable scalar/enum fields, with editions rejecting legacy `[packed]` and `group` syntax in favor of features
+  - packed field option validation for repeated packable scalar/enum fields, with editions rejecting legacy `[packed]` and `group` syntax in favor of features and validating implicit-presence default/closed-enum constraints
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation, missing required field path reporting, encode/decodeInitialized helpers, repeated packed fields

@@ -165,6 +165,7 @@ pub const Parser = struct {
         try self.validateMessageSets();
         try self.validateDefaults();
         try self.validatePackedOptions();
+        try self.validateFeatureSemantics();
         return self.file;
     }
 
@@ -1058,6 +1059,31 @@ pub const Parser = struct {
 
     fn validateFieldPackedOption(field: *const schema.FieldDescriptor) ParseError!void {
         if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
+    }
+
+    fn validateFeatureSemantics(self: *Parser) ParseError!void {
+        if (self.file.syntax != .editions) return;
+        for (self.file.messages.items) |*message| try self.validateMessageFeatureSemantics(message);
+        for (self.file.extensions.items) |*field| try self.validateFieldFeatureSemantics(field, null);
+    }
+
+    fn validateMessageFeatureSemantics(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+        for (message.fields.items) |*field| try self.validateFieldFeatureSemantics(field, message);
+        for (message.extensions.items) |*field| try self.validateFieldFeatureSemantics(field, message);
+        for (message.messages.items) |*nested| try self.validateMessageFeatureSemantics(nested);
+    }
+
+    fn validateFieldFeatureSemantics(self: *Parser, field: *const schema.FieldDescriptor, context: ?*schema.MessageDescriptor) ParseError!void {
+        if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null or field.proto3_optional) return;
+        if (field.kind == .message or field.kind == .group) return;
+        const features = field.features orelse self.file.features;
+        if (features.field_presence != .implicit) return;
+        if (field.default_value != null) return error.InvalidDefault;
+        if (field.kind == .enumeration) {
+            const enumeration = self.findEnumDescriptor(field.kind.enumeration, context) orelse return;
+            const enum_features = enumeration.features orelse self.file.features;
+            if (enum_features.enum_type == .closed) return error.InvalidFieldType;
+        }
     }
 
     fn validateTypeSymbols(self: *Parser) ParseError!void {
@@ -2383,6 +2409,34 @@ test "parser applies feature options across declaration scopes" {
     const service = file.services.items[0];
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
     try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, service.methods.items[0].features.?.enforce_proto_limits);
+}
+
+test "parser validates editions implicit presence feature constraints" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.field_presence = IMPLICIT;
+        \\message Bad { int32 id = 1 [default = 1]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.field_presence = IMPLICIT;
+        \\option features.enum_type = CLOSED;
+        \\enum Kind { A = 0; }
+        \\message Bad { Kind kind = 1; }
+    ));
+    var file = try Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.field_presence = IMPLICIT;
+        \\option features.enum_type = CLOSED;
+        \\enum Kind { option features.enum_type = OPEN; A = 0; }
+        \\message Good {
+        \\  Kind kind = 1;
+        \\  int32 explicit_id = 2 [features.field_presence = EXPLICIT, default = 1];
+        \\}
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(@as(usize, 1), file.messages.items.len);
 }
 
 test "parser rejects invalid field edition_defaults and feature_support aggregates" {
