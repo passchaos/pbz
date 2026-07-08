@@ -32,10 +32,10 @@ validated feature set.
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation, missing required field path reporting, encode/decodeInitialized helpers, repeated packed fields
   - proto2 MessageSet wire-format encode/decode for known registry extensions plus unknown item preservation
-  - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries
+  - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries, including imported enums resolved through Registry
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
-  - nested message and group round-trips, including imported message decode through Registry
+  - nested message and group round-trips, including imported message and enum decode through Registry
   - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages

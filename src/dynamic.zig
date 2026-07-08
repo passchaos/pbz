@@ -417,6 +417,32 @@ pub const DynamicMessage = struct {
                 continue;
             }
 
+            if (registryEnumDescriptor(file, registry, self.descriptor, field.kind)) |enumeration| {
+                if (tag.wire_type == .length_delimited and field.cardinality == .repeated) {
+                    const payload = try reader.readBytes();
+                    var packed_reader = wire.Reader.init(payload);
+                    while (!packed_reader.eof()) {
+                        const value_start = packed_reader.position();
+                        const value = try packed_reader.readInt32();
+                        const value_end = packed_reader.position();
+                        if (file.features.enum_type == .closed and !enumHasNumber(enumeration, value)) {
+                            try self.addUnknownVarintPayload(field.number, payload[value_start..value_end]);
+                        } else {
+                            try self.add(field, .{ .enumeration = value });
+                        }
+                    }
+                    continue;
+                }
+                if (tag.wire_type != .varint) return error.InvalidWireType;
+                const value = try reader.readInt32();
+                if (file.features.enum_type == .closed and !enumHasNumber(enumeration, value)) {
+                    try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
+                } else {
+                    try self.add(field, .{ .enumeration = value });
+                }
+                continue;
+            }
+
             // Protobuf decoders must accept packed input for packable repeated
             // fields regardless of whether the schema currently emits packed
             // or expanded encoding. This is especially important across
@@ -920,6 +946,19 @@ fn closedEnumDescriptor(file: *const schema.FileDescriptor, current: *const sche
         .enumeration => |name| name,
         else => return null,
     };
+    return current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name);
+}
+
+fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
+    const enum_name = switch (kind) {
+        .enumeration => |name| name,
+        .message => |name| name,
+        else => return null,
+    };
+    if (registry) |reg| {
+        if (reg.findEnum(enum_name, current.name)) |enumeration| return enumeration;
+        if (reg.findEnum(enum_name, null)) |enumeration| return enumeration;
+    }
     return current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name);
 }
 
@@ -1664,6 +1703,41 @@ test "dynamic decodeWithRegistry resolves imported message fields" {
     const decoded_user = request.get("user").?.values.items[0].message;
     try std.testing.expectEqualStrings("User", decoded_user.descriptor.name);
     try std.testing.expectEqualSlices(u8, "Ada", decoded_user.get("name").?.values.items[0].string);
+}
+
+test "dynamic decodeWithRegistry resolves imported enum fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { A = 1; B = 2; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Event { optional common.Kind kind = 1; repeated common.Kind many = 2; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeInt32(1, 2);
+    try writer.writeInt32(2, 1);
+    try writer.writeInt32(2, 123);
+
+    const event_desc = app.findMessage("Event").?;
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    try event.decodeWithRegistry(&app, &registry, writer.slice());
+    try std.testing.expectEqual(@as(i32, 2), event.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), event.get("many").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(usize, 1), event.get("many").?.values.items.len);
+    try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
 }
 
 test "dynamic encodes extension fields using extension descriptors" {
