@@ -437,6 +437,9 @@ fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.Mes
         if (json_value != .object) return error.TypeMismatch;
         return try emptyKnownMessage(allocator, descriptor);
     }
+    if (typeNameEquals(name, "google.protobuf.Any")) {
+        return try parseAnyMessage(allocator, descriptor, json_value);
+    }
     const text = switch (json_value) {
         .string => |value| value,
         else => return null,
@@ -471,6 +474,36 @@ fn parseKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.Mes
     message.deinit();
     allocator.destroy(message);
     return null;
+}
+
+fn parseAnyMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) !*dynamic.DynamicMessage {
+    const object = switch (json_value) {
+        .object => |object| object,
+        else => return error.TypeMismatch,
+    };
+    const message = try allocator.create(dynamic.DynamicMessage);
+    message.* = dynamic.DynamicMessage.init(allocator, descriptor);
+    errdefer {
+        message.deinit();
+        allocator.destroy(message);
+    }
+    const type_field = descriptor.findField("type_url") orelse return error.TypeMismatch;
+    const value_field = descriptor.findField("value") orelse return error.TypeMismatch;
+    if (object.get("@type")) |type_json| {
+        const type_url = switch (type_json) {
+            .string => |value| value,
+            else => return error.TypeMismatch,
+        };
+        try message.add(type_field, .{ .string = try allocator.dupe(u8, type_url) });
+    }
+    if (object.get("value")) |value_json| {
+        const encoded = switch (value_json) {
+            .string => |value| value,
+            else => return error.TypeMismatch,
+        };
+        try message.add(value_field, .{ .bytes = try decodeBase64(allocator, encoded) });
+    }
+    return message;
 }
 
 fn emptyKnownMessage(allocator: std.mem.Allocator, descriptor: *const schema.MessageDescriptor) !*dynamic.DynamicMessage {
@@ -1045,4 +1078,22 @@ test "json maps Empty message as empty object" {
     var parsed = try parseAlloc(allocator, &file, holder_desc, rendered, .{});
     defer parsed.deinit();
     try std.testing.expect(parsed.get("empty") != null);
+}
+
+test "json parses Any message with type and base64 value" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Holder { .google.protobuf.Any any = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+    var parsed = try parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}}", .{});
+    defer parsed.deinit();
+    const any_msg = parsed.get("any").?.values.items[0].message;
+    try std.testing.expectEqualSlices(u8, "type.googleapis.com/demo.Msg", any_msg.get("type_url").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, "abc", any_msg.get("value").?.values.items[0].bytes);
 }
