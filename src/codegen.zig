@@ -139,7 +139,9 @@ fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, 
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(": ");
     try writeFieldType(field.*, writer);
-    try writer.print(" = {s},\n", .{fieldDefault(field.*)});
+    try writer.writeAll(" = ");
+    try writeFieldDefault(field.*, writer);
+    try writer.writeAll(",\n");
     if (hasPresence(field.*)) {
         try indent(writer, depth);
         try writePresenceIdent(field.name, writer);
@@ -159,11 +161,15 @@ fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Write
     try indent(writer, depth + 1);
     try writer.writeAll("key: ");
     try writer.writeAll(scalarZigType(map_type.key));
-    try writer.print(" = {s},\n", .{scalarDefault(map_type.key)});
+    try writer.writeAll(" = ");
+    try writeScalarDefault(map_type.key, null, writer);
+    try writer.writeAll(",\n");
     try indent(writer, depth + 1);
     try writer.writeAll("value: ");
     try writeFieldKindType(map_type.value.*, writer);
-    try writer.print(" = {s},\n", .{fieldKindDefault(map_type.value.*)});
+    try writer.writeAll(" = ");
+    try writeFieldKindDefault(map_type.value.*, null, writer);
+    try writer.writeAll(",\n");
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
 }
@@ -657,35 +663,112 @@ fn scalarZigType(scalar: schema.ScalarType) []const u8 {
     };
 }
 
-fn scalarDefault(scalar: schema.ScalarType) []const u8 {
-    return switch (scalar) {
-        .string, .bytes => "\"\"",
-        .bool => "false",
-        else => "0",
+fn writeFieldDefault(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (field.cardinality == .repeated or field.kind == .map) return writer.writeAll("&.{}");
+    try writeFieldKindDefault(field.kind, field.default_value, writer);
+}
+
+fn writeFieldKindDefault(kind: schema.FieldKind, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writeScalarDefault(scalar, default_value, writer),
+        .enumeration => try writeIntDefault(i32, default_value, writer),
+        .message => try writer.writeAll("\"\""),
+        else => try writer.writeAll("{}"),
+    }
+}
+
+fn writeScalarDefault(scalar: schema.ScalarType, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double => try writeFloatDefault(f64, default_value, writer),
+        .float => try writeFloatDefault(f32, default_value, writer),
+        .int32, .sint32, .sfixed32 => try writeIntDefault(i32, default_value, writer),
+        .int64, .sint64, .sfixed64 => try writeIntDefault(i64, default_value, writer),
+        .uint32, .fixed32 => try writeIntDefault(u32, default_value, writer),
+        .uint64, .fixed64 => try writeIntDefault(u64, default_value, writer),
+        .bool => try writeBoolDefault(default_value, writer),
+        .string, .bytes => try writeBytesDefault(default_value, writer),
+    }
+}
+
+fn writeIntDefault(comptime T: type, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    const value = optionInt(T, default_value) orelse 0;
+    try writer.print("{d}", .{value});
+}
+
+fn writeFloatDefault(comptime T: type, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    const value = optionFloat(T, default_value) orelse 0;
+    if (std.math.isNan(value)) {
+        try writer.print("std.math.nan({s})", .{scalarZigTypeName(T)});
+    } else if (std.math.isPositiveInf(value)) {
+        try writer.print("std.math.inf({s})", .{scalarZigTypeName(T)});
+    } else if (std.math.isNegativeInf(value)) {
+        try writer.print("-std.math.inf({s})", .{scalarZigTypeName(T)});
+    } else {
+        try writer.print("{d}", .{value});
+    }
+}
+
+fn scalarZigTypeName(comptime T: type) []const u8 {
+    return if (T == f32) "f32" else "f64";
+}
+
+fn writeBoolDefault(default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    const value = optionBool(default_value) orelse false;
+    try writer.writeAll(if (value) "true" else "false");
+}
+
+fn writeBytesDefault(default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    const value = optionText(default_value) orelse "";
+    try writeZigStringLiteral(value, writer);
+}
+
+fn optionText(default_value: ?schema.OptionValue) ?[]const u8 {
+    const value = default_value orelse return null;
+    return switch (value) {
+        .string, .identifier => |text| text,
+        else => null,
     };
 }
 
-fn fieldKindDefault(kind: schema.FieldKind) []const u8 {
-    return switch (kind) {
-        .scalar => |scalar| scalarDefault(scalar),
-        .enumeration => "0",
-        .message => "\"\"",
-        else => "{}",
+fn optionBool(default_value: ?schema.OptionValue) ?bool {
+    const value = default_value orelse return null;
+    return schema.optionAsBool(value);
+}
+
+fn optionInt(comptime T: type, default_value: ?schema.OptionValue) ?T {
+    const value = default_value orelse return null;
+    return switch (value) {
+        .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
+        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch null,
+        else => null,
     };
 }
 
-fn fieldDefault(field: schema.FieldDescriptor) []const u8 {
-    if (field.cardinality == .repeated) return "&.{}";
-    return switch (field.kind) {
-        .scalar => |scalar| switch (scalar) {
-            .string, .bytes => "\"\"",
-            .bool => "false",
-            else => "0",
-        },
-        .enumeration => "0",
-        .message => "\"\"",
-        else => "{}",
+fn optionFloat(comptime T: type, default_value: ?schema.OptionValue) ?T {
+    const value = default_value orelse return null;
+    return switch (value) {
+        .float => |v| @floatCast(v),
+        .integer => |v| @floatFromInt(v),
+        .identifier, .string => |text| std.fmt.parseFloat(T, text) catch null,
+        else => null,
     };
+}
+
+fn writeZigStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeByte('"');
+    for (value) |c| {
+        switch (c) {
+            '\\' => try writer.writeAll("\\\\"),
+            '"' => try writer.writeAll("\\\""),
+            '\n' => try writer.writeAll("\\n"),
+            '\r' => try writer.writeAll("\\r"),
+            '\t' => try writer.writeAll("\\t"),
+            0 => try writer.writeAll("\\x00"),
+            0x01...0x08, 0x0b, 0x0c, 0x0e...0x1f, 0x7f...0xff => try writer.print("\\x{x:0>2}", .{c}),
+            else => try writer.writeByte(c),
+        }
+    }
+    try writer.writeByte('"');
 }
 
 fn writeJsonMethods(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1134,6 +1217,37 @@ test "codegen emits presence flags for optional required and proto3 optional fie
     defer allocator.free(content3);
     try std.testing.expect(std.mem.indexOf(u8, content3, "@\"has_a\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content3, "@\"has_b\": bool = false") == null);
+}
+
+test "codegen emits proto2 scalar and enum defaults" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+        \\message Defaults {
+        \\  optional int32 count = 1 [default = 42];
+        \\  optional string name = 2 [default = "hello\nworld"];
+        \\  optional bool enabled = 3 [default = true];
+        \\  optional Kind kind = 4 [default = ADMIN];
+        \\  optional bytes raw = 5 [default = "\001\x02"];
+        \\  optional float ratio = 6 [default = inf];
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"count\": i32 = 42") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"hello\\nworld\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"enabled\": bool = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"raw\": []const u8 = \"\\x01\\x02\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"ratio\": f32 = std.math.inf(f32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_count\": bool = false") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen output parses as Zig source" {

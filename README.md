@@ -38,6 +38,7 @@ validated feature set.
   - basic ConformanceRequest decode, ConformanceResponse encode, and dynamic runner
 - Protoc plugin and codegen helpers
   - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
+  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults
   - generated typed JSON stringify helpers for scalar, enum, repeated scalar/enum, optional presence, and scalar/enum oneof fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, nested messages, and common separators and # comments
@@ -165,6 +166,8 @@ a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton wit
 Generated message structs also include basic `jsonStringify` and `jsonStringifyAlloc`
 methods for scalar/enum fields, repeated scalar/enum fields, presence-aware optional
 fields, and scalar/enum oneof arms.
+For proto2 schemas, generated scalar and enum fields are initialized with explicit
+`[default = ...]` option values while retaining separate presence flags.
 
 ## Descriptor encoding
 
