@@ -40,9 +40,8 @@ pub const Timestamp = struct {
     }
 
     pub fn jsonStringify(self: Timestamp, writer: *std.Io.Writer) !void {
-        if (self.seconds < 0) return error.UnsupportedNegativeTimestamp;
         const day_seconds: i64 = 24 * 60 * 60;
-        const days: u64 = @intCast(@divTrunc(self.seconds, day_seconds));
+        const days = @divFloor(self.seconds, day_seconds);
         const seconds_of_day: u32 = @intCast(@mod(self.seconds, day_seconds));
         const date = civilFromDays(days);
         const hour = seconds_of_day / 3600;
@@ -91,8 +90,8 @@ pub const Timestamp = struct {
 
 const Date = struct { year: i32, month: u8, day: u8 };
 
-fn civilFromDays(z_in: u64) Date {
-    var z: i64 = @intCast(z_in);
+fn civilFromDays(z_in: i64) Date {
+    var z: i64 = z_in;
     z += 719468;
     const era = @divFloor(z, 146097);
     const doe: u32 = @intCast(z - era * 146097);
@@ -135,4 +134,15 @@ test "timestamp wire and json roundtrip" {
     const parsed = try Timestamp.jsonParse(json);
     try std.testing.expectEqual(ts.seconds, parsed.seconds);
     try std.testing.expectEqual(ts.nanos, parsed.nanos);
+}
+
+test "timestamp json handles pre epoch times" {
+    const allocator = std.testing.allocator;
+    const ts = Timestamp{ .seconds = -1, .nanos = 0 };
+    const json = try ts.jsonStringifyAlloc(allocator);
+    defer allocator.free(json);
+    try std.testing.expectEqualSlices(u8, "\"1969-12-31T23:59:59Z\"", json);
+    const parsed = try Timestamp.jsonParse(json);
+    try std.testing.expectEqual(@as(i64, -1), parsed.seconds);
+    try std.testing.expectEqual(@as(i32, 0), parsed.nanos);
 }
