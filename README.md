@@ -21,7 +21,7 @@ validated feature set.
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, extensions, reserved ranges
   - services/rpc declarations and custom option names including `(ext).field`
-  - string/bytes literal escape decoding for defaults and option values
+  - string/bytes literal escape decoding and adjacent literal concatenation
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation, repeated packed fields

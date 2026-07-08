@@ -664,9 +664,22 @@ pub const Parser = struct {
 
     fn expectString(self: *Parser) Error![]const u8 {
         if (self.current.tag != .string_literal) return error.UnexpectedToken;
-        const text = self.current.text;
+        const first = try self.decodeStringLiteral(self.current.text);
         try self.advanceVoid();
-        return try self.decodeStringLiteral(text);
+        if (self.current.tag != .string_literal) return first;
+
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        try out.appendSlice(self.allocator, first);
+        while (self.current.tag == .string_literal) {
+            const part = try self.decodeStringLiteral(self.current.text);
+            try out.appendSlice(self.allocator, part);
+            try self.advanceVoid();
+        }
+        const joined = try out.toOwnedSlice(self.allocator);
+        errdefer self.allocator.free(joined);
+        try self.file.owned_strings.append(self.allocator, joined);
+        return joined;
     }
 
     fn expectSymbol(self: *Parser, symbol: u8) Error!void {
@@ -861,4 +874,20 @@ test "parser decodes string and bytes escapes" {
     const msg = file.findMessage("Escapes").?;
     try std.testing.expectEqualSlices(u8, "line\nAA", msg.findField("text").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
+}
+
+test "parser concatenates adjacent string literals" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "foo/" "bar.proto";
+        \\message Joined {
+        \\  optional string text = 1 [default = "hello" "\n" "world"];
+        \\}
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    try std.testing.expectEqualSlices(u8, "foo/bar.proto", file.imports.items[0].path);
+    try std.testing.expectEqualSlices(u8, "hello\nworld", file.findMessage("Joined").?.findField("text").?.default_value.?.string);
 }
