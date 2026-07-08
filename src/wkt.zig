@@ -631,6 +631,7 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
         pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Self {
             var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
             defer parsed.deinit();
+            if (parsed.value == .null) return .{ .value = defaultWrapperValue(T) };
             return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, parsed.value) };
         }
     };
@@ -638,16 +639,8 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
 
 fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptime scalar: anytype, value: std.json.Value) !T {
     return switch (scalar) {
-        .double => switch (value) {
-            .float => |v| @floatCast(v),
-            .integer => |v| @floatFromInt(v),
-            else => error.TypeMismatch,
-        },
-        .float => switch (value) {
-            .float => |v| @floatCast(v),
-            .integer => |v| @floatFromInt(v),
-            else => error.TypeMismatch,
-        },
+        .double => try parseWrapperFloat(T, value),
+        .float => try parseWrapperFloat(T, value),
         .int64, .uint64, .int32, .uint32 => switch (value) {
             .integer => |v| @intCast(v),
             .string => |v| try std.fmt.parseInt(T, v, 10),
@@ -665,6 +658,15 @@ fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptim
             .string => |v| try decodeBase64ForWrapper(allocator, v),
             else => error.TypeMismatch,
         },
+    };
+}
+
+fn parseWrapperFloat(comptime T: type, value: std.json.Value) !T {
+    return switch (value) {
+        .float => |v| @floatCast(v),
+        .integer => |v| @floatFromInt(v),
+        .number_string, .string => |v| try std.fmt.parseFloat(T, v),
+        else => error.TypeMismatch,
     };
 }
 
@@ -735,12 +737,19 @@ test "wrapper json parse helpers" {
     const allocator = std.testing.allocator;
     try std.testing.expectEqual(@as(i64, 9007199254740993), (try Int64Value.jsonParse(allocator, "\"9007199254740993\"")).value);
     try std.testing.expectEqual(true, (try BoolValue.jsonParse(allocator, "true")).value);
+    try std.testing.expectEqual(false, (try BoolValue.jsonParse(allocator, "null")).value);
+    try std.testing.expect(std.math.isNan((try DoubleValue.jsonParse(allocator, "\"NaN\"")).value));
+    try std.testing.expect(std.math.isPositiveInf((try FloatValue.jsonParse(allocator, "\"Infinity\"")).value));
     const parsed_string = try StringValue.jsonParse(allocator, "\"zig\"");
     defer allocator.free(parsed_string.value);
     try std.testing.expectEqualSlices(u8, "zig", parsed_string.value);
+    const null_string = try StringValue.jsonParse(allocator, "null");
+    try std.testing.expectEqualSlices(u8, "", null_string.value);
     const bytes = try BytesValue.jsonParse(allocator, "\"aGk=\"");
     defer allocator.free(bytes.value);
     try std.testing.expectEqualSlices(u8, "hi", bytes.value);
+    const null_bytes = try BytesValue.jsonParse(allocator, "null");
+    try std.testing.expectEqualSlices(u8, "", null_bytes.value);
 }
 
 test "timestamp and duration validate ranges" {
