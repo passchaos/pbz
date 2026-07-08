@@ -53,7 +53,9 @@ pub const parseJsonAlloc = json.parseAlloc;
 pub const parseJsonAllocWithRegistry = json.parseAllocWithRegistry;
 pub const Registry = registry.Registry;
 pub const formatText = text.format;
+pub const formatTextWithRegistry = text.formatWithRegistry;
 pub const formatTextAlloc = text.formatAlloc;
+pub const formatTextAllocWithRegistry = text.formatAllocWithRegistry;
 pub const parseTextAlloc = text.parseAlloc;
 pub const parseTextAllocWithRegistry = text.parseAllocWithRegistry;
 pub const MemorySourceTree = loader.MemorySourceTree;
@@ -96,4 +98,32 @@ test {
     _ = plugin;
     _ = codegen;
     _ = conformance;
+}
+
+test "root exports registry-aware text formatting" {
+    const std = @import("std");
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.Kind kind = 1; }
+    );
+    defer app.deinit();
+    var reg = Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&common);
+    try reg.addFile(&app);
+    const desc = app.findMessage("Event").?;
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("kind").?, .{ .enumeration = 1 });
+    const rendered = try formatTextAllocWithRegistry(allocator, &app, &reg, &msg, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualStrings("kind: ADMIN\n", rendered);
 }

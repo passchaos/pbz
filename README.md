@@ -177,9 +177,11 @@ defer parsed_text_msg.deinit();
 ```
 
 Use `parseTextAllocWithRegistry` when parsing TextFormat that contains proto2
-extension references such as `[demo.ext_field]`; formatting dynamic messages
-with extension values emits the same bracketed field-name form. Numeric unknown
-fields are formatted and parsed using their field number, for example
+extension references such as `[demo.ext_field]` or imported message/enum
+fields; use `formatTextAllocWithRegistry` / `formatTextWithRegistry` when
+formatting imported enum names. Formatting dynamic messages with extension
+values emits the same bracketed field-name form. Numeric unknown fields are
+formatted and parsed using their field number, for example
 `100: 123`, `101: "raw-bytes"`, or `102 { 103: 1 }`.
 
 ## Conformance helpers
