@@ -7,7 +7,7 @@ pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{ TypeM
 
 pub const Options = struct {
     enum_as_name: bool = true,
-    preserve_proto_field_names: bool = true,
+    preserve_proto_field_names: bool = false,
     ignore_unknown_fields: bool = false,
     always_print_primitive_fields: bool = false,
 };
@@ -1122,9 +1122,13 @@ test "json uses default lowerCamelCase field names" {
     defer msg.deinit();
     try msg.add(desc.findField("user_id").?, .{ .int32 = 7 });
     try msg.add(desc.findField("display_name").?, .{ .string = try allocator.dupe(u8, "Zig") });
-    const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .preserve_proto_field_names = false });
+    const rendered = try stringifyAlloc(allocator, &file, &msg, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"userId\":7,\"displayName\":\"Zig\"}", rendered);
+
+    const preserved = try stringifyAlloc(allocator, &file, &msg, .{ .preserve_proto_field_names = true });
+    defer allocator.free(preserved);
+    try std.testing.expectEqualSlices(u8, "{\"user_id\":7,\"display_name\":\"Zig\"}", preserved);
 
     var parsed = try parseAlloc(allocator, &file, desc, "{\"userId\":8,\"displayName\":\"Trae\"}", .{});
     defer parsed.deinit();
