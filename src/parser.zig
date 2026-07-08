@@ -642,6 +642,7 @@ pub const Parser = struct {
 
         if (self.matchIdent("group")) {
             if (oneof_name != null) return error.InvalidSyntax;
+            if (self.file.syntax == .editions) return error.InvalidSyntax;
             return try self.parseGroupField(cardinality, oneof_name, parent);
         }
 
@@ -720,7 +721,10 @@ pub const Parser = struct {
             const leaf = optionLeaf(option.name);
             if (std.mem.eql(u8, leaf, "default")) field.default_value = option.value;
             if (std.mem.eql(u8, leaf, "json_name") and option.value == .string) field.json_name = option.value.string;
-            if (std.mem.eql(u8, leaf, "packed")) field.packed_override = schema.optionAsBool(option.value);
+            if (std.mem.eql(u8, leaf, "packed")) {
+                if (self.file.syntax == .editions) return error.InvalidSyntax;
+                field.packed_override = schema.optionAsBool(option.value);
+            }
             if (std.mem.eql(u8, leaf, "edition_defaults")) {
                 const aggregate = switch (option.value) {
                     .aggregate => |text| text,
@@ -2127,6 +2131,24 @@ test "parser rejects invalid packed field options" {
         \\edition = "2023";
         \\message Bad { string name = 1 [features.repeated_field_encoding = PACKED]; }
     ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Bad { repeated int32 values = 1 [packed = true]; }
+    ));
+}
+
+test "parser rejects legacy groups under editions" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Bad { optional group Legacy = 1 { int32 id = 2; } }
+    ));
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Ok { optional group Legacy = 1 { optional int32 id = 2; } }
+    );
+    defer file.deinit();
+    try std.testing.expect(file.findMessage("Ok").?.findField("Legacy").?.kind == .group);
 }
 
 test "parser rejects invalid and reserved field numbers" {
