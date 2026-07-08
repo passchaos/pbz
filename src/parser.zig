@@ -9,6 +9,8 @@ pub const ParseError = error{
     InvalidEdition,
     InvalidNumber,
     InvalidFieldType,
+    InvalidEnum,
+    DuplicateEnumValue,
     DuplicateField,
     InvalidRange,
     InvalidEscape,
@@ -253,6 +255,7 @@ pub const Parser = struct {
                 try enumeration.values.append(self.allocator, .{ .name = name, .number = number, .options = options });
             }
         }
+        try validateEnum(&enumeration, self.file.syntax);
         return enumeration;
     }
 
@@ -746,6 +749,15 @@ pub const Parser = struct {
     }
 };
 
+fn validateEnum(enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) ParseError!void {
+    if (syntax == .proto3 and (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0)) return error.InvalidEnum;
+    for (enumeration.values.items, 0..) |value, i| {
+        for (enumeration.values.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, value.name, other.name) or value.number == other.number) return error.DuplicateEnumValue;
+        }
+    }
+}
+
 fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
@@ -972,5 +984,21 @@ test "parser rejects duplicate field names and numbers" {
     try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { optional int32 a = 1; optional int32 a = 2; }
+    ));
+}
+
+test "parser validates enum values" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidEnum, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Bad { ONE = 1; }
+    ));
+    try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { A = 1; B = 1; }
+    ));
+    try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { A = 1; A = 2; }
     ));
 }
