@@ -45,7 +45,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
-  - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, and typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers
+  - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
   - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
@@ -196,6 +196,8 @@ namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, and `zig_type`) plus typed `write`/`writeAll` and
 `decodeValue`/`decodeAppend` helpers so applications can encode/decode extension
 values or wire them into dynamic registries and custom typed wrappers.
+Extensions of `message_set_wire_format` messages emit MessageSet item groups
+from their generated `write` helper.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
 including generated message payload fields when their types are available.

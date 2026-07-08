@@ -2109,20 +2109,31 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writer.writeAll("pub const zig_type = ");
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
-    try writeExtensionWriteHelpers(field, writer, depth + 1);
+    try writeExtensionWriteHelpers(file, field, writer, depth + 1);
     try writeExtensionDecodeHelpers(field, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n");
 }
 
-fn writeExtensionWriteHelpers(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn write(w: *pbz.Writer, value: ");
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(") !void {\n");
-    try indent(writer, depth + 1);
-    try writeKindWriteCall(field.number, field.kind, "value", "w", writer);
-    try writer.writeAll(");\n");
+    if (extensionUsesMessageSet(file, field)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("try w.writeTag(1, .start_group);\n");
+        try indent(writer, depth + 1);
+        try writer.print("try w.writeUInt32(2, {d});\n", .{field.number});
+        try indent(writer, depth + 1);
+        try writer.writeAll("try w.writeMessage(3, value);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try w.writeTag(1, .end_group);\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writeKindWriteCall(field.number, field.kind, "value", "w", writer);
+        try writer.writeAll(");\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
     if (field.cardinality == .repeated) {
@@ -2135,6 +2146,13 @@ fn writeExtensionWriteHelpers(field: *const schema.FieldDescriptor, writer: *std
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
+}
+
+fn extensionUsesMessageSet(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
+    if (field.kind != .message) return false;
+    const extendee = field.extendee orelse return false;
+    const message = file.findMessageDeep(extendee) orelse return false;
+    return message.messageSetWireFormat();
 }
 
 fn writeExtensionDecodeHelpers(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -2790,6 +2808,28 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, try decodeValue(r));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits MessageSet extension write helper" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Note { optional int32 id = 1; }
+        \\extend Host { optional Note note = 100; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .start_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeUInt32(2, 100);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(3, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .end_group);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
