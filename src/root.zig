@@ -45,6 +45,15 @@ pub const Duration = wkt.Duration;
 pub const FieldMask = wkt.FieldMask;
 pub const Any = wkt.Any;
 pub const Empty = wkt.Empty;
+pub const DoubleValue = wkt.DoubleValue;
+pub const FloatValue = wkt.FloatValue;
+pub const Int64Value = wkt.Int64Value;
+pub const UInt64Value = wkt.UInt64Value;
+pub const Int32Value = wkt.Int32Value;
+pub const UInt32Value = wkt.UInt32Value;
+pub const BoolValue = wkt.BoolValue;
+pub const StringValue = wkt.StringValue;
+pub const BytesValue = wkt.BytesValue;
 
 test {
     _ = wire;

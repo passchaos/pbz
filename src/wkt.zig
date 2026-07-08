@@ -443,3 +443,145 @@ test "empty wire and json helper" {
     try Empty.jsonStringify(&out.writer);
     try std.testing.expectEqualSlices(u8, "{}", out.written());
 }
+
+pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, uint64, int32, uint32, bool, string, bytes }) type {
+    return struct {
+        value: T,
+
+        const Self = @This();
+
+        pub fn encode(self: Self, allocator: std.mem.Allocator) ![]u8 {
+            var writer = wire.Writer.init(allocator);
+            errdefer writer.deinit();
+            switch (scalar) {
+                .double => try writer.writeDouble(1, self.value),
+                .float => try writer.writeFloat(1, self.value),
+                .int64 => try writer.writeInt64(1, self.value),
+                .uint64 => try writer.writeUInt64(1, self.value),
+                .int32 => try writer.writeInt32(1, self.value),
+                .uint32 => try writer.writeUInt32(1, self.value),
+                .bool => try writer.writeBool(1, self.value),
+                .string => try writer.writeString(1, self.value),
+                .bytes => try writer.writeBytes(1, self.value),
+            }
+            return try writer.toOwnedSlice();
+        }
+
+        pub fn decode(bytes: []const u8) !Self {
+            var out = Self{ .value = defaultWrapperValue(T) };
+            var reader = wire.Reader.init(bytes);
+            while (try reader.nextTag()) |tag| {
+                if (tag.number != 1) {
+                    try reader.skipValue(tag);
+                    continue;
+                }
+                out.value = switch (scalar) {
+                    .double => blk: {
+                        try wire.Reader.expectWireType(tag, .fixed64);
+                        break :blk try reader.readDouble();
+                    },
+                    .float => blk: {
+                        try wire.Reader.expectWireType(tag, .fixed32);
+                        break :blk try reader.readFloat();
+                    },
+                    .int64 => blk: {
+                        try wire.Reader.expectWireType(tag, .varint);
+                        break :blk try reader.readInt64();
+                    },
+                    .uint64 => blk: {
+                        try wire.Reader.expectWireType(tag, .varint);
+                        break :blk try reader.readUInt64();
+                    },
+                    .int32 => blk: {
+                        try wire.Reader.expectWireType(tag, .varint);
+                        break :blk try reader.readInt32();
+                    },
+                    .uint32 => blk: {
+                        try wire.Reader.expectWireType(tag, .varint);
+                        break :blk try reader.readUInt32();
+                    },
+                    .bool => blk: {
+                        try wire.Reader.expectWireType(tag, .varint);
+                        break :blk try reader.readBool();
+                    },
+                    .string => blk: {
+                        try wire.Reader.expectWireType(tag, .length_delimited);
+                        break :blk try reader.readBytes();
+                    },
+                    .bytes => blk: {
+                        try wire.Reader.expectWireType(tag, .length_delimited);
+                        break :blk try reader.readBytes();
+                    },
+                };
+            }
+            return out;
+        }
+
+        pub fn jsonStringifyAlloc(self: Self, allocator: std.mem.Allocator) ![]u8 {
+            var out: std.Io.Writer.Allocating = .init(allocator);
+            errdefer out.deinit();
+            try self.jsonStringify(&out.writer);
+            return try out.toOwnedSlice();
+        }
+
+        pub fn jsonStringify(self: Self, writer: *std.Io.Writer) !void {
+            switch (scalar) {
+                .int64, .uint64 => {
+                    try writer.writeAll("\"");
+                    try writer.print("{d}", .{self.value});
+                    try writer.writeAll("\"");
+                },
+                .bytes => {
+                    try writer.writeAll("\"");
+                    try std.base64.standard.Encoder.encodeWriter(writer, self.value);
+                    try writer.writeAll("\"");
+                },
+                else => try std.json.Stringify.value(self.value, .{}, writer),
+            }
+        }
+    };
+}
+
+fn defaultWrapperValue(comptime T: type) T {
+    return switch (@typeInfo(T)) {
+        .bool => false,
+        .int => 0,
+        .float => 0,
+        .pointer => "",
+        else => @compileError("unsupported wrapper type"),
+    };
+}
+
+pub const DoubleValue = Wrapper(f64, .double);
+pub const FloatValue = Wrapper(f32, .float);
+pub const Int64Value = Wrapper(i64, .int64);
+pub const UInt64Value = Wrapper(u64, .uint64);
+pub const Int32Value = Wrapper(i32, .int32);
+pub const UInt32Value = Wrapper(u32, .uint32);
+pub const BoolValue = Wrapper(bool, .bool);
+pub const StringValue = Wrapper([]const u8, .string);
+pub const BytesValue = Wrapper([]const u8, .bytes);
+
+test "wrapper wire and json helpers" {
+    const allocator = std.testing.allocator;
+    const int_value = Int32Value{ .value = 42 };
+    const int_bytes = try int_value.encode(allocator);
+    defer allocator.free(int_bytes);
+    try std.testing.expectEqual(@as(i32, 42), (try Int32Value.decode(int_bytes)).value);
+    const int_json = try int_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(int_json);
+    try std.testing.expectEqualSlices(u8, "42", int_json);
+
+    const str_value = StringValue{ .value = "zig" };
+    const str_bytes = try str_value.encode(allocator);
+    defer allocator.free(str_bytes);
+    try std.testing.expectEqualSlices(u8, "zig", (try StringValue.decode(str_bytes)).value);
+    const str_json = try str_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(str_json);
+    try std.testing.expectEqualSlices(u8, "\"zig\"", str_json);
+
+    const bytes_value = BytesValue{ .value = "hi" };
+    const bytes_json = try bytes_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(bytes_json);
+    try std.testing.expectEqualSlices(u8, "\"aGk=\"", bytes_json);
+}
