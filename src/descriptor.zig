@@ -599,20 +599,22 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             8 => try decodeFileOptions(allocator, &file, try reader.readBytes()),
             12 => {
                 const syntax = try reader.readBytes();
-                if (std.mem.eql(u8, syntax, "proto2")) file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) file.setSyntax(.proto3) else if (std.mem.eql(u8, syntax, "editions")) file.setSyntax(.editions);
+                if (std.mem.eql(u8, syntax, "proto2")) file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) file.setSyntax(.proto3) else if (std.mem.eql(u8, syntax, "editions")) file.setSyntax(.editions) else return error.InvalidFieldType;
             },
             14 => {
                 file.syntax = .editions;
-                file.edition = @enumFromInt(try reader.readInt32());
+                file.edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType;
             },
             else => try reader.skipValue(tag),
         }
     }
     for (public_deps.items) |idx| {
-        if (idx >= 0 and idx < file.imports.items.len) file.imports.items[@intCast(idx)].kind = .public;
+        if (idx < 0 or idx >= file.imports.items.len) return error.InvalidFieldType;
+        file.imports.items[@intCast(idx)].kind = .public;
     }
     for (weak_deps.items) |idx| {
-        if (idx >= 0 and idx < file.imports.items.len) file.imports.items[@intCast(idx)].kind = .weak;
+        if (idx < 0 or idx >= file.imports.items.len) return error.InvalidFieldType;
+        file.imports.items[@intCast(idx)].kind = .weak;
     }
     try collapseMapEntryMessages(allocator, &file);
     resolveDecodedEnumDefaults(&file);
@@ -1649,6 +1651,40 @@ test "descriptor rejects duplicate top-level file symbols" {
         try file.writeString(1, "dup-service.proto");
         try file.writeMessage(6, service.slice());
         try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects invalid file syntax edition and dependency indexes" {
+    const allocator = std.testing.allocator;
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-syntax.proto");
+        try file.writeString(12, "proto4");
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-edition.proto");
+        try file.writeInt32(14, 123456);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-public-dep.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeInt32(10, 1);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-weak-dep.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeInt32(11, -1);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }

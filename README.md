@@ -203,7 +203,7 @@ defer decoded_file.deinit();
 The current descriptor support covers core file/message/import/field/enum/service
 metadata, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode,
-file/message/enum/field uninterpreted options, decoded file/message/field number/label/type-name,
+file/message/enum/field uninterpreted options, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name validation, enum allow_alias, enum descriptor validation,
 service/method validation, and edition feature metadata.
 
