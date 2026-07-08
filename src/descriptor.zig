@@ -686,7 +686,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
             1 => name = try reader.readBytes(),
             2 => extendee = try reader.readBytes(),
             3 => number = @intCast(try reader.readInt32()),
-            4 => cardinality = labelFromNumber(try reader.readInt32()),
+            4 => cardinality = try labelFromNumber(try reader.readInt32()),
             5 => field_type = try reader.readInt32(),
             6 => type_name = try reader.readBytes(),
             7 => default_value_text = try reader.readBytes(),
@@ -984,11 +984,12 @@ fn oneofIndexText(index: i32) Error![]const u8 {
     };
 }
 
-fn labelFromNumber(value: i32) schema.Cardinality {
+fn labelFromNumber(value: i32) Error!schema.Cardinality {
     return switch (value) {
+        1 => .optional,
         2 => .required,
         3 => .repeated,
-        else => .optional,
+        else => error.InvalidFieldType,
     };
 }
 
@@ -1189,6 +1190,27 @@ test "descriptor rejects invalid synthetic map entry key type" {
     const bytes = try encodeFileDescriptorProto(allocator, &file, "bad.proto");
     defer allocator.free(bytes);
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+}
+
+test "descriptor rejects invalid field labels" {
+    const allocator = std.testing.allocator;
+    var field = wire.Writer.init(allocator);
+    defer field.deinit();
+    try field.writeString(1, "bad");
+    try field.writeInt32(3, 1);
+    try field.writeInt32(4, 99);
+    try field.writeInt32(5, 5);
+
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "Bad");
+    try message.writeMessage(2, field.slice());
+
+    var file = wire.Writer.init(allocator);
+    defer file.deinit();
+    try file.writeString(1, "bad-label.proto");
+    try file.writeMessage(4, message.slice());
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
 }
 
 test "descriptor decoded schema owns descriptor bytes" {
