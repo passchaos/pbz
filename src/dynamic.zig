@@ -425,7 +425,7 @@ pub const DynamicMessage = struct {
                         const value_start = packed_reader.position();
                         const value = try packed_reader.readInt32();
                         const value_end = packed_reader.position();
-                        if (file.features.enum_type == .closed and !enumHasNumber(enumeration, value)) {
+                        if (enumIsClosed(file, enumeration) and !enumHasNumber(enumeration, value)) {
                             try self.addUnknownVarintPayload(field.number, payload[value_start..value_end]);
                         } else {
                             try self.add(field, .{ .enumeration = value });
@@ -435,7 +435,7 @@ pub const DynamicMessage = struct {
                 }
                 if (tag.wire_type != .varint) return error.InvalidWireType;
                 const value = try reader.readInt32();
-                if (file.features.enum_type == .closed and !enumHasNumber(enumeration, value)) {
+                if (enumIsClosed(file, enumeration) and !enumHasNumber(enumeration, value)) {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                 } else {
                     try self.add(field, .{ .enumeration = value });
@@ -941,12 +941,12 @@ fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, regi
 }
 
 fn closedEnumDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
-    if (file.features.enum_type != .closed) return null;
     const enum_name = switch (kind) {
         .enumeration => |name| name,
         else => return null,
     };
-    return current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name);
+    const enumeration = current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name) orelse return null;
+    return if (enumIsClosed(file, enumeration)) enumeration else null;
 }
 
 fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
@@ -967,6 +967,11 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
         if (value.number == number) return true;
     }
     return false;
+}
+
+fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
+    if (enumeration.features) |features| return features.enum_type == .closed;
+    return file.features.enum_type == .closed;
 }
 
 fn decodeScalarLike(kind: schema.FieldKind, reader: *wire.Reader) DecodeError!Value {
@@ -1928,6 +1933,56 @@ test "dynamic open enums keep unknown numeric values" {
     try std.testing.expectEqual(@as(i32, 123), msg.get("single").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(i32, 123), msg.get("many").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
+}
+
+test "dynamic enum-level features override file enum openness" {
+    const allocator = std.testing.allocator;
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.enum_type = CLOSED;
+            \\enum Kind { option features.enum_type = OPEN; A = 0; B = 1; }
+            \\message M { Kind single = 1; repeated Kind many = 2; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+
+        var encoded = wire.Writer.init(allocator);
+        defer encoded.deinit();
+        try encoded.writeInt32(1, 123);
+        try encoded.writeInt32(2, 123);
+
+        var msg = DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.decode(&file, encoded.slice());
+        try std.testing.expectEqual(@as(i32, 123), msg.get("single").?.values.items[0].enumeration);
+        try std.testing.expectEqual(@as(i32, 123), msg.get("many").?.values.items[0].enumeration);
+        try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
+    }
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.enum_type = OPEN;
+            \\enum Kind { option features.enum_type = CLOSED; A = 0; B = 1; }
+            \\message M { Kind single = 1; repeated Kind many = 2; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+
+        var encoded = wire.Writer.init(allocator);
+        defer encoded.deinit();
+        try encoded.writeInt32(1, 123);
+        try encoded.writeInt32(2, 1);
+        try encoded.writeInt32(2, 123);
+
+        var msg = DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.decode(&file, encoded.slice());
+        try std.testing.expect(msg.get("single") == null);
+        try std.testing.expectEqual(@as(i32, 1), msg.get("many").?.values.items[0].enumeration);
+        try std.testing.expectEqual(@as(usize, 1), msg.get("many").?.values.items.len);
+        try std.testing.expectEqual(@as(usize, 2), msg.unknownCount());
+    }
 }
 
 test "dynamic closed enum map entries with unknown values are preserved whole" {
