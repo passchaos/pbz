@@ -645,7 +645,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     var field_type: i32 = 0;
     var type_name: ?[]const u8 = null;
     var extendee: ?[]const u8 = null;
-    var default_value: ?schema.OptionValue = null;
+    var default_value_text: ?[]const u8 = null;
     var oneof_index_text: ?[]const u8 = null;
     var json_name: ?[]const u8 = null;
     var proto3_optional = false;
@@ -662,7 +662,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
             4 => cardinality = labelFromNumber(try reader.readInt32()),
             5 => field_type = try reader.readInt32(),
             6 => type_name = try reader.readBytes(),
-            7 => default_value = .{ .string = try reader.readBytes() },
+            7 => default_value_text = try reader.readBytes(),
             8 => {
                 const decoded_options = try decodeFieldOptions(allocator, try reader.readBytes());
                 packed_override = decoded_options.packed_override;
@@ -675,13 +675,14 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         }
     }
 
+    const kind = try kindFromType(allocator, field_type, type_name);
     const field = schema.FieldDescriptor{
         .name = name,
         .number = number,
         .cardinality = cardinality,
-        .kind = try kindFromType(allocator, field_type, type_name),
+        .kind = kind,
         .extendee = extendee,
-        .default_value = default_value,
+        .default_value = if (default_value_text) |text| decodeDefaultValue(kind, text) else null,
         .oneof_name = oneof_index_text,
         .json_name = json_name,
         .proto3_optional = proto3_optional,
@@ -690,6 +691,20 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     };
     field_options = .empty;
     return field;
+}
+
+fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) schema.OptionValue {
+    return switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .double, .float => .{ .float = std.fmt.parseFloat(f64, text) catch 0 },
+            .int32, .int64, .sint32, .sint64, .sfixed32, .sfixed64 => .{ .integer = std.fmt.parseInt(i64, text, 10) catch 0 },
+            .uint32, .uint64, .fixed32, .fixed64 => .{ .integer = @intCast(std.fmt.parseInt(u64, text, 10) catch 0) },
+            .bool => .{ .boolean = std.ascii.eqlIgnoreCase(text, "true") },
+            .string, .bytes => .{ .string = text },
+        },
+        .enumeration => .{ .identifier = text },
+        else => .{ .string = text },
+    };
 }
 
 fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.EnumDescriptor {
@@ -1035,6 +1050,32 @@ test "descriptor decodes encoded FileDescriptorProto back to schema" {
     try std.testing.expect(bag.findField("counts").?.kind == .map);
     try std.testing.expect(bag.findField("kind").?.kind == .enumeration);
     try std.testing.expectEqual(@as(usize, 1), decoded.services.items.len);
+}
+
+test "descriptor decodes scalar default values with typed option values" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Defaults {
+        \\  optional int32 count = 1 [default = 42];
+        \\  optional bool enabled = 2 [default = true];
+        \\  optional float ratio = 3 [default = 1.5];
+        \\  optional string name = 4 [default = "anon"];
+        \\  optional bytes raw = 5 [default = "\001\x02"];
+        \\}
+    );
+    defer file.deinit();
+
+    const encoded = try encodeFileDescriptorProto(allocator, &file, "defaults.proto");
+    defer allocator.free(encoded);
+    var decoded = try decodeFileDescriptorProto(allocator, encoded);
+    defer decoded.deinit();
+    const msg = decoded.findMessage("Defaults").?;
+    try std.testing.expectEqual(@as(i64, 42), msg.findField("count").?.default_value.?.integer);
+    try std.testing.expect(msg.findField("enabled").?.default_value.?.boolean);
+    try std.testing.expectEqual(@as(f64, 1.5), msg.findField("ratio").?.default_value.?.float);
+    try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
+    try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
 }
 
 test "descriptor decodes FileDescriptorSet" {
