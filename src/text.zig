@@ -568,11 +568,10 @@ const TextParser = struct {
     }
 
     fn parseValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, kind: schema.FieldKind) !dynamic.Value {
-        _ = current;
         self.skipSpace();
         return switch (kind) {
             .scalar => |scalar| try self.parseScalar(scalar),
-            .enumeration => |name| try self.parseEnum(file, name),
+            .enumeration => |name| try self.parseEnum(file, current, name),
             .message, .group, .map => error.TypeMismatch,
         };
     }
@@ -597,11 +596,17 @@ const TextParser = struct {
         };
     }
 
-    fn parseEnum(self: *TextParser, file: *const schema.FileDescriptor, name: []const u8) !dynamic.Value {
+    fn parseEnum(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) !dynamic.Value {
         const atom = try self.readAtom();
-        if (std.fmt.parseInt(i32, atom, 10)) |number| return .{ .enumeration = number } else |_| {}
-        if (file.findEnumDeep(name)) |enumeration| {
-            if (enumeration.findValue(atom)) |value| return .{ .enumeration = value.number };
+        const enumeration = current.findEnumDeep(name) orelse file.findEnumDeep(name);
+        if (std.fmt.parseInt(i32, atom, 10)) |number| {
+            if (enumeration) |enum_desc| {
+                if (enumIsClosed(file, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
+            }
+            return .{ .enumeration = number };
+        } else |_| {}
+        if (enumeration) |enum_desc| {
+            if (enum_desc.findValue(atom)) |value| return .{ .enumeration = value.number };
         }
         return error.InvalidEnumValue;
     }
@@ -768,6 +773,18 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     return file.findMessageDeep(trimmed);
 }
 
+fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
+    if (enumeration.features) |features| return features.enum_type == .closed;
+    return file.features.enum_type == .closed;
+}
+
+fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
+    for (enumeration.values.items) |value| {
+        if (value.number == number) return true;
+    }
+    return false;
+}
+
 fn parseTextInt(comptime T: type, atom: []const u8) !T {
     var text = atom;
     var negative = false;
@@ -827,6 +844,36 @@ test "text format parses dynamic messages" {
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
     try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 1), msg.get("kind").?.values.items[0].enumeration);
+}
+
+test "text format honors closed enum feature for numeric values" {
+    const allocator = std.testing.allocator;
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.enum_type = CLOSED;
+            \\enum Kind { option features.enum_type = OPEN; A = 0; B = 1; }
+            \\message M { Kind kind = 1; repeated Kind many = 2; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = try parseAlloc(allocator, &file, desc, "kind: 123 many: 123");
+        defer msg.deinit();
+        try std.testing.expectEqual(@as(i32, 123), msg.get("kind").?.values.items[0].enumeration);
+        try std.testing.expectEqual(@as(i32, 123), msg.get("many").?.values.items[0].enumeration);
+    }
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\edition = "2023";
+            \\option features.enum_type = OPEN;
+            \\enum Kind { option features.enum_type = CLOSED; A = 0; B = 1; }
+            \\message M { Kind kind = 1; map<string, Kind> keyed = 2; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "kind: 123"));
+        try std.testing.expectError(error.InvalidEnumValue, parseAlloc(allocator, &file, desc, "keyed { key: \"bad\" value: 123 }"));
+    }
 }
 
 test "text format formats and parses proto2 extensions" {
