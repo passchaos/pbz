@@ -149,6 +149,15 @@ pub const DynamicMessage = struct {
         return if (first) |start| self.unknown_fields.items[start..last] else &.{};
     }
 
+    pub fn unknownByNumberAlloc(self: *const DynamicMessage, allocator: std.mem.Allocator, number: wire.FieldNumber) std.mem.Allocator.Error![]UnknownField {
+        var fields: std.ArrayList(UnknownField) = .empty;
+        errdefer fields.deinit(allocator);
+        for (self.unknown_fields.items) |field| {
+            if (field.number == number) try fields.append(allocator, field);
+        }
+        return try fields.toOwnedSlice(allocator);
+    }
+
     pub fn clearUnknownFields(self: *DynamicMessage) void {
         for (self.unknown_fields.items) |*field| field.deinit(self.allocator);
         self.unknown_fields.clearRetainingCapacity();
@@ -1359,4 +1368,30 @@ test "dynamic deterministic encoding sorts map entries by key" {
     const deterministic = try msg.encodedDeterministic(&file);
     defer allocator.free(deterministic);
     try std.testing.expect(std.mem.indexOf(u8, deterministic, &.{ 'a', 0x10, 0x01 }).? < std.mem.indexOf(u8, deterministic, &.{ 'b', 0x10, 0x02 }).?);
+}
+
+test "dynamic unknownByNumberAlloc returns non-contiguous unknown fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Empty {}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Empty").?;
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeUInt32(100, 1);
+    try writer.writeUInt32(101, 2);
+    try writer.writeUInt32(100, 3);
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.decode(&file, writer.slice());
+    const fields = try msg.unknownByNumberAlloc(allocator, 100);
+    defer allocator.free(fields);
+    try std.testing.expectEqual(@as(usize, 2), fields.len);
+    try std.testing.expectEqual(@as(wire.FieldNumber, 100), fields[0].number);
+    try std.testing.expectEqual(@as(wire.FieldNumber, 100), fields[1].number);
 }

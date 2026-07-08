@@ -29,7 +29,7 @@ validated feature set.
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
   - nested message and group round-trips
-  - unknown field preservation, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
+  - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - Well-known types
