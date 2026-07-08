@@ -664,13 +664,15 @@ fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema
     try indent(writer, depth);
     try writer.print("{d} => ", .{field.number});
     if (field.cardinality == .repeated) {
-        try writeDecodePackedEnumField(field, writer, depth);
+        try writeDecodePackedEnumField(file, field, writer, depth);
     } else if (field.oneof_name != null) {
-        try writeOneofDecodeAssign(file, field, "readInt32", writer);
+        try writeOneofEnumDecodeAssign(file, field, writer);
     } else {
-        try writer.writeAll("{ self.");
+        try writer.writeAll("{ const value = try r.readInt32();");
+        try writeEnumClosedCheck(file, field, "value", writer);
+        try writer.writeAll(" self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try r.readInt32();");
+        try writer.writeAll(" = value;");
         try writeSetPresence(file, field, writer);
         try writer.writeAll(" },\n");
     }
@@ -717,21 +719,26 @@ fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
     try writer.writeAll("},\n");
 }
 
-fn writeDecodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("{\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("while (!packed_reader.eof()) try ");
+    try writer.writeAll("while (!packed_reader.eof()) { const value = try packed_reader.readInt32();");
+    try writeEnumClosedCheck(file, field, "value", writer);
+    try writer.writeAll(" try ");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".append(allocator, try packed_reader.readInt32());\n");
+    try writer.writeAll(".append(allocator, value); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("} else {\n");
     try indent(writer, depth + 2);
-    try writeRepeatedAppendPrefix(field, writer);
-    try writer.writeAll("try r.readInt32());\n");
+    try writer.writeAll("{ const value = try r.readInt32();");
+    try writeEnumClosedCheck(file, field, "value", writer);
+    try writer.writeAll(" try ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".append(allocator, value); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -814,6 +821,35 @@ fn writeOneofMessageDecodeAssign(file: *const schema.FileDescriptor, field: *con
     try writer.writeAll(" = ");
     try writeMessagePayloadRead(file, field, "r", writer);
     try writer.writeAll(" },\n");
+}
+
+fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    const oneof_name = field.oneof_name orelse return;
+    try writer.writeAll("{ const value = try r.readInt32();");
+    try writeEnumClosedCheck(file, field, "value", writer);
+    try writer.writeAll(" self.");
+    try writeQuotedIdent(oneof_name, writer);
+    try writer.writeAll(" = .{ .");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = value }; },\n");
+}
+
+fn writeEnumClosedCheck(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    const enum_name = switch (field.kind) {
+        .enumeration => |name| name,
+        else => return,
+    };
+    if (!enumIsClosed(file, enum_name)) return;
+    try writer.writeAll(" if (");
+    if (file.findEnumDeep(enum_name)) |enumeration| {
+        for (enumeration.values.items, 0..) |value, i| {
+            if (i != 0) try writer.writeAll(" and ");
+            try writer.print("{s} != {d}", .{ value_expr, value.number });
+        }
+    } else {
+        try writer.writeAll("true");
+    }
+    try writer.writeAll(") return error.InvalidEnumValue;");
 }
 
 fn writeEntryReadExpr(kind: schema.FieldKind, reader_name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -2763,7 +2799,7 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var packed_reader = pbz.Reader.init(try r.readBytes())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try @\"ids_list\".append(allocator, try packed_reader.readInt32())") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try @\"kinds_list\".append(allocator, try packed_reader.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value = try packed_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"kinds_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -2886,7 +2922,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "_ = allocator;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"id\" = try r.readInt32(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"name\" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { self.@\"kind\" = try r.readInt32(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); self.@\"kind\" = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.@\"payload\" = try r.readBytes(); }") != null);
 }
 
@@ -2903,7 +2939,7 @@ test "codegen decodes repeated scalar enum and message payload fields" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "var @\"ids_list\": std.ArrayList(i32) = .empty") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"kinds_list\".append(allocator, try r.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); try @\"kinds_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"children_list\".append(allocator, try r.readBytes())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ids\" = try @\"ids_list\".toOwnedSlice(allocator)") != null);
 }
@@ -3361,4 +3397,26 @@ test "codegen honors editions enum type features in JSON parse" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"closed\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"open\" = try @This().jsonEnum(value, &.{\"NONE\", \"USER\"}, &.{0, 1}, false);") != null);
+}
+
+test "codegen validates closed enum values in wire decode" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.enum_type = OPEN;
+        \\enum ClosedKind { option features.enum_type = CLOSED; UNKNOWN = 0; ADMIN = 1; }
+        \\message M {
+        \\  ClosedKind single = 1;
+        \\  repeated ClosedKind many = 2;
+        \\  oneof pick { ClosedKind choice = 3; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; self.@\"single\" = value; self.@\"has_single\" = true; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value = try packed_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; self.@\"pick\" = .{ .@\"choice\" = value }; }") != null);
 }
