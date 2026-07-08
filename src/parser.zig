@@ -158,6 +158,7 @@ pub const Parser = struct {
         errdefer self.file.deinit();
         try self.parseFile();
         try self.resolveFieldKinds();
+        try self.validateExtensions();
         try self.validateDefaults();
         try self.validatePackedOptions();
         return self.file;
@@ -680,6 +681,26 @@ pub const Parser = struct {
 
     fn validateFieldPackedOption(field: *const schema.FieldDescriptor) ParseError!void {
         if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
+    }
+
+    fn validateExtensions(self: *Parser) ParseError!void {
+        for (self.file.extensions.items) |*field| try self.validateExtensionField(field);
+        for (self.file.messages.items) |*message| try self.validateMessageExtensions(message);
+    }
+
+    fn validateMessageExtensions(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+        for (message.extensions.items) |*field| try self.validateExtensionField(field);
+        for (message.messages.items) |*nested| try self.validateMessageExtensions(nested);
+    }
+
+    fn validateExtensionField(self: *Parser, field: *const schema.FieldDescriptor) ParseError!void {
+        const extendee_name = field.extendee orelse return;
+        const extendee = self.file.findMessageDeep(extendee_name) orelse return;
+        for (extendee.extension_ranges.items) |range| {
+            const end = range.end orelse std.math.maxInt(i64);
+            if (field.number >= range.start and field.number < end) return;
+        }
+        return error.ReservedField;
     }
 
     fn resolveEnumDefault(self: *Parser, field: *schema.FieldDescriptor, context: ?*schema.MessageDescriptor) void {
@@ -1306,6 +1327,23 @@ test "parser rejects normal fields inside extension ranges" {
     try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { extensions 100 to 200; optional int32 id = 150; }
+    ));
+}
+
+test "parser validates extension field numbers against extension ranges" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { optional int32 ok = 150; }
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(@as(u29, 150), file.extensions.items[0].number);
+
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { optional int32 bad = 99; }
     ));
 }
 
