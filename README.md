@@ -45,6 +45,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
+  - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 required fields around typed encode/decode
@@ -192,6 +193,9 @@ support bounds, insertion points, and generated-code metadata payload passthroug
 or structured `GeneratedCodeInfo` annotations.
 `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
+Generated files expose `proto_package`, `proto_syntax`, and an `imports`
+namespace that maps imported `.proto` paths to their generated `.pb.zig` module
+aliases while preserving import kind/path metadata.
 For `service` declarations, generated files include a `services` namespace with
 service/method metadata, an unimplemented `Handler` stub, and a `Client` wrapper
 that dispatches serialized request/response payloads through a caller-provided

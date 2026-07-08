@@ -9,6 +9,7 @@ pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDes
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(\"pbz\");\n\n");
+    try writeFileMetadata(allocator, file, &out.writer, 0);
     for (file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (file.messages.items) |*message| try writeMessage(file, message, &out.writer, 0);
     try writeExtensionMetadata(file, &out.writer, 0);
@@ -36,6 +37,52 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
         .supported_features = plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{.proto3_optional}),
         .files = response_files,
     }).encode(allocator);
+}
+
+fn writeFileMetadata(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const proto_package = ");
+    try writeZigStringLiteral(file.package, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub const proto_syntax = ");
+    try writeZigStringLiteral(switch (file.syntax) {
+        .proto2 => "proto2",
+        .proto3 => "proto3",
+        .editions => "editions",
+    }, writer);
+    try writer.writeAll(";\n");
+    if (file.imports.items.len != 0) {
+        try indent(writer, depth);
+        try writer.writeAll("pub const imports = struct {\n");
+        for (file.imports.items) |import| try writeImportDecl(allocator, import, writer, depth + 1);
+        try indent(writer, depth);
+        try writer.writeAll("};\n");
+    }
+    try writer.writeAll("\n");
+}
+
+fn writeImportDecl(allocator: std.mem.Allocator, import: schema.Import, writer: *std.Io.Writer, depth: usize) Error!void {
+    const module_path = try outputName(allocator, import.path);
+    defer allocator.free(module_path);
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(import.path, writer);
+    try writer.writeAll(" = @import(");
+    try writeZigStringLiteral(module_path, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdentWithSuffix(import.path, "_path", writer);
+    try writer.writeAll(" = ");
+    try writeZigStringLiteral(import.path, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdentWithSuffix(import.path, "_kind", writer);
+    try writer.writeAll(" = ");
+    try writeZigStringLiteral(@tagName(import.kind), writer);
+    try writer.writeAll(";\n");
 }
 
 fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -2416,6 +2463,32 @@ test "codegen emits zig message and enum skeletons" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Kind\" = enum(i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"User\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"name_number\" = 1") != null);
+}
+
+test "codegen emits package and import module metadata" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\import public "public/common.proto";
+        \\message A {}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const proto_package = \"demo.app\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const proto_syntax = \"proto2\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const imports = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"common.proto\" = @import(\"common.pb.zig\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"common.proto_kind\" = \"normal\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"public/common.proto\" = @import(\"public/common.pb.zig\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"public/common.proto_kind\" = \"public\";") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen emits protoc response" {
