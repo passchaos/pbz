@@ -419,25 +419,53 @@ const TextParser = struct {
 
     fn readString(self: *TextParser) ![]u8 {
         self.skipSpace();
-        try self.expect('"');
+        if (self.eof() or (self.peek() != '"' and self.peek() != '\'')) return error.UnexpectedToken;
+        const quote = self.peek();
+        self.index += 1;
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
         while (!self.eof()) {
             const c = self.input[self.index];
             self.index += 1;
-            if (c == '"') return try out.toOwnedSlice(self.allocator);
+            if (c == quote) return try out.toOwnedSlice(self.allocator);
             if (c == '\\') {
                 if (self.eof()) return error.UnexpectedEof;
                 const esc = self.input[self.index];
                 self.index += 1;
-                try out.append(self.allocator, switch (esc) {
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    '\\' => '\\',
-                    '"' => '"',
-                    else => esc,
-                });
+                switch (esc) {
+                    'n' => try out.append(self.allocator, '\n'),
+                    'r' => try out.append(self.allocator, '\r'),
+                    't' => try out.append(self.allocator, '\t'),
+                    'a' => try out.append(self.allocator, 0x07),
+                    'b' => try out.append(self.allocator, 0x08),
+                    'f' => try out.append(self.allocator, 0x0c),
+                    'v' => try out.append(self.allocator, 0x0b),
+                    '\\' => try out.append(self.allocator, '\\'),
+                    '\'' => try out.append(self.allocator, '\''),
+                    '"' => try out.append(self.allocator, '"'),
+                    '?' => try out.append(self.allocator, '?'),
+                    'x', 'X' => {
+                        var value: u8 = 0;
+                        var digits: usize = 0;
+                        while (!self.eof() and digits < 2) : (digits += 1) {
+                            const digit = hexValue(self.peek()) orelse break;
+                            value = value * 16 + digit;
+                            self.index += 1;
+                        }
+                        if (digits == 0) return error.InvalidCharacter;
+                        try out.append(self.allocator, value);
+                    },
+                    '0'...'7' => {
+                        var value: u8 = esc - '0';
+                        var digits: usize = 1;
+                        while (!self.eof() and digits < 3 and self.peek() >= '0' and self.peek() <= '7') : (digits += 1) {
+                            value = value * 8 + (self.peek() - '0');
+                            self.index += 1;
+                        }
+                        try out.append(self.allocator, value);
+                    },
+                    else => try out.append(self.allocator, esc),
+                }
             } else try out.append(self.allocator, c);
         }
         return error.UnexpectedEof;
@@ -507,6 +535,15 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
     if (current.findMessageDeep(trimmed)) |message| return message;
     return file.findMessageDeep(trimmed);
+}
+
+fn hexValue(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0',
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
 }
 
 test "text format parses dynamic messages" {
@@ -587,4 +624,22 @@ test "text format parser skips hash comments" {
     defer msg.deinit();
     try std.testing.expectEqual(@as(i32, 1), msg.get("a").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "x", msg.get("b").?.values.items[0].string);
+}
+
+test "text format parser decodes single quoted hex octal and C escapes" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message M { optional string text = 1; optional bytes raw = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\text: 'line\n\x41\101'
+        \\raw: "\001\x02\a\b\f\v\?"
+    );
+    defer msg.deinit();
+    try std.testing.expectEqualSlices(u8, "line\nAA", msg.get("text").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02, 0x07, 0x08, 0x0c, 0x0b, '?' }, msg.get("raw").?.values.items[0].bytes);
 }
