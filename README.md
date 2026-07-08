@@ -178,7 +178,8 @@ Packable repeated scalar and enum fields emit packed wire format when resolved
 as packed, and generated decoders accept both packed and expanded input.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
-scalar/enum map fields, presence-aware optional fields, bytes/base64, and scalar/enum oneof arms.
+scalar/enum map fields, lowerCamelCase/json_name field names, presence-aware
+optional fields, bytes/base64, and scalar/enum oneof arms.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 

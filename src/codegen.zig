@@ -284,6 +284,10 @@ fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try indent(writer, depth + 1);
     try writer.writeAll("var self = @This().init();\n");
     for (message.fields.items) |*field| try writeRepeatedListDecl(field, writer, depth + 1);
+    if (!messageHasRepeatedOrMap(message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = allocator;\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     try indent(writer, depth + 1);
@@ -302,6 +306,13 @@ fn writeDecode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn messageHasRepeatedOrMap(message: *const schema.MessageDescriptor) bool {
+    for (message.fields.items) |field| {
+        if (field.cardinality == .repeated or field.kind == .map) return true;
+    }
+    return false;
 }
 
 fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
@@ -936,6 +947,50 @@ fn writeZigStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeByte('"');
 }
 
+fn writeZigLowerCamelStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeByte('"');
+    try writeLowerCamelEscaped(value, writer);
+    try writer.writeByte('"');
+}
+
+fn writeJsonFieldNameLiteralContents(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (field.json_name) |json_name| {
+        try writeEscapedStringContents(json_name, writer);
+    } else {
+        try writeLowerCamelEscaped(field.name, writer);
+    }
+}
+
+fn writeLowerCamelEscaped(value: []const u8, writer: *std.Io.Writer) Error!void {
+    var upper_next = false;
+    for (value) |c| {
+        if (c == '_') {
+            upper_next = true;
+            continue;
+        }
+        const out = if (upper_next) std.ascii.toUpper(c) else c;
+        upper_next = false;
+        try writeEscapedStringChar(out, writer);
+    }
+}
+
+fn writeEscapedStringContents(value: []const u8, writer: *std.Io.Writer) Error!void {
+    for (value) |c| try writeEscapedStringChar(c, writer);
+}
+
+fn writeEscapedStringChar(c: u8, writer: *std.Io.Writer) Error!void {
+    switch (c) {
+        '\\' => try writer.writeAll("\\\\"),
+        '"' => try writer.writeAll("\\\""),
+        '\n' => try writer.writeAll("\\n"),
+        '\r' => try writer.writeAll("\\r"),
+        '\t' => try writer.writeAll("\\t"),
+        0 => try writer.writeAll("\\x00"),
+        0x01...0x08, 0x0b, 0x0c, 0x0e...0x1f, 0x7f...0xff => try writer.print("\\x{x:0>2}", .{c}),
+        else => try writer.writeByte(c),
+    }
+}
+
 fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
@@ -1192,6 +1247,10 @@ fn writeJsonKeyCondition(field: *const schema.FieldDescriptor, writer: *std.Io.W
         try writer.writeAll(" or std.mem.eql(u8, key, ");
         try writeZigStringLiteral(json_name, writer);
         try writer.writeAll(")");
+    } else {
+        try writer.writeAll(" or std.mem.eql(u8, key, ");
+        try writeZigLowerCamelStringLiteral(field.name, writer);
+        try writer.writeAll(")");
     }
 }
 
@@ -1330,7 +1389,9 @@ fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer,
     try indent(writer, depth);
     try writer.writeAll("if (!first) try writer.writeAll(\",\"); first = false;\n");
     try indent(writer, depth);
-    try writer.print("try writer.writeAll(\"\\\"{s}\\\":\");\n", .{field.name});
+    try writer.writeAll("try writer.writeAll(\"\\\"");
+    try writeJsonFieldNameLiteralContents(field, writer);
+    try writer.writeAll("\\\":\");\n");
 }
 
 fn writeJsonScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1788,6 +1849,7 @@ test "codegen emits basic decode method" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "_ = allocator;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"id\" = try r.readInt32(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"name\" = try r.readBytes(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { self.@\"kind\" = try r.readInt32(); }") != null);
@@ -1930,9 +1992,12 @@ test "codegen emits typed json stringify and parse methods" {
         \\  repeated string tags = 5;
         \\  optional bool active = 6;
         \\  Kind kind = 7;
+        \\  int32 user_id = 10;
+        \\  string display_name = 11 [json_name = "shownName"];
         \\  oneof choice {
         \\    string alias = 8;
         \\    int32 code = 9;
+        \\    string alt_name = 12;
         \\  }
         \\}
     );
@@ -1942,6 +2007,8 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"id\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"userId\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"shownName\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.base64.standard.Encoder.encodeWriter(writer, value);") != null);
@@ -1955,10 +2022,13 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_json_arena\" = arena") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"id\" = try @This().jsonInt(i32, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"display_name\") or std.mem.eql(u8, key, \"shownName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"raw\" = try @This().jsonBytes(arena_allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (array.items) |item| try list.append(allocator, try @This().jsonString(item));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"alias\" = try @This().jsonString(value) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"alt_name\") or std.mem.eql(u8, key, \"altName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
 }
 
