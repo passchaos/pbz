@@ -159,6 +159,7 @@ pub const Parser = struct {
         try self.parseFile();
         try self.resolveFieldKinds();
         try self.validateDefaults();
+        try self.validatePackedOptions();
         return self.file;
     }
 
@@ -666,6 +667,21 @@ pub const Parser = struct {
         }
     }
 
+    fn validatePackedOptions(self: *Parser) ParseError!void {
+        for (self.file.messages.items) |*message| try self.validateMessagePackedOptions(message);
+        for (self.file.extensions.items) |*field| try validateFieldPackedOption(field);
+    }
+
+    fn validateMessagePackedOptions(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+        for (message.fields.items) |*field| try validateFieldPackedOption(field);
+        for (message.extensions.items) |*field| try validateFieldPackedOption(field);
+        for (message.messages.items) |*nested| try self.validateMessagePackedOptions(nested);
+    }
+
+    fn validateFieldPackedOption(field: *const schema.FieldDescriptor) ParseError!void {
+        if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
+    }
+
     fn resolveEnumDefault(self: *Parser, field: *schema.FieldDescriptor, context: ?*schema.MessageDescriptor) void {
         const enum_name = switch (field.kind) {
             .enumeration => |name| name,
@@ -1160,6 +1176,22 @@ test "parser rejects invalid field defaults" {
         \\syntax = "proto2";
         \\enum Kind { UNKNOWN = 0; }
         \\message Bad { optional Kind kind = 1 [default = MISSING]; }
+    ));
+}
+
+test "parser rejects invalid packed field options" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [packed = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { repeated string names = 1 [packed = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Bad { string name = 1 [features.repeated_field_encoding = PACKED]; }
     ));
 }
 

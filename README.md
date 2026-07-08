@@ -24,6 +24,7 @@ validated feature set.
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
+  - packed field option validation for repeated packable scalar/enum fields
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation, missing required field path reporting, decodeInitialized, repeated packed fields
