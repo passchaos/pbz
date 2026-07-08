@@ -5,7 +5,13 @@ pub const Timestamp = struct {
     seconds: i64 = 0,
     nanos: i32 = 0,
 
+    pub fn validate(self: Timestamp) !void {
+        if (self.seconds < -62135596800 or self.seconds > 253402300799) return error.TimestampOutOfRange;
+        if (self.nanos < 0 or self.nanos > 999_999_999) return error.InvalidNanos;
+    }
+
     pub fn encode(self: Timestamp, allocator: std.mem.Allocator) ![]u8 {
+        try self.validate();
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
         if (self.seconds != 0) try writer.writeInt64(1, self.seconds);
@@ -40,6 +46,7 @@ pub const Timestamp = struct {
     }
 
     pub fn jsonStringify(self: Timestamp, writer: *std.Io.Writer) !void {
+        try self.validate();
         const day_seconds: i64 = 24 * 60 * 60;
         const days = @divFloor(self.seconds, day_seconds);
         const seconds_of_day: u32 = @intCast(@mod(self.seconds, day_seconds));
@@ -151,7 +158,14 @@ pub const Duration = struct {
     seconds: i64 = 0,
     nanos: i32 = 0,
 
+    pub fn validate(self: Duration) !void {
+        if (self.seconds < -315_576_000_000 or self.seconds > 315_576_000_000) return error.DurationOutOfRange;
+        if (self.nanos <= -1_000_000_000 or self.nanos >= 1_000_000_000) return error.InvalidNanos;
+        if ((self.seconds < 0 and self.nanos > 0) or (self.seconds > 0 and self.nanos < 0)) return error.DurationSignMismatch;
+    }
+
     pub fn encode(self: Duration, allocator: std.mem.Allocator) ![]u8 {
+        try self.validate();
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
         if (self.seconds != 0) try writer.writeInt64(1, self.seconds);
@@ -186,6 +200,7 @@ pub const Duration = struct {
     }
 
     pub fn jsonStringify(self: Duration, writer: *std.Io.Writer) !void {
+        try self.validate();
         try writer.writeAll("\"");
         if (self.seconds < 0 or self.nanos < 0) try writer.writeAll("-");
         try writer.print("{d}", .{@abs(self.seconds)});
@@ -642,4 +657,15 @@ test "wrapper json parse helpers" {
     const bytes = try BytesValue.jsonParse(allocator, "\"aGk=\"");
     defer allocator.free(bytes.value);
     try std.testing.expectEqualSlices(u8, "hi", bytes.value);
+}
+
+test "timestamp and duration validate ranges" {
+    try std.testing.expectError(error.InvalidNanos, (Timestamp{ .seconds = 0, .nanos = -1 }).validate());
+    try std.testing.expectError(error.TimestampOutOfRange, (Timestamp{ .seconds = 253402300800 }).validate());
+    try (Timestamp{ .seconds = -62135596800, .nanos = 0 }).validate();
+
+    try std.testing.expectError(error.InvalidNanos, (Duration{ .seconds = 0, .nanos = 1_000_000_000 }).validate());
+    try std.testing.expectError(error.DurationSignMismatch, (Duration{ .seconds = 1, .nanos = -1 }).validate());
+    try std.testing.expectError(error.DurationOutOfRange, (Duration{ .seconds = 315_576_000_001 }).validate());
+    try (Duration{ .seconds = -3, .nanos = -1 }).validate();
 }

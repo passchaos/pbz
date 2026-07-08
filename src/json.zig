@@ -3,7 +3,7 @@ const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
 
-pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{ TypeMismatch, UnsupportedNegativeTimestamp };
+pub const Error = std.Io.Writer.Error || std.mem.Allocator.Error || error{ TypeMismatch, TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch };
 
 pub const Options = struct {
     enum_as_name: bool = true,
