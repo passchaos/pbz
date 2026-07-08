@@ -43,7 +43,7 @@ validated feature set.
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including Any expanded payload JSON, Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing and float special values, FieldMask path validation, and strict Empty object parsing
 - Conformance helpers
-  - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output and missing-required path parse errors
+  - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic protobuf output, registry-aware imported JSON/Text types, and missing-required path parse errors
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; generated plugin responses advertise proto3 optional and editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
@@ -187,7 +187,7 @@ fields are formatted and parsed using their field number, for example
 `pbz.ConformanceRequest` and `pbz.ConformanceResponse` provide basic wire
 structures and a dynamic-message runner for integrating with protobuf conformance-style runners,
 including safe handling for unknown request enum values, deterministic protobuf output,
-and parse errors that identify missing proto2 required field paths when available.
+registry-aware parsing/printing for imported JSON/Text message and enum types, and parse errors that identify missing proto2 required field paths when available.
 
 ## Protoc plugin helpers
 

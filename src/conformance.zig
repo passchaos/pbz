@@ -109,13 +109,13 @@ pub fn runDynamic(
             if (try validateRequiredResponse(allocator, &message)) |response| return response;
         },
         .json_payload => |payload| {
-            var parsed = json.parseAlloc(allocator, file, descriptor, payload, .{ .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test }) catch |err| return try parseError(allocator, err);
+            var parsed = json.parseAllocWithRegistry(allocator, file, registry, descriptor, payload, .{ .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test }) catch |err| return try parseError(allocator, err);
             defer parsed.deinit();
             try message.mergeFrom(&parsed);
             if (try validateRequiredResponse(allocator, &message)) |response| return response;
         },
         .text_payload => |payload| {
-            var parsed = text.parseAlloc(allocator, file, descriptor, payload) catch |err| return try parseError(allocator, err);
+            var parsed = text.parseAllocWithRegistry(allocator, file, registry, descriptor, payload) catch |err| return try parseError(allocator, err);
             defer parsed.deinit();
             try message.mergeFrom(&parsed);
             if (try validateRequiredResponse(allocator, &message)) |response| return response;
@@ -130,7 +130,7 @@ pub fn runDynamic(
             break :blk try (ConformanceResponse{ .result = .{ .protobuf_payload = payload } }).encode(allocator);
         },
         .json => blk: {
-            const payload = json.stringifyAlloc(allocator, file, &message, .{}) catch |err| return try serializeError(allocator, err);
+            const payload = json.stringifyAllocWithRegistry(allocator, file, registry, &message, .{}) catch |err| return try serializeError(allocator, err);
             defer allocator.free(payload);
             break :blk try (ConformanceResponse{ .result = .{ .json_payload = payload } }).encode(allocator);
         },
@@ -259,6 +259,39 @@ test "conformance dynamic runner converts json to deterministic protobuf" {
     const tag = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(wire.FieldNumber, 3), tag.number);
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02 }, try reader.readBytes());
+}
+
+test "conformance dynamic runner uses registry for imported json types" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\message User { string name = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.User user = 1; common.Kind kind = 2; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\"}" },
+        .requested_output_format = .json,
+        .message_type = "app.Event",
+        .test_category = .json_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 4), tag.number);
+    try std.testing.expectEqualSlices(u8, "{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\"}", try reader.readBytes());
 }
 
 test "conformance dynamic runner reports missing required fields" {
