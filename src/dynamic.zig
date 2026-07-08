@@ -102,6 +102,7 @@ pub const DynamicMessage = struct {
     }
 
     pub fn add(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
+        if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
         if (!field.isRepeatedLike() and entry.values.items.len != 0) {
             deinitValue(&entry.values.items[0], self.allocator);
@@ -112,6 +113,16 @@ pub const DynamicMessage = struct {
 
     pub fn addClone(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
         try self.add(field, try cloneValue(self.allocator, value));
+    }
+
+    pub fn whichOneof(self: *const DynamicMessage, oneof_name: []const u8) ?*const schema.FieldDescriptor {
+        for (self.fields.items) |*entry| {
+            if (entry.values.items.len == 0) continue;
+            if (entry.descriptor.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof_name)) return entry.descriptor;
+            }
+        }
+        return null;
     }
 
     pub fn validateRequired(self: *const DynamicMessage) ValidationError!void {
@@ -138,6 +149,20 @@ pub const DynamicMessage = struct {
         }
         try self.fields.append(self.allocator, .{ .descriptor = field });
         return &self.fields.items[self.fields.items.len - 1];
+    }
+
+    fn clearOneofExcept(self: *DynamicMessage, oneof_name: []const u8, keep_number: wire.FieldNumber) void {
+        var index: usize = 0;
+        while (index < self.fields.items.len) {
+            const entry = &self.fields.items[index];
+            const same_oneof = if (entry.descriptor.oneof_name) |name| std.mem.eql(u8, name, oneof_name) else false;
+            if (same_oneof and entry.descriptor.number != keep_number) {
+                entry.deinit(self.allocator);
+                _ = self.fields.swapRemove(index);
+                continue;
+            }
+            index += 1;
+        }
     }
 
     pub fn encode(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
@@ -811,4 +836,42 @@ test "dynamic editions honors repeated field encoding features and accepts packe
     try std.testing.expectEqual(@as(usize, 2), packed_decoded_from_expanded.get("values").?.values.items.len);
     try std.testing.expectEqual(@as(i32, 1), packed_decoded_from_expanded.get("values").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), packed_decoded_from_expanded.get("values").?.values.items[1].int32);
+}
+
+test "dynamic oneof keeps only the last selected field" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Choice {
+        \\  oneof pick {
+        \\    string name = 1;
+        \\    int32 id = 2;
+        \\  }
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Choice").?;
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try message.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, "first") });
+    try std.testing.expectEqualStrings("name", message.whichOneof("pick").?.name);
+    try message.add(desc.findField("id").?, .{ .int32 = 99 });
+    try std.testing.expect(message.get("name") == null);
+    try std.testing.expectEqualStrings("id", message.whichOneof("pick").?.name);
+    try std.testing.expectEqual(@as(i32, 99), message.get("id").?.values.items[0].int32);
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(1, "wire-first");
+    try writer.writeInt32(2, 7);
+
+    var decoded = DynamicMessage.init(allocator, desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, writer.slice());
+    try std.testing.expect(decoded.get("name") == null);
+    try std.testing.expectEqualStrings("id", decoded.whichOneof("pick").?.name);
+    try std.testing.expectEqual(@as(i32, 7), decoded.get("id").?.values.items[0].int32);
 }
