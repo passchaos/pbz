@@ -2,6 +2,7 @@ const std = @import("std");
 const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
+const registry_mod = @import("registry.zig");
 
 pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch };
 
@@ -40,12 +41,23 @@ pub fn parseAlloc(
     bytes: []const u8,
     options: Options,
 ) anyerror!dynamic.DynamicMessage {
+    return try parseAllocWithRegistry(allocator, file, null, descriptor, bytes, options);
+}
+
+pub fn parseAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    descriptor: *const schema.MessageDescriptor,
+    bytes: []const u8,
+    options: Options,
+) anyerror!dynamic.DynamicMessage {
     var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
     defer parsed.deinit();
 
     var message = dynamic.DynamicMessage.init(allocator, descriptor);
     errdefer message.deinit();
-    try fillMessage(allocator, file, &message, parsed.value, options);
+    try fillMessageWithRegistry(allocator, file, registry, &message, parsed.value, options);
     return message;
 }
 
@@ -56,16 +68,28 @@ pub fn fillMessage(
     json_value: std.json.Value,
     options: Options,
 ) anyerror!void {
+    try fillMessageWithRegistry(allocator, file, null, message, json_value, options);
+}
+
+pub fn fillMessageWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *dynamic.DynamicMessage,
+    json_value: std.json.Value,
+    options: Options,
+) anyerror!void {
     const object = switch (json_value) {
         .object => |object| object,
         else => return error.TypeMismatch,
     };
-    try fillMessageObject(allocator, file, message, object, options, false);
+    try fillMessageObject(allocator, file, registry, message, object, options, false);
 }
 
 fn fillMessageObject(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     message: *dynamic.DynamicMessage,
     object: std.json.ObjectMap,
     options: Options,
@@ -80,14 +104,14 @@ fn fillMessageObject(
         };
         if (entry.value_ptr.* == .null) continue;
         if (field.kind == .map) {
-            try parseMapField(allocator, file, message, field, entry.value_ptr.*, options);
+            try parseMapField(allocator, file, registry, message, field, entry.value_ptr.*, options);
         } else if (field.cardinality == .repeated) {
             const array = switch (entry.value_ptr.*) {
                 .array => |array| array,
                 else => return error.TypeMismatch,
             };
             for (array.items) |item| {
-                var value = parseValue(allocator, file, message.descriptor, field.kind, item, options) catch |err| {
+                var value = parseValue(allocator, file, registry, message.descriptor, field.kind, item, options) catch |err| {
                     if (shouldIgnoreEnumParseError(options, field.kind, err)) continue;
                     return err;
                 };
@@ -97,7 +121,7 @@ fn fillMessageObject(
                 };
             }
         } else {
-            var value = parseValue(allocator, file, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
+            var value = parseValue(allocator, file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
                 if (shouldIgnoreEnumParseError(options, field.kind, err)) continue;
                 return err;
             };
@@ -112,6 +136,7 @@ fn fillMessageObject(
 fn parseMapField(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     message: *dynamic.DynamicMessage,
     field: *const schema.FieldDescriptor,
     json_value: std.json.Value,
@@ -129,7 +154,7 @@ fn parseMapField(
     while (it.next()) |entry| {
         var key = try parseMapKey(allocator, map_type.key, entry.key_ptr.*);
         errdefer dynamic.deinitValue(&key, allocator);
-        var map_value = parseValue(allocator, file, message.descriptor, map_type.value.*, entry.value_ptr.*, options) catch |err| {
+        var map_value = parseValue(allocator, file, registry, message.descriptor, map_type.value.*, entry.value_ptr.*, options) catch |err| {
             if (shouldIgnoreEnumParseError(options, map_type.value.*, err)) {
                 dynamic.deinitValue(&key, allocator);
                 continue;
@@ -154,6 +179,7 @@ fn shouldIgnoreEnumParseError(options: Options, kind: schema.FieldKind, err: any
 fn parseValue(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     kind: schema.FieldKind,
     json_value: std.json.Value,
@@ -161,9 +187,10 @@ fn parseValue(
 ) anyerror!dynamic.Value {
     return switch (kind) {
         .scalar => |scalar| try parseScalar(allocator, scalar, json_value),
-        .enumeration => |name| try parseEnum(file, name, json_value),
+        .enumeration => |name| try parseEnumWithRegistry(file, registry, current, name, json_value),
         .message => |name| blk: {
-            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            if (registryEnumDescriptor(file, registry, current, name)) |_| break :blk try parseEnumWithRegistry(file, registry, current, name, json_value);
+            const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
             if (try parseKnownMessage(allocator, file, descriptor, name, json_value)) |known| break :blk .{ .message = known };
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
@@ -171,18 +198,18 @@ fn parseValue(
                 nested.deinit();
                 allocator.destroy(nested);
             }
-            try fillMessage(allocator, file, nested, json_value, options);
+            try fillMessageWithRegistry(allocator, file, registry, nested, json_value, options);
             break :blk .{ .message = nested };
         },
         .group => |name| blk: {
-            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
             errdefer {
                 nested.deinit();
                 allocator.destroy(nested);
             }
-            try fillMessage(allocator, file, nested, json_value, options);
+            try fillMessageWithRegistry(allocator, file, registry, nested, json_value, options);
             break :blk .{ .group = nested };
         },
         .map => error.TypeMismatch,
@@ -223,6 +250,21 @@ fn parseEnum(file: *const schema.FileDescriptor, name: []const u8, json_value: s
         .string => |value| {
             if (file.findEnumDeep(name)) |enumeration| {
                 for (enumeration.values.items) |enum_value| {
+                    if (std.mem.eql(u8, enum_value.name, value)) return .{ .enumeration = enum_value.number };
+                }
+            }
+            return .{ .enumeration = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue };
+        },
+        else => return .{ .enumeration = try numberAsInt(i32, json_value) },
+    }
+}
+
+fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value) !dynamic.Value {
+    const enumeration = registryEnumDescriptor(file, registry, current, name);
+    switch (json_value) {
+        .string => |value| {
+            if (enumeration) |enum_desc| {
+                for (enum_desc.values.items) |enum_value| {
                     if (std.mem.eql(u8, enum_value.name, value)) return .{ .enumeration = enum_value.number };
                 }
             }
@@ -308,6 +350,23 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
     if (current.findMessageDeep(trimmed)) |message| return message;
     return file.findMessageDeep(trimmed);
+}
+
+fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
+    if (registry) |reg| {
+        if (reg.findMessage(name, current.name)) |message| return message;
+        if (reg.findMessage(name, null)) |message| return message;
+    }
+    return resolveMessageDescriptor(file, current, name);
+}
+
+fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
+    if (registry) |reg| {
+        if (reg.findEnum(name, current.name)) |enumeration| return enumeration;
+        if (reg.findEnum(name, null)) |enumeration| return enumeration;
+    }
+    const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    return current.findEnumDeep(trimmed) orelse file.findEnumDeep(trimmed);
 }
 
 fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, options: Options) ?*const schema.FieldDescriptor {
@@ -744,7 +803,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
             payload.deinit();
             allocator.destroy(payload);
         }
-        try fillMessageObject(allocator, file, payload, object, .{}, true);
+        try fillMessageObject(allocator, file, null, payload, object, .{}, true);
         const encoded = try payload.encodedDeterministic(file);
         defer allocator.free(encoded);
         try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
@@ -1156,6 +1215,37 @@ test "json parse dynamic message with scalars repeated maps enums and nested mes
     const rendered = try stringifyAlloc(allocator, &file, &bag, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", rendered);
+}
+
+test "json parse with registry resolves imported message and enum fields" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message User { string name = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.User user = 1; common.Kind kind = 2; repeated common.Kind roles = 3; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    var event = try parseAllocWithRegistry(allocator, &app, &registry, app.findMessage("Event").?,
+        \\{"user":{"name":"Ada"},"kind":"ADMIN","roles":["ADMIN",0]}
+    , .{});
+    defer event.deinit();
+
+    try std.testing.expectEqualSlices(u8, "Ada", event.get("user").?.values.items[0].message.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 1), event.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), event.get("roles").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 0), event.get("roles").?.values.items[1].enumeration);
 }
 
 test "json parses and prints enum numbers and unknown enum values" {

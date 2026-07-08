@@ -41,6 +41,7 @@ pub const decodeGeneratedCodeInfo = descriptor.decodeGeneratedCodeInfo;
 pub const stringifyJson = json.stringify;
 pub const stringifyJsonAlloc = json.stringifyAlloc;
 pub const parseJsonAlloc = json.parseAlloc;
+pub const parseJsonAllocWithRegistry = json.parseAllocWithRegistry;
 pub const Registry = registry.Registry;
 pub const formatText = text.format;
 pub const formatTextAlloc = text.formatAlloc;
