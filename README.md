@@ -26,7 +26,7 @@ validated feature set.
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
   - proto2 strings/bytes, required-field validation and decodeInitialized, repeated packed fields
-  - proto3 default-packed repeated numeric fields and map fields
+  - proto3 optional fields, default-packed repeated numeric fields, and map fields
   - editions `features.repeated_field_encoding` packed/expanded behavior
   - nested message and group round-trips
   - unknown field preservation, extension encoding/decoding with Registry, deterministic encoding, and message merging
@@ -177,7 +177,7 @@ defer decoded_file.deinit();
 ```
 
 The current descriptor support covers core file/message/import/field/enum/service
-metadata, map-entry descriptors, packed field options, custom uninterpreted
+metadata, map-entry/proto3-optional descriptors, packed field options, custom uninterpreted
 options, and edition feature metadata.
 
 ## Build and test

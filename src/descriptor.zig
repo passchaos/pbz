@@ -88,6 +88,9 @@ fn writeMessageDescriptor(
     for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, range, 5, &tmp);
     for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, field, 6, &tmp);
     for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, oneof, 8, &tmp);
+    for (message.fields.items) |*field| {
+        if (field.proto3_optional and field.oneof_name == null) try writeSyntheticOneofDescriptor(allocator, field, 8, &tmp);
+    }
     for (message.reserved_ranges.items) |range| try writeReservedRange(allocator, range, 9, &tmp);
     for (message.reserved_names.items) |reserved_name| try tmp.writeString(10, reserved_name);
 
@@ -166,14 +169,25 @@ fn writeFieldDescriptor(
     }
     if (field.default_value) |value| try writeDefaultValue(allocator, value, 7, &tmp);
     if (field.packed_override != null or field.options.items.len != 0) try writeFieldOptions(allocator, field, 8, &tmp);
-    if (field.oneof_name) |oneof_name| {
-        if (containing_message) |message| {
+    if (containing_message) |message| {
+        if (field.oneof_name) |oneof_name| {
             if (oneofIndex(message, oneof_name)) |index| try tmp.writeInt32(9, @intCast(index));
+        } else if (field.proto3_optional) {
+            if (syntheticOneofIndex(message, field)) |index| try tmp.writeInt32(9, @intCast(index));
         }
     }
     if (field.json_name) |json_name| try tmp.writeString(10, json_name);
     if (field.proto3_optional) try tmp.writeBool(17, true);
 
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeSyntheticOneofDescriptor(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    const name = try syntheticOneofName(allocator, field);
+    defer allocator.free(name);
+    try tmp.writeString(1, name);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -374,6 +388,21 @@ fn typeNumber(kind: schema.FieldKind) i32 {
         .message, .map => 11,
         .enumeration => 14,
     };
+}
+
+fn syntheticOneofIndex(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ?usize {
+    var index = message.oneofs.items.len;
+    for (message.fields.items) |*candidate| {
+        if (candidate.proto3_optional and candidate.oneof_name == null) {
+            if (candidate.number == field.number) return index;
+            index += 1;
+        }
+    }
+    return null;
+}
+
+fn syntheticOneofName(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor) std.mem.Allocator.Error![]const u8 {
+    return try std.fmt.allocPrint(allocator, "_{s}", .{field.name});
 }
 
 fn oneofIndex(message: *const schema.MessageDescriptor, name: []const u8) ?usize {
@@ -1095,4 +1124,22 @@ test "descriptor preserves import dependency kinds" {
     try std.testing.expectEqual(schema.Import.Kind.public, decoded.imports.items[0].kind);
     try std.testing.expectEqual(schema.Import.Kind.weak, decoded.imports.items[1].kind);
     try std.testing.expectEqual(schema.Import.Kind.option, decoded.imports.items[2].kind);
+}
+
+test "descriptor encodes proto3 optional synthetic oneof" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { optional int32 value = 1; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "optional.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    const msg = decoded.findMessage("M").?;
+    try std.testing.expectEqual(@as(usize, 1), msg.oneofs.items.len);
+    try std.testing.expectEqualStrings("_value", msg.oneofs.items[0].name);
+    try std.testing.expectEqualStrings("_value", msg.findField("value").?.oneof_name.?);
+    try std.testing.expect(msg.findField("value").?.proto3_optional);
 }
