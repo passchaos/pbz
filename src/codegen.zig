@@ -82,10 +82,14 @@ fn writeEncode(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
 }
 
 fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const scalar = switch (field.kind) {
-        .scalar => |scalar| scalar,
+    switch (field.kind) {
+        .scalar => |scalar| try writeEncodeScalarField(field, scalar, writer, depth),
+        .enumeration => try writeEncodeEnumField(field, writer, depth),
         else => return,
-    };
+    }
+}
+
+fn writeEncodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("for (self.");
@@ -101,6 +105,20 @@ fn writeEncodeField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer
             try writer.writeAll(defaultSkipCondition(scalar));
         }
         try writeScalarWriteCall(field.number, scalar, "self.", writer);
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+    }
+}
+
+fn writeEncodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(") |item| try w.writeInt32({d}, item);\n", .{field.number});
+    } else {
+        try indent(writer, depth);
+        try writer.print("try w.writeInt32({d}, self.", .{field.number});
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     }
@@ -315,4 +333,20 @@ test "codegen emits repeated scalar slice types" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"ids\": []const i32 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"names\": []const []const u8 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"flags\": []const bool = &.{}") != null);
+}
+
+test "codegen encodes enum fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message User { Kind kind = 1; repeated Kind roles = 2; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"kind\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"roles\") |item| try w.writeInt32(2, item);") != null);
 }
