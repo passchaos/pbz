@@ -32,6 +32,8 @@ validated feature set.
   - unknown field preservation, extension encoding/decoding with Registry, deterministic encoding, and message merging
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
+- Well-known types
+  - basic google.protobuf.Timestamp wire and JSON helpers
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums, and nested messages
 
@@ -119,6 +121,16 @@ defer parsed_msg.deinit();
 The current JSON support handles present fields from dynamic messages, quoted
 64-bit integers, bytes as standard/URL-safe base64, repeated fields as arrays, maps as JSON
 objects, enum names/numbers, default lowerCamelCase field names, null-as-absent parsing, and nested messages recursively.
+
+## Well-known types
+
+`pbz.Timestamp` provides basic `google.protobuf.Timestamp` wire and JSON helpers:
+
+```zig
+const ts = pbz.Timestamp{ .seconds = 1_577_836_800, .nanos = 123_000_000 };
+const json_ts = try ts.jsonStringifyAlloc(allocator);
+defer allocator.free(json_ts);
+```
 
 ## TextFormat support
 

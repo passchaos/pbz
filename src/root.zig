@@ -13,6 +13,7 @@ pub const json = @import("json.zig");
 pub const registry = @import("registry.zig");
 pub const text = @import("text.zig");
 pub const loader = @import("loader.zig");
+pub const wkt = @import("wkt.zig");
 
 pub const Allocator = @import("std").mem.Allocator;
 pub const FieldNumber = wire.FieldNumber;
@@ -39,6 +40,7 @@ pub const MemorySourceTree = loader.MemorySourceTree;
 pub const loadMemory = loader.loadMemory;
 pub const loadPath = loader.loadPath;
 pub const loadDir = loader.loadDir;
+pub const Timestamp = wkt.Timestamp;
 
 test {
     _ = wire;
@@ -50,4 +52,5 @@ test {
     _ = registry;
     _ = text;
     _ = loader;
+    _ = wkt;
 }
