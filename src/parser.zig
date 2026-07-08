@@ -336,6 +336,7 @@ pub const Parser = struct {
                 cardinality = .optional;
                 proto3_optional = self.file.syntax == .proto3;
             } else if (std.mem.eql(u8, self.current.text, "required")) {
+                if (self.file.syntax != .proto2) return error.InvalidSyntax;
                 _ = try self.advance();
                 cardinality = .required;
             } else if (std.mem.eql(u8, self.current.text, "repeated")) {
@@ -1090,5 +1091,17 @@ test "parser rejects overlapping extension ranges" {
     try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { extensions 100 to 200, 150 to 250; }
+    ));
+}
+
+test "parser rejects required label outside proto2" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Bad { required int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Bad { required int32 id = 1; }
     ));
 }
