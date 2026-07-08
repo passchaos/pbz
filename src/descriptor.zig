@@ -777,11 +777,17 @@ fn collapseMapEntriesInMessage(allocator: std.mem.Allocator, message: *schema.Me
             if (entry.fields.items.len >= 2) {
                 const key_field = entry.findField("key").?;
                 const value_field = entry.findField("value").?;
+                const key_scalar = switch (key_field.kind) {
+                    .scalar => |scalar| scalar,
+                    else => return error.InvalidFieldType,
+                };
+                if (!key_scalar.validMapKey()) return error.InvalidFieldType;
+                if (value_field.kind == .map or value_field.kind == .group) return error.InvalidFieldType;
                 for (message.fields.items) |*field| {
                     if (field.kind == .message and typeNameMatches(field.kind.message, entry.name)) {
                         const value_kind = try allocator.create(schema.FieldKind);
                         value_kind.* = value_field.kind;
-                        field.kind = .{ .map = .{ .key = key_field.kind.scalar, .value = value_kind } };
+                        field.kind = .{ .map = .{ .key = key_scalar, .value = value_kind } };
                     }
                 }
             }
@@ -865,4 +871,22 @@ test "descriptor decodes FileDescriptorSet" {
     try std.testing.expectEqual(@as(usize, 1), decoded_files.len);
     try std.testing.expectEqualStrings("a.proto", decoded_files[0].name);
     try std.testing.expect(decoded_files[0].findMessage("A") != null);
+}
+
+test "descriptor rejects invalid synthetic map entry key type" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.setSyntax(.proto3);
+    var msg = schema.MessageDescriptor{ .name = "Bad" };
+    try msg.fields.append(allocator, .{ .name = "bad", .number = 1, .cardinality = .repeated, .kind = .{ .message = "Bad.BadEntry" } });
+    var entry = schema.MessageDescriptor{ .name = "BadEntry" };
+    try entry.fields.append(allocator, .{ .name = "key", .number = 1, .kind = .{ .scalar = .bytes } });
+    try entry.fields.append(allocator, .{ .name = "value", .number = 2, .kind = .{ .scalar = .int32 } });
+    try msg.messages.append(allocator, entry);
+    try file.messages.append(allocator, msg);
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "bad.proto");
+    defer allocator.free(bytes);
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
 }
