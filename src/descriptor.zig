@@ -283,8 +283,16 @@ fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.Mess
 fn writeEnumOptions(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
+    if (enumAllowsAlias(enumeration)) try tmp.writeBool(2, true);
     try writeUninterpretedOptions(allocator, enumeration.options.items, &tmp, .enumeration);
     try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
+    for (enumeration.options.items) |option| {
+        if (std.mem.eql(u8, option.name, "allow_alias")) return schema.optionAsBool(option.value) orelse false;
+    }
+    return false;
 }
 
 fn writeMessageOptionsMapEntry(allocator: std.mem.Allocator, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -772,12 +780,13 @@ fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!s
         switch (tag.number) {
             1 => enumeration.name = try reader.readBytes(),
             2 => try enumeration.values.append(allocator, try decodeEnumValueDescriptor(allocator, try reader.readBytes())),
-            3 => try decodeGenericOptions(allocator, &enumeration.options, try reader.readBytes()),
+            3 => try decodeEnumOptions(allocator, &enumeration.options, try reader.readBytes()),
             4 => try enumeration.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), true)),
             5 => try enumeration.reserved_names.append(allocator, try reader.readBytes()),
             else => try reader.skipValue(tag),
         }
     }
+    try validateEnumDescriptor(&enumeration);
     return enumeration;
 }
 
@@ -793,6 +802,29 @@ fn decodeEnumValueDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Er
         }
     }
     return value;
+}
+
+fn decodeEnumOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            2 => try options.append(allocator, .{ .name = "allow_alias", .value = .{ .boolean = try reader.readBool() } }),
+            999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+}
+
+fn validateEnumDescriptor(enumeration: *const schema.EnumDescriptor) Error!void {
+    if (enumeration.name.len == 0 or enumeration.values.items.len == 0) return error.InvalidFieldType;
+    const allow_alias = enumAllowsAlias(enumeration);
+    for (enumeration.values.items, 0..) |value, i| {
+        if (value.name.len == 0) return error.InvalidFieldType;
+        for (enumeration.values.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, value.name, other.name)) return error.InvalidFieldType;
+            if (!allow_alias and value.number == other.number) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.OneofDescriptor {
@@ -1430,4 +1462,84 @@ test "descriptor preserves message and enum custom options" {
     try std.testing.expectEqualSlices(u8, "m", decoded.findMessage("M").?.options.items[0].value.string);
     try std.testing.expectEqualStrings("(demo.enum_opt)", decoded.findEnum("E").?.options.items[0].name);
     try std.testing.expectEqualSlices(u8, "e", decoded.findEnum("E").?.options.items[0].value.string);
+}
+
+test "descriptor preserves enum allow_alias option" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Alias { option allow_alias = true; A = 0; B = 0; }
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "alias.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    const enumeration = decoded.findEnum("Alias").?;
+    try std.testing.expectEqualStrings("allow_alias", enumeration.options.items[0].name);
+    try std.testing.expect(enumeration.options.items[0].value.boolean);
+    try std.testing.expectEqual(@as(i32, 0), enumeration.findValue("B").?.number);
+}
+
+test "descriptor rejects invalid enum descriptors" {
+    const allocator = std.testing.allocator;
+    {
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-enum.proto");
+        try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeInt32(2, 0);
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        try enum_writer.writeString(1, "Bad");
+        try enum_writer.writeMessage(2, value.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-value.proto");
+        try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "A");
+        try value.writeInt32(2, 0);
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        try enum_writer.writeString(1, "Bad");
+        try enum_writer.writeMessage(2, value.slice());
+        try enum_writer.writeMessage(2, value.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-value.proto");
+        try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var first = wire.Writer.init(allocator);
+        defer first.deinit();
+        try first.writeString(1, "A");
+        try first.writeInt32(2, 0);
+        var second = wire.Writer.init(allocator);
+        defer second.deinit();
+        try second.writeString(1, "B");
+        try second.writeInt32(2, 0);
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        try enum_writer.writeString(1, "Bad");
+        try enum_writer.writeMessage(2, first.slice());
+        try enum_writer.writeMessage(2, second.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-number.proto");
+        try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
