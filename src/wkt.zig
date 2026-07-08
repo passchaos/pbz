@@ -74,6 +74,10 @@ pub const Timestamp = struct {
         const hour = try std.fmt.parseInt(u8, unquoted[11..13], 10);
         const minute = try std.fmt.parseInt(u8, unquoted[14..16], 10);
         const second = try std.fmt.parseInt(u8, unquoted[17..19], 10);
+        if (month < 1 or month > 12 or hour > 23 or minute > 59 or second > 59) return error.InvalidTimestamp;
+        const days = daysFromCivil(year, month, day);
+        const normalized = civilFromDays(days);
+        if (normalized.year != year or normalized.month != month or normalized.day != day) return error.InvalidTimestamp;
         var index: usize = 19;
         var nanos: i32 = 0;
         if (index < unquoted.len and unquoted[index] == '.') {
@@ -87,11 +91,25 @@ pub const Timestamp = struct {
                 scale = @divTrunc(scale, 10);
             }
         }
-        if (index >= unquoted.len or unquoted[index] != 'Z' or index + 1 != unquoted.len) return error.InvalidTimestamp;
-        return .{
-            .seconds = @intCast(daysFromCivil(year, month, day) * 86_400 + @as(i64, hour) * 3600 + @as(i64, minute) * 60 + @as(i64, second)),
+        var offset_seconds: i64 = 0;
+        if (index < unquoted.len and unquoted[index] == 'Z') {
+            index += 1;
+        } else if (index + 6 <= unquoted.len and (unquoted[index] == '+' or unquoted[index] == '-')) {
+            const sign: i64 = if (unquoted[index] == '+') 1 else -1;
+            const offset_hour = try std.fmt.parseInt(u8, unquoted[index + 1 .. index + 3], 10);
+            if (unquoted[index + 3] != ':') return error.InvalidTimestamp;
+            const offset_minute = try std.fmt.parseInt(u8, unquoted[index + 4 .. index + 6], 10);
+            if (offset_hour > 23 or offset_minute > 59) return error.InvalidTimestamp;
+            offset_seconds = sign * (@as(i64, offset_hour) * 3600 + @as(i64, offset_minute) * 60);
+            index += 6;
+        } else return error.InvalidTimestamp;
+        if (index != unquoted.len) return error.InvalidTimestamp;
+        const out = Timestamp{
+            .seconds = @intCast(days * 86_400 + @as(i64, hour) * 3600 + @as(i64, minute) * 60 + @as(i64, second) - offset_seconds),
             .nanos = nanos,
         };
+        try out.validate();
+        return out;
     }
 };
 
@@ -152,6 +170,17 @@ test "timestamp json handles pre epoch times" {
     const parsed = try Timestamp.jsonParse(json);
     try std.testing.expectEqual(@as(i64, -1), parsed.seconds);
     try std.testing.expectEqual(@as(i32, 0), parsed.nanos);
+}
+
+test "timestamp json parses timezone offsets and rejects invalid date times" {
+    const plus = try Timestamp.jsonParse("\"2020-01-01T03:00:00+03:00\"");
+    try std.testing.expectEqual(@as(i64, 1_577_836_800), plus.seconds);
+    const minus = try Timestamp.jsonParse("\"2019-12-31T19:30:00-04:30\"");
+    try std.testing.expectEqual(@as(i64, 1_577_836_800), minus.seconds);
+    try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-13-01T00:00:00Z\""));
+    try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-02-30T00:00:00Z\""));
+    try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T24:00:00Z\""));
+    try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T00:00:00+24:00\""));
 }
 
 pub const Duration = struct {
