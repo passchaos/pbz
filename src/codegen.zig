@@ -65,6 +65,11 @@ fn writeFieldDecl(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, 
     try writer.writeAll(": ");
     try writeFieldType(field.*, writer);
     try writer.print(" = {s},\n", .{fieldDefault(field.*)});
+    if (hasPresence(field.*)) {
+        try indent(writer, depth);
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(": bool = false,\n");
+    }
 }
 
 fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -213,7 +218,9 @@ fn writeDecodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
     } else {
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.print(" = try r.{s}(),\n", .{scalarReaderName(scalar)});
+        try writer.print(" = try r.{s}(); ", .{scalarReaderName(scalar)});
+        try writeSetPresence(field, writer);
+        try writer.writeAll(",\n");
     }
 }
 
@@ -226,7 +233,9 @@ fn writeDecodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
     } else {
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try r.readInt32(),\n");
+        try writer.writeAll(" = try r.readInt32(); ");
+        try writeSetPresence(field, writer);
+        try writer.writeAll(",\n");
     }
 }
 
@@ -239,7 +248,9 @@ fn writeDecodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
     } else {
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try r.readBytes(),\n");
+        try writer.writeAll(" = try r.readBytes(); ");
+        try writeSetPresence(field, writer);
+        try writer.writeAll(",\n");
     }
 }
 
@@ -335,7 +346,11 @@ fn writeEncodeScalarField(field: *const schema.FieldDescriptor, scalar: schema.S
         try writer.writeAll(");\n");
     } else {
         try indent(writer, depth);
-        if (shouldSkipDefault(scalar)) {
+        if (hasPresence(field.*)) {
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") ");
+        } else if (shouldSkipDefault(scalar)) {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(defaultSkipCondition(scalar));
@@ -354,6 +369,11 @@ fn writeEncodeEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Wr
         try writer.print(") |item| try w.writeInt32({d}, item);\n", .{field.number});
     } else {
         try indent(writer, depth);
+        if (hasPresence(field.*)) {
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") ");
+        }
         try writer.print("try w.writeInt32({d}, self.", .{field.number});
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
@@ -369,8 +389,14 @@ fn writeEncodeMessageField(field: *const schema.FieldDescriptor, writer: *std.Io
     } else {
         try indent(writer, depth);
         try writer.writeAll("if (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.print(".len != 0) try w.writeMessage({d}, self.", .{field.number});
+        if (hasPresence(field.*)) {
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") ");
+        } else {
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len != 0) ");
+        }
+        try writer.print("try w.writeMessage({d}, self.", .{field.number});
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     }
@@ -578,6 +604,29 @@ fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std
     try writer.writeAll("\"");
 }
 
+fn hasPresence(field: schema.FieldDescriptor) bool {
+    return field.cardinality == .optional or field.cardinality == .required or field.proto3_optional;
+}
+
+fn writePresenceIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"has_");
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll("\"");
+}
+
+fn writeSetPresence(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (hasPresence(field.*)) {
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(" = true");
+    } else {
+        try writer.writeAll("{}");
+    }
+}
+
 fn writeQuotedFieldNumber(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("@\"");
     for (name) |c| {
@@ -767,4 +816,29 @@ test "codegen decodes map fields into entry slices" {
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"counts_list\".append(allocator, entry)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = try @\"counts_list\".toOwnedSlice(allocator)") != null);
+}
+
+test "codegen emits presence flags for optional required and proto3 optional fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M { optional int32 a = 1; required string b = 2; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_a\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_b\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_a\") try w.writeInt32(1, self.@\"a\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"a\" = try r.readInt32(); self.@\"has_a\" = true") != null);
+
+    var file3 = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { optional int32 a = 1; int32 b = 2; }
+    );
+    defer file3.deinit();
+    const content3 = try generateZigFile(allocator, &file3);
+    defer allocator.free(content3);
+    try std.testing.expect(std.mem.indexOf(u8, content3, "@\"has_a\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content3, "@\"has_b\": bool = false") == null);
 }
