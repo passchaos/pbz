@@ -523,11 +523,43 @@ pub const Parser = struct {
             if (self.matchIdent("to")) end = try self.parseRangeEnd();
             var range = schema.ExtensionRange{ .start = start, .end = end };
             errdefer range.deinit(self.allocator);
-            if (self.consumeSymbol('[')) try self.parseOptionList(&range.options, ']');
+            if (self.consumeSymbol('[')) {
+                try self.parseOptionList(&range.options, ']');
+                try self.applyExtensionRangeOptions(&range);
+            }
             try ranges.append(self.allocator, range);
             if (!self.consumeSymbol(',')) break;
         }
         try self.expectSymbol(';');
+    }
+
+    fn applyExtensionRangeOptions(self: *Parser, range: *schema.ExtensionRange) Error!void {
+        for (range.options.items) |option| {
+            const leaf = optionLeaf(option.name);
+            if (std.mem.eql(u8, leaf, "declaration")) {
+                const aggregate = switch (option.value) {
+                    .aggregate => |text| text,
+                    else => return error.InvalidFieldType,
+                };
+                try range.declarations.append(self.allocator, try self.parseExtensionDeclarationAggregate(aggregate));
+            } else if (std.mem.eql(u8, leaf, "verification")) {
+                const value = schema.optionAsIdentifier(option.value) orelse return error.InvalidFieldType;
+                if (std.ascii.eqlIgnoreCase(value, "DECLARATION")) {
+                    range.verification = .declaration;
+                } else if (std.ascii.eqlIgnoreCase(value, "UNVERIFIED")) {
+                    range.verification = .unverified;
+                } else return error.InvalidFieldType;
+            } else if (std.mem.startsWith(u8, option.name, "features.")) {
+                var features = range.features orelse schema.FeatureSet.defaults(self.file.syntax);
+                features.applyOption(option.name, option.value);
+                range.features = features;
+            }
+        }
+    }
+
+    fn parseExtensionDeclarationAggregate(self: *Parser, aggregate: []const u8) Error!schema.ExtensionDeclaration {
+        var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
+        return try parser.parseExtensionDeclaration();
     }
 
     fn parseReserved(self: *Parser, ranges: *std.ArrayList(schema.ReservedRange), names: *std.ArrayList([]const u8)) Error!void {
@@ -961,6 +993,119 @@ pub const Parser = struct {
 
     fn previousEnd(self: *const Parser) usize {
         return self.previous_end;
+    }
+};
+
+const AggregateOptionParser = struct {
+    allocator: std.mem.Allocator,
+    owned_strings: *std.ArrayList([]u8),
+    lexer: Lexer,
+    current: Token,
+
+    fn init(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), input: []const u8) Error!AggregateOptionParser {
+        var lexer = Lexer{ .input = input };
+        const first = try lexer.next();
+        return .{
+            .allocator = allocator,
+            .owned_strings = owned_strings,
+            .lexer = lexer,
+            .current = first,
+        };
+    }
+
+    fn parseExtensionDeclaration(self: *AggregateOptionParser) Error!schema.ExtensionDeclaration {
+        _ = self.consumeSymbol('{') or self.consumeSymbol('<');
+        var declaration = schema.ExtensionDeclaration{};
+        while (!self.consumeSymbol('}') and !self.consumeSymbol('>')) {
+            if (self.current.tag == .eof) break;
+            const name = try self.expectIdentifier();
+            try self.expectSymbol(':');
+            if (std.mem.eql(u8, name, "number")) {
+                declaration.number = try self.parseSignedInt32();
+            } else if (std.mem.eql(u8, name, "full_name")) {
+                declaration.full_name = try self.expectString();
+            } else if (std.mem.eql(u8, name, "type")) {
+                declaration.type_name = try self.expectString();
+            } else if (std.mem.eql(u8, name, "reserved")) {
+                declaration.reserved = try self.expectBool();
+            } else if (std.mem.eql(u8, name, "repeated")) {
+                declaration.repeated = try self.expectBool();
+            } else {
+                try self.skipValue();
+            }
+            _ = self.consumeSymbol(',') or self.consumeSymbol(';');
+        }
+        return declaration;
+    }
+
+    fn skipValue(self: *AggregateOptionParser) Error!void {
+        if (self.current.tag == .symbol and (self.current.symbol == '{' or self.current.symbol == '<')) {
+            const open = self.current.symbol;
+            const close: u8 = if (open == '{') '}' else '>';
+            var depth: usize = 0;
+            while (true) {
+                if (self.current.tag == .eof) return error.UnexpectedEof;
+                if (self.current.tag == .symbol and self.current.symbol == open) depth += 1;
+                if (self.current.tag == .symbol and self.current.symbol == close) {
+                    depth -= 1;
+                    try self.advanceVoid();
+                    if (depth == 0) return;
+                    continue;
+                }
+                try self.advanceVoid();
+            }
+        }
+        try self.advanceVoid();
+    }
+
+    fn expectIdentifier(self: *AggregateOptionParser) Error![]const u8 {
+        if (self.current.tag != .identifier) return error.UnexpectedToken;
+        const text = self.current.text;
+        try self.advanceVoid();
+        return text;
+    }
+
+    fn expectString(self: *AggregateOptionParser) Error![]const u8 {
+        if (self.current.tag != .string_literal) return error.UnexpectedToken;
+        const decoded = try decodeStringLiteralAlloc(self.allocator, self.current.text);
+        errdefer self.allocator.free(decoded);
+        try self.owned_strings.append(self.allocator, decoded);
+        try self.advanceVoid();
+        return decoded;
+    }
+
+    fn expectBool(self: *AggregateOptionParser) Error!bool {
+        const text = try self.expectIdentifier();
+        if (std.ascii.eqlIgnoreCase(text, "true")) return true;
+        if (std.ascii.eqlIgnoreCase(text, "false")) return false;
+        return error.InvalidFieldType;
+    }
+
+    fn parseSignedInt32(self: *AggregateOptionParser) Error!i32 {
+        const negative = self.consumeSymbol('-');
+        _ = if (!negative) self.consumeSymbol('+') else false;
+        if (self.current.tag != .number) return error.UnexpectedToken;
+        var value = try parseI64(self.current.text);
+        if (negative) value = -value;
+        if (value < std.math.minInt(i32) or value > std.math.maxInt(i32)) return error.InvalidNumber;
+        try self.advanceVoid();
+        return @intCast(value);
+    }
+
+    fn expectSymbol(self: *AggregateOptionParser, symbol: u8) Error!void {
+        if (!self.consumeSymbol(symbol)) return error.UnexpectedToken;
+    }
+
+    fn consumeSymbol(self: *AggregateOptionParser, symbol: u8) bool {
+        if (self.current.tag == .symbol and self.current.symbol == symbol) {
+            self.advanceVoid() catch unreachable;
+            return true;
+        }
+        return false;
+    }
+
+    fn advanceVoid(self: *AggregateOptionParser) ParseError!void {
+        self.current = try self.lexer.next();
     }
 };
 
@@ -1534,6 +1679,34 @@ test "parser validates extension field numbers against extension ranges" {
         \\message Target { extensions 100 to 200; }
         \\extend Target { optional int32 bad = 99; }
     ));
+}
+
+test "parser preserves extension range declarations verification and features" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" repeated: true },
+        \\    verification = DECLARATION,
+        \\    features.repeated_field_encoding = PACKED
+        \\  ];
+        \\}
+        \\message Ext {}
+    );
+    defer file.deinit();
+
+    const range = &file.findMessage("Host").?.extension_ranges.items[0];
+    try std.testing.expectEqual(@as(i64, 100), range.start);
+    try std.testing.expectEqual(@as(?i64, null), range.end);
+    try std.testing.expectEqual(@as(usize, 1), range.declarations.items.len);
+    try std.testing.expectEqual(@as(i32, 100), range.declarations.items[0].number);
+    try std.testing.expectEqualStrings(".demo.ext", range.declarations.items[0].full_name);
+    try std.testing.expectEqualStrings(".demo.Ext", range.declarations.items[0].type_name);
+    try std.testing.expect(range.declarations.items[0].repeated);
+    try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
+    try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, range.features.?.repeated_field_encoding);
 }
 
 test "parser validates proto2 MessageSet declarations and extensions" {

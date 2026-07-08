@@ -196,11 +196,28 @@ pub const ExtensionRange = struct {
     start: i64,
     end: ?i64,
     options: OptionList = .empty,
+    declarations: std.ArrayList(ExtensionDeclaration) = .empty,
+    verification: ?ExtensionRangeVerification = null,
+    features: ?FeatureSet = null,
 
     pub fn deinit(self: *ExtensionRange, allocator: std.mem.Allocator) void {
         deinitOptions(&self.options, allocator);
+        self.declarations.deinit(allocator);
         self.* = undefined;
     }
+};
+
+pub const ExtensionDeclaration = struct {
+    number: i32 = 0,
+    full_name: []const u8 = "",
+    type_name: []const u8 = "",
+    reserved: bool = false,
+    repeated: bool = false,
+};
+
+pub const ExtensionRangeVerification = enum(i32) {
+    declaration = 0,
+    unverified = 1,
 };
 
 pub const SourceCodeInfo = struct {

@@ -228,6 +228,28 @@ fn writeExtensionRange(allocator: std.mem.Allocator, range: *const schema.Extens
     defer tmp.deinit();
     try tmp.writeInt32(1, @intCast(range.start));
     if (range.end) |end| try tmp.writeInt32(2, @intCast(end));
+    if (range.options.items.len != 0 or range.declarations.items.len != 0 or range.verification != null or range.features != null) try writeExtensionRangeOptions(allocator, range, 3, &tmp);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeExtensionRangeOptions(allocator: std.mem.Allocator, range: *const schema.ExtensionRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    for (range.declarations.items) |declaration| try writeExtensionDeclaration(allocator, declaration, 2, &tmp);
+    if (range.verification) |verification| try tmp.writeInt32(3, @intFromEnum(verification));
+    if (range.features) |features| try writeFeatureSet(allocator, features, 50, &tmp);
+    try writeUninterpretedOptions(allocator, range.options.items, &tmp, .extension_range);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeExtensionDeclaration(allocator: std.mem.Allocator, declaration: schema.ExtensionDeclaration, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (declaration.number != 0) try tmp.writeInt32(1, declaration.number);
+    if (declaration.full_name.len != 0) try tmp.writeString(2, declaration.full_name);
+    if (declaration.type_name.len != 0) try tmp.writeString(3, declaration.type_name);
+    if (declaration.reserved) try tmp.writeBool(5, true);
+    if (declaration.repeated) try tmp.writeBool(6, true);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -338,7 +360,7 @@ fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDes
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-const OptionScope = enum { file, field, message, enumeration };
+const OptionScope = enum { file, field, message, enumeration, extension_range };
 
 fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const schema.FieldOption, writer: *wire.Writer, scope: OptionScope) Error!void {
     for (options) |option| {
@@ -358,6 +380,7 @@ fn isKnownOption(name: []const u8, scope: OptionScope) bool {
         .message => std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), "message_set_wire_format"),
         .enumeration => std.mem.eql(u8, name, "allow_alias"),
         .field => std.mem.eql(u8, name, "packed") or std.mem.eql(u8, name, "default") or std.mem.eql(u8, name, "json_name"),
+        .extension_range => std.mem.eql(u8, schema.optionLeaf(name), "declaration") or std.mem.eql(u8, schema.optionLeaf(name), "verification"),
     };
 }
 
@@ -933,16 +956,46 @@ fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
 
 fn decodeExtensionRange(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.ExtensionRange {
     var range = schema.ExtensionRange{ .start = 0, .end = null };
-    _ = allocator;
+    errdefer range.deinit(allocator);
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => range.start = try reader.readInt32(),
             2 => range.end = try reader.readInt32(),
+            3 => try decodeExtensionRangeOptions(allocator, &range, try reader.readBytes()),
             else => try reader.skipValue(tag),
         }
     }
     return range;
+}
+
+fn decodeExtensionRangeOptions(allocator: std.mem.Allocator, range: *schema.ExtensionRange, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            2 => try range.declarations.append(allocator, try decodeExtensionDeclaration(try reader.readBytes())),
+            3 => range.verification = std.enums.fromInt(schema.ExtensionRangeVerification, try reader.readInt32()) orelse return error.InvalidFieldType,
+            50 => range.features = try decodeFeatureSet(try reader.readBytes()),
+            999 => try range.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+}
+
+fn decodeExtensionDeclaration(bytes: []const u8) Error!schema.ExtensionDeclaration {
+    var declaration = schema.ExtensionDeclaration{};
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => declaration.number = try reader.readInt32(),
+            2 => declaration.full_name = try reader.readBytes(),
+            3 => declaration.type_name = try reader.readBytes(),
+            5 => declaration.reserved = try reader.readBool(),
+            6 => declaration.repeated = try reader.readBool(),
+            else => try reader.skipValue(tag),
+        }
+    }
+    return declaration;
 }
 
 fn decodeSourceCodeInfo(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.SourceCodeInfo {
@@ -1862,6 +1915,39 @@ test "descriptor preserves source code info locations" {
     try std.testing.expectEqualSlices(i32, &.{ 4, 0, 2, 0 }, decoded.source_code_info.locations.items[1].path.items);
     try std.testing.expectEqualSlices(i32, &.{ 2, 2, 2, 35 }, decoded.source_code_info.locations.items[1].span.items);
     try std.testing.expectEqualStrings("field trailing\n", decoded.source_code_info.locations.items[1].trailing_comments.?);
+}
+
+test "descriptor preserves extension range options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" reserved: true },
+        \\    verification = DECLARATION,
+        \\    features.enum_type = CLOSED
+        \\  ];
+        \\}
+        \\message Ext {}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "ext-range.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const range = &decoded.findMessage("Host").?.extension_ranges.items[0];
+    try std.testing.expectEqual(@as(i64, 100), range.start);
+    try std.testing.expectEqual(@as(?i64, null), range.end);
+    try std.testing.expectEqual(@as(usize, 1), range.declarations.items.len);
+    try std.testing.expectEqual(@as(i32, 100), range.declarations.items[0].number);
+    try std.testing.expectEqualStrings(".demo.ext", range.declarations.items[0].full_name);
+    try std.testing.expectEqualStrings(".demo.Ext", range.declarations.items[0].type_name);
+    try std.testing.expect(range.declarations.items[0].reserved);
+    try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
+    try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, range.features.?.enum_type);
 }
 
 test "descriptor rejects invalid enum descriptors" {
