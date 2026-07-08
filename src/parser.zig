@@ -895,6 +895,10 @@ fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!vo
             const end = range.end orelse std.math.maxInt(i64);
             if (field.number >= range.start and field.number < end) return error.ReservedField;
         }
+        for (message.extension_ranges.items) |range| {
+            const end = range.end orelse std.math.maxInt(i64);
+            if (field.number >= range.start and field.number < end) return error.ReservedField;
+        }
         for (message.reserved_names.items) |name| {
             if (std.mem.eql(u8, field.name, name)) return error.ReservedField;
         }
@@ -1294,6 +1298,14 @@ test "parser rejects overlapping extension ranges" {
     try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { extensions 100 to 200, 150 to 250; }
+    ));
+}
+
+test "parser rejects normal fields inside extension ranges" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { extensions 100 to 200; optional int32 id = 150; }
     ));
 }
 
