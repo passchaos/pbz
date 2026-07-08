@@ -16,6 +16,7 @@ pub const loader = @import("loader.zig");
 pub const wkt = @import("wkt.zig");
 pub const plugin = @import("plugin.zig");
 pub const codegen = @import("codegen.zig");
+pub const conformance = @import("conformance.zig");
 
 pub const Allocator = @import("std").mem.Allocator;
 pub const FieldNumber = wire.FieldNumber;
@@ -60,6 +61,8 @@ pub const CodeGeneratorRequest = plugin.CodeGeneratorRequest;
 pub const CodeGeneratorResponse = plugin.CodeGeneratorResponse;
 pub const generateZigFile = codegen.generateZigFile;
 pub const generatePluginResponse = codegen.generatePluginResponse;
+pub const ConformanceRequest = conformance.ConformanceRequest;
+pub const ConformanceResponse = conformance.ConformanceResponse;
 
 test {
     _ = wire;
@@ -74,4 +77,5 @@ test {
     _ = wkt;
     _ = plugin;
     _ = codegen;
+    _ = conformance;
 }

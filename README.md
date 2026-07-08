@@ -34,6 +34,8 @@ validated feature set.
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, and nested messages
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, and wrapper wire/JSON helpers plus dynamic JSON mapping plus dynamic JSON mapping
+- Conformance helpers
+  - basic ConformanceRequest decode and ConformanceResponse encode
 - Protoc plugin and codegen helpers
   - basic CodeGeneratorRequest decode, CodeGeneratorResponse encode, and Zig skeleton generation
 - TextFormat support
@@ -148,6 +150,11 @@ defer allocator.free(text_bytes);
 var parsed_text_msg = try pbz.parseTextAlloc(allocator, &file, descriptor, text_bytes);
 defer parsed_text_msg.deinit();
 ```
+
+## Conformance helpers
+
+`pbz.ConformanceRequest` and `pbz.ConformanceResponse` provide basic wire
+structures for integrating with protobuf conformance-style runners.
 
 ## Protoc plugin helpers
 
