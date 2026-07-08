@@ -1760,6 +1760,8 @@ fn writeJsonParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
             try writeEnumNameArray(file, name, writer);
             try writer.writeAll(", ");
             try writeEnumNumberArray(file, name, writer);
+            try writer.writeAll(", ");
+            try writer.writeAll(if (enumIsClosed(file, name)) "true" else "false");
             try writer.writeAll(")");
         },
         else => try writer.writeAll("@compileError(\"unsupported JSON parse field kind\")"),
@@ -1786,6 +1788,13 @@ fn writeEnumNumberArray(file: *const schema.FileDescriptor, name: []const u8, wr
         }
     }
     try writer.writeAll("}");
+}
+
+fn enumIsClosed(file: *const schema.FileDescriptor, name: []const u8) bool {
+    if (file.findEnumDeep(name)) |enumeration| {
+        if (enumeration.features) |features| return features.enum_type == .closed;
+    }
+    return file.features.enum_type == .closed;
 }
 
 fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1826,18 +1835,28 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try jsonDecodeBase64(allocator, try jsonString(value));
         \\}
         \\
-        \\fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32) !i32 {
+        \\fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
         \\    return switch (value) {
-        \\        .integer => |v| std.math.cast(i32, v) orelse error.Overflow,
-        \\        .number_string => |text| try std.fmt.parseInt(i32, text, 10),
+        \\        .integer => |v| try jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
+        \\        .number_string => |text| try jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
         \\        .string => |text| {
         \\            inline for (names, 0..) |name, i| {
         \\                if (std.mem.eql(u8, text, name)) return numbers[i];
         \\            }
-        \\            return std.fmt.parseInt(i32, text, 10) catch error.InvalidEnumValue;
+        \\            return try jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
         \\        },
         \\        else => error.TypeMismatch,
         \\    };
+        \\}
+        \\
+        \\fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32 {
+        \\    if (closed) {
+        \\        inline for (numbers) |number| {
+        \\            if (value == number) return value;
+        \\        }
+        \\        return error.InvalidEnumValue;
+        \\    }
+        \\    return value;
         \\}
         \\
         \\fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void {
@@ -2769,7 +2788,7 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1})") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false)") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
@@ -2969,11 +2988,13 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"display_name\") or std.mem.eql(u8, key, \"shownName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"raw\" = try @This().jsonBytes(arena_allocator, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (array.items) |item| try list.append(allocator, try @This().jsonString(item));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"alias\" = try @This().jsonString(value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"alt_name\") or std.mem.eql(u8, key, \"altName\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"pick_kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"pick_kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
 }
@@ -3213,4 +3234,24 @@ test "codegen honors editions message encoding features" {
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
     defer tree.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen honors editions enum type features in JSON parse" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.enum_type = OPEN;
+        \\enum ClosedKind { option features.enum_type = CLOSED; UNKNOWN = 0; ADMIN = 1; }
+        \\enum OpenKind { option features.enum_type = OPEN; NONE = 0; USER = 1; }
+        \\message M {
+        \\  ClosedKind closed = 1;
+        \\  OpenKind open = 2;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"closed\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"open\" = try @This().jsonEnum(value, &.{\"NONE\", \"USER\"}, &.{0, 1}, false);") != null);
 }
