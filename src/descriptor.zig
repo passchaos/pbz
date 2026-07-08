@@ -36,8 +36,8 @@ pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schem
         }
     }
     for (file.messages.items) |*message| try writeMessageDescriptor(allocator, file, message, "", 4, writer);
-    for (file.enums.items) |*enumeration| try writeEnumDescriptor(allocator, enumeration, 5, writer);
-    for (file.services.items) |*service| try writeServiceDescriptor(allocator, service, 6, writer);
+    for (file.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 5, writer);
+    for (file.services.items) |*service| try writeServiceDescriptor(allocator, file, service, 6, writer);
     for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, null, field, 7, writer);
     if (file.syntax == .editions or file.options.items.len != 0) try writeFileOptions(allocator, file, 8, writer);
     if (!file.source_code_info.isEmpty()) try writeSourceCodeInfo(allocator, &file.source_code_info, 9, writer);
@@ -85,11 +85,11 @@ fn writeMessageDescriptor(
     for (message.fields.items) |*field| {
         if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, scope, field, 3, &tmp);
     }
-    for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, enumeration, 4, &tmp);
+    for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 4, &tmp);
     for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, range, 5, &tmp);
     for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, field, 6, &tmp);
     if (message.options.items.len != 0) try writeMessageOptions(allocator, message, 7, &tmp);
-    for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, oneof, 8, &tmp);
+    for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, file, oneof, 8, &tmp);
     for (message.fields.items) |*field| {
         if (field.proto3_optional and field.oneof_name == null) try writeSyntheticOneofDescriptor(allocator, field, 8, &tmp);
     }
@@ -193,12 +193,12 @@ fn writeSyntheticOneofDescriptor(allocator: std.mem.Allocator, field: *const sch
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-fn writeEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+fn writeEnumDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
 
     try tmp.writeString(1, enumeration.name);
-    for (enumeration.values.items) |*value| try writeEnumValueDescriptor(allocator, value, 2, &tmp);
+    for (enumeration.values.items) |*value| try writeEnumValueDescriptor(allocator, file, value, 2, &tmp);
     if (enumeration.options.items.len != 0) try writeEnumOptions(allocator, enumeration, 3, &tmp);
     for (enumeration.reserved_ranges.items) |range| try writeEnumReservedRange(allocator, range, 4, &tmp);
     for (enumeration.reserved_names.items) |reserved_name| try tmp.writeString(5, reserved_name);
@@ -206,20 +206,40 @@ fn writeEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const schema.
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-fn writeEnumValueDescriptor(allocator: std.mem.Allocator, value: *const schema.EnumValueDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+fn writeEnumValueDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, value: *const schema.EnumValueDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    _ = file;
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
 
     try tmp.writeString(1, value.name);
     try tmp.writeInt32(2, value.number);
+    if (value.options.items.len != 0) try writeEnumValueOptions(allocator, value, 3, &tmp);
 
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-fn writeOneofDescriptor(allocator: std.mem.Allocator, oneof: *const schema.OneofDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+fn writeEnumValueOptions(allocator: std.mem.Allocator, value: *const schema.EnumValueDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (exactOptionBool(value.options.items, "deprecated")) |deprecated| try tmp.writeBool(1, deprecated);
+    if (exactOptionBool(value.options.items, "debug_redact")) |debug_redact| try tmp.writeBool(3, debug_redact);
+    try writeUninterpretedOptions(allocator, value.options.items, &tmp, .enum_value);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeOneofDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, oneof: *const schema.OneofDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    _ = file;
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     try tmp.writeString(1, oneof.name);
+    if (oneof.options.items.len != 0) try writeOneofOptions(allocator, oneof, 2, &tmp);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeOneofOptions(allocator: std.mem.Allocator, oneof: *const schema.OneofDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    try writeUninterpretedOptions(allocator, oneof.options.items, &tmp, .oneof);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -347,11 +367,21 @@ fn writeEnumReservedRange(allocator: std.mem.Allocator, range: schema.ReservedRa
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-fn writeServiceDescriptor(allocator: std.mem.Allocator, service: *const schema.ServiceDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+fn writeServiceDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, service: *const schema.ServiceDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    _ = file;
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
     try tmp.writeString(1, service.name);
     for (service.methods.items) |*method| try writeMethodDescriptor(allocator, method, 2, &tmp);
+    if (service.options.items.len != 0) try writeServiceOptions(allocator, service, 3, &tmp);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeServiceOptions(allocator: std.mem.Allocator, service: *const schema.ServiceDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (exactOptionBool(service.options.items, "deprecated")) |deprecated| try tmp.writeBool(33, deprecated);
+    try writeUninterpretedOptions(allocator, service.options.items, &tmp, .service);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -361,8 +391,18 @@ fn writeMethodDescriptor(allocator: std.mem.Allocator, method: *const schema.Met
     try tmp.writeString(1, method.name);
     try tmp.writeString(2, method.input_type);
     try tmp.writeString(3, method.output_type);
+    if (method.options.items.len != 0) try writeMethodOptions(allocator, method, 4, &tmp);
     if (method.client_streaming) try tmp.writeBool(5, true);
     if (method.server_streaming) try tmp.writeBool(6, true);
+    try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn writeMethodOptions(allocator: std.mem.Allocator, method: *const schema.MethodDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+    var tmp = wire.Writer.init(allocator);
+    defer tmp.deinit();
+    if (exactOptionBool(method.options.items, "deprecated")) |deprecated| try tmp.writeBool(33, deprecated);
+    if (methodIdempotencyLevel(method.options.items)) |level| try tmp.writeInt32(34, level);
+    try writeUninterpretedOptions(allocator, method.options.items, &tmp, .method);
     try writer.writeMessage(field_number, tmp.slice());
 }
 
@@ -412,7 +452,7 @@ fn writeFieldOptions(allocator: std.mem.Allocator, field: *const schema.FieldDes
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-const OptionScope = enum { file, field, message, enumeration, extension_range };
+const OptionScope = enum { file, field, message, enumeration, enum_value, oneof, service, method, extension_range };
 
 fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const schema.FieldOption, writer: *wire.Writer, scope: OptionScope) Error!void {
     for (options) |option| {
@@ -426,14 +466,46 @@ fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const sche
 }
 
 fn isKnownOption(name: []const u8, scope: OptionScope) bool {
-    if (std.mem.startsWith(u8, name, "features.")) return true;
+    const trimmed = std.mem.trim(u8, name, " \t\r\n");
+    if (std.mem.startsWith(u8, trimmed, "features.")) return scope == .file or scope == .extension_range;
     return switch (scope) {
         .file => false,
-        .message => std.mem.eql(u8, std.mem.trim(u8, name, " \t\r\n"), "message_set_wire_format"),
-        .enumeration => std.mem.eql(u8, name, "allow_alias"),
-        .field => std.mem.eql(u8, name, "packed") or std.mem.eql(u8, name, "default") or std.mem.eql(u8, name, "json_name"),
+        .message => std.mem.eql(u8, trimmed, "message_set_wire_format"),
+        .enumeration => std.mem.eql(u8, trimmed, "allow_alias"),
+        .enum_value => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "debug_redact"),
+        .oneof => false,
+        .service => std.mem.eql(u8, trimmed, "deprecated"),
+        .method => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "idempotency_level"),
+        .field => std.mem.eql(u8, trimmed, "packed") or std.mem.eql(u8, trimmed, "default") or std.mem.eql(u8, trimmed, "json_name"),
         .extension_range => std.mem.eql(u8, schema.optionLeaf(name), "declaration") or std.mem.eql(u8, schema.optionLeaf(name), "verification"),
     };
+}
+
+fn exactOptionBool(options: []const schema.FieldOption, name: []const u8) ?bool {
+    for (options) |option| {
+        if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) return schema.optionAsBool(option.value);
+    }
+    return null;
+}
+
+fn methodIdempotencyLevel(options: []const schema.FieldOption) ?i32 {
+    for (options) |option| {
+        if (!std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), "idempotency_level")) continue;
+        switch (option.value) {
+            .integer => |value| {
+                if (value < std.math.minInt(i32) or value > std.math.maxInt(i32)) return null;
+                return @intCast(value);
+            },
+            .identifier, .string => |value| {
+                if (std.mem.eql(u8, value, "IDEMPOTENCY_UNKNOWN")) return 0;
+                if (std.mem.eql(u8, value, "NO_SIDE_EFFECTS")) return 1;
+                if (std.mem.eql(u8, value, "IDEMPOTENT")) return 2;
+                return null;
+            },
+            else => return null,
+        }
+    }
+    return null;
 }
 
 fn writeOptionName(allocator: std.mem.Allocator, name: []const u8, writer: *wire.Writer) Error!void {
@@ -959,13 +1031,14 @@ fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!s
 }
 
 fn decodeEnumValueDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.EnumValueDescriptor {
-    _ = allocator;
     var value = schema.EnumValueDescriptor{ .name = "", .number = 0 };
+    errdefer value.deinit(allocator);
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => value.name = try reader.readBytes(),
             2 => value.number = try reader.readInt32(),
+            3 => try decodeEnumValueOptions(allocator, &value.options, try reader.readBytes()),
             else => try reader.skipValue(tag),
         }
     }
@@ -977,6 +1050,18 @@ fn decodeEnumOptions(allocator: std.mem.Allocator, options: *schema.OptionList, 
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             2 => try options.append(allocator, .{ .name = "allow_alias", .value = .{ .boolean = try reader.readBool() } }),
+            999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+}
+
+fn decodeEnumValueOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => try options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            3 => try options.append(allocator, .{ .name = "debug_redact", .value = .{ .boolean = try reader.readBool() } }),
             999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
@@ -996,11 +1081,15 @@ fn validateEnumDescriptor(enumeration: *const schema.EnumDescriptor) Error!void 
 }
 
 fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.OneofDescriptor {
-    _ = allocator;
     var oneof = schema.OneofDescriptor{ .name = "" };
+    errdefer oneof.deinit(allocator);
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
-        if (tag.number == 1) oneof.name = try reader.readBytes() else try reader.skipValue(tag);
+        switch (tag.number) {
+            1 => oneof.name = try reader.readBytes(),
+            2 => try decodeGenericOptions(allocator, &oneof.options, try reader.readBytes()),
+            else => try reader.skipValue(tag),
+        }
     }
     if (oneof.name.len == 0) return error.InvalidFieldType;
     return oneof;
@@ -1117,6 +1206,7 @@ fn decodeServiceDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
         switch (tag.number) {
             1 => service.name = try reader.readBytes(),
             2 => try service.methods.append(allocator, try decodeMethodDescriptor(allocator, try reader.readBytes())),
+            3 => try decodeServiceOptions(allocator, &service.options, try reader.readBytes()),
             else => try reader.skipValue(tag),
         }
     }
@@ -1130,14 +1220,15 @@ fn decodeServiceDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
 }
 
 fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.MethodDescriptor {
-    _ = allocator;
     var method = schema.MethodDescriptor{ .name = "", .input_type = "", .output_type = "" };
+    errdefer method.deinit(allocator);
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => method.name = try reader.readBytes(),
             2 => method.input_type = try reader.readBytes(),
             3 => method.output_type = try reader.readBytes(),
+            4 => try decodeMethodOptions(allocator, &method.options, try reader.readBytes()),
             5 => method.client_streaming = try reader.readBool(),
             6 => method.server_streaming = try reader.readBool(),
             else => try reader.skipValue(tag),
@@ -1145,6 +1236,29 @@ fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error
     }
     if (method.name.len == 0 or method.input_type.len == 0 or method.output_type.len == 0) return error.InvalidFieldType;
     return method;
+}
+
+fn decodeServiceOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            33 => try options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
+}
+
+fn decodeMethodOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            33 => try options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
+            34 => try options.append(allocator, .{ .name = "idempotency_level", .value = .{ .integer = try reader.readInt32() } }),
+            999 => try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            else => try reader.skipValue(tag),
+        }
+    }
 }
 
 fn decodeGenericOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
@@ -1893,6 +2007,62 @@ test "descriptor preserves message and enum custom options" {
     try std.testing.expectEqualSlices(u8, "m", decoded.findMessage("M").?.options.items[0].value.string);
     try std.testing.expectEqualStrings("(demo.enum_opt)", decoded.findEnum("E").?.options.items[0].name);
     try std.testing.expectEqualSlices(u8, "e", decoded.findEnum("E").?.options.items[0].value.string);
+}
+
+test "descriptor preserves oneof enum value service and method options" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  oneof pick {
+        \\    option (demo.oneof_opt) = "one";
+        \\    string name = 1;
+        \\  }
+        \\}
+        \\enum E { A = 0 [deprecated = true, debug_redact = true, (demo.value_opt) = "value"]; }
+        \\message Req {}
+        \\message Res {}
+        \\service S {
+        \\  option deprecated = true;
+        \\  option (demo.service_opt) = "svc";
+        \\  rpc Do (Req) returns (Res) {
+        \\    option deprecated = true;
+        \\    option idempotency_level = IDEMPOTENT;
+        \\    option (demo.method_opt) = "method";
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "opts-all.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const oneof = decoded.findMessage("M").?.oneofs.items[0];
+    try std.testing.expectEqualStrings("(demo.oneof_opt)", oneof.options.items[0].name);
+    try std.testing.expectEqualSlices(u8, "one", oneof.options.items[0].value.string);
+
+    const enum_value = decoded.findEnum("E").?.values.items[0];
+    try std.testing.expectEqualStrings("deprecated", enum_value.options.items[0].name);
+    try std.testing.expect(enum_value.options.items[0].value.boolean);
+    try std.testing.expectEqualStrings("debug_redact", enum_value.options.items[1].name);
+    try std.testing.expect(enum_value.options.items[1].value.boolean);
+    try std.testing.expectEqualStrings("(demo.value_opt)", enum_value.options.items[2].name);
+    try std.testing.expectEqualSlices(u8, "value", enum_value.options.items[2].value.string);
+
+    const service = decoded.services.items[0];
+    try std.testing.expectEqualStrings("deprecated", service.options.items[0].name);
+    try std.testing.expect(service.options.items[0].value.boolean);
+    try std.testing.expectEqualStrings("(demo.service_opt)", service.options.items[1].name);
+    try std.testing.expectEqualSlices(u8, "svc", service.options.items[1].value.string);
+
+    const method = service.methods.items[0];
+    try std.testing.expectEqualStrings("deprecated", method.options.items[0].name);
+    try std.testing.expect(method.options.items[0].value.boolean);
+    try std.testing.expectEqualStrings("idempotency_level", method.options.items[1].name);
+    try std.testing.expectEqual(@as(i64, 2), method.options.items[1].value.integer);
+    try std.testing.expectEqualStrings("(demo.method_opt)", method.options.items[2].name);
+    try std.testing.expectEqualSlices(u8, "method", method.options.items[2].value.string);
 }
 
 test "descriptor preserves enum allow_alias option" {
