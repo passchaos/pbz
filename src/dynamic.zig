@@ -389,15 +389,7 @@ pub const DynamicMessage = struct {
             const start = reader.position() - wire.encodedVarintSize(try tag.encode());
             const field = self.descriptor.findFieldByNumber(tag.number) orelse registryExtension(registry, self.descriptor, tag.number) orelse {
                 try reader.skipValue(tag);
-                const raw = try self.allocator.dupe(u8, reader.input[start..reader.position()]);
-                self.unknown_fields.append(self.allocator, .{
-                    .number = tag.number,
-                    .wire_type = tag.wire_type,
-                    .data = raw,
-                }) catch |err| {
-                    self.allocator.free(raw);
-                    return err;
-                };
+                try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                 continue;
             };
 
@@ -413,7 +405,11 @@ pub const DynamicMessage = struct {
 
             if (field.kind == .map) {
                 if (tag.wire_type != .length_delimited) return error.InvalidWireType;
-                var value = try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field.kind.map, reader);
+                const payload = try reader.readBytes();
+                var value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field.kind.map, payload)) orelse {
+                    try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
+                    continue;
+                };
                 self.add(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
@@ -429,13 +425,33 @@ pub const DynamicMessage = struct {
                 const payload = try reader.readBytes();
                 var packed_reader = wire.Reader.init(payload);
                 while (!packed_reader.eof()) {
-                    const value = try decodeScalarLike(field.kind, &packed_reader);
-                    try self.add(field, value);
+                    if (closedEnumDescriptor(file, self.descriptor, field.kind)) |enumeration| {
+                        const value_start = packed_reader.position();
+                        const value = try packed_reader.readInt32();
+                        const value_end = packed_reader.position();
+                        if (enumHasNumber(enumeration, value)) {
+                            try self.add(field, .{ .enumeration = value });
+                        } else {
+                            try self.addUnknownVarintPayload(field.number, payload[value_start..value_end]);
+                        }
+                    } else {
+                        const value = try decodeScalarLike(field.kind, &packed_reader);
+                        try self.add(field, value);
+                    }
                 }
                 continue;
             }
 
             if (tag.wire_type != field.kind.wireType()) return error.InvalidWireType;
+            if (closedEnumDescriptor(file, self.descriptor, field.kind)) |enumeration| {
+                const value = try reader.readInt32();
+                if (enumHasNumber(enumeration, value)) {
+                    try self.add(field, .{ .enumeration = value });
+                } else {
+                    try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
+                }
+                continue;
+            }
             var value = try decodeValue(self.allocator, file, registry, self.descriptor, field.kind, reader);
             self.add(field, value) catch |err| {
                 deinitValue(&value, self.allocator);
@@ -443,6 +459,24 @@ pub const DynamicMessage = struct {
             };
         }
         if (end_group != null) return error.TruncatedInput;
+    }
+
+    fn addUnknownRaw(self: *DynamicMessage, number: wire.FieldNumber, wire_type: wire.WireType, raw_bytes: []const u8) std.mem.Allocator.Error!void {
+        const raw = try self.allocator.dupe(u8, raw_bytes);
+        errdefer self.allocator.free(raw);
+        try self.unknown_fields.append(self.allocator, .{
+            .number = number,
+            .wire_type = wire_type,
+            .data = raw,
+        });
+    }
+
+    fn addUnknownVarintPayload(self: *DynamicMessage, number: wire.FieldNumber, varint_payload: []const u8) DecodeError!void {
+        var raw_writer = wire.Writer.init(self.allocator);
+        defer raw_writer.deinit();
+        try raw_writer.writeTag(number, .varint);
+        try raw_writer.appendSlice(varint_payload);
+        try self.addUnknownRaw(number, .varint, raw_writer.slice());
     }
 
     fn encodeMessageSet(self: *const DynamicMessage, file: *const schema.FileDescriptor, writer: *wire.Writer, deterministic: bool) EncodeError!void {
@@ -753,16 +787,18 @@ fn decodeMapEntryValue(
     registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     map_type: schema.MapType,
-    reader: *wire.Reader,
-) DecodeError!Value {
-    const payload = try reader.readBytes();
+    payload: []const u8,
+) DecodeError!?Value {
     var entry_reader = wire.Reader.init(payload);
 
     var maybe_key: ?Value = null;
     var maybe_value: ?Value = null;
-    errdefer {
-        if (maybe_key) |*key| deinitValue(key, allocator);
-        if (maybe_value) |*map_value| deinitValue(map_value, allocator);
+    var success = false;
+    defer {
+        if (!success) {
+            if (maybe_key) |*key| deinitValue(key, allocator);
+            if (maybe_value) |*map_value| deinitValue(map_value, allocator);
+        }
     }
 
     while (try entry_reader.nextTag()) |tag| {
@@ -775,19 +811,32 @@ fn decodeMapEntryValue(
             2 => {
                 if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
                 if (maybe_value) |*old| deinitValue(old, allocator);
-                maybe_value = try decodeValue(allocator, file, registry, current, map_type.value.*, &entry_reader);
+                if (closedEnumDescriptor(file, current, map_type.value.*)) |enumeration| {
+                    const value = try entry_reader.readInt32();
+                    if (!enumHasNumber(enumeration, value)) return null;
+                    maybe_value = .{ .enumeration = value };
+                } else {
+                    maybe_value = try decodeValue(allocator, file, registry, current, map_type.value.*, &entry_reader);
+                }
             },
             else => try entry_reader.skipValue(tag),
         }
     }
 
-    const key = maybe_key orelse try defaultValue(allocator, file, current, .{ .scalar = map_type.key });
+    var key = maybe_key orelse try defaultValue(allocator, file, current, .{ .scalar = map_type.key });
     maybe_key = null;
-    const map_value = maybe_value orelse try defaultValue(allocator, file, current, map_type.value.*);
+    var map_value = maybe_value orelse try defaultValue(allocator, file, current, map_type.value.*);
     maybe_value = null;
+    defer {
+        if (!success) {
+            deinitValue(&key, allocator);
+            deinitValue(&map_value, allocator);
+        }
+    }
 
     const entry = try allocator.create(MapEntry);
     entry.* = .{ .key = key, .value = map_value };
+    success = true;
     return .{ .map_entry = entry };
 }
 
@@ -855,6 +904,22 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
     if (std.mem.eql(u8, current.name, trimmed) or std.mem.eql(u8, current.name, leaf)) return current;
     if (current.findMessageDeep(trimmed)) |message| return message;
     return file.findMessageDeep(trimmed);
+}
+
+fn closedEnumDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
+    if (file.features.enum_type != .closed) return null;
+    const enum_name = switch (kind) {
+        .enumeration => |name| name,
+        else => return null,
+    };
+    return current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name);
+}
+
+fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
+    for (enumeration.values.items) |value| {
+        if (value.number == number) return true;
+    }
+    return false;
 }
 
 fn decodeScalarLike(kind: schema.FieldKind, reader: *wire.Reader) DecodeError!Value {
@@ -1666,6 +1731,121 @@ test "dynamic MessageSet accepts payload before type id and preserves unknown it
     const unknown_roundtrip = try unknown_msg.encoded(&file);
     defer allocator.free(unknown_roundtrip);
     try std.testing.expectEqualSlices(u8, unknown.slice(), unknown_roundtrip);
+}
+
+test "dynamic closed enum unknown values are preserved as unknown fields" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { A = 1; B = 2; }
+        \\message M {
+        \\  optional Kind single = 1;
+        \\  repeated Kind many = 2;
+        \\  repeated Kind packed = 3 [packed = true];
+        \\}
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var packed_payload = wire.Writer.init(allocator);
+    defer packed_payload.deinit();
+    try packed_payload.writeVarint(2);
+    try packed_payload.writeVarint(123);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeInt32(1, 123);
+    try encoded.writeInt32(2, 1);
+    try encoded.writeInt32(2, 123);
+    try encoded.writeBytes(3, packed_payload.slice());
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.decode(&file, encoded.slice());
+
+    try std.testing.expect(msg.get("single") == null);
+    try std.testing.expectEqual(@as(i32, 1), msg.get("many").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(usize, 1), msg.get("many").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 2), msg.get("packed").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(usize, 1), msg.get("packed").?.values.items.len);
+    try std.testing.expectEqual(@as(usize, 3), msg.unknownCount());
+
+    const unknown_single = try msg.unknownByNumberAlloc(allocator, 1);
+    defer allocator.free(unknown_single);
+    try std.testing.expectEqual(@as(usize, 1), unknown_single.len);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x7b }, unknown_single[0].data);
+
+    const unknown_many = try msg.unknownByNumberAlloc(allocator, 2);
+    defer allocator.free(unknown_many);
+    try std.testing.expectEqual(@as(usize, 1), unknown_many.len);
+    try std.testing.expectEqualSlices(u8, &.{ 0x10, 0x7b }, unknown_many[0].data);
+
+    const unknown_packed = try msg.unknownByNumberAlloc(allocator, 3);
+    defer allocator.free(unknown_packed);
+    try std.testing.expectEqual(@as(usize, 1), unknown_packed.len);
+    try std.testing.expectEqualSlices(u8, &.{ 0x18, 0x7b }, unknown_packed[0].data);
+}
+
+test "dynamic open enums keep unknown numeric values" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { A = 0; B = 1; }
+        \\message M { Kind single = 1; repeated Kind many = 2; }
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeInt32(1, 123);
+    try encoded.writeInt32(2, 123);
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.decode(&file, encoded.slice());
+    try std.testing.expectEqual(@as(i32, 123), msg.get("single").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 123), msg.get("many").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
+}
+
+test "dynamic closed enum map entries with unknown values are preserved whole" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.enum_type = CLOSED;
+        \\enum Kind { A = 0; B = 1; }
+        \\message M { map<string, Kind> vals = 1; }
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var bad_entry = wire.Writer.init(allocator);
+    defer bad_entry.deinit();
+    try bad_entry.writeString(1, "bad");
+    try bad_entry.writeInt32(2, 123);
+
+    var good_entry = wire.Writer.init(allocator);
+    defer good_entry.deinit();
+    try good_entry.writeString(1, "ok");
+    try good_entry.writeInt32(2, 1);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeMessage(1, bad_entry.slice());
+    const bad_raw = try allocator.dupe(u8, encoded.slice());
+    defer allocator.free(bad_raw);
+    try encoded.writeMessage(1, good_entry.slice());
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.decode(&file, encoded.slice());
+    try std.testing.expectEqual(@as(usize, 1), msg.get("vals").?.values.items.len);
+    const entry = msg.get("vals").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("ok", entry.key.string);
+    try std.testing.expectEqual(@as(i32, 1), entry.value.enumeration);
+    try std.testing.expectEqual(@as(usize, 1), msg.unknownCount());
+    try std.testing.expectEqualSlices(u8, bad_raw, msg.unknown_fields.items[0].data);
 }
 
 test "dynamic deterministic encoding sorts fields and unknowns by number" {
