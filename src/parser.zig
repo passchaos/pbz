@@ -768,7 +768,25 @@ fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
     return false;
 }
 
+fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
+    for (message.reserved_ranges.items, 0..) |range, i| {
+        const end = range.end orelse std.math.maxInt(i64);
+        if (range.start >= end) return error.InvalidRange;
+        for (message.reserved_ranges.items[i + 1 ..]) |other| {
+            const other_end = other.end orelse std.math.maxInt(i64);
+            if (other.start >= other_end) return error.InvalidRange;
+            if (range.start < other_end and other.start < end) return error.InvalidRange;
+        }
+    }
+    for (message.reserved_names.items, 0..) |name, i| {
+        for (message.reserved_names.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, name, other)) return error.ReservedField;
+        }
+    }
+}
+
 fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
+    try validateReserved(message);
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
@@ -1040,4 +1058,16 @@ test "parser honors enum allow_alias option" {
     );
     defer file.deinit();
     try std.testing.expectEqual(@as(i32, 1), file.findEnum("Alias").?.findValue("B").?.number);
+}
+
+test "parser rejects overlapping reserved declarations" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved 1 to 5, 4 to 8; }
+    ));
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved "old", "old"; }
+    ));
 }
