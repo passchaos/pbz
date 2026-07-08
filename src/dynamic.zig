@@ -4,8 +4,8 @@ const schema = @import("schema.zig");
 const parser = @import("parser.zig");
 const registry_mod = @import("registry.zig");
 
-pub const DecodeError = wire.Error || std.mem.Allocator.Error || error{TypeMismatch};
-pub const EncodeError = wire.Error || std.mem.Allocator.Error || error{TypeMismatch};
+pub const DecodeError = wire.Error || std.mem.Allocator.Error || error{ TypeMismatch, InvalidUtf8 };
+pub const EncodeError = wire.Error || std.mem.Allocator.Error || error{ TypeMismatch, InvalidUtf8 };
 pub const ValidationError = error{MissingRequiredField};
 
 pub const MapEntry = struct {
@@ -269,7 +269,7 @@ pub const DynamicMessage = struct {
         if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, writer, false);
         for (self.fields.items) |*entry| {
             if (entry.descriptor.resolvedPacked(file)) {
-                try encodePacked(entry.descriptor, entry.values.items, writer);
+                try encodePacked(entry.descriptor, entry.values.items, file, writer);
             } else {
                 for (entry.values.items) |value| try encodeField(entry.descriptor, value, file, writer);
             }
@@ -295,7 +295,7 @@ pub const DynamicMessage = struct {
         for (indexes) |index| {
             const entry = &self.fields.items[index];
             if (entry.descriptor.resolvedPacked(file)) {
-                try encodePacked(entry.descriptor, entry.values.items, writer);
+                try encodePacked(entry.descriptor, entry.values.items, file, writer);
             } else if (entry.descriptor.kind == .map) {
                 const value_indexes = try self.allocator.alloc(usize, entry.values.items.len);
                 defer self.allocator.free(value_indexes);
@@ -406,7 +406,7 @@ pub const DynamicMessage = struct {
             if (field.kind == .map) {
                 if (tag.wire_type != .length_delimited) return error.InvalidWireType;
                 const payload = try reader.readBytes();
-                var value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field.kind.map, payload)) orelse {
+                var value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field, field.kind.map, payload)) orelse {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                     continue;
                 };
@@ -478,7 +478,7 @@ pub const DynamicMessage = struct {
                 }
                 continue;
             }
-            var value = try decodeValue(self.allocator, file, registry, self.descriptor, field.kind, reader);
+            var value = try decodeValue(self.allocator, file, registry, self.descriptor, field, field.kind, reader);
             self.add(field, value) catch |err| {
                 deinitValue(&value, self.allocator);
                 return err;
@@ -640,7 +640,7 @@ fn extensionExtendsMessage(extendee: []const u8, message: *const schema.MessageD
 
 fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
     switch (field.kind) {
-        .scalar => |scalar| try encodeScalar(field.number, scalar, value, writer),
+        .scalar => |scalar| try encodeScalar(file, field, field.number, scalar, value, writer),
         .enumeration => switch (value) {
             .enumeration => |v| {
                 try writer.writeTag(field.number, .varint);
@@ -666,12 +666,12 @@ fn encodeField(field: *const schema.FieldDescriptor, value: Value, file: *const 
             },
             else => return error.TypeMismatch,
         },
-        .map => |map_type| try encodeMapEntry(field.number, map_type, value, file, writer),
+        .map => |map_type| try encodeMapEntry(field, map_type, value, file, writer),
     }
 }
 
 fn encodeMapEntry(
-    number: wire.FieldNumber,
+    field: *const schema.FieldDescriptor,
     map_type: schema.MapType,
     value: Value,
     file: *const schema.FileDescriptor,
@@ -684,12 +684,13 @@ fn encodeMapEntry(
 
     var entry_writer = wire.Writer.init(writer.allocator);
     defer entry_writer.deinit();
-    try encodeMapElement(1, .{ .scalar = map_type.key }, entry.key, file, &entry_writer);
-    try encodeMapElement(2, map_type.value.*, entry.value, file, &entry_writer);
-    try writer.writeMessage(number, entry_writer.slice());
+    try encodeMapElement(field, 1, .{ .scalar = map_type.key }, entry.key, file, &entry_writer);
+    try encodeMapElement(field, 2, map_type.value.*, entry.value, file, &entry_writer);
+    try writer.writeMessage(field.number, entry_writer.slice());
 }
 
 fn encodeMapElement(
+    field: *const schema.FieldDescriptor,
     number: wire.FieldNumber,
     kind: schema.FieldKind,
     value: Value,
@@ -697,7 +698,7 @@ fn encodeMapElement(
     writer: *wire.Writer,
 ) EncodeError!void {
     switch (kind) {
-        .scalar => |scalar| try encodeScalar(number, scalar, value, writer),
+        .scalar => |scalar| try encodeScalar(file, field, number, scalar, value, writer),
         .enumeration => switch (value) {
             .enumeration => |v| {
                 try writer.writeTag(number, .varint);
@@ -718,16 +719,32 @@ fn encodeMapElement(
     }
 }
 
-fn encodePacked(field: *const schema.FieldDescriptor, values: []const Value, writer: *wire.Writer) EncodeError!void {
+fn encodePacked(field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, writer: *wire.Writer) EncodeError!void {
     var packed_writer = wire.Writer.init(writer.allocator);
     defer packed_writer.deinit();
-    for (values) |value| try encodeScalarPayload(field.kind, value, &packed_writer);
+    for (values) |value| try encodeScalarPayloadWithValidation(file, field, field.kind, value, &packed_writer);
     try writer.writeBytes(field.number, packed_writer.slice());
 }
 
-fn encodeScalar(number: wire.FieldNumber, scalar: schema.ScalarType, value: Value, writer: *wire.Writer) EncodeError!void {
+fn encodeScalar(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, number: wire.FieldNumber, scalar: schema.ScalarType, value: Value, writer: *wire.Writer) EncodeError!void {
+    try validateScalarUtf8(file, field, .{ .scalar = scalar }, value);
     try writer.writeTag(number, scalar.wireType());
     try encodeScalarPayload(.{ .scalar = scalar }, value, writer);
+}
+
+fn encodeScalarPayloadWithValidation(file: ?*const schema.FileDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind, value: Value, writer: *wire.Writer) EncodeError!void {
+    try validateScalarUtf8(file, field, kind, value);
+    try encodeScalarPayload(kind, value, writer);
+}
+
+fn validateScalarUtf8(file: ?*const schema.FileDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind, value: Value) error{InvalidUtf8}!void {
+    if (fieldUtf8Validation(file, field) != .verify) return;
+    switch (kind) {
+        .scalar => |scalar| {
+            if (scalar == .string and value == .string and !std.unicode.utf8ValidateSlice(value.string)) return error.InvalidUtf8;
+        },
+        else => {},
+    }
 }
 
 fn encodeScalarPayload(kind: schema.FieldKind, value: Value, writer: *wire.Writer) EncodeError!void {
@@ -765,12 +782,13 @@ fn decodeValue(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
+    field: *const schema.FieldDescriptor,
     kind: schema.FieldKind,
     reader: *wire.Reader,
 ) DecodeError!Value {
     return switch (kind) {
         .scalar => |scalar| switch (scalar) {
-            .string => .{ .string = try allocator.dupe(u8, try reader.readBytes()) },
+            .string => .{ .string = try decodeStringValue(allocator, file, field, try reader.readBytes()) },
             .bytes => .{ .bytes = try allocator.dupe(u8, try reader.readBytes()) },
             else => try decodeScalarLike(kind, reader),
         },
@@ -782,6 +800,11 @@ fn decodeValue(
         .group => error.TypeMismatch,
         .map => error.TypeMismatch,
     };
+}
+
+fn decodeStringValue(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, bytes: []const u8) DecodeError![]u8 {
+    if (fieldUtf8Validation(file, field) == .verify and !std.unicode.utf8ValidateSlice(bytes)) return error.InvalidUtf8;
+    return try allocator.dupe(u8, bytes);
 }
 
 fn decodeMessagePayload(
@@ -812,6 +835,7 @@ fn decodeMapEntryValue(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
+    field: *const schema.FieldDescriptor,
     map_type: schema.MapType,
     payload: []const u8,
 ) DecodeError!?Value {
@@ -832,7 +856,7 @@ fn decodeMapEntryValue(
             1 => {
                 if (tag.wire_type != map_type.key.wireType()) return error.InvalidWireType;
                 if (maybe_key) |*old| deinitValue(old, allocator);
-                maybe_key = try decodeValue(allocator, file, registry, current, .{ .scalar = map_type.key }, &entry_reader);
+                maybe_key = try decodeValue(allocator, file, registry, current, field, .{ .scalar = map_type.key }, &entry_reader);
             },
             2 => {
                 if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
@@ -842,7 +866,7 @@ fn decodeMapEntryValue(
                     if (!enumHasNumber(enumeration, value)) return null;
                     maybe_value = .{ .enumeration = value };
                 } else {
-                    maybe_value = try decodeValue(allocator, file, registry, current, map_type.value.*, &entry_reader);
+                    maybe_value = try decodeValue(allocator, file, registry, current, field, map_type.value.*, &entry_reader);
                 }
             },
             else => try entry_reader.skipValue(tag),
@@ -972,6 +996,12 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
 fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
     return file.features.enum_type == .closed;
+}
+
+fn fieldUtf8Validation(file: ?*const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
+    if (field.features) |features| return features.utf8_validation;
+    if (file) |f| return f.features.utf8_validation;
+    return .verify;
 }
 
 fn decodeScalarLike(kind: schema.FieldKind, reader: *wire.Reader) DecodeError!Value {
@@ -1416,6 +1446,96 @@ test "dynamic editions honors repeated field encoding features and accepts packe
     try std.testing.expectEqual(@as(usize, 2), packed_decoded_from_expanded.get("values").?.values.items.len);
     try std.testing.expectEqual(@as(i32, 1), packed_decoded_from_expanded.get("values").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), packed_decoded_from_expanded.get("values").?.values.items[1].int32);
+}
+
+test "dynamic validates string utf8 according to syntax and features" {
+    const allocator = std.testing.allocator;
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\syntax = "proto3";
+            \\message M { string name = 1; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var encoded = wire.Writer.init(allocator);
+        defer encoded.deinit();
+        try encoded.writeBytes(1, &.{0xc0});
+        var msg = DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try std.testing.expectError(error.InvalidUtf8, msg.decode(&file, encoded.slice()));
+    }
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\syntax = "proto2";
+            \\message M { optional string name = 1; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var encoded = wire.Writer.init(allocator);
+        defer encoded.deinit();
+        try encoded.writeBytes(1, &.{0xc0});
+        var msg = DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.decode(&file, encoded.slice());
+        try std.testing.expectEqualSlices(u8, &.{0xc0}, msg.get("name").?.values.items[0].string);
+    }
+
+    {
+        var file = try parser.Parser.parse(allocator,
+            \\syntax = "proto3";
+            \\message M {
+            \\  string relaxed = 1 [features.utf8_validation = NONE];
+            \\  string strict = 2;
+            \\}
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+
+        var relaxed = wire.Writer.init(allocator);
+        defer relaxed.deinit();
+        try relaxed.writeBytes(1, &.{0xc0});
+        var relaxed_msg = DynamicMessage.init(allocator, desc);
+        defer relaxed_msg.deinit();
+        try relaxed_msg.decode(&file, relaxed.slice());
+        try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed_msg.get("relaxed").?.values.items[0].string);
+
+        var strict = wire.Writer.init(allocator);
+        defer strict.deinit();
+        try strict.writeBytes(2, &.{0xc0});
+        var strict_msg = DynamicMessage.init(allocator, desc);
+        defer strict_msg.deinit();
+        try std.testing.expectError(error.InvalidUtf8, strict_msg.decode(&file, strict.slice()));
+    }
+}
+
+test "dynamic encode validates string utf8 for fields and map entries" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  string name = 1;
+        \\  map<string, string> labels = 2;
+        \\}
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+    try std.testing.expectError(error.InvalidUtf8, msg.encoded(&file));
+
+    var map_msg = DynamicMessage.init(allocator, desc);
+    defer map_msg.deinit();
+    const entry = try allocator.create(MapEntry);
+    entry.* = .{
+        .key = .{ .string = try allocator.dupe(u8, &.{0xc0}) },
+        .value = .{ .string = try allocator.dupe(u8, "ok") },
+    };
+    try map_msg.add(desc.findField("labels").?, .{ .map_entry = entry });
+    try std.testing.expectError(error.InvalidUtf8, map_msg.encoded(&file));
 }
 
 test "dynamic oneof keeps only the last selected field" {
