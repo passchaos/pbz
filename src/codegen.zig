@@ -57,6 +57,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeEncode(file, message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeEncodeDeterministic(file, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeEncodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
     try writeDecode(message, writer, depth + 1);
@@ -204,6 +206,37 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     for (message.oneofs.items) |oneof| try writeEncodeOneof(message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer w.deinit();\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name != null) continue;
+        if (field.kind == .map) {
+            try writeEncodeMapFieldDeterministic(field, writer, depth + 1);
+        } else {
+            try writeEncodeField(file, field, writer, depth + 1);
+        }
+    }
+    for (message.oneofs.items) |oneof| try writeEncodeOneof(message, oneof, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try w.toOwnedSlice();\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.encodeDeterministic(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -842,6 +875,62 @@ fn writeEncodeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try writer.print("try w.writeMessage({d}, entry_writer.slice());\n", .{field.number});
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeEncodeMapFieldDeterministic(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const entries = try allocator.dupe(");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(entries);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("std.mem.sort(");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", entries, {}, struct { fn lessThan(_: void, a: ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", b: ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(") bool { return ");
+    try writeMapKeyLessExpr(map_type.key, "a.key", "b.key", writer);
+    try writer.writeAll("; } }.lessThan);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (entries) |entry| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("var entry_writer = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("defer entry_writer.deinit();\n");
+    try indent(writer, depth + 2);
+    try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "entry_writer", writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 2);
+    try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 2);
+    try writer.print("try w.writeMessage({d}, entry_writer.slice());\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeMapKeyLessExpr(scalar: schema.ScalarType, a: []const u8, b: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .string => try writer.print("std.mem.lessThan(u8, {s}, {s})", .{ a, b }),
+        .bool => try writer.print("!{s} and {s}", .{ a, b }),
+        .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("{s} < {s}", .{ a, b }),
+        .double, .float, .bytes => try writer.writeAll("false"),
+    }
 }
 
 fn writeKindWriteCall(number: u29, kind: schema.FieldKind, value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -2155,6 +2244,10 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeString(1, entry.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeInt32(2, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, entry_writer.slice())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.sort(@\"countsEntry\", entries") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.lessThan(u8, a.key, b.key)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
 }
 
 test "codegen emits map JSON stringify and parse helpers" {

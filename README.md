@@ -179,7 +179,8 @@ including generated message payload fields when their types are available.
 They also expose `missingRequiredFieldName` for callers that want the first
 missing direct required field name before handling `error.MissingRequiredField`.
 Packable repeated scalar and enum fields emit packed wire format when resolved
-as packed, and generated decoders accept both packed and expanded input.
+as packed, generated decoders accept both packed and expanded input, and generated
+`encodeDeterministic` sorts map entries by key.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
 scalar/enum map fields, encoded message payload fields when their generated types
