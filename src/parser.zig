@@ -13,6 +13,7 @@ pub const ParseError = error{
     DuplicateEnumValue,
     DuplicateField,
     InvalidRange,
+    ReservedField,
     InvalidEscape,
     UnterminatedString,
     UnterminatedComment,
@@ -763,6 +764,13 @@ fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!vo
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
         }
+        for (message.reserved_ranges.items) |range| {
+            const end = range.end orelse std.math.maxInt(i64);
+            if (field.number >= range.start and field.number < end) return error.ReservedField;
+        }
+        for (message.reserved_names.items) |name| {
+            if (std.mem.eql(u8, field.name, name)) return error.ReservedField;
+        }
     }
 }
 
@@ -1000,5 +1008,17 @@ test "parser validates enum values" {
     try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum Bad { A = 1; A = 2; }
+    ));
+}
+
+test "parser rejects fields using reserved names or numbers" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved 1 to 3; optional int32 hit = 2; }
+    ));
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved "old"; optional int32 old = 1; }
     ));
 }
