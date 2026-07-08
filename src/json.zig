@@ -19,9 +19,19 @@ pub fn stringifyAlloc(
     message: *const dynamic.DynamicMessage,
     options: Options,
 ) Error![]u8 {
+    return try stringifyAllocWithRegistry(allocator, file, null, message, options);
+}
+
+pub fn stringifyAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+) Error![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
-    try stringify(file, message, options, &out.writer);
+    try stringifyWithRegistry(file, registry, message, options, &out.writer);
     return try out.toOwnedSlice();
 }
 
@@ -31,7 +41,17 @@ pub fn stringify(
     options: Options,
     writer: *std.Io.Writer,
 ) Error!void {
-    try writeMessage(file, message, options, writer);
+    try stringifyWithRegistry(file, null, message, options, writer);
+}
+
+pub fn stringifyWithRegistry(
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+    writer: *std.Io.Writer,
+) Error!void {
+    try writeMessage(file, registry, message, options, writer);
 }
 
 pub fn parseAlloc(
@@ -382,18 +402,20 @@ fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, opti
 
 fn writeMessage(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     message: *const dynamic.DynamicMessage,
     options: Options,
     writer: *std.Io.Writer,
 ) Error!void {
     try writer.writeAll("{");
     var first = true;
-    try writeMessageContents(file, message, options, writer, &first);
+    try writeMessageContents(file, registry, message, options, writer, &first);
     try writer.writeAll("}");
 }
 
 fn writeMessageContents(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     message: *const dynamic.DynamicMessage,
     options: Options,
     writer: *std.Io.Writer,
@@ -406,16 +428,16 @@ fn writeMessageContents(
         try writeFieldName(entry.descriptor, options, writer);
         try writer.writeAll(":");
         if (entry.descriptor.kind == .map) {
-            try writeMap(file, entry.descriptor, entry.values.items, options, writer);
+            try writeMap(file, registry, message.descriptor, entry.descriptor, entry.values.items, options, writer);
         } else if (entry.descriptor.cardinality == .repeated) {
             try writer.writeAll("[");
             for (entry.values.items, 0..) |value, index| {
                 if (index != 0) try writer.writeAll(",");
-                try writeValue(file, entry.descriptor.kind, value, options, writer);
+                try writeValue(file, registry, message.descriptor, entry.descriptor.kind, value, options, writer);
             }
             try writer.writeAll("]");
         } else {
-            try writeValue(file, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer);
+            try writeValue(file, registry, message.descriptor, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer);
         }
     }
     if (options.always_print_primitive_fields) {
@@ -426,7 +448,7 @@ fn writeMessageContents(
             first.* = false;
             try writeFieldName(field, options, writer);
             try writer.writeAll(":");
-            try writeAbsentFieldDefault(file, field, options, writer);
+            try writeAbsentFieldDefault(file, registry, message.descriptor, field, options, writer);
         }
     }
 }
@@ -439,7 +461,7 @@ fn shouldPrintAbsentField(field: *const schema.FieldDescriptor) bool {
     };
 }
 
-fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, options: Options, writer: *std.Io.Writer) Error!void {
+fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, options: Options, writer: *std.Io.Writer) Error!void {
     if (field.kind == .map or field.cardinality == .repeated) return writer.writeAll(if (field.kind == .map) "{}" else "[]");
     switch (field.kind) {
         .scalar => |scalar| try writeDefaultScalar(scalar, field.default_value, writer),
@@ -448,7 +470,7 @@ fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, field: *const sch
                 .integer => |v| @intCast(v),
                 else => 0,
             } else 0;
-            try writeEnum(file, name, .{ .enumeration = number }, options, writer);
+            try writeEnum(file, registry, current, name, .{ .enumeration = number }, options, writer);
         },
         else => try writer.writeAll("null"),
     }
@@ -456,6 +478,8 @@ fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, field: *const sch
 
 fn writeMap(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    current: *const schema.MessageDescriptor,
     field: *const schema.FieldDescriptor,
     values: []const dynamic.Value,
     options: Options,
@@ -474,13 +498,15 @@ fn writeMap(
         if (index != 0) try writer.writeAll(",");
         try writeMapKey(map_type.key, entry.key, writer);
         try writer.writeAll(":");
-        try writeValue(file, map_type.value.*, entry.value, options, writer);
+        try writeValue(file, registry, current, map_type.value.*, entry.value, options, writer);
     }
     try writer.writeAll("}");
 }
 
 fn writeValue(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    current: *const schema.MessageDescriptor,
     kind: schema.FieldKind,
     value: dynamic.Value,
     options: Options,
@@ -488,13 +514,15 @@ fn writeValue(
 ) Error!void {
     switch (kind) {
         .scalar => |scalar| try writeScalar(scalar, value, writer),
-        .enumeration => |name| try writeEnum(file, name, value, options, writer),
-        .message => |name| switch (value) {
-            .message => |message| if (try writeKnownMessage(file, name, message, options, writer)) {} else try writeMessage(file, message, options, writer),
+        .enumeration => |name| try writeEnum(file, registry, current, name, value, options, writer),
+        .message => |name| if (registryEnumDescriptor(file, registry, current, name) != null)
+            try writeEnum(file, registry, current, name, value, options, writer)
+        else switch (value) {
+            .message => |message| if (try writeKnownMessage(file, name, message, options, writer)) {} else try writeMessage(file, registry, message, options, writer),
             else => return error.TypeMismatch,
         },
         .group => switch (value) {
-            .group => |message| try writeMessage(file, message, options, writer),
+            .group => |message| try writeMessage(file, registry, message, options, writer),
             else => return error.TypeMismatch,
         },
         .map => return error.TypeMismatch,
@@ -669,7 +697,7 @@ fn writeKnownMessage(file: *const schema.FileDescriptor, name: []const u8, messa
             try writer.writeAll("{\"@type\":");
             try std.json.Stringify.value(any.type_url, .{}, writer);
             var first = false;
-            try writeMessageContents(file, &nested, options, writer, &first);
+            try writeMessageContents(file, null, &nested, options, writer, &first);
             try writer.writeAll("}");
             return true;
         }
@@ -989,6 +1017,8 @@ fn defaultFloat(default_value: ?schema.OptionValue) f64 {
 
 fn writeEnum(
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    current: *const schema.MessageDescriptor,
     name: []const u8,
     value: dynamic.Value,
     options: Options,
@@ -999,7 +1029,7 @@ fn writeEnum(
         else => return error.TypeMismatch,
     };
     if (options.enum_as_name) {
-        if (file.findEnumDeep(name)) |enumeration| {
+        if (registryEnumDescriptor(file, registry, current, name)) |enumeration| {
             for (enumeration.values.items) |enum_value| {
                 if (enum_value.number == number) {
                     try writeJsonString(enum_value.name, writer);
@@ -1246,6 +1276,10 @@ test "json parse with registry resolves imported message and enum fields" {
     try std.testing.expectEqual(@as(i32, 1), event.get("kind").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(i32, 1), event.get("roles").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(i32, 0), event.get("roles").?.values.items[1].enumeration);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &app, &registry, &event, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\",\"roles\":[\"ADMIN\",\"UNKNOWN\"]}", rendered);
 }
 
 test "json parses and prints enum numbers and unknown enum values" {

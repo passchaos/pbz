@@ -38,7 +38,7 @@ validated feature set.
   - nested message and group round-trips, including imported message and enum decode through Registry
   - unknown field preservation/querying, extension encoding/decoding with Registry, deterministic encoding including map key ordering, and message merging
 - JSON support
-  - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, nested messages, and registry-aware imported message/enum parsing
+  - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums, nested messages, and registry-aware imported message/enum parsing plus imported enum-name stringify
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including Any expanded payload JSON, Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing and float special values, FieldMask path validation, and strict Empty object parsing
 - Conformance helpers
@@ -146,7 +146,8 @@ always-print primitive/repeated/map defaults, quoted 64-bit integers, bytes as
 standard/URL-safe base64, repeated fields as arrays, maps as JSON objects, enum
 names/numbers including unknown numeric enum values, default lowerCamelCase field names, null-as-absent parsing, and
 nested messages recursively; `parseJsonAllocWithRegistry` resolves imported
-message and enum field types through a `Registry`, and ignore-unknown parsing
+message and enum field types through a `Registry`, `stringifyJsonAllocWithRegistry`
+uses the same registry to print imported enum names, and ignore-unknown parsing
 also skips unknown enum names.
 
 ## Well-known types
