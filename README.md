@@ -22,7 +22,7 @@ validated feature set.
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, and enum validation including allow_alias
   - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape
-  - extension range options for `declaration`, `verification`, and range-local `features.*`
+  - extension range options for `declaration`, `verification`, and range-local `features.*`, with declaration/extension consistency validation
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
@@ -224,8 +224,8 @@ file/message/enum/enum-value/field/oneof/service/method uninterpreted options pl
 oneof index/name validation, enum allow_alias, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,
 structured SourceCodeInfo location path/span/comments, ExtensionRangeOptions
-declarations/verification/features, structured GeneratedCodeInfo annotations,
-and edition feature metadata.
+declarations/verification/features with parser-side consistency checks,
+structured GeneratedCodeInfo annotations, and edition feature metadata.
 
 ## Build and test
 

@@ -803,6 +803,7 @@ pub const Parser = struct {
                 if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
             }
         }
+        for (self.file.messages.items) |*message| try self.validateMessageExtensionDeclarations(message);
     }
 
     fn validateMessageExtensions(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
@@ -820,6 +821,24 @@ pub const Parser = struct {
         for (message.messages.items) |*nested| try collectMessageExtensions(allocator, nested, output);
     }
 
+    fn validateMessageExtensionDeclarations(self: *Parser, message: *const schema.MessageDescriptor) ParseError!void {
+        for (message.extension_ranges.items) |range| try self.validateExtensionRangeDeclarations(range);
+        for (message.messages.items) |*nested| try self.validateMessageExtensionDeclarations(nested);
+    }
+
+    fn validateExtensionRangeDeclarations(self: *Parser, range: schema.ExtensionRange) ParseError!void {
+        _ = self;
+        const end = range.end orelse std.math.maxInt(i64);
+        for (range.declarations.items, 0..) |declaration, i| {
+            if (declaration.number <= 0) return error.InvalidFieldType;
+            if (declaration.number < range.start or declaration.number >= end) return error.ReservedField;
+            for (range.declarations.items[i + 1 ..]) |other| {
+                if (declaration.number == other.number) return error.DuplicateField;
+                if (declaration.full_name.len != 0 and other.full_name.len != 0 and std.mem.eql(u8, declaration.full_name, other.full_name)) return error.DuplicateField;
+            }
+        }
+    }
+
     fn validateExtensionField(self: *Parser, field: *const schema.FieldDescriptor) ParseError!void {
         if (field.kind == .map) return error.InvalidFieldType;
         const extendee_name = field.extendee orelse return;
@@ -827,9 +846,31 @@ pub const Parser = struct {
         const extendee = self.file.findMessageDeep(extendee_name) orelse return;
         for (extendee.extension_ranges.items) |range| {
             const end = range.end orelse std.math.maxInt(i64);
-            if (field.number >= range.start and field.number < end) return;
+            if (field.number >= range.start and field.number < end) {
+                try self.validateExtensionFieldDeclaration(field, range);
+                return;
+            }
         }
         return error.ReservedField;
+    }
+
+    fn validateExtensionFieldDeclaration(self: *Parser, field: *const schema.FieldDescriptor, range: schema.ExtensionRange) ParseError!void {
+        var matching_declaration: ?schema.ExtensionDeclaration = null;
+        for (range.declarations.items) |declaration| {
+            if (declaration.number <= 0) return error.InvalidFieldType;
+            const end = range.end orelse std.math.maxInt(i64);
+            if (declaration.number < range.start or declaration.number >= end) return error.ReservedField;
+            if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
+        }
+        const declaration = matching_declaration orelse {
+            if (range.verification == .declaration) return error.ReservedField;
+            return;
+        };
+        if (declaration.reserved) return error.ReservedField;
+        if (declaration.full_name.len != 0 and !nameMatchesType(declaration.full_name, field.name)) return error.InvalidFieldType;
+        if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
+        if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
+        if (declaration.type_name.len != 0 and !extensionTypeMatches(self, field, declaration.type_name)) return error.InvalidFieldType;
     }
 
     fn validateMessageSets(self: *Parser) ParseError!void {
@@ -1220,6 +1261,48 @@ fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8)
     if (message.findEnum(leaf)) |enumeration| return enumeration;
     for (message.messages.items) |*nested| if (findEnumInMessage(nested, leaf)) |found| return found;
     return null;
+}
+
+fn extensionTypeMatches(parser: *Parser, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
+    _ = parser;
+    return switch (field.kind) {
+        .message, .enumeration, .group => |type_name| nameMatchesType(declared_type, type_name),
+        .scalar => |scalar| std.mem.eql(u8, declared_typeNameScalar(scalar), stripLeadingDot(declared_type)),
+        .map => false,
+    };
+}
+
+fn declared_typeNameScalar(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .double => "double",
+        .float => "float",
+        .int32 => "int32",
+        .int64 => "int64",
+        .uint32 => "uint32",
+        .uint64 => "uint64",
+        .sint32 => "sint32",
+        .sint64 => "sint64",
+        .fixed32 => "fixed32",
+        .fixed64 => "fixed64",
+        .sfixed32 => "sfixed32",
+        .sfixed64 => "sfixed64",
+        .bool => "bool",
+        .string => "string",
+        .bytes => "bytes",
+    };
+}
+
+fn nameMatchesType(a: []const u8, b: []const u8) bool {
+    const an = stripLeadingDot(a);
+    const bn = stripLeadingDot(b);
+    if (std.mem.eql(u8, an, bn)) return true;
+    const a_leaf = if (std.mem.lastIndexOfScalar(u8, an, '.')) |idx| an[idx + 1 ..] else an;
+    const b_leaf = if (std.mem.lastIndexOfScalar(u8, bn, '.')) |idx| bn[idx + 1 ..] else bn;
+    return std.mem.eql(u8, a_leaf, b_leaf);
+}
+
+fn stripLeadingDot(name: []const u8) []const u8 {
+    return if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
 }
 
 fn optionLeaf(name: []const u8) []const u8 {
@@ -1707,6 +1790,77 @@ test "parser preserves extension range declarations verification and features" {
     try std.testing.expect(range.declarations.items[0].repeated);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
     try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, range.features.?.repeated_field_encoding);
+}
+
+test "parser validates extension range declarations against defined extensions" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" repeated: true },
+        \\    declaration = { number: 101 full_name: ".demo.old" type: ".demo.Ext" reserved: true },
+        \\    verification = DECLARATION
+        \\  ];
+        \\}
+        \\message Ext {}
+        \\extend Host { repeated Ext ext = 100; }
+    );
+    defer file.deinit();
+
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" reserved: true }
+        \\  ];
+        \\}
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Other" }
+        \\  ];
+        \\}
+        \\message Ext {}
+        \\message Other {}
+        \\extend Host { optional Ext ext = 100; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" repeated: true }
+        \\  ];
+        \\}
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100; }
+    ));
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [verification = DECLARATION];
+        \\}
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100; }
+    ));
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".a" },
+        \\    declaration = { number: 100 full_name: ".b" }
+        \\  ];
+        \\}
+    ));
 }
 
 test "parser validates proto2 MessageSet declarations and extensions" {
