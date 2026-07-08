@@ -65,6 +65,7 @@ pub fn fillMessage(
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
+        if (entry.value_ptr.* == .null) continue;
         if (field.kind == .map) {
             try parseMapField(allocator, file, message, field, entry.value_ptr.*, options);
         } else if (field.cardinality == .repeated) {
@@ -619,4 +620,21 @@ test "json parse dynamic message with scalars repeated maps enums and nested mes
     const rendered = try stringifyAlloc(allocator, &file, &bag, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", rendered);
+}
+
+test "json parse ignores null fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Nulls { int32 id = 1; repeated string tags = 2; map<string, int32> counts = 3; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Nulls").?;
+
+    var msg = try parseAlloc(allocator, &file, desc, "{\"id\":null,\"tags\":null,\"counts\":null}", .{});
+    defer msg.deinit();
+    try std.testing.expect(msg.get("id") == null);
+    try std.testing.expect(msg.get("tags") == null);
+    try std.testing.expect(msg.get("counts") == null);
 }
