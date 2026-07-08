@@ -258,10 +258,17 @@ fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
 }
 
 fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-    const size = try std.base64.standard.Decoder.calcSizeForSlice(value);
+    return decodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
+        decodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
+        decodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
+        decodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
+}
+
+fn decodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
+    const size = try decoder.calcSizeForSlice(value);
     const out = try allocator.alloc(u8, size);
     errdefer allocator.free(out);
-    try std.base64.standard.Decoder.decode(out, value);
+    try decoder.decode(out, value);
     return out;
 }
 
@@ -695,4 +702,23 @@ test "json uses default lowerCamelCase field names" {
     defer parsed.deinit();
     try std.testing.expectEqual(@as(i32, 8), parsed.get("user_id").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "Trae", parsed.get("display_name").?.values.items[0].string);
+}
+
+test "json parses bytes from base64 variants" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Bytes { bytes raw = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Bytes").?;
+
+    var standard = try parseAlloc(allocator, &file, desc, "{\"raw\":\"++8=\"}", .{});
+    defer standard.deinit();
+    try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xef }, standard.get("raw").?.values.items[0].bytes);
+
+    var url_safe_no_pad = try parseAlloc(allocator, &file, desc, "{\"raw\":\"--8\"}", .{});
+    defer url_safe_no_pad.deinit();
+    try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xef }, url_safe_no_pad.get("raw").?.values.items[0].bytes);
 }
