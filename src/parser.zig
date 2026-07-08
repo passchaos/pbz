@@ -699,6 +699,7 @@ pub const Parser = struct {
 
     fn validateExtensionField(self: *Parser, field: *const schema.FieldDescriptor) ParseError!void {
         const extendee_name = field.extendee orelse return;
+        if (self.file.findMessageDeep(extendee_name) == null and self.file.findEnumDeep(extendee_name) != null) return error.InvalidFieldType;
         const extendee = self.file.findMessageDeep(extendee_name) orelse return;
         for (extendee.extension_ranges.items) |range| {
             const end = range.end orelse std.math.maxInt(i64);
@@ -1357,6 +1358,15 @@ test "parser rejects required extension fields" {
         \\syntax = "proto2";
         \\message Target { extensions 100 to 200; }
         \\extend Target { required int32 bad = 150; }
+    ));
+}
+
+test "parser rejects extensions of non-message extendees in same file" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Target { UNKNOWN = 0; }
+        \\extend Target { optional int32 bad = 100; }
     ));
 }
 
