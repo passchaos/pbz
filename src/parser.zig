@@ -613,6 +613,36 @@ pub const Parser = struct {
             },
             else => {},
         }
+        self.resolveEnumDefault(field, context);
+    }
+
+    fn resolveEnumDefault(self: *Parser, field: *schema.FieldDescriptor, context: ?*schema.MessageDescriptor) void {
+        const enum_name = switch (field.kind) {
+            .enumeration => |name| name,
+            else => return,
+        };
+        const default_name = switch (field.default_value orelse return) {
+            .identifier => |name| name,
+            .string => |name| name,
+            else => return,
+        };
+        const enumeration = self.findEnumDescriptor(enum_name, context) orelse return;
+        if (enumeration.findValue(default_name)) |value| field.default_value = .{ .integer = value.number };
+    }
+
+    fn findEnumDescriptor(self: *Parser, name: []const u8, context: ?*schema.MessageDescriptor) ?*const schema.EnumDescriptor {
+        const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+        const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+        if (context) |message| {
+            if (message.findEnum(leaf)) |enumeration| return enumeration;
+        }
+        for (self.file.enums.items) |*enumeration| {
+            if (std.mem.eql(u8, enumeration.name, leaf) or std.mem.eql(u8, enumeration.name, trimmed)) return enumeration;
+        }
+        for (self.file.messages.items) |*message| {
+            if (findEnumInMessage(message, leaf)) |enumeration| return enumeration;
+        }
+        return null;
     }
 
     fn isEnumName(self: *Parser, name: []const u8, context: ?*schema.MessageDescriptor) bool {
@@ -712,6 +742,12 @@ pub const Parser = struct {
         return self.previous_end;
     }
 };
+
+fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8) ?*const schema.EnumDescriptor {
+    if (message.findEnum(leaf)) |enumeration| return enumeration;
+    for (message.messages.items) |*nested| if (findEnumInMessage(nested, leaf)) |found| return found;
+    return null;
+}
 
 fn optionLeaf(name: []const u8) []const u8 {
     return if (std.mem.lastIndexOfScalar(u8, name, '.')) |idx| name[idx + 1 ..] else name;
@@ -890,4 +926,16 @@ test "parser concatenates adjacent string literals" {
     defer file.deinit();
     try std.testing.expectEqualSlices(u8, "foo/bar.proto", file.imports.items[0].path);
     try std.testing.expectEqualSlices(u8, "hello\nworld", file.findMessage("Joined").?.findField("text").?.default_value.?.string);
+}
+
+test "parser resolves enum symbolic defaults" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+        \\message Defaults { optional Kind kind = 1 [default = ADMIN]; }
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    try std.testing.expectEqual(@as(i64, 7), file.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
 }

@@ -1091,8 +1091,8 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expectEqual(@as(i32, 42), message.getOrDefault(desc.findField("count").?).int32);
     try std.testing.expectEqualStrings("anon", message.getOrDefault(desc.findField("name").?).string);
     try std.testing.expect(message.getOrDefault(desc.findField("enabled").?).boolean);
-    // Enum symbolic defaults are kept as schema option text today; unknown numeric fallback is 0.
-    try std.testing.expectEqual(@as(i32, 0), message.getOrDefault(desc.findField("kind").?).enumeration);
+    // Enum symbolic defaults resolve through the parser into their numeric value.
+    try std.testing.expectEqual(@as(i32, 1), message.getOrDefault(desc.findField("kind").?).enumeration);
     try std.testing.expectEqualStrings("", message.getOrDefault(desc.findField("blob").?).bytes);
 
     try message.add(desc.findField("count").?, .{ .int32 = 7 });

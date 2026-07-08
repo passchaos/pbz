@@ -14,7 +14,7 @@ validated feature set.
 - Schema model
   - files, messages, fields, oneofs, enums, services, imports, options
   - proto2/proto3/editions syntax flags and feature defaults
-  - proto2 required/optional/repeated cardinality and packed override handling
+  - proto2 required/optional/repeated cardinality, enum defaults, and packed override handling
 - Multi-file registry
   - package/import-aware lookup for messages/enums across FileDescriptor values
 - `.proto` parser
