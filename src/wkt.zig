@@ -247,11 +247,16 @@ pub const Duration = struct {
         const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
         if (unquoted.len < 2 or unquoted[unquoted.len - 1] != 's') return error.InvalidDuration;
         var body = unquoted[0 .. unquoted.len - 1];
-        const negative = body.len != 0 and body[0] == '-';
-        if (negative) body = body[1..];
+        var negative = false;
+        if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
+            negative = body[0] == '-';
+            body = body[1..];
+        }
+        if (body.len == 0) return error.InvalidDuration;
         const dot = std.mem.indexOfScalar(u8, body, '.');
         const sec_text = if (dot) |idx| body[0..idx] else body;
-        var seconds = try std.fmt.parseInt(i64, sec_text, 10);
+        if (sec_text.len == 0) return error.InvalidDuration;
+        var seconds = std.fmt.parseInt(i64, sec_text, 10) catch return error.InvalidDuration;
         var nanos: i32 = 0;
         if (dot) |idx| {
             const frac = body[idx + 1 ..];
@@ -267,7 +272,9 @@ pub const Duration = struct {
             seconds = -seconds;
             nanos = -nanos;
         }
-        return .{ .seconds = seconds, .nanos = nanos };
+        const out = Duration{ .seconds = seconds, .nanos = nanos };
+        try out.validate();
+        return out;
     }
 };
 
@@ -286,6 +293,17 @@ test "duration wire and json roundtrip" {
     const parsed = try Duration.jsonParse(json);
     try std.testing.expectEqual(duration.seconds, parsed.seconds);
     try std.testing.expectEqual(duration.nanos, parsed.nanos);
+}
+
+test "duration json parses plus sign and validates input" {
+    const positive = try Duration.jsonParse("\"+3.250s\"");
+    try std.testing.expectEqual(@as(i64, 3), positive.seconds);
+    try std.testing.expectEqual(@as(i32, 250_000_000), positive.nanos);
+    try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"s\""));
+    try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\".1s\""));
+    try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"1.s\""));
+    try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"1.1234567890s\""));
+    try std.testing.expectError(error.DurationOutOfRange, Duration.jsonParse("\"315576000001s\""));
 }
 
 pub const FieldMask = struct {
