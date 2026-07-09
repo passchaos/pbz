@@ -6575,13 +6575,32 @@ fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, 
     try writer.writeAll("pub const ");
     try writeQuotedIdent(enumeration.name, writer);
     try writer.writeAll(" = enum(i32) {\n");
-    for (enumeration.values.items) |value| {
+    for (enumeration.values.items, 0..) |value, index| {
+        if (enumFirstValueIndexForNumber(enumeration, value.number) != index) continue;
         try indent(writer, depth + 1);
         try writeQuotedIdent(value.name, writer);
         try writer.print(" = {d},\n", .{value.number});
     }
+    for (enumeration.values.items, 0..) |value, index| {
+        const first_index = enumFirstValueIndexForNumber(enumeration, value.number) orelse continue;
+        if (first_index == index) continue;
+        const first = &enumeration.values.items[first_index];
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const ");
+        try writeQuotedIdent(value.name, writer);
+        try writer.writeAll(" = @This().");
+        try writeQuotedIdent(first.name, writer);
+        try writer.writeAll(";\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
+}
+
+fn enumFirstValueIndexForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?usize {
+    for (enumeration.values.items, 0..) |value, index| {
+        if (value.number == number) return index;
+    }
+    return null;
 }
 
 fn writeExtensionMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -7654,6 +7673,32 @@ test "codegen emits zig message and enum skeletons" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Kind\" = enum(i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"User\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"name_number\" = 1") != null);
+}
+
+test "codegen emits Zig enum aliases for proto allow_alias" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Alias {
+        \\  option allow_alias = true;
+        \\  UNKNOWN = 0;
+        \\  STARTED = 1;
+        \\  RUNNING = 1;
+        \\  ACTIVE = 1;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Alias\" = enum(i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"STARTED\" = 1,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"RUNNING\" = @This().@\"STARTED\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"ACTIVE\" = @This().@\"STARTED\";") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen emits package and import module metadata" {
