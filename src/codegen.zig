@@ -2911,6 +2911,17 @@ fn optionText(default_value: ?schema.OptionValue) ?[]const u8 {
     };
 }
 
+fn writeOptionValueTextLiteral(default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    const value = default_value orelse return try writer.writeAll("\"\"");
+    switch (value) {
+        .string, .identifier => |text| try writeZigStringLiteral(text, writer),
+        .integer => |v| try writer.print("\"{d}\"", .{v}),
+        .float => |v| try writer.print("\"{d}\"", .{v}),
+        .boolean => |v| try writer.writeAll(if (v) "\"true\"" else "\"false\""),
+        .aggregate => |text| try writeZigStringLiteral(text, writer),
+    }
+}
+
 fn optionBool(default_value: ?schema.OptionValue) ?bool {
     const value = default_value orelse return null;
     return schema.optionAsBool(value);
@@ -5187,6 +5198,14 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writer.writeAll("pub const zig_type = ");
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const has_default = ");
+    try writer.writeAll(if (field.default_value != null) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const default_value = ");
+    try writeOptionValueTextLiteral(field.default_value, writer);
+    try writer.writeAll(";\n");
     try writeExtensionWriteHelpers(file, field, writer, depth + 1);
     try writeExtensionDecodeHelpers(file, field, writer, depth + 1);
     try indent(writer, depth);
@@ -6533,7 +6552,7 @@ test "codegen emits proto2 extension metadata" {
         \\message Host { extensions 100 to max; }
         \\message Note {}
         \\extend Host {
-        \\  optional string tag = 100;
+        \\  optional string tag = 100 [default = "untagged"];
         \\  repeated int32 nums = 101;
         \\  optional Note note = 102;
         \\  repeated int32 packed_nums = 103 [packed = true];
@@ -6550,6 +6569,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"optional\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const u8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const has_default = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"untagged\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn write(w: *pbz.Writer, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeString(100, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);

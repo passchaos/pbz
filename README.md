@@ -220,10 +220,11 @@ that dispatches serialized request/response payloads through a caller-provided
 function pointer.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
-`cardinality`, `value_type`, and `zig_type`) plus typed `write`/`writeAll` and
-`decodeValue`/`decodeAppend` helpers so applications can encode/decode extension
-values or wire them into dynamic registries and custom typed wrappers. Extension
-metadata also emits `encodeRaw`, `appendToUnknown`, `decodeRaw`,
+`cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)
+plus typed `write`/`writeAll` and `decodeValue`/`decodeAppend` helpers so
+applications can encode/decode extension values or wire them into dynamic
+registries and custom typed wrappers. Extension metadata also emits `encodeRaw`,
+`appendToUnknown`, `decodeRaw`,
 `decodeAllRaw`, `decodeFromUnknownFieldsAlloc` / `decodeAllFromUnknown`, and
 `decodeFirstFromUnknown` helpers so typed message wrappers can shuttle proto2
 extension payloads through their preserved unknown field storage; repeated
