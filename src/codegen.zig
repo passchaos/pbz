@@ -132,6 +132,7 @@ fn normalizedTypeName(type_name: []const u8) []const u8 {
 
 const PluginParameterOptions = struct {
     include_imports: bool = false,
+    generated_info: bool = true,
 };
 
 pub fn generatePluginResponseFromRequestBytes(allocator: std.mem.Allocator, bytes: []const u8) Error![]u8 {
@@ -164,7 +165,7 @@ pub fn generatePluginResponseFromRequest(allocator: std.mem.Allocator, request: 
         }
     }
 
-    return try generatePluginResponseForSelected(allocator, selected.items, &registry);
+    return try generatePluginResponseForSelected(allocator, selected.items, &registry, options);
 }
 
 fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!PluginParameterOptions {
@@ -176,6 +177,8 @@ fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!Pl
         const key, const maybe_value = splitParameter(part);
         if (std.mem.eql(u8, key, "include_imports") or std.mem.eql(u8, key, "emit_imports")) {
             options.include_imports = try parseParameterBool(maybe_value orelse "true");
+        } else if (std.mem.eql(u8, key, "generated_info") or std.mem.eql(u8, key, "annotate_code")) {
+            options.generated_info = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "paths")) {
             const value = maybe_value orelse return error.InvalidPluginParameter;
             if (!std.mem.eql(u8, value, "source_relative")) return error.InvalidPluginParameter;
@@ -204,10 +207,10 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
     defer registry.deinit();
     for (files) |file| try registry.addFile(file);
 
-    return try generatePluginResponseForSelected(allocator, files, &registry);
+    return try generatePluginResponseForSelected(allocator, files, &registry, .{});
 }
 
-fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: *const registry_mod.Registry) Error![]u8 {
+fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: *const registry_mod.Registry, options: PluginParameterOptions) Error![]u8 {
     var response_files = try allocator.alloc(plugin.CodeGeneratorResponse.File, files.len);
     @memset(response_files, .{});
     var generated_infos = try allocator.alloc(schema.GeneratedCodeInfo, files.len);
@@ -225,8 +228,12 @@ fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []cons
         const content = try generateZigFileWithRegistry(allocator, file, registry);
         errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
-        try populateGeneratedCodeInfo(allocator, file, content, &generated_infos[i]);
-        response_files[i] = .{ .name = name, .content = content, .generated_code_info_value = &generated_infos[i] };
+        if (options.generated_info) {
+            try populateGeneratedCodeInfo(allocator, file, content, &generated_infos[i]);
+            response_files[i] = .{ .name = name, .content = content, .generated_code_info_value = &generated_infos[i] };
+        } else {
+            response_files[i] = .{ .name = name, .content = content };
+        }
     }
     return try (plugin.CodeGeneratorResponse{
         .supported_features = generatedResponseFeatureMask(),
@@ -7629,6 +7636,38 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
         }
     }
     try std.testing.expectEqual(@as(usize, 2), include_file_count);
+
+    var no_info_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer no_info_request.deinit();
+    no_info_request.parameter = "generated_info=false";
+    try no_info_request.files_to_generate.append(allocator, "app.proto");
+    try no_info_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
+    no_info_request.proto_files.items[0].name = "app.proto";
+    const no_info_response = try generatePluginResponseFromRequest(allocator, &no_info_request);
+    defer allocator.free(no_info_response);
+    var no_info_reader = wire.Reader.init(no_info_response);
+    var saw_no_info_file = false;
+    var saw_generated_info_field = false;
+    while (try no_info_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                saw_no_info_file = true;
+                var file_reader = wire.Reader.init(try no_info_reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        16 => {
+                            saw_generated_info_field = true;
+                            try file_reader.skipValue(file_tag);
+                        },
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try no_info_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_no_info_file);
+    try std.testing.expect(!saw_generated_info_field);
 
     var invalid_request = plugin.CodeGeneratorRequest.init(allocator);
     defer invalid_request.deinit();

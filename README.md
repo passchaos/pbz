@@ -211,8 +211,8 @@ source-retention descriptor request fields, response feature masks, edition
 support bounds, insertion points, and generated-code metadata payload passthrough
 or structured `GeneratedCodeInfo` annotations. `pbz.generatePluginResponseFromRequest` and
 `pbz.generatePluginResponseFromRequestBytes` honor `file_to_generate`, emit only
-requested files by default, parse `paths=source_relative` plus
-`include_imports`/`emit_imports` parameters, report encoded plugin errors for
+requested files by default, parse `paths=source_relative`,
+`include_imports`/`emit_imports`, and `generated_info`/`annotate_code` parameters, report encoded plugin errors for
 missing requested names or invalid parameters, emit structured
 `GeneratedCodeInfo` annotations for generated files, top-level symbols, nested messages/enums, fields, and enum values, and still build a registry
 from every `proto_file` descriptor so generated imports can resolve cross-file
