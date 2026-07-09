@@ -211,10 +211,10 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     for (message.fields.items) |*field| try writeRepeatedListDecl(field, writer, depth + 1);
-    if (!messageTextParseUsesAllocator(message)) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = allocator;\n");
-    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("var @\"_unknown_fields_list\": std.ArrayList([]const u8) = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer { for (@\"_unknown_fields_list\".items) |raw| allocator.free(raw); @\"_unknown_fields_list\".deinit(allocator); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var lines = std.mem.splitScalar(u8, text, '\\n');\n");
     try indent(writer, depth + 1);
@@ -234,10 +234,14 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
         }
     }
     try indent(writer, depth + 2);
+    try writer.writeAll("if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("return error.UnknownField;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.@\"_unknown_fields\" = try @\"_unknown_fields_list\".toOwnedSlice(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -3354,6 +3358,28 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return number;
         \\}
         \\
+        \\fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8 {
+        \\    var colon_index: ?usize = null;
+        \\    for (line, 0..) |c, i| {
+        \\        if (c == ':') { colon_index = i; break; }
+        \\        if (i == 0 and !std.ascii.isDigit(c)) return null;
+        \\        if (i != 0 and !std.ascii.isDigit(c)) return null;
+        \\    }
+        \\    const idx = colon_index orelse return null;
+        \\    const number = try std.fmt.parseInt(pbz.FieldNumber, std.mem.trim(u8, line[0..idx], " \t\r"), 10);
+        \\    const value = std.mem.trim(u8, line[idx + 1 ..], " \t\r");
+        \\    var raw = pbz.Writer.init(allocator);
+        \\    defer raw.deinit();
+        \\    if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) {
+        \\        const bytes = try textUnquote(allocator, value);
+        \\        defer allocator.free(bytes);
+        \\        try raw.writeBytes(number, bytes);
+        \\    } else {
+        \\        try raw.writeUInt64(number, try std.fmt.parseInt(u64, value, 0));
+        \\    }
+        \\    return try raw.toOwnedSlice();
+        \\}
+        \\
         \\fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
         \\    var out: std.Io.Writer.Allocating = .init(allocator);
         \\    errdefer out.deinit();
@@ -4310,6 +4336,10 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeBytes(number, bytes);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeUInt64(number, try std.fmt.parseInt(u64, value, 0));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
