@@ -17,6 +17,17 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
+    const plugin_exe = b.addExecutable(.{
+        .name = "protoc-gen-pbz",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/protoc_gen_pbz.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "pbz", .module = mod }},
+        }),
+    });
+    b.installArtifact(plugin_exe);
+
     const tests = b.addTest(.{
         .root_module = mod,
     });
