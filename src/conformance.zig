@@ -294,6 +294,31 @@ test "conformance dynamic runner uses registry for imported json types" {
     try std.testing.expectEqualSlices(u8, "{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\"}", try reader.readBytes());
 }
 
+test "conformance dynamic runner converts text to json" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Msg { required int32 id = 1; optional string name = 2; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .text_payload = "id: 7 name: \"Ada\"" },
+        .requested_output_format = .json,
+        .message_type = "demo.Msg",
+        .test_category = .text_format_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 4), tag.number);
+    try std.testing.expectEqualSlices(u8, "{\"id\":7,\"name\":\"Ada\"}", try reader.readBytes());
+}
+
 test "conformance dynamic runner uses registry for imported text output" {
     const allocator = std.testing.allocator;
     var common = try @import("parser.zig").Parser.parse(allocator,
