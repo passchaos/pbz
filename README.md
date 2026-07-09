@@ -54,7 +54,7 @@ validated feature set.
   - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
-  - generated typed JSON stringify/parse helpers and basic TextFormat formatters for scalar, enum, repeated, map, message payload, proto2 group, and oneof fields; generated wire UTF-8 validation for string/map-string fields; and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
+  - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, and oneof fields; generated wire UTF-8 validation for string/map-string fields; and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, initialized parse helpers with recursive required validation, protobuf merge semantics for duplicate singular message/group fields, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
 
@@ -247,7 +247,9 @@ fields or alternate spellings, treat `null` as clearing the previous value, and
 replace previous repeated/map slices safely.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
 TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
-and oneof fields.
+and oneof fields; generated `parseText` / `parseTextInitialized` cover basic
+line-oriented scalar, enum, repeated, scalar/enum map, and scalar/enum oneof
+input.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
