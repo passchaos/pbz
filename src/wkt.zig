@@ -576,7 +576,11 @@ pub const Struct = struct {
             switch (tag.number) {
                 1 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    try fields.append(allocator, try decodeStructField(allocator, try reader.readBytes()));
+                    var field = try decodeStructField(allocator, try reader.readBytes());
+                    fields.append(allocator, field) catch |err| {
+                        deinitStructField(&field, allocator);
+                        return err;
+                    };
                 },
                 else => try reader.skipValue(tag),
             }
@@ -643,7 +647,11 @@ pub const ListValue = struct {
             switch (tag.number) {
                 1 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    try values.append(allocator, try Value.decode(allocator, try reader.readBytes()));
+                    var value = try Value.decode(allocator, try reader.readBytes());
+                    values.append(allocator, value) catch |err| {
+                        value.deinit(allocator);
+                        return err;
+                    };
                 },
                 else => try reader.skipValue(tag),
             }
@@ -725,46 +733,35 @@ pub const Value = union(enum) {
             switch (tag.number) {
                 1 => {
                     try wire.Reader.expectWireType(tag, .varint);
-                    if (has_value) out.deinit(allocator);
                     if (try reader.readInt32() != @intFromEnum(NullValue.NULL_VALUE)) return error.InvalidNullValue;
-                    out = .null_value;
-                    has_value = true;
+                    replaceDecodedValue(&out, &has_value, allocator, .null_value);
                 },
                 2 => {
                     try wire.Reader.expectWireType(tag, .fixed64);
-                    if (has_value) out.deinit(allocator);
-                    out = .{ .number_value = try reader.readDouble() };
-                    has_value = true;
+                    replaceDecodedValue(&out, &has_value, allocator, .{ .number_value = try reader.readDouble() });
                 },
                 3 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    if (has_value) out.deinit(allocator);
-                    out = .{ .string_value = try allocator.dupe(u8, try reader.readBytes()) };
-                    has_value = true;
+                    const string_value = try allocator.dupe(u8, try reader.readBytes());
+                    replaceDecodedValue(&out, &has_value, allocator, .{ .string_value = string_value });
                 },
                 4 => {
                     try wire.Reader.expectWireType(tag, .varint);
-                    if (has_value) out.deinit(allocator);
-                    out = .{ .bool_value = try reader.readBool() };
-                    has_value = true;
+                    replaceDecodedValue(&out, &has_value, allocator, .{ .bool_value = try reader.readBool() });
                 },
                 5 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    if (has_value) out.deinit(allocator);
                     const nested = try allocator.create(Struct);
                     errdefer allocator.destroy(nested);
                     nested.* = try Struct.decode(allocator, try reader.readBytes());
-                    out = .{ .struct_value = nested };
-                    has_value = true;
+                    replaceDecodedValue(&out, &has_value, allocator, .{ .struct_value = nested });
                 },
                 6 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    if (has_value) out.deinit(allocator);
                     const nested = try allocator.create(ListValue);
                     errdefer allocator.destroy(nested);
                     nested.* = try ListValue.decode(allocator, try reader.readBytes());
-                    out = .{ .list_value = nested };
-                    has_value = true;
+                    replaceDecodedValue(&out, &has_value, allocator, .{ .list_value = nested });
                 },
                 else => try reader.skipValue(tag),
             }
@@ -816,6 +813,12 @@ pub const Value = union(enum) {
     }
 };
 
+fn replaceDecodedValue(out: *Value, has_value: *bool, allocator: std.mem.Allocator, next: Value) void {
+    if (has_value.*) out.deinit(allocator);
+    out.* = next;
+    has_value.* = true;
+}
+
 fn decodeStructField(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Struct.Field {
     var key = try allocator.dupe(u8, "");
     errdefer allocator.free(key);
@@ -827,14 +830,13 @@ fn decodeStructField(allocator: std.mem.Allocator, bytes: []const u8) anyerror!S
         switch (tag.number) {
             1 => {
                 try wire.Reader.expectWireType(tag, .length_delimited);
+                const new_key = try allocator.dupe(u8, try reader.readBytes());
                 allocator.free(key);
-                key = try allocator.dupe(u8, try reader.readBytes());
+                key = new_key;
             },
             2 => {
                 try wire.Reader.expectWireType(tag, .length_delimited);
-                if (has_value) value.deinit(allocator);
-                value = try Value.decode(allocator, try reader.readBytes());
-                has_value = true;
+                replaceDecodedValue(&value, &has_value, allocator, try Value.decode(allocator, try reader.readBytes()));
             },
             else => try reader.skipValue(tag),
         }
@@ -861,13 +863,14 @@ fn structFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value)
     var it = object.iterator();
     while (it.next()) |entry| {
         const key = try allocator.dupe(u8, entry.key_ptr.*);
-        errdefer allocator.free(key);
+        var owns_key = true;
+        errdefer if (owns_key) allocator.free(key);
         var value = try valueFromJsonValue(allocator, entry.value_ptr.*);
-        errdefer value.deinit(allocator);
-        fields.append(allocator, .{ .key = key, .value = value }) catch |err| {
-            value.deinit(allocator);
-            return err;
-        };
+        var owns_value = true;
+        errdefer if (owns_value) value.deinit(allocator);
+        fields.append(allocator, .{ .key = key, .value = value }) catch |err| return err;
+        owns_key = false;
+        owns_value = false;
     }
     return .{ .fields = try fields.toOwnedSlice(allocator) };
 }
@@ -956,6 +959,27 @@ test "value json and wire reject invalid null enum and non-finite numbers" {
     defer writer.deinit();
     try writer.writeInt32(1, 1);
     try std.testing.expectError(error.InvalidNullValue, Value.decode(allocator, writer.slice()));
+}
+
+test "value decode uses last oneof arm and parser cleans up on OOM" {
+    const allocator = std.testing.allocator;
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeString(3, "old");
+    try encoded.writeBool(4, true);
+    var decoded = try Value.decode(allocator, encoded.slice());
+    defer decoded.deinit(allocator);
+    try std.testing.expect(decoded == .bool_value);
+    try std.testing.expect(decoded.bool_value);
+
+    var backing = std.heap.DebugAllocator(.{}){};
+    defer {
+        const status = backing.deinit();
+        std.debug.assert(status == .ok);
+    }
+    var failing = std.testing.FailingAllocator.init(backing.allocator(), .{ .fail_index = 4 });
+    try std.testing.expectError(error.OutOfMemory, Struct.jsonParse(failing.allocator(), "{\"a\":\"owned\",\"b\":[\"nested\"]}"));
 }
 
 pub const Empty = struct {
