@@ -1743,6 +1743,58 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     if (field.kind == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.enumeration)) {
         try writeRepeatedEnumFieldAccessor(ctx, field, field.kind.enumeration, writer, depth);
     }
+    if (field.kind == .map and field.kind.map.value.* == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.map.value.enumeration)) {
+        try writeMapEnumFieldAccessor(ctx, field, field.kind.map, field.kind.map.value.enumeration, writer, depth);
+    }
+}
+
+fn writeMapEnumFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, map_type: schema.MapType, enum_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendEnumEntry", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, key: ");
+    try writer.writeAll(scalarZigType(map_type.key));
+    try writer.writeAll(", value: ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedAccessorIdent("append", field.name, writer);
+    try writer.writeAll("(allocator, .{ .key = key, .value = value.toInt() });\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getEnumEntry", field.name, writer);
+    try writer.writeAll("(self: @This(), key: ");
+    try writer.writeAll(scalarZigType(map_type.key));
+    try writer.writeAll(") ?");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (");
+    try writeMapKeyEqualExpr(map_type.key, "entry.key", "key", writer);
+    try writer.writeAll(") return ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(".fromInt(entry.value);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return null;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeMapKeyEqualExpr(scalar: schema.ScalarType, lhs: []const u8, rhs: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .string => try writer.print("std.mem.eql(u8, {s}, {s})", .{ lhs, rhs }),
+        else => try writer.print("{s} == {s}", .{ lhs, rhs }),
+    }
 }
 
 fn writeRepeatedEnumFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, enum_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -8128,6 +8180,7 @@ test "codegen emits typed enum field accessors" {
         \\  optional Kind role = 1;
         \\  repeated Kind roles = 2;
         \\  oneof pick { Kind selected = 3; }
+        \\  map<string, Kind> keyed = 4;
         \\}
     );
     defer file.deinit();
@@ -8150,6 +8203,10 @@ test "codegen emits typed enum field accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "for (raw, 0..) |value, i| out[i] = @\"Kind\".fromInt(value) orelse return error.InvalidEnumValue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_selected\"(self: @This()) ?@\"Kind\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_selected\"(self: *@This(), value: @\"Kind\") void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8, value: @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_keyed\"(allocator, .{ .key = key, .value = value.toInt() });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumEntryField_keyed\"(self: @This(), key: []const u8) ?@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry.key, key)) return @\"Kind\".fromInt(entry.value);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
