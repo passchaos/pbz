@@ -1128,9 +1128,24 @@ fn defaultFloat(default_value: ?schema.OptionValue) f64 {
         .float => |v| v,
         .integer => |v| @floatFromInt(v),
         .unsigned_integer => |v| @floatFromInt(v),
-        .identifier, .string => |text| std.fmt.parseFloat(f64, text) catch 0,
+        .identifier, .string => |text| parseSpecialFloatDefault(text) orelse (std.fmt.parseFloat(f64, text) catch 0),
         else => 0,
     };
+}
+
+fn parseSpecialFloatDefault(text: []const u8) ?f64 {
+    var body = text;
+    var negative = false;
+    if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
+        negative = body[0] == '-';
+        body = body[1..];
+    }
+    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
+        const value = std.math.inf(f64);
+        return if (negative) -value else value;
+    }
+    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(f64);
+    return null;
 }
 
 fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
@@ -1840,7 +1855,10 @@ test "json stringify can always print absent primitive repeated and map fields" 
         \\  optional double pos_inf = 9 [default = inf];
         \\  optional double neg_inf = 10 [default = -inf];
         \\  optional float quiet_nan = 11 [default = nan];
-        \\  optional uint64 max_u64 = 12 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional float neg_nan = 12 [default = -nan];
+        \\  optional double pos_infinity = 13 [default = Infinity];
+        \\  optional double neg_infinity = 14 [default = -INFINITY];
+        \\  optional uint64 max_u64 = 15 [default = 0xFFFFFFFFFFFFFFFF];
         \\}
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -1851,7 +1869,7 @@ test "json stringify can always print absent primitive repeated and map fields" 
     defer msg.deinit();
     const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .always_print_primitive_fields = true });
     defer allocator.free(rendered);
-    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\",\"posInf\":\"Infinity\",\"negInf\":\"-Infinity\",\"quietNan\":\"NaN\",\"maxU64\":\"18446744073709551615\"}", rendered);
+    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\",\"posInf\":\"Infinity\",\"negInf\":\"-Infinity\",\"quietNan\":\"NaN\",\"negNan\":\"NaN\",\"posInfinity\":\"Infinity\",\"negInfinity\":\"-Infinity\",\"maxU64\":\"18446744073709551615\"}", rendered);
 }
 
 test "json parses bytes from base64 variants" {

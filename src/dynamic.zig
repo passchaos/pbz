@@ -1570,9 +1570,24 @@ fn optionFloat(comptime T: type, value: schema.OptionValue) ?T {
         .float => |v| @floatCast(v),
         .integer => |v| @floatFromInt(v),
         .unsigned_integer => |v| @floatFromInt(v),
-        .identifier, .string => |text| std.fmt.parseFloat(T, text) catch null,
+        .identifier, .string => |text| parseSpecialFloatDefault(T, text) orelse (std.fmt.parseFloat(T, text) catch null),
         else => null,
     };
+}
+
+fn parseSpecialFloatDefault(comptime T: type, text: []const u8) ?T {
+    var body = text;
+    var negative = false;
+    if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
+        negative = body[0] == '-';
+        body = body[1..];
+    }
+    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
+        const value = std.math.inf(T);
+        return if (negative) -value else value;
+    }
+    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
+    return null;
 }
 
 fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
@@ -2157,8 +2172,11 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
         \\  optional double pos_inf = 9 [default = inf];
         \\  optional double neg_inf = 10 [default = -inf];
         \\  optional float quiet_nan = 11 [default = nan];
-        \\  optional uint64 max_u64 = 12 [default = 0xFFFFFFFFFFFFFFFF];
-        \\  optional fixed64 max_fixed = 13 [default = 18446744073709551615];
+        \\  optional float neg_nan = 12 [default = -nan];
+        \\  optional double pos_infinity = 13 [default = Infinity];
+        \\  optional double neg_infinity = 14 [default = -INFINITY];
+        \\  optional uint64 max_u64 = 15 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional fixed64 max_fixed = 16 [default = 18446744073709551615];
         \\}
     ;
     var file = try parser.Parser.parse(allocator, source);
@@ -2178,6 +2196,9 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expect(std.math.isPositiveInf(message.getOrDefault(desc.findField("pos_inf").?).double));
     try std.testing.expect(std.math.isNegativeInf(message.getOrDefault(desc.findField("neg_inf").?).double));
     try std.testing.expect(std.math.isNan(message.getOrDefault(desc.findField("quiet_nan").?).float));
+    try std.testing.expect(std.math.isNan(message.getOrDefault(desc.findField("neg_nan").?).float));
+    try std.testing.expect(std.math.isPositiveInf(message.getOrDefault(desc.findField("pos_infinity").?).double));
+    try std.testing.expect(std.math.isNegativeInf(message.getOrDefault(desc.findField("neg_infinity").?).double));
     try std.testing.expectEqual(@as(u64, 18446744073709551615), message.getOrDefault(desc.findField("max_u64").?).uint64);
     try std.testing.expectEqual(@as(u64, 18446744073709551615), message.getOrDefault(desc.findField("max_fixed").?).fixed64);
     try std.testing.expectEqualStrings("ADMIN", message.getEnumNameOrDefaultWithFile(&file, desc.findField("kind").?).?);

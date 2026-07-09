@@ -5015,9 +5015,24 @@ fn optionFloat(comptime T: type, default_value: ?schema.OptionValue) ?T {
         .float => |v| @floatCast(v),
         .integer => |v| @floatFromInt(v),
         .unsigned_integer => |v| @floatFromInt(v),
-        .identifier, .string => |text| std.fmt.parseFloat(T, text) catch null,
+        .identifier, .string => |text| parseSpecialFloatDefault(T, text) orelse (std.fmt.parseFloat(T, text) catch null),
         else => null,
     };
+}
+
+fn parseSpecialFloatDefault(comptime T: type, text: []const u8) ?T {
+    var body = text;
+    var negative = false;
+    if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
+        negative = body[0] == '-';
+        body = body[1..];
+    }
+    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
+        const value = std.math.inf(T);
+        return if (negative) -value else value;
+    }
+    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
+    return null;
 }
 
 fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
@@ -6643,9 +6658,17 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn textFloat(comptime T: type, value: []const u8) !T {
-        \\    if (std.ascii.eqlIgnoreCase(value, "nan")) return std.math.nan(T);
-        \\    if (std.ascii.eqlIgnoreCase(value, "inf") or std.ascii.eqlIgnoreCase(value, "infinity")) return std.math.inf(T);
-        \\    if (std.ascii.eqlIgnoreCase(value, "-inf") or std.ascii.eqlIgnoreCase(value, "-infinity")) return -std.math.inf(T);
+        \\    var body = value;
+        \\    var negative = false;
+        \\    if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
+        \\        negative = body[0] == '-';
+        \\        body = body[1..];
+        \\    }
+        \\    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
+        \\    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
+        \\        const parsed = std.math.inf(T);
+        \\        return if (negative) -parsed else parsed;
+        \\    }
         \\    return try std.fmt.parseFloat(T, value);
         \\}
         \\
@@ -9763,7 +9786,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textInt(comptime T: type, value: []const u8) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFloat(comptime T: type, value: []const u8) !T") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.ascii.eqlIgnoreCase(value, \"-inf\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "negative = body[0] == '-'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.ascii.eqlIgnoreCase(body, \"nan\")) return std.math.nan(T);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return if (negative) -parsed else parsed;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, value[start..end], 16)") != null);
@@ -9992,7 +10017,10 @@ test "codegen emits proto2 scalar and enum defaults" {
         \\  optional Code code = 7;
         \\  optional double neg_ratio = 8 [default = -inf];
         \\  optional float quiet = 9 [default = nan];
-        \\  optional uint64 max_u64 = 10 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional float neg_quiet = 10 [default = -nan];
+        \\  optional double infinity = 11 [default = Infinity];
+        \\  optional double neg_infinity = 12 [default = -INFINITY];
+        \\  optional uint64 max_u64 = 13 [default = 0xFFFFFFFFFFFFFFFF];
         \\}
     );
     defer file.deinit();
@@ -10007,6 +10035,9 @@ test "codegen emits proto2 scalar and enum defaults" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"code\": i32 = 5") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"neg_ratio\": f64 = -std.math.inf(f64)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"quiet\": f32 = std.math.nan(f32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"neg_quiet\": f32 = std.math.nan(f32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"infinity\": f64 = std.math.inf(f64)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"neg_infinity\": f64 = -std.math.inf(f64)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"max_u64\": u64 = 18446744073709551615") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_count\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_count\" or options.always_print_primitive_fields)") != null);
