@@ -1619,7 +1619,22 @@ fn decodeExtensionRange(allocator: std.mem.Allocator, bytes: []const u8) Error!s
             else => try reader.skipValue(tag),
         }
     }
+    try validateDecodedExtensionRange(&range);
     return range;
+}
+
+fn validateDecodedExtensionRange(range: *const schema.ExtensionRange) Error!void {
+    if (range.start <= 0) return error.InvalidFieldType;
+    const end = range.end orelse std.math.maxInt(i64);
+    if (end <= range.start) return error.InvalidFieldType;
+    for (range.declarations.items, 0..) |declaration, index| {
+        if (declaration.number <= 0) return error.InvalidFieldType;
+        if (declaration.number < range.start or declaration.number >= end) return error.InvalidFieldType;
+        for (range.declarations.items[index + 1 ..]) |other| {
+            if (declaration.number == other.number) return error.InvalidFieldType;
+            if (declaration.full_name.len != 0 and other.full_name.len != 0 and std.mem.eql(u8, declaration.full_name, other.full_name)) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn decodeExtensionRangeOptions(allocator: std.mem.Allocator, range: *schema.ExtensionRange, bytes: []const u8) Error!void {
@@ -2837,6 +2852,57 @@ test "descriptor rejects invalid reserved ranges" {
         try file.writeMessage(5, enumeration.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
+}
+
+test "descriptor rejects invalid extension ranges" {
+    const allocator = std.testing.allocator;
+    {
+        const bytes = try testFileWithExtensionRange(allocator, 100, 50, null);
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        const bytes = try testFileWithExtensionRange(allocator, 100, 200, .{ .number = 10, .full_name = ".demo.bad", .type_name = ".demo.Bad" });
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        const bytes = try testFileWithExtensionRange(allocator, 100, 200, .{ .number = 100, .full_name = ".demo.ext", .type_name = ".demo.Ext" });
+        defer allocator.free(bytes);
+        var decoded = try decodeFileDescriptorProto(allocator, bytes);
+        defer decoded.deinit();
+        try std.testing.expectEqual(@as(i64, 100), decoded.findMessage("Host").?.extension_ranges.items[0].start);
+    }
+}
+
+fn testFileWithExtensionRange(allocator: std.mem.Allocator, start: i32, end: i32, declaration: ?schema.ExtensionDeclaration) ![]u8 {
+    var range = wire.Writer.init(allocator);
+    defer range.deinit();
+    try range.writeInt32(1, start);
+    try range.writeInt32(2, end);
+    if (declaration) |decl| {
+        var decl_writer = wire.Writer.init(allocator);
+        defer decl_writer.deinit();
+        try decl_writer.writeInt32(1, decl.number);
+        try decl_writer.writeString(2, decl.full_name);
+        try decl_writer.writeString(3, decl.type_name);
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeMessage(2, decl_writer.slice());
+        try range.writeMessage(3, options.slice());
+    }
+
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "Host");
+    try message.writeMessage(5, range.slice());
+
+    var file = wire.Writer.init(allocator);
+    errdefer file.deinit();
+    try file.writeString(1, "ext-range-invalid.proto");
+    try file.writeString(12, "proto2");
+    try file.writeMessage(4, message.slice());
+    return try file.toOwnedSlice();
 }
 
 test "descriptor rejects invalid file syntax edition and dependency indexes" {
