@@ -304,7 +304,9 @@ fn writeTextParseMessageField(file: *const schema.FileDescriptor, field: *const 
     try indent(writer, depth);
     try writer.writeAll("if (std.mem.eql(u8, line, \"");
     try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll(" {\")) {\n");
+    try writer.writeAll(" {\") or std.mem.eql(u8, line, \"");
+    try writeEscapedStringContents(field.name, writer);
+    try writer.writeAll(" <\")) {\n");
     try writeTextParseMessagePayloadAssign(field, type_name, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
@@ -393,6 +395,9 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try writer.writeByte('"');
     try writeEscapedStringContents(field.name, writer);
     try writer.writeAll(" {\"");
+    try writer.writeAll(") or std.mem.eql(u8, line, \"");
+    try writeEscapedStringContents(field.name, writer);
+    try writer.writeAll(" <\"");
     try writer.writeAll(")) {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var entry = ");
@@ -403,7 +408,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try indent(writer, depth + 2);
     try writer.writeAll("const entry_line = @This().textCleanLine(raw_entry_line);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("if (std.mem.eql(u8, entry_line, \"}\")) break;\n");
+    try writer.writeAll("if (std.mem.eql(u8, entry_line, \"}\") or std.mem.eql(u8, entry_line, \">\")) break;\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (@This().textFieldValue(entry_line, \"key\")) |raw_key| { entry.key = ");
     try writeTextParseValueExpr(file, .{ .scalar = map_type.key }, "raw_key", writer);
@@ -433,7 +438,9 @@ fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
             try indent(writer, depth);
             try writer.writeAll("if (std.mem.eql(u8, line, \"");
             try writeEscapedStringContents(field.name, writer);
-            try writer.writeAll(" {\")) {\n");
+            try writer.writeAll(" {\") or std.mem.eql(u8, line, \"");
+            try writeEscapedStringContents(field.name, writer);
+            try writer.writeAll(" <\")) {\n");
             try writeTextParseMessagePayloadAssign(field, type_name, writer, depth + 1);
             try indent(writer, depth + 1);
             try writer.writeAll("continue;\n");
@@ -3207,11 +3214,11 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    var depth: usize = 1;
         \\    while (lines.next()) |raw_line| {
         \\        const line = std.mem.trim(u8, raw_line, " \t\r");
-        \\        if (std.mem.eql(u8, line, "}")) {
+        \\        if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
         \\            depth -= 1;
         \\            if (depth == 0) return try out.toOwnedSlice();
         \\        }
-        \\        if (std.mem.endsWith(u8, line, "{")) depth += 1;
+        \\        if (std.mem.endsWith(u8, line, "{") or std.mem.endsWith(u8, line, "<")) depth += 1;
         \\        try out.writer.writeAll(line);
         \\        try out.writer.writeByte('\n');
         \\    }
@@ -4160,7 +4167,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\") or std.mem.eql(u8, line, \"counts <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
@@ -4173,14 +4180,15 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\") or std.mem.eql(u8, line, \"child <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseText(allocator, block);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"picked_msg {\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"picked_msg {\") or std.mem.eql(u8, line, \"picked_msg <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \">\")") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
