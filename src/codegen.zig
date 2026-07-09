@@ -1586,7 +1586,11 @@ fn writeDecodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll("{};\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var entry_reader = pbz.Reader.init(try r.readBytes());\n");
+    try writer.writeAll("const payload = try r.readBytes();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var entry_reader = pbz.Reader.init(payload);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var skip_entry = false;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (try entry_reader.nextTag()) |entry_tag| {\n");
     try indent(writer, depth + 2);
@@ -1600,7 +1604,9 @@ fn writeDecodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try ");
+    try writer.writeAll("if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(");
+    try writer.print("{d}", .{field.number});
+    try writer.writeAll(", payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else try ");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
     try writer.writeAll(".append(allocator, entry);\n");
     try indent(writer, depth);
@@ -1618,11 +1624,11 @@ fn writeMapEntryDecodeAssign(file: *const schema.FileDescriptor, field: *const s
     } else if (kind == .enumeration and enumIsClosed(file, kind.enumeration)) {
         try writer.print("{d} => {{ const value = ", .{number});
         try writeEntryReadExpr(kind, "entry_reader", writer);
-        try writer.writeAll(";");
-        try writeEnumClosedCheckByName(file, kind.enumeration, "value", writer);
-        try writer.writeByte(' ');
+        try writer.writeAll("; if (!@This().enumKnown(value, ");
+        try writeEnumNumberArray(file, kind.enumeration, writer);
+        try writer.writeAll(")) { skip_entry = true; } else { ");
         try writer.writeAll(target);
-        try writer.writeAll(" = value; },\n");
+        try writer.writeAll(" = value; } },\n");
     } else {
         try writer.print("{d} => {s} = ", .{ number, target });
         try writeEntryReadExpr(kind, "entry_reader", writer);
@@ -5021,5 +5027,8 @@ test "codegen validates closed enum map values in wire decode" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; entry.value = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var skip_entry = false;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { skip_entry = true; } else { entry.value = value; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(1, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"_unknown_fields_list\".append(allocator, raw); } else try @\"keyed_list\".append(allocator, entry);") != null);
 }
