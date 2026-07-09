@@ -166,6 +166,7 @@ pub const Parser = struct {
         try self.validateMessageSets();
         try self.validateDefaults();
         try self.validatePackedOptions();
+        try self.validateFieldOptionApplicabilities();
         try self.validateFeatureSemantics();
         return self.file;
     }
@@ -1074,6 +1075,17 @@ pub const Parser = struct {
         if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
     }
 
+    fn validateFieldOptionApplicabilities(self: *Parser) ParseError!void {
+        for (self.file.extensions.items) |*field| try validateFieldOptionApplicability(field);
+        for (self.file.messages.items) |*message| try self.validateMessageFieldOptionApplicabilities(message);
+    }
+
+    fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+        for (message.fields.items) |*field| try validateFieldOptionApplicability(field);
+        for (message.extensions.items) |*field| try validateFieldOptionApplicability(field);
+        for (message.messages.items) |*nested| try self.validateMessageFieldOptionApplicabilities(nested);
+    }
+
     fn validateFeatureSemantics(self: *Parser) ParseError!void {
         if (self.file.syntax != .editions) return;
         for (self.file.messages.items) |*message| try self.validateMessageFeatureSemantics(message);
@@ -1101,6 +1113,21 @@ pub const Parser = struct {
             const enumeration = self.findEnumDescriptor(field.kind.enumeration, context) orelse return;
             const enum_features = enumeration.features orelse self.file.features;
             if (enum_features.enum_type == .closed) return error.InvalidFieldType;
+        }
+    }
+
+    fn validateFieldOptionApplicability(field: *const schema.FieldDescriptor) ParseError!void {
+        for (field.options.items) |option| {
+            const leaf = optionLeaf(option.name);
+            if (std.mem.eql(u8, leaf, "jstype")) {
+                const value = try parserOptionEnumNumber(option.value, .jstype);
+                if (value != 0 and !fieldKindAllowsJSType(field.kind)) return error.InvalidFieldType;
+            } else if (std.mem.eql(u8, leaf, "lazy") or std.mem.eql(u8, leaf, "unverified_lazy")) {
+                if (schema.optionAsBool(option.value) orelse return error.InvalidFieldType) {
+                    if (!fieldKindIsSubmessage(field.kind)) return error.InvalidFieldType;
+                    if (std.mem.eql(u8, leaf, "unverified_lazy") and field.extendee != null) return error.InvalidFieldType;
+                }
+            }
         }
     }
 
@@ -1824,6 +1851,50 @@ fn validateScalarDefault(scalar: schema.ScalarType, value: schema.OptionValue) P
     }
 }
 
+const ParserOptionEnum = enum { jstype };
+
+fn parserOptionEnumNumber(value: schema.OptionValue, kind: ParserOptionEnum) ParseError!i32 {
+    switch (value) {
+        .integer => |v| {
+            if (v < std.math.minInt(i32) or v > std.math.maxInt(i32)) return error.InvalidFieldType;
+            const number: i32 = @intCast(v);
+            return if (parserOptionEnumNumberKnown(number, kind)) number else error.InvalidFieldType;
+        },
+        .identifier, .string => |text| {
+            if (kind == .jstype) {
+                if (std.mem.eql(u8, text, "JS_NORMAL")) return 0;
+                if (std.mem.eql(u8, text, "JS_STRING")) return 1;
+                if (std.mem.eql(u8, text, "JS_NUMBER")) return 2;
+            }
+            return error.InvalidFieldType;
+        },
+        else => return error.InvalidFieldType,
+    }
+}
+
+fn parserOptionEnumNumberKnown(number: i32, kind: ParserOptionEnum) bool {
+    return switch (kind) {
+        .jstype => number >= 0 and number <= 2,
+    };
+}
+
+fn fieldKindAllowsJSType(kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .int64, .uint64, .sint64, .fixed64, .sfixed64 => true,
+            else => false,
+        },
+        else => false,
+    };
+}
+
+fn fieldKindIsSubmessage(kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .message, .group => true,
+        else => false,
+    };
+}
+
 fn optionInt(comptime T: type, value: schema.OptionValue) ?T {
     return switch (value) {
         .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
@@ -2231,6 +2302,35 @@ test "parser rejects invalid packed field options" {
         \\edition = "2023";
         \\message Bad { repeated int32 values = 1 [packed = true]; }
     ));
+}
+
+test "parser rejects invalid field option applicability" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [jstype = JS_STRING]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [lazy = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to 200; }
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100 [unverified_lazy = true]; }
+    ));
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child {}
+        \\message Ok {
+        \\  optional Child child = 1 [lazy = true, unverified_lazy = true];
+        \\  optional int64 big = 2 [jstype = JS_STRING];
+        \\}
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(@as(usize, 2), file.findMessage("Ok").?.findField("child").?.options.items.len);
+    try std.testing.expectEqual(@as(usize, 1), file.findMessage("Ok").?.findField("big").?.options.items.len);
 }
 
 test "parser rejects legacy groups under editions" {
