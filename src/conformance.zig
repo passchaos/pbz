@@ -404,6 +404,35 @@ test "conformance dynamic runner uses registry for imported json types" {
     try std.testing.expectEqualSlices(u8, "{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\"}", try reader.readBytes());
 }
 
+test "conformance dynamic runner rejects closed enum text unknowns" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.enum_type = CLOSED;
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Msg { Kind kind = 1; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    inline for (.{ "kind: MISSING", "kind: 123" }) |payload| {
+        const response_bytes = try runDynamic(allocator, &registry, .{
+            .payload = .{ .text_payload = payload },
+            .requested_output_format = .protobuf,
+            .message_type = "demo.Msg",
+            .test_category = .text_format_test,
+        });
+        defer allocator.free(response_bytes);
+        var reader = wire.Reader.init(response_bytes);
+        const tag = (try reader.nextTag()).?;
+        try std.testing.expectEqual(@as(wire.FieldNumber, 1), tag.number);
+        try std.testing.expect(std.mem.indexOf(u8, try reader.readBytes(), "InvalidEnumValue") != null);
+    }
+}
+
 test "conformance dynamic runner converts text to deterministic protobuf" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
