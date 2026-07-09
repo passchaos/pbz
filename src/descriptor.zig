@@ -1251,6 +1251,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try validateDecodedFileDescriptor(&file);
     try validateDecodedDefaults(&file);
     try validateDecodedFieldSyntax(&file);
+    try validateDecodedEnumSyntax(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
 }
@@ -1452,6 +1453,21 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
+}
+
+fn validateDecodedEnumSyntax(file: *const schema.FileDescriptor) Error!void {
+    if (file.syntax != .proto3) return;
+    for (file.enums.items) |*enumeration| try validateDecodedProto3Enum(enumeration);
+    for (file.messages.items) |*message| try validateDecodedMessageEnumSyntax(message);
+}
+
+fn validateDecodedMessageEnumSyntax(message: *const schema.MessageDescriptor) Error!void {
+    for (message.enums.items) |*enumeration| try validateDecodedProto3Enum(enumeration);
+    for (message.messages.items) |*nested| try validateDecodedMessageEnumSyntax(nested);
+}
+
+fn validateDecodedProto3Enum(enumeration: *const schema.EnumDescriptor) Error!void {
+    if (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0) return error.InvalidFieldType;
 }
 
 fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
@@ -5102,6 +5118,42 @@ test "descriptor rejects invalid enum descriptors" {
         defer file.deinit();
         try file.writeString(1, "dup-number.proto");
         try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "ONE");
+        try value.writeInt32(2, 1);
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        try enum_writer.writeString(1, "Bad");
+        try enum_writer.writeMessage(2, value.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-enum-first-nonzero.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "ONE");
+        try value.writeInt32(2, 1);
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        try enum_writer.writeString(1, "Bad");
+        try enum_writer.writeMessage(2, value.slice());
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Container");
+        try message.writeMessage(4, enum_writer.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-nested-enum-first-nonzero.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
