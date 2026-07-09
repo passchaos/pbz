@@ -259,6 +259,7 @@ number in a typed message's unknown storage; repeated extensions additionally
 provide `appendAllToUnknown` / `replaceAllInUnknown` batch helpers.
 For same-file proto2 extensions, extendee generated message structs also expose
 message-level `hasExtension_*`, `countExtension_*`, `getExtension_*`,
+`getExtensionOrDefault_*` for scalar/enum defaults,
 `setExtension_*`/`addExtension_*`/`appendExtension_*`, `replaceExtension_*`, and
 `clearExtension_*` facades over the same unknown/raw extension storage; when an
 extension value type is a same-file generated message, additional

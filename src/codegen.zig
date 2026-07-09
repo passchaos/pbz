@@ -1242,6 +1242,23 @@ fn writeMessageExtensionAccessor(file: *const schema.FileDescriptor, field: *con
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
+    if (field.cardinality != .repeated and (field.kind == .scalar or field.kind == .enumeration)) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "getExtensionOrDefault_", writer);
+        try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return (try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "getExtension_", writer);
+        try writer.writeAll("(allocator)) orelse ");
+        try writeFieldKindDefault(field.kind, field.default_value, writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    }
+
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedIdentWithPrefix(helper_name, if (field.cardinality == .repeated) "appendExtension_" else "setExtension_", writer);
@@ -6653,6 +6670,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"countExtension_tag\"(self: @This()) !usize") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtension_tag\"(self: @This(), allocator: std.mem.Allocator) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"tag\".decodeFirstFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionOrDefault_tag\"(self: @This(), allocator: std.mem.Allocator) ![]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getExtension_tag\"(allocator)) orelse \"untagged\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtension_tag\"(self: *@This(), allocator: std.mem.Allocator, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".replaceInUnknown(self, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearExtension_tag\"(self: *@This(), allocator: std.mem.Allocator) !void") != null);
