@@ -109,6 +109,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     for (message.oneofs.items) |oneof| try writeOneofField(oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("@\"_json_arena\": ?*std.heap.ArenaAllocator = null,\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("@\"_unknown_fields\": []const []const u8 = &.{},\n");
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeInit(writer, depth + 1);
     try writer.writeAll("\n");
@@ -657,6 +659,7 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
         if (field.oneof_name == null) try writeEncodeField(file, field, writer, depth + 1);
     }
     for (message.oneofs.items) |oneof| try writeEncodeOneof(file, message, oneof, writer, depth + 1);
+    try writeEncodeUnknownFields(writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -671,6 +674,7 @@ fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const 
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
     try writeEncodeFieldsByNumber(file, message, writer, depth + 1);
+    try writeEncodeUnknownFields(writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -684,6 +688,11 @@ fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const 
     try writer.writeAll("return try self.encodeDeterministic(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeEncodeUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);\n");
 }
 
 fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -954,20 +963,18 @@ fn writeMergeOneof(message: *const schema.MessageDescriptor, oneof: schema.Oneof
 fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
-    var has_repeated = false;
     for (message.fields.items) |*field| {
         if (field.cardinality == .repeated or field.kind == .map) {
-            has_repeated = true;
             try indent(writer, depth + 1);
             try writer.writeAll("allocator.free(self.");
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(");\n");
         }
     }
-    if (!has_repeated) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = allocator;\n");
-    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("allocator.free(self.@\"_unknown_fields\");\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (self.@\"_json_arena\") |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }\n");
     try indent(writer, depth + 1);
@@ -1304,24 +1311,28 @@ fn writeDecode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     for (message.fields.items) |*field| try writeRepeatedListDecl(field, writer, depth + 1);
-    if (!messageDecodeUsesAllocator(message)) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = allocator;\n");
-    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("var @\"_unknown_fields_list\": std.ArrayList([]const u8) = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer { for (@\"_unknown_fields_list\".items) |raw| allocator.free(raw); @\"_unknown_fields_list\".deinit(allocator); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (try r.nextTag()) |tag| {\n");
     try indent(writer, depth + 2);
+    try writer.writeAll("const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("switch (tag.number) {\n");
     for (message.fields.items) |*field| try writeDecodeField(file, field, writer, depth + 3);
     try indent(writer, depth + 3);
-    try writer.writeAll("else => try r.skipValue(tag),\n");
+    try writer.writeAll("else => { try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); },\n");
     try indent(writer, depth + 2);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.@\"_unknown_fields\" = try @\"_unknown_fields_list\".toOwnedSlice(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -4387,6 +4398,10 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"name\" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); self.@\"kind\" = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.@\"payload\" = try r.readBytes(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"_unknown_fields\": []const []const u8 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else => { try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);") != null);
 }
 
 test "codegen decodes repeated scalar enum and message payload fields" {
