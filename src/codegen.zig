@@ -258,6 +258,7 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
 fn messageTextParseUsesAllocator(message: *const schema.MessageDescriptor) bool {
     for (message.fields.items) |field| {
         if (field.cardinality == .repeated or field.kind == .map) return true;
+        if (field.kind == .message or field.kind == .group) return true;
     }
     return false;
 }
@@ -265,8 +266,8 @@ fn messageTextParseUsesAllocator(message: *const schema.MessageDescriptor) bool 
 fn writeTextParseField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
         .scalar, .enumeration => {},
+        .message, .group => |type_name| return try writeTextParseMessageField(file, field, type_name, writer, depth),
         .map => return try writeTextParseMapField(file, field, writer, depth),
-        else => return,
     }
     try indent(writer, depth);
     try writer.writeAll("if (@This().textFieldValue(line, ");
@@ -296,6 +297,89 @@ fn writeTextParseField(file: *const schema.FileDescriptor, field: *const schema.
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeTextParseMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!codegenCanReferenceMessage(file, type_name)) return;
+    try indent(writer, depth);
+    try writer.writeAll("if (std.mem.eql(u8, line, \"");
+    try writeEscapedStringContents(field.name, writer);
+    try writer.writeAll(" {\")) {\n");
+    try writeTextParseMessagePayloadAssign(field, type_name, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeTextParseMessagePayloadAssign(field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("const block = try @This().textBlock(allocator, &lines);\n");
+    try indent(writer, depth);
+    try writer.writeAll("defer allocator.free(block);\n");
+    try indent(writer, depth);
+    try writer.writeAll("var nested = try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".parseText(allocator, block);\n");
+    try indent(writer, depth);
+    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("const payload = try nested.encode(owned_allocator);\n");
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".append(allocator, payload) catch |err| return err;\n");
+    } else {
+        if (field.oneof_name) |oneof_name| {
+            try indent(writer, depth);
+            try writer.writeAll("self.");
+            try writeQuotedIdent(oneof_name, writer);
+            try writer.writeAll(" = .{ .");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" = payload };\n");
+        } else {
+            try indent(writer, depth);
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(" and self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len != 0 and payload.len != 0) {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("const merged = try owned_allocator.alloc(u8, self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len + payload.len);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("@memcpy(merged[0..self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len], self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(");\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("@memcpy(merged[self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len..], payload);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" = merged;\n");
+            try indent(writer, depth);
+            try writer.writeAll("} else {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" = payload;\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n");
+            if (hasPresenceForTextParseMessage(field.*)) {
+                try indent(writer, depth);
+                try writer.writeAll("self.");
+                try writePresenceIdent(field.name, writer);
+                try writer.writeAll(" = true;\n");
+            }
+        }
+    }
 }
 
 fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -344,6 +428,19 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
 fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
         .scalar, .enumeration => {},
+        .message, .group => |type_name| {
+            if (!codegenCanReferenceMessage(file, type_name)) return;
+            try indent(writer, depth);
+            try writer.writeAll("if (std.mem.eql(u8, line, \"");
+            try writeEscapedStringContents(field.name, writer);
+            try writer.writeAll(" {\")) {\n");
+            try writeTextParseMessagePayloadAssign(field, type_name, writer, depth + 1);
+            try indent(writer, depth + 1);
+            try writer.writeAll("continue;\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n");
+            return;
+        },
         else => return,
     }
     try indent(writer, depth);
@@ -356,6 +453,10 @@ fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
     try writer.writeAll(" = ");
     try writeTextParseValueExpr(file, field.kind, "raw_value", writer);
     try writer.writeAll(" }; continue; }\n");
+}
+
+fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
+    return field.cardinality == .required or field.proto3_optional or field.kind == .message or field.kind == .group or if (field.features) |features| features.field_presence != .implicit else false;
 }
 
 fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -3055,6 +3156,23 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try std.fmt.parseInt(i32, value, 10);
         \\}
         \\
+        \\fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
+        \\    var out: std.Io.Writer.Allocating = .init(allocator);
+        \\    errdefer out.deinit();
+        \\    var depth: usize = 1;
+        \\    while (lines.next()) |raw_line| {
+        \\        const line = std.mem.trim(u8, raw_line, " \t\r");
+        \\        if (std.mem.eql(u8, line, "}")) {
+        \\            depth -= 1;
+        \\            if (depth == 0) return try out.toOwnedSlice();
+        \\        }
+        \\        if (std.mem.endsWith(u8, line, "{")) depth += 1;
+        \\        try out.writer.writeAll(line);
+        \\        try out.writer.writeByte('\n');
+        \\    }
+        \\    return error.UnexpectedEof;
+        \\}
+        \\
         \\fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
         \\    return jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
         \\        jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
@@ -3971,7 +4089,7 @@ test "codegen emits basic TextFormat formatters" {
         \\  Child child = 5;
         \\  map<string, Child> kids = 6;
         \\  map<string, int32> counts = 7;
-        \\  oneof pick { string alias = 8; Kind picked = 9; }
+        \\  oneof pick { string alias = 8; Kind picked = 9; Child picked_msg = 10; }
         \\}
     );
     defer file.deinit();
@@ -4000,6 +4118,14 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseText(allocator, block);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"picked_msg {\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

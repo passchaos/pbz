@@ -248,8 +248,9 @@ replace previous repeated/map slices safely.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
 TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
 and oneof fields; generated `parseText` / `parseTextInitialized` cover basic
-line-oriented scalar, enum, repeated, scalar/enum map, and scalar/enum oneof
-input.
+line-oriented scalar, enum, repeated, scalar/enum map, scalar/enum oneof input,
+plus message/group block payloads with duplicate singular message/group merge
+semantics when their generated types are available.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
