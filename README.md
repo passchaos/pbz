@@ -262,7 +262,9 @@ message-level `hasExtension_*`, `countExtension_*`, `getExtension_*`,
 `clearExtension_*` facades over the same unknown/raw extension storage; when an
 extension value type is a same-file generated message, additional
 `setExtensionMessage_*` / `getExtensionMessage_*` helpers encode/decode the
-message payload for callers.
+message payload for callers, with repeated message extensions also exposing
+`addExtensionMessage_*`, `appendExtensionMessages_*`, `replaceExtensionMessages_*`,
+and `getExtensionMessages_*` helpers.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
 scalar/enum/message map fields, encoded message payload fields when their generated types

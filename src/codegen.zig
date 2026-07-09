@@ -1257,6 +1257,36 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
 
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "appendExtensionMessages_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values) |value| try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "addExtensionMessage_", writer);
+        try writer.writeAll("(allocator, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "replaceExtensionMessages_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".clearFromUnknown(self, allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "appendExtensionMessages_", writer);
+        try writer.writeAll("(allocator, values);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "getExtensionMessages_", writer);
         try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
         try writeMessageTypeReference(type_name, writer);
@@ -5946,6 +5976,7 @@ test "codegen emits proto2 extension metadata" {
         \\  repeated int32 nums = 101;
         \\  optional Note note = 102;
         \\  repeated int32 packed_nums = 103 [packed = true];
+        \\  repeated Note notes = 104;
         \\}
     );
     defer file.deinit();
@@ -6036,6 +6067,14 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessage_note\"(self: @This(), allocator: std.mem.Allocator) !?@\"Note\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = (try extensions.@\"note\".decodeFirstFromUnknown(self, allocator)) orelse return null;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"Note\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"addExtensionMessage_notes\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"notes\".appendToUnknown(self, allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtensionMessages_notes\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try self.@\"addExtensionMessage_notes\"(allocator, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceExtensionMessages_notes\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendExtensionMessages_notes\"(allocator, values);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessages_notes\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (payloads) |payload| try list.append(allocator, try @\"Note\".decode(allocator, payload));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtension_nums\"(self: @This(), allocator: std.mem.Allocator) ![]i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
