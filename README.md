@@ -170,6 +170,13 @@ defer allocator.free(json_ts);
 
 const d = pbz.Duration{ .seconds = -3, .nanos = -250_000_000 };
 const mask = pbz.FieldMask{ .paths = &.{"foo_bar"} };
+
+var object = try pbz.Struct.jsonParse(allocator,
+    \\{"enabled":true,"items":[null,"zig"]}
+);
+defer object.deinit(allocator);
+const object_wire = try object.encode(allocator);
+defer allocator.free(object_wire);
 ```
 
 ## TextFormat support

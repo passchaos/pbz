@@ -538,6 +538,426 @@ test "any wire and json helpers" {
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"value\":\"YWJj\"}"));
 }
 
+pub const NullValue = enum(i32) {
+    NULL_VALUE = 0,
+};
+
+pub const Struct = struct {
+    fields: []const Field = &.{},
+
+    pub const Field = struct {
+        key: []const u8,
+        value: Value,
+    };
+
+    pub fn encode(self: Struct, allocator: std.mem.Allocator) anyerror![]u8 {
+        var writer = wire.Writer.init(allocator);
+        errdefer writer.deinit();
+        for (self.fields) |field| {
+            var entry_writer = wire.Writer.init(allocator);
+            defer entry_writer.deinit();
+            try entry_writer.writeString(1, field.key);
+            const value_bytes = try field.value.encode(allocator);
+            defer allocator.free(value_bytes);
+            try entry_writer.writeMessage(2, value_bytes);
+            try writer.writeMessage(1, entry_writer.slice());
+        }
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Struct {
+        var fields: std.ArrayList(Field) = .empty;
+        errdefer {
+            for (fields.items) |*field| deinitStructField(field, allocator);
+            fields.deinit(allocator);
+        }
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| {
+            switch (tag.number) {
+                1 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    try fields.append(allocator, try decodeStructField(allocator, try reader.readBytes()));
+                },
+                else => try reader.skipValue(tag),
+            }
+        }
+        return .{ .fields = try fields.toOwnedSlice(allocator) };
+    }
+
+    pub fn deinit(self: *Struct, allocator: std.mem.Allocator) void {
+        for (self.fields) |field| {
+            var owned = field;
+            deinitStructField(&owned, allocator);
+        }
+        allocator.free(self.fields);
+        self.* = undefined;
+    }
+
+    pub fn jsonStringifyAlloc(self: Struct, allocator: std.mem.Allocator) anyerror![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try self.jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
+    pub fn jsonStringify(self: Struct, writer: *std.Io.Writer) anyerror!void {
+        try writer.writeAll("{");
+        for (self.fields, 0..) |field, index| {
+            if (index != 0) try writer.writeAll(",");
+            try std.json.Stringify.value(field.key, .{}, writer);
+            try writer.writeAll(":");
+            try field.value.jsonStringify(writer);
+        }
+        try writer.writeAll("}");
+    }
+
+    pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) anyerror!Struct {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+        defer parsed.deinit();
+        return try structFromJsonValue(allocator, parsed.value);
+    }
+};
+
+pub const ListValue = struct {
+    values: []const Value = &.{},
+
+    pub fn encode(self: ListValue, allocator: std.mem.Allocator) anyerror![]u8 {
+        var writer = wire.Writer.init(allocator);
+        errdefer writer.deinit();
+        for (self.values) |value| {
+            const value_bytes = try value.encode(allocator);
+            defer allocator.free(value_bytes);
+            try writer.writeMessage(1, value_bytes);
+        }
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) anyerror!ListValue {
+        var values: std.ArrayList(Value) = .empty;
+        errdefer {
+            for (values.items) |*value| value.deinit(allocator);
+            values.deinit(allocator);
+        }
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| {
+            switch (tag.number) {
+                1 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    try values.append(allocator, try Value.decode(allocator, try reader.readBytes()));
+                },
+                else => try reader.skipValue(tag),
+            }
+        }
+        return .{ .values = try values.toOwnedSlice(allocator) };
+    }
+
+    pub fn deinit(self: *ListValue, allocator: std.mem.Allocator) void {
+        for (self.values) |value| {
+            var owned = value;
+            owned.deinit(allocator);
+        }
+        allocator.free(self.values);
+        self.* = undefined;
+    }
+
+    pub fn jsonStringifyAlloc(self: ListValue, allocator: std.mem.Allocator) anyerror![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try self.jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
+    pub fn jsonStringify(self: ListValue, writer: *std.Io.Writer) anyerror!void {
+        try writer.writeAll("[");
+        for (self.values, 0..) |value, index| {
+            if (index != 0) try writer.writeAll(",");
+            try value.jsonStringify(writer);
+        }
+        try writer.writeAll("]");
+    }
+
+    pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) anyerror!ListValue {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+        defer parsed.deinit();
+        return try listValueFromJsonValue(allocator, parsed.value);
+    }
+};
+
+pub const Value = union(enum) {
+    null_value,
+    number_value: f64,
+    string_value: []const u8,
+    bool_value: bool,
+    struct_value: *Struct,
+    list_value: *ListValue,
+
+    pub fn encode(self: Value, allocator: std.mem.Allocator) anyerror![]u8 {
+        var writer = wire.Writer.init(allocator);
+        errdefer writer.deinit();
+        switch (self) {
+            .null_value => try writer.writeInt32(1, @intFromEnum(NullValue.NULL_VALUE)),
+            .number_value => |value| {
+                if (std.math.isNan(value) or std.math.isPositiveInf(value) or std.math.isNegativeInf(value)) return error.InvalidNumber;
+                try writer.writeDouble(2, value);
+            },
+            .string_value => |value| try writer.writeString(3, value),
+            .bool_value => |value| try writer.writeBool(4, value),
+            .struct_value => |value| {
+                const payload = try value.encode(allocator);
+                defer allocator.free(payload);
+                try writer.writeMessage(5, payload);
+            },
+            .list_value => |value| {
+                const payload = try value.encode(allocator);
+                defer allocator.free(payload);
+                try writer.writeMessage(6, payload);
+            },
+        }
+        return try writer.toOwnedSlice();
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Value {
+        var out: Value = .null_value;
+        var has_value = false;
+        errdefer if (has_value) out.deinit(allocator);
+        var reader = wire.Reader.init(bytes);
+        while (try reader.nextTag()) |tag| {
+            switch (tag.number) {
+                1 => {
+                    try wire.Reader.expectWireType(tag, .varint);
+                    if (has_value) out.deinit(allocator);
+                    if (try reader.readInt32() != @intFromEnum(NullValue.NULL_VALUE)) return error.InvalidNullValue;
+                    out = .null_value;
+                    has_value = true;
+                },
+                2 => {
+                    try wire.Reader.expectWireType(tag, .fixed64);
+                    if (has_value) out.deinit(allocator);
+                    out = .{ .number_value = try reader.readDouble() };
+                    has_value = true;
+                },
+                3 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    if (has_value) out.deinit(allocator);
+                    out = .{ .string_value = try allocator.dupe(u8, try reader.readBytes()) };
+                    has_value = true;
+                },
+                4 => {
+                    try wire.Reader.expectWireType(tag, .varint);
+                    if (has_value) out.deinit(allocator);
+                    out = .{ .bool_value = try reader.readBool() };
+                    has_value = true;
+                },
+                5 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    if (has_value) out.deinit(allocator);
+                    const nested = try allocator.create(Struct);
+                    errdefer allocator.destroy(nested);
+                    nested.* = try Struct.decode(allocator, try reader.readBytes());
+                    out = .{ .struct_value = nested };
+                    has_value = true;
+                },
+                6 => {
+                    try wire.Reader.expectWireType(tag, .length_delimited);
+                    if (has_value) out.deinit(allocator);
+                    const nested = try allocator.create(ListValue);
+                    errdefer allocator.destroy(nested);
+                    nested.* = try ListValue.decode(allocator, try reader.readBytes());
+                    out = .{ .list_value = nested };
+                    has_value = true;
+                },
+                else => try reader.skipValue(tag),
+            }
+        }
+        return out;
+    }
+
+    pub fn deinit(self: *Value, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .null_value, .number_value, .bool_value => {},
+            .string_value => |value| allocator.free(value),
+            .struct_value => |value| {
+                value.deinit(allocator);
+                allocator.destroy(value);
+            },
+            .list_value => |value| {
+                value.deinit(allocator);
+                allocator.destroy(value);
+            },
+        }
+        self.* = undefined;
+    }
+
+    pub fn jsonStringifyAlloc(self: Value, allocator: std.mem.Allocator) anyerror![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try self.jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
+    pub fn jsonStringify(self: Value, writer: *std.Io.Writer) anyerror!void {
+        switch (self) {
+            .null_value => try writer.writeAll("null"),
+            .number_value => |value| {
+                if (std.math.isNan(value) or std.math.isPositiveInf(value) or std.math.isNegativeInf(value)) return error.InvalidNumber;
+                try std.json.Stringify.value(value, .{}, writer);
+            },
+            .string_value => |value| try std.json.Stringify.value(value, .{}, writer),
+            .bool_value => |value| try writer.writeAll(if (value) "true" else "false"),
+            .struct_value => |value| try value.jsonStringify(writer),
+            .list_value => |value| try value.jsonStringify(writer),
+        }
+    }
+
+    pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) anyerror!Value {
+        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+        defer parsed.deinit();
+        return try valueFromJsonValue(allocator, parsed.value);
+    }
+};
+
+fn decodeStructField(allocator: std.mem.Allocator, bytes: []const u8) anyerror!Struct.Field {
+    var key = try allocator.dupe(u8, "");
+    errdefer allocator.free(key);
+    var value: Value = .null_value;
+    var has_value = false;
+    errdefer if (has_value) value.deinit(allocator);
+    var reader = wire.Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => {
+                try wire.Reader.expectWireType(tag, .length_delimited);
+                allocator.free(key);
+                key = try allocator.dupe(u8, try reader.readBytes());
+            },
+            2 => {
+                try wire.Reader.expectWireType(tag, .length_delimited);
+                if (has_value) value.deinit(allocator);
+                value = try Value.decode(allocator, try reader.readBytes());
+                has_value = true;
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    return .{ .key = key, .value = value };
+}
+
+fn deinitStructField(field: *Struct.Field, allocator: std.mem.Allocator) void {
+    allocator.free(field.key);
+    field.value.deinit(allocator);
+    field.* = undefined;
+}
+
+fn structFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value) anyerror!Struct {
+    const object = switch (json_value) {
+        .object => |object| object,
+        else => return error.TypeMismatch,
+    };
+    var fields: std.ArrayList(Struct.Field) = .empty;
+    errdefer {
+        for (fields.items) |*field| deinitStructField(field, allocator);
+        fields.deinit(allocator);
+    }
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const key = try allocator.dupe(u8, entry.key_ptr.*);
+        errdefer allocator.free(key);
+        var value = try valueFromJsonValue(allocator, entry.value_ptr.*);
+        errdefer value.deinit(allocator);
+        fields.append(allocator, .{ .key = key, .value = value }) catch |err| {
+            value.deinit(allocator);
+            return err;
+        };
+    }
+    return .{ .fields = try fields.toOwnedSlice(allocator) };
+}
+
+fn listValueFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value) anyerror!ListValue {
+    const array = switch (json_value) {
+        .array => |array| array,
+        else => return error.TypeMismatch,
+    };
+    var values: std.ArrayList(Value) = .empty;
+    errdefer {
+        for (values.items) |*value| value.deinit(allocator);
+        values.deinit(allocator);
+    }
+    for (array.items) |item| {
+        var value = try valueFromJsonValue(allocator, item);
+        values.append(allocator, value) catch |err| {
+            value.deinit(allocator);
+            return err;
+        };
+    }
+    return .{ .values = try values.toOwnedSlice(allocator) };
+}
+
+fn valueFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value) anyerror!Value {
+    switch (json_value) {
+        .null => return .null_value,
+        .bool => |value| return .{ .bool_value = value },
+        .integer => |value| return .{ .number_value = @floatFromInt(value) },
+        .float => |value| return .{ .number_value = value },
+        .number_string => |value| return .{ .number_value = try std.fmt.parseFloat(f64, value) },
+        .string => |value| return .{ .string_value = try allocator.dupe(u8, value) },
+        .object => {
+            const nested = try allocator.create(Struct);
+            errdefer allocator.destroy(nested);
+            nested.* = try structFromJsonValue(allocator, json_value);
+            return .{ .struct_value = nested };
+        },
+        .array => {
+            const nested = try allocator.create(ListValue);
+            errdefer allocator.destroy(nested);
+            nested.* = try listValueFromJsonValue(allocator, json_value);
+            return .{ .list_value = nested };
+        },
+    }
+}
+
+test "struct value and listvalue wire and json helpers" {
+    const allocator = std.testing.allocator;
+    const list_values = [_]Value{ .{ .string_value = "zig" }, .null_value };
+    const list = try allocator.create(ListValue);
+    defer allocator.destroy(list);
+    list.* = .{ .values = &list_values };
+    const fields = [_]Struct.Field{
+        .{ .key = "name", .value = .{ .string_value = "pbz" } },
+        .{ .key = "ok", .value = .{ .bool_value = true } },
+        .{ .key = "list", .value = .{ .list_value = list } },
+    };
+    const st = Struct{ .fields = &fields };
+
+    const json = try st.jsonStringifyAlloc(allocator);
+    defer allocator.free(json);
+    try std.testing.expectEqualSlices(u8, "{\"name\":\"pbz\",\"ok\":true,\"list\":[\"zig\",null]}", json);
+
+    const bytes = try st.encode(allocator);
+    defer allocator.free(bytes);
+    var decoded = try Struct.decode(allocator, bytes);
+    defer decoded.deinit(allocator);
+    const decoded_json = try decoded.jsonStringifyAlloc(allocator);
+    defer allocator.free(decoded_json);
+    try std.testing.expectEqualSlices(u8, json, decoded_json);
+
+    var parsed = try Struct.jsonParse(allocator, "{\"n\":1.5,\"child\":{\"flag\":false},\"items\":[null,\"x\"]}");
+    defer parsed.deinit(allocator);
+    const parsed_json = try parsed.jsonStringifyAlloc(allocator);
+    defer allocator.free(parsed_json);
+    try std.testing.expectEqualSlices(u8, "{\"n\":1.5,\"child\":{\"flag\":false},\"items\":[null,\"x\"]}", parsed_json);
+}
+
+test "value json and wire reject invalid null enum and non-finite numbers" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidNumber, (Value{ .number_value = std.math.inf(f64) }).encode(allocator));
+    try std.testing.expectError(error.InvalidNumber, (Value{ .number_value = std.math.nan(f64) }).jsonStringifyAlloc(allocator));
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeInt32(1, 1);
+    try std.testing.expectError(error.InvalidNullValue, Value.decode(allocator, writer.slice()));
+}
+
 pub const Empty = struct {
     pub fn encode(allocator: std.mem.Allocator) ![]u8 {
         return try allocator.dupe(u8, "");
