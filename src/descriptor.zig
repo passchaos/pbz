@@ -1194,6 +1194,8 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     var weak_deps: std.ArrayList(i32) = .empty;
     defer weak_deps.deinit(allocator);
     var saw_file_features = false;
+    var saw_syntax: ?schema.Syntax = null;
+    var saw_edition_field = false;
     const owned_bytes = try allocator.dupe(u8, bytes);
     try file.owned_strings.append(allocator, owned_bytes);
 
@@ -1215,20 +1217,24 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             12 => {
                 const syntax = try reader.readBytes();
                 if (std.mem.eql(u8, syntax, "proto2")) {
+                    saw_syntax = .proto2;
                     file.syntax = .proto2;
                     file.edition = schema.Syntax.proto2.defaultEdition();
                     if (!saw_file_features) file.features = schema.FeatureSet.defaults(.proto2);
                 } else if (std.mem.eql(u8, syntax, "proto3")) {
+                    saw_syntax = .proto3;
                     file.syntax = .proto3;
                     file.edition = schema.Syntax.proto3.defaultEdition();
                     if (!saw_file_features) file.features = schema.FeatureSet.defaults(.proto3);
                 } else if (std.mem.eql(u8, syntax, "editions")) {
+                    saw_syntax = .editions;
                     file.syntax = .editions;
-                    file.edition = schema.Syntax.editions.defaultEdition();
+                    if (!saw_edition_field) file.edition = schema.Syntax.editions.defaultEdition();
                     if (!saw_file_features) file.features = schema.FeatureSet.defaults(.editions);
                 } else return error.InvalidFieldType;
             },
             14 => {
+                saw_edition_field = true;
                 file.syntax = .editions;
                 file.edition = std.enums.fromInt(schema.Edition, try reader.readInt32()) orelse return error.InvalidFieldType;
                 if (!saw_file_features) file.features = schema.FeatureSet.defaults(.editions);
@@ -1236,7 +1242,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             else => try reader.skipValue(tag),
         }
     }
-    try validateDecodedFileEdition(&file);
+    try validateDecodedFileEdition(&file, saw_syntax, saw_edition_field);
     try validateImportList(file.imports.items);
     try validateDependencyIndexes(public_deps.items, weak_deps.items, file.imports.items.len);
     for (public_deps.items) |idx| {
@@ -1260,7 +1266,12 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     return file;
 }
 
-fn validateDecodedFileEdition(file: *const schema.FileDescriptor) Error!void {
+fn validateDecodedFileEdition(file: *const schema.FileDescriptor, saw_syntax: ?schema.Syntax, saw_edition_field: bool) Error!void {
+    if (saw_edition_field) {
+        if (saw_syntax) |syntax| {
+            if (syntax != .editions) return error.InvalidFieldType;
+        }
+    }
     if (file.syntax != .editions) return;
     switch (file.edition) {
         .unknown, .max => return error.InvalidFieldType,
@@ -4516,6 +4527,33 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeString(1, "max-edition.proto");
         try file.writeInt32(14, @intFromEnum(schema.Edition.max));
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-with-edition.proto");
+        try file.writeString(12, "proto3");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2023));
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "edition-before-proto3.proto");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2023));
+        try file.writeString(12, "proto3");
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "edition-before-syntax.proto");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2024));
+        try file.writeString(12, "editions");
+        var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+        defer decoded.deinit();
+        try std.testing.expectEqual(schema.Syntax.editions, decoded.syntax);
+        try std.testing.expectEqual(schema.Edition.edition_2024, decoded.edition);
     }
     {
         var file = wire.Writer.init(allocator);
