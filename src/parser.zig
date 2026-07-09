@@ -1003,10 +1003,16 @@ pub const Parser = struct {
     }
 
     fn parseReserved(self: *Parser, ranges: *std.ArrayList(schema.ReservedRange), names: *std.ArrayList([]const u8)) Error!void {
-        if (self.current.tag == .string_literal) {
+        if (self.current.tag == .string_literal or self.current.tag == .identifier) {
+            const use_identifiers = self.file.syntax == .editions;
+            if (use_identifiers and self.current.tag == .string_literal) return error.InvalidSyntax;
+            if (!use_identifiers and self.current.tag == .identifier) return error.InvalidSyntax;
             while (true) {
-                try names.append(self.allocator, try self.expectString());
+                const name = if (use_identifiers) try self.expectIdentifier() else try self.expectString();
+                try names.append(self.allocator, name);
                 if (!self.consumeSymbol(',')) break;
+                if (use_identifiers and self.current.tag != .identifier) return error.UnexpectedToken;
+                if (!use_identifiers and self.current.tag != .string_literal) return error.UnexpectedToken;
             }
             try self.expectSymbol(';');
             return;
@@ -2840,6 +2846,33 @@ test "parser rejects enum values using reserved names or numbers" {
         \\syntax = "proto2";
         \\enum Bad { reserved 1 to 5, 4 to 8; OK = 9; }
     ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { A = 0; reserved OLD; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved old; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\enum Bad { A = 0; reserved "OLD"; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Bad { reserved "old"; }
+    ));
+
+    var editions = try Parser.parse(allocator,
+        \\edition = "2023";
+        \\enum Ok { A = 0; reserved OLD, REMOVED; }
+        \\message M { reserved gone, legacy; }
+    );
+    defer editions.deinit();
+    try std.testing.expectEqualStrings("OLD", editions.findEnum("Ok").?.reserved_names.items[0]);
+    try std.testing.expectEqualStrings("REMOVED", editions.findEnum("Ok").?.reserved_names.items[1]);
+    try std.testing.expectEqualStrings("gone", editions.findMessage("M").?.reserved_names.items[0]);
+    try std.testing.expectEqualStrings("legacy", editions.findMessage("M").?.reserved_names.items[1]);
 }
 
 test "parser rejects fields using reserved names or numbers" {
@@ -2870,11 +2903,11 @@ test "parser rejects max as range start" {
         \\syntax = "proto2";
         \\message Bad { extensions max; }
     ));
-    try std.testing.expectError(error.UnexpectedToken, Parser.parse(allocator,
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { reserved max; }
     ));
-    try std.testing.expectError(error.UnexpectedToken, Parser.parse(allocator,
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum Bad { A = 0; reserved max; }
     ));
