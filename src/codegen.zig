@@ -8663,7 +8663,7 @@ test "codegen emits field metadata including imported type names" {
         \\message M {
         \\  optional .demo.common.User user = 1;
         \\  repeated int32 nums = 2 [packed = true];
-        \\  string display_name = 3 [json_name = "shownName"];
+        \\  optional string display_name = 3 [json_name = "shownName"];
         \\  map<string, .demo.common.Role> roles = 4;
         \\}
     );

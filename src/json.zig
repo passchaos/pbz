@@ -1934,7 +1934,7 @@ test "json maps Any message with type and base64 value" {
     const source =
         \\syntax = "proto3";
         \\package google.protobuf;
-        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Any { optional string type_url = 1; optional bytes value = 2; }
         \\message Holder { .google.protobuf.Any any = 1; }
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -2017,7 +2017,7 @@ test "json parses Any message with type and base64 value" {
     const source =
         \\syntax = "proto3";
         \\package google.protobuf;
-        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Any { optional string type_url = 1; optional bytes value = 2; }
         \\message Holder { .google.protobuf.Any any = 1; }
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -2038,7 +2038,7 @@ test "json expands Any message payloads when type is known" {
         \\syntax = "proto3";
         \\package demo;
         \\message Msg { int32 id = 1; string label = 2; }
-        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Any { optional string type_url = 1; optional bytes value = 2; }
         \\message Holder { .google.protobuf.Any any = 1; }
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -2083,7 +2083,7 @@ test "json initialized parse validates expanded Any payloads" {
         \\syntax = "proto2";
         \\package demo;
         \\message Msg { required int32 id = 1; }
-        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Any { optional string type_url = 1; optional bytes value = 2; }
         \\message Holder { optional .google.protobuf.Any any = 1; }
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -2117,7 +2117,7 @@ test "json expands Any payloads using registry imports" {
         \\syntax = "proto3";
         \\package app;
         \\import "common.proto";
-        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Any { optional string type_url = 1; optional bytes value = 2; }
         \\message Holder { .google.protobuf.Any any = 1; }
     );
     defer app.deinit();

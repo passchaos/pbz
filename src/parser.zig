@@ -663,10 +663,12 @@ pub const Parser = struct {
         if (self.matchIdent("group")) {
             if (oneof_name != null) return error.InvalidSyntax;
             if (self.file.syntax == .editions) return error.InvalidSyntax;
+            if (self.file.syntax == .proto2 and cardinality == .implicit) return error.InvalidSyntax;
             return try self.parseGroupField(cardinality, oneof_name, parent);
         }
 
         const kind = try self.parseFieldKind();
+        if (self.file.syntax == .proto2 and cardinality == .implicit and kind != .map and oneof_name == null) return error.InvalidSyntax;
         if (kind == .map and (cardinality != .implicit or oneof_name != null)) return error.InvalidFieldType;
         const effective_cardinality: schema.Cardinality = if (kind == .map) .repeated else cardinality;
         const name = try self.expectIdentifier();
@@ -2373,6 +2375,24 @@ test "parser accepts special float defaults" {
         \\syntax = "proto2";
         \\message Bad { optional float value = 1 [default = -nan]; }
     ));
+}
+
+test "parser rejects missing proto2 field labels" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { group Legacy = 1 { optional int32 id = 2; } }
+    ));
+    var proto3 = try Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Ok { int32 id = 1; }
+    );
+    defer proto3.deinit();
+    try std.testing.expectEqual(schema.Cardinality.implicit, proto3.findMessage("Ok").?.findField("id").?.cardinality);
 }
 
 test "parser rejects invalid field defaults" {
