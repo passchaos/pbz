@@ -1715,10 +1715,13 @@ fn decodeReservedRange(allocator: std.mem.Allocator, bytes: []const u8, inclusiv
             1 => range.start = try reader.readInt32(),
             2 => {
                 const end = try reader.readInt32();
-                range.end = if (inclusive_end) end + 1 else end;
+                range.end = if (inclusive_end) @as(i64, end) + 1 else end;
             },
             else => try reader.skipValue(tag),
         }
+    }
+    if (range.end) |end| {
+        if (end <= range.start) return error.InvalidFieldType;
     }
     return range;
 }
@@ -2793,6 +2796,45 @@ test "descriptor rejects duplicate top-level file symbols" {
         try file.writeString(1, "dup-service.proto");
         try file.writeMessage(6, service.slice());
         try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects invalid reserved ranges" {
+    const allocator = std.testing.allocator;
+    {
+        var range = wire.Writer.init(allocator);
+        defer range.deinit();
+        try range.writeInt32(1, 10);
+        try range.writeInt32(2, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(9, range.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-reserved.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "A");
+        try value.writeInt32(2, 0);
+        var range = wire.Writer.init(allocator);
+        defer range.deinit();
+        try range.writeInt32(1, 5);
+        try range.writeInt32(2, 3);
+        var enumeration = wire.Writer.init(allocator);
+        defer enumeration.deinit();
+        try enumeration.writeString(1, "Bad");
+        try enumeration.writeMessage(2, value.slice());
+        try enumeration.writeMessage(4, range.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-enum-reserved.proto");
+        try file.writeMessage(5, enumeration.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
