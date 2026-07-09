@@ -2924,13 +2924,23 @@ fn writeEscapedStringChar(c: u8, writer: *std.Io.Writer) Error!void {
 
 fn writeTextMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("pub const TextFormatOptions = struct { enum_as_name: bool = true };\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.formatTextAllocWithOptions(allocator, .{});\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer out.deinit();\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.formatTextWithAllocator(allocator, &out.writer);\n");
+    try writer.writeAll("try self.formatTextWithOptions(allocator, &out.writer, options);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try out.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -2939,16 +2949,25 @@ fn writeTextMethods(file: *const schema.FileDescriptor, message: *const schema.M
     try indent(writer, depth);
     try writer.writeAll("pub fn formatText(self: @This(), writer: *std.Io.Writer) !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.formatTextWithAllocator(std.heap.page_allocator, writer);\n");
+    try writer.writeAll("try self.formatTextWithOptions(std.heap.page_allocator, writer, .{});\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn formatTextWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.formatTextWithOptions(allocator, writer, .{});\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void {\n");
     if (!messageTextUsesAllocator(file, message)) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
     }
+    try indent(writer, depth + 1);
+    try writer.writeAll("_ = options;\n");
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeTextField(file, field, writer, depth + 1);
     }
@@ -3149,7 +3168,7 @@ fn writeTextMessagePayload(field_name: []const u8, type_name: []const u8, payloa
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.formatTextWithAllocator(allocator, writer);\n");
+    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, options);\n");
     try indent(writer, depth);
     try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
 }
@@ -3182,7 +3201,7 @@ fn writeTextMapField(file: *const schema.FileDescriptor, field: *const schema.Fi
         try indent(writer, depth + 1);
         try writer.writeAll("defer nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try nested.formatTextWithAllocator(allocator, writer);\n");
+        try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, options);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
     } else {
@@ -3324,7 +3343,7 @@ fn writeTextUnknownMessageExtensionField(file: *const schema.FileDescriptor, fie
     try indent(writer, depth + 2);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("try nested.formatTextWithAllocator(allocator, writer);\n");
+    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, options);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
     try indent(writer, depth + 2);
@@ -3381,6 +3400,7 @@ fn writeTextEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8,
     try writeEnumNameArray(file, enum_name, writer);
     try writer.writeAll(", ");
     try writeEnumNumberArray(file, enum_name, writer);
+    try writer.writeAll(", options.enum_as_name");
     try writer.writeAll(")");
 }
 
@@ -3393,7 +3413,7 @@ fn writeTextMapValue(file: *const schema.FileDescriptor, kind: schema.FieldKind,
             try writeMessageTypeReference(name, writer);
             try writer.writeAll(".decode(allocator, ");
             try writer.writeAll(value_expr);
-            try writer.writeAll("); defer nested.deinit(allocator); try nested.formatTextWithAllocator(allocator, writer)");
+            try writer.writeAll("); defer nested.deinit(allocator); try nested.formatTextWithOptions(allocator, writer, options)");
         } else try writer.writeAll("@compileError(\"unsupported map text value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map text value\")"),
     }
@@ -4319,7 +4339,8 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    try writer.print("{d}", .{value});
         \\}
         \\
-        \\fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void {
+        \\fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void {
+        \\    if (!enum_as_name) return try writer.print("{d}", .{value});
         \\    inline for (numbers, 0..) |number, i| {
         \\        if (value == number) return try writer.writeAll(names[i]);
         \\    }
@@ -5852,16 +5873,19 @@ test "codegen emits basic TextFormat formatters" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextFormatOptions = struct { enum_as_name: bool = true };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.@\"id\"; try writer.print(\"{d}\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithAllocator(allocator, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithOptions(allocator, writer, options);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"kids {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);

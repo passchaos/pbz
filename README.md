@@ -289,6 +289,9 @@ Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
 TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
 same-file proto2 extension values recovered from preserved unknown/raw fields,
 numeric unknown varint/string/group/fixed fields, and oneof fields; generated
+messages expose `TextFormatOptions` plus `formatText*WithOptions` for enum-name
+versus numeric enum output, with options propagated into nested generated message
+formatting; generated
 `parseText` / `parseTextInitialized` cover basic line-oriented scalar, enum,
 repeated, scalar/enum/message map, scalar/enum oneof input, plus same-file proto2
 extension references such as `[demo.ext]` or `[ext]` stored as preserved
