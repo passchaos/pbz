@@ -47,7 +47,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; generated plugin responses advertise proto3 optional and editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
-  - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for direct imported message type references
+  - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for direct imported message type references and imported enum field resolution
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
@@ -225,9 +225,10 @@ or direct-imported message fields when `generateZigFileWithRegistry` is used. Th
 Zig `union(enum)`. Same-file message/group payload fields additionally expose
 `setMessageField_*` / `getMessageField_*` and repeated message batch helpers that
 encode/decode the underlying payload bytes through same-file or direct-imported generated message types.
-`pbz.generateZigFileWithRegistry` additionally resolves message fields through a
-`Registry` and emits direct-import module type refs/accessors when the referenced
-`.proto` file is imported by the generated file.
+`pbz.generateZigFileWithRegistry` additionally resolves message and enum fields
+through a `Registry`: direct-imported message fields get module type refs/accessors,
+and direct-imported enum fields are treated as enum scalars for generated wire,
+JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
 For `service` declarations, generated files include a `services` namespace with
 service/method metadata, an unimplemented `Handler` stub, and a `Client` wrapper
 that dispatches serialized request/response payloads through a caller-provided

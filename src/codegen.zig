@@ -7,28 +7,127 @@ const wire = @import("wire.zig");
 pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error || plugin.Error || registry_mod.Error;
 
 const CodegenContext = struct {
+    allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry = null,
 };
 
 pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) Error![]u8 {
-    return try generateZigFileWithContext(allocator, .{ .file = file });
+    return try generateZigFileWithContext(.{ .allocator = allocator, .file = file });
 }
 
 pub fn generateZigFileWithRegistry(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry) Error![]u8 {
-    return try generateZigFileWithContext(allocator, .{ .file = file, .registry = registry });
+    return try generateZigFileWithContext(.{ .allocator = allocator, .file = file, .registry = registry });
 }
 
-fn generateZigFileWithContext(allocator: std.mem.Allocator, ctx: CodegenContext) Error![]u8 {
-    var out: std.Io.Writer.Allocating = .init(allocator);
+fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
+    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+    defer arena.deinit();
+    var active_ctx = ctx;
+    var resolved_file: schema.FileDescriptor = undefined;
+    if (ctx.registry) |registry| {
+        resolved_file = try cloneFileForCodegen(arena.allocator(), ctx.file);
+        try resolveImportedEnumsForCodegen(arena.allocator(), &resolved_file, registry);
+        active_ctx.file = &resolved_file;
+    }
+
+    var out: std.Io.Writer.Allocating = .init(ctx.allocator);
     errdefer out.deinit();
     try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(\"pbz\");\n\n");
-    try writeFileMetadata(allocator, ctx.file, &out.writer, 0);
-    for (ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
-    for (ctx.file.messages.items) |*message| try writeMessage(&ctx, message, &out.writer, 0);
-    try writeExtensionMetadata(ctx.file, &out.writer, 0);
-    try writeServiceMetadata(ctx.file, &out.writer, 0);
+    try writeFileMetadata(ctx.allocator, active_ctx.file, &out.writer, 0);
+    for (active_ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
+    for (active_ctx.file.messages.items) |*message| try writeMessage(&active_ctx, message, &out.writer, 0);
+    try writeExtensionMetadata(active_ctx.file, &out.writer, 0);
+    try writeServiceMetadata(active_ctx.file, &out.writer, 0);
     return try out.toOwnedSlice();
+}
+
+fn cloneFileForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) std.mem.Allocator.Error!schema.FileDescriptor {
+    var out = file.*;
+    out.messages = .empty;
+    out.enums = .empty;
+    out.extensions = .empty;
+    for (file.messages.items) |*message| try out.messages.append(allocator, try cloneMessageForCodegen(allocator, message));
+    for (file.enums.items) |enumeration| try out.enums.append(allocator, enumeration);
+    for (file.extensions.items) |*field| try out.extensions.append(allocator, try cloneFieldForCodegen(allocator, field));
+    return out;
+}
+
+fn cloneMessageForCodegen(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor) std.mem.Allocator.Error!schema.MessageDescriptor {
+    var out = message.*;
+    out.fields = .empty;
+    out.messages = .empty;
+    out.extensions = .empty;
+    for (message.fields.items) |*field| try out.fields.append(allocator, try cloneFieldForCodegen(allocator, field));
+    for (message.messages.items) |*nested| try out.messages.append(allocator, try cloneMessageForCodegen(allocator, nested));
+    for (message.extensions.items) |*field| try out.extensions.append(allocator, try cloneFieldForCodegen(allocator, field));
+    return out;
+}
+
+fn cloneFieldForCodegen(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor) std.mem.Allocator.Error!schema.FieldDescriptor {
+    var out = field.*;
+    out.kind = try cloneFieldKindForCodegen(allocator, field.kind);
+    return out;
+}
+
+fn cloneFieldKindForCodegen(allocator: std.mem.Allocator, kind: schema.FieldKind) std.mem.Allocator.Error!schema.FieldKind {
+    return switch (kind) {
+        .map => |map_type| blk: {
+            const value = try allocator.create(schema.FieldKind);
+            value.* = try cloneFieldKindForCodegen(allocator, map_type.value.*);
+            break :blk .{ .map = .{ .key = map_type.key, .value = value } };
+        },
+        else => kind,
+    };
+}
+
+fn resolveImportedEnumsForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry) std.mem.Allocator.Error!void {
+    for (file.messages.items) |*message| try resolveMessageImportedEnumsForCodegen(allocator, file, registry, message);
+    for (file.extensions.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field);
+}
+
+fn resolveMessageImportedEnumsForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, message: *schema.MessageDescriptor) std.mem.Allocator.Error!void {
+    for (message.fields.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field);
+    for (message.extensions.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field);
+    for (message.messages.items) |*nested| try resolveMessageImportedEnumsForCodegen(allocator, file, registry, nested);
+}
+
+fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor) std.mem.Allocator.Error!void {
+    switch (field.kind) {
+        .message => |name| {
+            if (registry.findEnum(name, file.package)) |enumeration| {
+                try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+                field.kind = .{ .enumeration = name };
+            }
+        },
+        .map => |map_type| switch (map_type.value.*) {
+            .message => |name| {
+                if (registry.findEnum(name, file.package)) |enumeration| {
+                    try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+                    map_type.value.* = .{ .enumeration = name };
+                }
+            },
+            else => {},
+        },
+        else => {},
+    }
+}
+
+fn ensureEnumAliasForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, enumeration: *const schema.EnumDescriptor, type_name: []const u8) std.mem.Allocator.Error!void {
+    const alias = normalizedTypeName(type_name);
+    for (file.enums.items) |existing| {
+        if (std.mem.eql(u8, existing.name, alias)) return;
+    }
+    var copy = enumeration.*;
+    copy.name = alias;
+    if (copy.features == null) {
+        if (findFileContainingEnum(registry, enumeration)) |owner| copy.features = owner.features;
+    }
+    try file.enums.append(allocator, copy);
+}
+
+fn normalizedTypeName(type_name: []const u8) []const u8 {
+    return if (std.mem.startsWith(u8, type_name, ".")) type_name[1..] else type_name;
 }
 
 pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor) Error![]u8 {
@@ -2663,9 +2762,8 @@ fn resolveMessageReference(ctx: *const CodegenContext, type_name: []const u8) ?M
     if (ctx.registry) |registry| {
         if (registry.findMessage(type_name, ctx.file.package)) |message| {
             const owner = findFileContainingMessage(registry, message) orelse return null;
-            if (owner == ctx.file) return .{ .message = message, .file = owner };
+            if (sameFileForCodegen(owner, ctx.file)) return .{ .message = message, .file = owner };
             if (directImportPathForFile(ctx.file, owner)) |path| return .{ .message = message, .file = owner, .import_path = path };
-            return null;
         }
     }
     if (ctx.file.findMessageDeep(type_name)) |message| return .{ .message = message, .file = ctx.file };
@@ -2681,6 +2779,24 @@ fn findFileContainingMessage(registry: *const registry_mod.Registry, target: *co
     return null;
 }
 
+fn findFileContainingEnum(registry: *const registry_mod.Registry, target: *const schema.EnumDescriptor) ?*const schema.FileDescriptor {
+    for (registry.files.items) |file| {
+        for (file.enums.items) |*enumeration| {
+            if (enumeration == target) return file;
+        }
+        for (file.messages.items) |*message| {
+            if (messageContainsEnumDescriptor(message, target)) return file;
+        }
+    }
+    return null;
+}
+
+fn sameFileForCodegen(a: *const schema.FileDescriptor, b: *const schema.FileDescriptor) bool {
+    if (a == b) return true;
+    if (a.name.len != 0 and b.name.len != 0 and std.mem.eql(u8, a.name, b.name)) return true;
+    return false;
+}
+
 fn directImportPathForFile(file: *const schema.FileDescriptor, imported_file: *const schema.FileDescriptor) ?[]const u8 {
     if (file == imported_file) return "";
     if (imported_file.name.len == 0) return null;
@@ -2693,6 +2809,16 @@ fn directImportPathForFile(file: *const schema.FileDescriptor, imported_file: *c
 fn messageContainsMessage(message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) bool {
     for (message.messages.items) |*nested| {
         if (nested == target or messageContainsMessage(nested, target)) return true;
+    }
+    return false;
+}
+
+fn messageContainsEnumDescriptor(message: *const schema.MessageDescriptor, target: *const schema.EnumDescriptor) bool {
+    for (message.enums.items) |*enumeration| {
+        if (enumeration == target) return true;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainsEnumDescriptor(nested, target)) return true;
     }
     return false;
 }
@@ -6710,6 +6836,56 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageField_profiles\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\".@\"Profile\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessagesField_profiles\"(self: @This(), allocator: std.mem.Allocator) ![]imports.@\"common.proto\".@\"User\".@\"Profile\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen with registry resolves imported enum fields" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\enum Role { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message Request {
+        \\  optional .demo.common.Role role = 1;
+        \\  repeated .demo.common.Role roles = 2;
+        \\  map<string, .demo.common.Role> keyed = 3;
+        \\  oneof pick { .demo.common.Role picked = 4; }
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"demo.common.Role\" = enum(i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const kind = \"enum\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_name = \".demo.common.Role\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"role\": i32 = 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "value: i32 = 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"picked\": i32,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"role\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, self.@\"role\")") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1}))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "&.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_role\"") == null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
