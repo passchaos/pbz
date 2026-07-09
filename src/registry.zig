@@ -246,7 +246,10 @@ pub const Registry = struct {
         switch (kind) {
             .scalar => {},
             .message => |name| {
-                if (self.findMessageVisible(file, name, scope) == null and self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;
+                if (self.findMessageVisible(file, name, scope) == null and self.findEnumVisible(file, name, scope) == null) {
+                    if (file.missing_weak_imports.items.len != 0 and self.findType(name, scope) == null) return;
+                    return error.InvalidFieldType;
+                }
             },
             .enumeration => |name| {
                 if (self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;

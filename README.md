@@ -17,7 +17,7 @@ validated feature set.
   - proto2 required/optional/repeated cardinality plus proto3/editions required rejection in parser and descriptor decode paths, enum defaults, packed override handling, structured FeatureSet options, and FieldOptions edition default / feature support metadata
 - Multi-file registry and loader
   - package/import-aware lookup for messages/enums/extensions across FileDescriptor values, including scoped/nested proto2 extension full-name lookup, direct/public import visibility helpers and import-chain discovery, with duplicate type/extension conflict detection, unresolved/invisible type-reference and extension-extendee rejection, and cross-file extension declaration validation
-  - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports
+  - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports and tracking placeholder-style weak references
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including allow_alias misuse plus enum-value sibling-scope and prefix/case conflicts

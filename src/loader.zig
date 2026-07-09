@@ -79,7 +79,10 @@ fn loadOne(
     file.name = path;
     for (file.imports.items) |import| {
         loadOne(allocator, tree, import.path, result, loading, loaded) catch |err| switch (err) {
-            error.FileNotFound => if (import.kind == .weak) continue else return err,
+            error.FileNotFound => if (import.kind == .weak) {
+                try file.missing_weak_imports.append(allocator, import.path);
+                continue;
+            } else return err,
             else => return err,
         };
     }
@@ -135,13 +138,15 @@ test "memory loader allows missing weak imports" {
     try tree.add("root.proto",
         \\syntax = "proto2";
         \\import weak "missing.proto";
-        \\message Root { optional int32 id = 1; }
+        \\message Root { optional MissingType weak_field = 1; }
     );
 
     var loaded = try loadMemory(allocator, &tree, "root.proto");
     defer loaded.deinit();
     try std.testing.expectEqual(@as(usize, 1), loaded.files.items.len);
     try std.testing.expectEqual(schema.Import.Kind.weak, loaded.files.items[0].imports.items[0].kind);
+    try std.testing.expectEqual(@as(usize, 1), loaded.files.items[0].missing_weak_imports.items.len);
+    try std.testing.expectEqualStrings("missing.proto", loaded.files.items[0].missing_weak_imports.items[0]);
     try std.testing.expect(loaded.registry.findMessage("Root", null) != null);
 }
 
@@ -201,7 +206,10 @@ fn loadDirOne(
     source_owned = true;
     for (file.imports.items) |import| {
         loadDirOne(allocator, root_dir, import.path, result, loading, loaded) catch |err| switch (err) {
-            error.FileNotFound => if (import.kind == .weak) continue else return err,
+            error.FileNotFound => if (import.kind == .weak) {
+                try file.missing_weak_imports.append(allocator, import.path);
+                continue;
+            } else return err,
             else => return err,
         };
     }
@@ -240,12 +248,14 @@ test "filesystem loader allows missing weak imports" {
     try tmp.dir.writeFile(io, .{ .sub_path = "root.proto", .data =
         \\syntax = "proto2";
         \\import weak "missing.proto";
-        \\message Root { optional int32 id = 1; }
+        \\message Root { optional MissingType weak_field = 1; }
     });
 
     var loaded = try loadDir(allocator, tmp.dir, "root.proto");
     defer loaded.deinit();
     try std.testing.expectEqual(@as(usize, 1), loaded.files.items.len);
     try std.testing.expectEqual(schema.Import.Kind.weak, loaded.files.items[0].imports.items[0].kind);
+    try std.testing.expectEqual(@as(usize, 1), loaded.files.items[0].missing_weak_imports.items.len);
+    try std.testing.expectEqualStrings("missing.proto", loaded.files.items[0].missing_weak_imports.items[0]);
     try std.testing.expect(loaded.registry.findMessage("Root", null) != null);
 }

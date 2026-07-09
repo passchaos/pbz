@@ -729,6 +729,7 @@ pub const FileDescriptor = struct {
     features: FeatureSet = FeatureSet.defaults(.proto2),
     source_code_info: SourceCodeInfo = .{},
     owned_strings: std.ArrayList([]u8) = .empty,
+    missing_weak_imports: std.ArrayList([]const u8) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) FileDescriptor {
         return .{ .allocator = allocator };
@@ -744,6 +745,7 @@ pub const FileDescriptor = struct {
         for (self.services.items) |*service| service.deinit(self.allocator);
         self.services.deinit(self.allocator);
         self.imports.deinit(self.allocator);
+        self.missing_weak_imports.deinit(self.allocator);
         deinitOptions(&self.options, self.allocator);
         self.source_code_info.deinit(self.allocator);
         for (self.owned_strings.items) |owned| self.allocator.free(owned);
