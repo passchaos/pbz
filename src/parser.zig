@@ -997,7 +997,6 @@ pub const Parser = struct {
     }
 
     fn parseRangeBound(self: *Parser) Error!i64 {
-        if (self.matchIdent("max")) return std.math.maxInt(i32);
         return try self.parseSignedInt64();
     }
 
@@ -2678,6 +2677,22 @@ test "parser honors enum allow_alias option" {
     );
     defer file.deinit();
     try std.testing.expectEqual(@as(i32, 1), file.findEnum("Alias").?.findValue("B").?.number);
+}
+
+test "parser rejects max as range start" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.UnexpectedToken, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { extensions max; }
+    ));
+    try std.testing.expectError(error.UnexpectedToken, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved max; }
+    ));
+    try std.testing.expectError(error.UnexpectedToken, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { A = 0; reserved max; }
+    ));
 }
 
 test "parser rejects overlapping reserved declarations" {
