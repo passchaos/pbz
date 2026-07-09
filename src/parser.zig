@@ -196,7 +196,7 @@ pub const Parser = struct {
                 try self.parseImport();
                 try self.addSourceLocation(&.{ 3, import_index }, decl_start, self.previousEnd());
             } else if (self.matchIdent("option")) {
-                try self.file.addOption(try self.parseOptionAssignmentStatement());
+                try self.addFileOption(try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(self.file.messages.items.len);
                 try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start));
@@ -504,7 +504,7 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 const option = try self.parseOptionAssignmentStatement();
                 try enumeration.options.append(self.allocator, option);
-                self.applyFeatureOption(&enumeration.features, option);
+                try self.applyFeatureOption(&enumeration.features, option);
             } else if (self.matchIdent("reserved")) {
                 const reserved_start = self.previous_end;
                 const range_start_index = enumeration.reserved_ranges.items.len;
@@ -547,7 +547,7 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 const option = try self.parseOptionAssignmentStatement();
                 try service.options.append(self.allocator, option);
-                self.applyFeatureOption(&service.features, option);
+                try self.applyFeatureOption(&service.features, option);
             } else if (self.matchIdent("rpc")) {
                 const method_start = self.previous_end;
                 const index: i32 = @intCast(service.methods.items.len);
@@ -581,7 +581,7 @@ pub const Parser = struct {
                 if (self.matchIdent("option")) {
                     const option = try self.parseOptionAssignmentStatement();
                     try method.options.append(self.allocator, option);
-                    self.applyFeatureOption(&method.features, option);
+                    try self.applyFeatureOption(&method.features, option);
                 } else if (self.consumeSymbol(';')) {} else return error.UnexpectedToken;
             }
             _ = self.consumeSymbol(';');
@@ -599,7 +599,7 @@ pub const Parser = struct {
                 const option = try self.parseOptionAssignmentStatement();
                 const oneof = &message.oneofs.items[message.oneofs.items.len - 1];
                 try oneof.options.append(self.allocator, option);
-                self.applyFeatureOption(&oneof.features, option);
+                try self.applyFeatureOption(&oneof.features, option);
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -754,7 +754,7 @@ pub const Parser = struct {
                 };
                 field.feature_support = try self.parseFeatureSupportAggregate(aggregate);
             }
-            self.applyFeatureOption(&field.features, option);
+            try self.applyFeatureOption(&field.features, option);
             if (std.mem.eql(u8, leaf, "repeated_field_encoding")) {
                 if (schema.optionAsIdentifier(option.value)) |ident| {
                     if (std.ascii.eqlIgnoreCase(ident, "PACKED")) field.packed_override = true;
@@ -769,7 +769,7 @@ pub const Parser = struct {
         if (std.mem.eql(u8, leaf, "map_entry")) {
             return error.InvalidFieldType;
         }
-        self.applyFeatureOption(&message.features, option);
+        try self.applyFeatureOption(&message.features, option);
     }
 
     fn applyEnumValueOptions(self: *Parser, enum_value: *schema.EnumValueDescriptor) Error!void {
@@ -782,15 +782,52 @@ pub const Parser = struct {
                 };
                 enum_value.feature_support = try self.parseFeatureSupportAggregate(aggregate);
             }
-            self.applyFeatureOption(&enum_value.features, option);
+            try self.applyFeatureOption(&enum_value.features, option);
         }
     }
 
-    fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption) void {
-        if (!std.mem.startsWith(u8, std.mem.trim(u8, option.name, " \t\r\n"), "features.")) return;
+    fn addFileOption(self: *Parser, option: schema.FieldOption) Error!void {
+        if (isFeatureOption(option.name)) {
+            try applyFeatureOptionValue(&self.file.features, option);
+            try self.file.options.append(self.allocator, option);
+        } else {
+            try self.file.addOption(option);
+        }
+    }
+
+    fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption) Error!void {
+        if (!isFeatureOption(option.name)) return;
         var features = target.* orelse schema.FeatureSet.defaults(self.file.syntax);
-        features.applyOption(option.name, option.value);
+        try applyFeatureOptionValue(&features, option);
         target.* = features;
+    }
+
+    fn isFeatureOption(name: []const u8) bool {
+        return std.mem.startsWith(u8, std.mem.trim(u8, name, " \t\r\n"), "features.");
+    }
+
+    fn applyFeatureOptionValue(features: *schema.FeatureSet, option: schema.FieldOption) ParseError!void {
+        const leaf = optionLeaf(option.name);
+        const ident = schema.optionAsIdentifier(option.value) orelse return error.InvalidFieldType;
+        if (std.mem.eql(u8, leaf, "field_presence")) {
+            if (std.ascii.eqlIgnoreCase(ident, "EXPLICIT")) features.field_presence = .explicit else if (std.ascii.eqlIgnoreCase(ident, "IMPLICIT")) features.field_presence = .implicit else if (std.ascii.eqlIgnoreCase(ident, "LEGACY_REQUIRED")) features.field_presence = .legacy_required else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "enum_type")) {
+            if (std.ascii.eqlIgnoreCase(ident, "OPEN")) features.enum_type = .open else if (std.ascii.eqlIgnoreCase(ident, "CLOSED")) features.enum_type = .closed else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "repeated_field_encoding")) {
+            if (std.ascii.eqlIgnoreCase(ident, "PACKED")) features.repeated_field_encoding = .packed_encoding else if (std.ascii.eqlIgnoreCase(ident, "EXPANDED")) features.repeated_field_encoding = .expanded else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "utf8_validation")) {
+            if (std.ascii.eqlIgnoreCase(ident, "NONE")) features.utf8_validation = .none else if (std.ascii.eqlIgnoreCase(ident, "VERIFY")) features.utf8_validation = .verify else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "message_encoding")) {
+            if (std.ascii.eqlIgnoreCase(ident, "LENGTH_PREFIXED")) features.message_encoding = .length_prefixed else if (std.ascii.eqlIgnoreCase(ident, "DELIMITED")) features.message_encoding = .delimited else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "json_format")) {
+            if (std.ascii.eqlIgnoreCase(ident, "ALLOW")) features.json_format = .allow else if (std.ascii.eqlIgnoreCase(ident, "LEGACY_BEST_EFFORT")) features.json_format = .legacy_best_effort else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "enforce_naming_style")) {
+            if (std.ascii.eqlIgnoreCase(ident, "STYLE2024")) features.enforce_naming_style = .style2024 else if (std.ascii.eqlIgnoreCase(ident, "STYLE_LEGACY")) features.enforce_naming_style = .style_legacy else if (std.ascii.eqlIgnoreCase(ident, "STYLE2026")) features.enforce_naming_style = .style2026 else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "default_symbol_visibility")) {
+            if (std.ascii.eqlIgnoreCase(ident, "EXPORT_ALL")) features.default_symbol_visibility = .export_all else if (std.ascii.eqlIgnoreCase(ident, "EXPORT_TOP_LEVEL")) features.default_symbol_visibility = .export_top_level else if (std.ascii.eqlIgnoreCase(ident, "LOCAL_ALL")) features.default_symbol_visibility = .local_all else if (std.ascii.eqlIgnoreCase(ident, "STRICT")) features.default_symbol_visibility = .strict else return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "enforce_proto_limits")) {
+            if (std.ascii.eqlIgnoreCase(ident, "LEGACY_NO_EXPLICIT_LIMITS")) features.enforce_proto_limits = .legacy_no_explicit_limits else if (std.ascii.eqlIgnoreCase(ident, "PROTO_LIMITS2026")) features.enforce_proto_limits = .proto_limits2026 else return error.InvalidFieldType;
+        } else return error.InvalidFieldType;
     }
 
     fn parseOptionAssignmentStatement(self: *Parser) Error!schema.FieldOption {
@@ -2618,6 +2655,24 @@ test "parser applies feature options across declaration scopes" {
     const service = file.services.items[0];
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
     try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, service.methods.items[0].features.?.enforce_proto_limits);
+}
+
+test "parser rejects invalid feature option names and values" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.not_a_feature = ENABLED;
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.field_presence = SOMETIMES;
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Bad { string name = 1 [features.utf8_validation = true]; }
+    ));
 }
 
 test "parser validates editions implicit presence feature constraints" {
