@@ -6235,6 +6235,7 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
         try writeFieldKindDefault(field.kind, field.default_value, writer);
         try writer.writeAll(";\n");
     }
+    if (extensionExtendeeHasTypeRef(ctx, field)) try writeExtensionFacadeHelpers(ctx, field, writer, depth + 1);
     try writeExtensionWriteHelpers(file, field, writer, depth + 1);
     try writeExtensionDecodeHelpers(file, field, writer, depth + 1);
     try indent(writer, depth);
@@ -6251,6 +6252,194 @@ fn writeExtensionExtendeeTypeRef(ctx: *const CodegenContext, field: *const schem
         try writeMessageTypeReferenceWithContext(ctx, extendee, writer);
     } else {
         try writer.writeAll("void");
+    }
+}
+
+fn writeExtensionFacadeHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn hasOn(message: ");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(") !bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try hasInUnknown(message);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn countOn(message: ");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(") !usize {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try countInUnknown(message);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn clearOn(message: *");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(", allocator: std.mem.Allocator) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try clearFromUnknown(message, allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn getOn(message: ");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(", allocator: std.mem.Allocator) !");
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("[]");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+    } else {
+        try writer.writeByte('?');
+        try writer.writeAll(extensionSingleZigType(field.kind));
+    }
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("return try decodeAllFromUnknown(message, allocator);\n");
+    } else {
+        try writer.writeAll("return try decodeFirstFromUnknown(message, allocator);\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    if (field.cardinality != .repeated and (field.kind == .scalar or field.kind == .enumeration)) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn getOrDefaultOn(message: ");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator) !");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return (try getOn(message, allocator)) orelse default_value_zig;\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn addOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, value: ");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try appendToUnknown(message, allocator, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn appendAllOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, values: ");
+        try writer.writeAll(fieldType(field.*));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try appendAllToUnknown(message, allocator, values);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn replaceAllOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, values: ");
+        try writer.writeAll(fieldType(field.*));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try replaceAllInUnknown(message, allocator, values);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn setOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, value: ");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try replaceInUnknown(message, allocator, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+
+    if (field.kind == .message and canReferenceMessageWithContext(ctx, field.kind)) {
+        try writeExtensionMessageFacadeHelpers(ctx, field, writer, depth);
+    }
+}
+
+fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const type_name = field.kind.message;
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn addMessageOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, value: ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload = try value.encode(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try appendToUnknown(message, allocator, payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn getMessagesOn(message: ");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator) ![]");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payloads = try decodeAllFromUnknown(message, allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(payloads);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList(");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(") = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer { for (list.items) |*item| item.deinit(allocator); list.deinit(allocator); }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (payloads) |payload| try list.append(allocator, try ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(".decode(allocator, payload));\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn setMessageOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, value: ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload = try value.encode(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try replaceInUnknown(message, allocator, payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn getMessageOn(message: ");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator) !?");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload = (try decodeFirstFromUnknown(message, allocator)) orelse return null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(".decode(allocator, payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
     }
 }
 
@@ -7085,6 +7274,11 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \".demo.common.Note\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_has_type_ref = true;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.@\"common.proto\".@\"Note\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasOn(message: imports.@\"common.proto\".@\"Host\") !bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setMessageOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?imports.@\"common.proto\".@\"Note\"") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
