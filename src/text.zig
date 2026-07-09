@@ -1242,10 +1242,12 @@ test "text format formats and parses proto2 extensions" {
         \\  extensions 100 to max;
         \\}
         \\message Note { optional string text = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
         \\extend Host {
         \\  optional string tag = 100;
         \\  repeated int32 nums = 101;
         \\  optional Note note = 102;
+        \\  optional Kind role = 103;
         \\}
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -1258,6 +1260,7 @@ test "text format formats and parses proto2 extensions" {
     const tag = registry.findExtension("demo.Host", 100).?;
     const nums = registry.findExtension("demo.Host", 101).?;
     const note = registry.findExtension("demo.Host", 102).?;
+    const role = registry.findExtension("demo.Host", 103).?;
 
     var msg = dynamic.DynamicMessage.init(allocator, host);
     defer msg.deinit();
@@ -1269,6 +1272,7 @@ test "text format formats and parses proto2 extensions" {
     nested.* = dynamic.DynamicMessage.init(allocator, note_desc);
     try nested.add(note_desc.findField("text").?, .{ .string = try allocator.dupe(u8, "body") });
     try msg.add(note, .{ .message = nested });
+    try msg.add(role, .{ .enumeration = 1 });
 
     const text = try formatAlloc(allocator, &file, &msg, .{});
     defer allocator.free(text);
@@ -1280,6 +1284,7 @@ test "text format formats and parses proto2 extensions" {
         \\[demo.note] {
         \\  text: "body"
         \\}
+        \\[demo.role]: ADMIN
         \\
     , text);
 
@@ -1289,6 +1294,7 @@ test "text format formats and parses proto2 extensions" {
         \\[demo.nums]: 3
         \\[demo.nums]: 4
         \\[demo.note] < text: "parsed body" >
+        \\[demo.role]: ADMIN
     );
     defer parsed.deinit();
     try std.testing.expectEqual(@as(i32, 8), parsed.get("id").?.values.items[0].int32);
@@ -1296,6 +1302,7 @@ test "text format formats and parses proto2 extensions" {
     try std.testing.expectEqual(@as(i32, 3), parsed.get("nums").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 4), parsed.get("nums").?.values.items[1].int32);
     try std.testing.expectEqualSlices(u8, "parsed body", parsed.get("note").?.values.items[0].message.get("text").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("role").?.values.items[0].enumeration);
 }
 
 test "text format formats and parses MessageSet extensions" {
