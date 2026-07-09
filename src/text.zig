@@ -209,10 +209,13 @@ fn writeFieldName(file: *const schema.FileDescriptor, field: ?*const schema.Fiel
     const descriptor = field orelse return try writer.writeAll(fallback);
     if (descriptor.extendee == null) return try writer.writeAll(fallback);
     try writer.writeByte('[');
-    if (file.package.len != 0 and std.mem.indexOfScalar(u8, descriptor.name, '.') == null) {
-        try writer.print("{s}.{s}", .{ file.package, descriptor.name });
+    const full_name = schema.extensionFullName(descriptor);
+    if (std.mem.startsWith(u8, full_name, ".")) {
+        try writer.writeAll(full_name[1..]);
+    } else if (std.mem.indexOfScalar(u8, full_name, '.') != null or file.package.len == 0) {
+        try writer.writeAll(full_name);
     } else {
-        try writer.writeAll(descriptor.name);
+        try writer.print("{s}.{s}", .{ file.package, full_name });
     }
     try writer.writeByte(']');
 }
@@ -1347,6 +1350,35 @@ test "text format formats and parses MessageSet extensions" {
     const encoded = try parsed.encoded(&file);
     defer allocator.free(encoded);
     try std.testing.expectEqual(@as(u8, 0x0b), encoded[0]); // MessageSet item start group.
+}
+
+test "text format formats and parses scoped proto2 extensions" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\message Scope { extend Host { optional string tag = 100; } }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const tag = registry.findExtensionByName("demo.Host", "demo.Scope.tag").?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.add(tag, .{ .string = try allocator.dupe(u8, "scoped") });
+
+    const rendered = try formatAllocWithRegistry(allocator, &file, &registry, &msg, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "[demo.Scope.tag]: \"scoped\"\n", rendered);
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, host, "[demo.Scope.tag]: \"parsed\"");
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(u8, "parsed", parsed.getByNumber(tag.number).?.values.items[0].string);
 }
 
 test "text format formats and parses numeric unknown fields" {

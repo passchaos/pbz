@@ -165,6 +165,7 @@ pub const OptionList = std.ArrayList(FieldOption);
 
 pub const FieldDescriptor = struct {
     name: []const u8,
+    full_name: ?[]const u8 = null,
     number: wire.FieldNumber,
     cardinality: Cardinality = .implicit,
     kind: FieldKind,
@@ -797,6 +798,50 @@ pub fn optionLeaf(name: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, name, " \t\r\n");
     if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| return trimmed[idx + 1 ..];
     return trimmed;
+}
+
+pub fn extensionFullName(field: *const FieldDescriptor) []const u8 {
+    return field.full_name orelse field.name;
+}
+
+pub fn extensionSymbolsEqual(package: []const u8, a: *const FieldDescriptor, b: *const FieldDescriptor) bool {
+    return extensionSymbolsEqualWithPackages(package, a, package, b);
+}
+
+pub fn extensionSymbolsEqualWithPackages(a_package: []const u8, a: *const FieldDescriptor, b_package: []const u8, b: *const FieldDescriptor) bool {
+    const a_name = normalizeProtoName(extensionFullName(a));
+    const b_name = normalizeProtoName(extensionFullName(b));
+    const a_scoped = a_package.len == 0 or std.mem.indexOfScalar(u8, a_name, '.') != null;
+    const b_scoped = b_package.len == 0 or std.mem.indexOfScalar(u8, b_name, '.') != null;
+    if (a_scoped and b_scoped) return std.mem.eql(u8, a_name, b_name);
+    if (!a_scoped and !b_scoped) return std.mem.eql(u8, a_package, b_package) and std.mem.eql(u8, a_name, b_name);
+    if (!a_scoped) return qualifiedLeafEquals(a_package, a_name, b_name);
+    return qualifiedLeafEquals(b_package, b_name, a_name);
+}
+
+pub fn extensionNameMatches(package: []const u8, field: *const FieldDescriptor, query_name: []const u8) bool {
+    const query = normalizeProtoName(query_name);
+    if (extensionEffectiveNameEquals(package, field, query)) return true;
+    if (std.mem.indexOfScalar(u8, query, '.') == null) return std.mem.eql(u8, optionLeaf(extensionFullName(field)), query);
+    return false;
+}
+
+fn extensionEffectiveNameEquals(package: []const u8, field: *const FieldDescriptor, normalized_query: []const u8) bool {
+    const full_name = normalizeProtoName(extensionFullName(field));
+    if (std.mem.indexOfScalar(u8, full_name, '.') != null or package.len == 0) return std.mem.eql(u8, full_name, normalized_query);
+    return qualifiedLeafEquals(package, full_name, normalized_query);
+}
+
+fn qualifiedLeafEquals(package: []const u8, leaf: []const u8, full_name: []const u8) bool {
+    return package.len != 0 and
+        full_name.len == package.len + 1 + leaf.len and
+        std.mem.eql(u8, full_name[0..package.len], package) and
+        full_name[package.len] == '.' and
+        std.mem.eql(u8, full_name[package.len + 1 ..], leaf);
+}
+
+fn normalizeProtoName(name: []const u8) []const u8 {
+    return if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
 }
 
 pub fn jsonNameLooksLikeExtension(json_name: []const u8) bool {

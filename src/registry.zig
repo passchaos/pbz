@@ -53,19 +53,26 @@ pub const Registry = struct {
     }
 
     fn validateNoExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
-        for (file.extensions.items) |*field| try self.validateExtensionConflict(field);
-        for (file.messages.items) |*message| try self.validateMessageExtensionConflicts(message);
+        for (file.extensions.items) |*field| try self.validateExtensionConflict(file, field);
+        for (file.messages.items) |*message| try self.validateMessageExtensionConflicts(file, message);
     }
 
-    fn validateMessageExtensionConflicts(self: *const Registry, message: *const schema.MessageDescriptor) Error!void {
-        for (message.extensions.items) |*field| try self.validateExtensionConflict(field);
-        for (message.messages.items) |*nested| try self.validateMessageExtensionConflicts(nested);
+    fn validateMessageExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+        for (message.extensions.items) |*field| try self.validateExtensionConflict(file, field);
+        for (message.messages.items) |*nested| try self.validateMessageExtensionConflicts(file, nested);
     }
 
-    fn validateExtensionConflict(self: *const Registry, field: *const schema.FieldDescriptor) Error!void {
+    fn validateExtensionConflict(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
         const extendee = field.extendee orelse return;
         if (self.findExtension(extendee, field.number) != null) return error.DuplicateSymbol;
-        if (self.findExtensionByName(extendee, field.name) != null) return error.DuplicateSymbol;
+        for (self.files.items) |existing_file| {
+            for (existing_file.extensions.items) |*existing| {
+                if (extensionsConflictByName(file.package, field, existing_file.package, existing)) return error.DuplicateSymbol;
+            }
+            for (existing_file.messages.items) |*message| {
+                if (extensionConflictsByNameInMessage(file.package, field, existing_file.package, message)) return error.DuplicateSymbol;
+            }
+        }
     }
 
     fn validateExtensionDeclarations(self: *const Registry) Error!void {
@@ -103,12 +110,13 @@ pub const Registry = struct {
 
     pub fn findExtensionByName(self: *const Registry, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
         const normalized = normalizeName(extendee);
+        const normalized_name = normalizeName(name);
         for (self.files.items) |file| {
             for (file.extensions.items) |*field| {
-                if (field.extendee != null and namesMatch(field.extendee.?, normalized) and std.mem.eql(u8, field.name, name)) return field;
+                if (field.extendee != null and namesMatch(field.extendee.?, normalized) and schema.extensionNameMatches(file.package, field, normalized_name)) return field;
             }
             for (file.messages.items) |*message| {
-                if (findExtensionByNameInMessage(message, normalized, name)) |field| return field;
+                if (findExtensionByNameInMessage(file.package, message, normalized, normalized_name)) |field| return field;
             }
         }
         return null;
@@ -210,7 +218,7 @@ fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range
         return;
     };
     if (declaration.reserved) return error.InvalidExtensionDeclaration;
-    if (declaration.full_name.len != 0 and !namesMatch(declaration.full_name, field.name)) return error.InvalidExtensionDeclaration;
+    if (declaration.full_name.len != 0 and !namesMatch(declaration.full_name, schema.extensionFullName(field))) return error.InvalidExtensionDeclaration;
     if (declaration.repeated and field.cardinality != .repeated) return error.InvalidExtensionDeclaration;
     if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidExtensionDeclaration;
     if (declaration.type_name.len != 0 and !extensionTypeMatches(field, declaration.type_name)) return error.InvalidExtensionDeclaration;
@@ -221,12 +229,12 @@ fn qualifiedTypeName(allocator: std.mem.Allocator, prefix: []const u8, name: []c
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
 }
 
-fn findExtensionByNameInMessage(message: *const schema.MessageDescriptor, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
+fn findExtensionByNameInMessage(package: []const u8, message: *const schema.MessageDescriptor, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
     for (message.extensions.items) |*field| {
-        if (field.extendee != null and namesMatch(field.extendee.?, extendee) and std.mem.eql(u8, field.name, name)) return field;
+        if (field.extendee != null and namesMatch(field.extendee.?, extendee) and schema.extensionNameMatches(package, field, name)) return field;
     }
     for (message.messages.items) |*nested| {
-        if (findExtensionByNameInMessage(nested, extendee, name)) |field| return field;
+        if (findExtensionByNameInMessage(package, nested, extendee, name)) |field| return field;
     }
     return null;
 }
@@ -239,6 +247,22 @@ fn findExtensionInMessage(message: *const schema.MessageDescriptor, extendee: []
         if (findExtensionInMessage(nested, extendee, number)) |field| return field;
     }
     return null;
+}
+
+fn extensionsConflictByName(a_package: []const u8, a: *const schema.FieldDescriptor, b_package: []const u8, b: *const schema.FieldDescriptor) bool {
+    const a_extendee = a.extendee orelse return false;
+    const b_extendee = b.extendee orelse return false;
+    return namesMatch(a_extendee, b_extendee) and schema.extensionSymbolsEqualWithPackages(a_package, a, b_package, b);
+}
+
+fn extensionConflictsByNameInMessage(field_package: []const u8, field: *const schema.FieldDescriptor, message_package: []const u8, message: *const schema.MessageDescriptor) bool {
+    for (message.extensions.items) |*other| {
+        if (extensionsConflictByName(field_package, field, message_package, other)) return true;
+    }
+    for (message.messages.items) |*nested| {
+        if (extensionConflictsByNameInMessage(field_package, field, message_package, nested)) return true;
+    }
+    return false;
 }
 
 fn normalizeName(name: []const u8) []const u8 {
@@ -363,6 +387,7 @@ test "registry finds extension fields" {
         \\package demo;
         \\message Host { extensions 100 to max; }
         \\extend Host { optional string note = 100; }
+        \\message Scope { extend Host { optional string scoped_note = 101; } }
     );
     defer file.deinit();
     var registry = Registry.init(allocator);
@@ -370,6 +395,9 @@ test "registry finds extension fields" {
     try registry.addFile(&file);
     const ext = registry.findExtension(".demo.Host", 100).?;
     try std.testing.expectEqualStrings("note", ext.name);
+    const scoped = registry.findExtensionByName(".demo.Host", "demo.Scope.scoped_note").?;
+    try std.testing.expectEqual(@as(@import("wire.zig").FieldNumber, 101), scoped.number);
+    try std.testing.expectEqualStrings("demo.Scope.scoped_note", scoped.full_name.?);
 }
 
 test "registry rejects duplicate type symbols across files" {

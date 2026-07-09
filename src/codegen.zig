@@ -1250,25 +1250,27 @@ fn writeExtensionTextBlockCondition(file: *const schema.FileDescriptor, field: *
 }
 
 fn extensionHasLeafAlias(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
+    const full_name = schema.extensionFullName(field);
     if (file.package.len != 0) return true;
-    return std.mem.indexOfScalar(u8, field.name, '.') != null or std.mem.startsWith(u8, field.name, ".");
+    return std.mem.indexOfScalar(u8, full_name, '.') != null or std.mem.startsWith(u8, full_name, ".");
 }
 
 fn writeExtensionTextNameLiteral(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
     try writer.writeByte('"');
     try writer.writeByte('[');
+    const full_name = schema.extensionFullName(field);
     if (qualified) {
-        if (std.mem.startsWith(u8, field.name, ".")) {
-            try writeEscapedStringContents(field.name[1..], writer);
-        } else if (std.mem.indexOfScalar(u8, field.name, '.') != null or file.package.len == 0) {
-            try writeEscapedStringContents(field.name, writer);
+        if (std.mem.startsWith(u8, full_name, ".")) {
+            try writeEscapedStringContents(full_name[1..], writer);
+        } else if (std.mem.indexOfScalar(u8, full_name, '.') != null or file.package.len == 0) {
+            try writeEscapedStringContents(full_name, writer);
         } else {
             try writeEscapedStringContents(file.package, writer);
             try writer.writeByte('.');
-            try writeEscapedStringContents(field.name, writer);
+            try writeEscapedStringContents(full_name, writer);
         }
     } else {
-        try writeEscapedStringContents(leafTypeName(field.name), writer);
+        try writeEscapedStringContents(leafTypeName(full_name), writer);
     }
     try writer.writeByte(']');
     try writer.writeByte('"');
@@ -1281,7 +1283,11 @@ fn leafTypeName(name: []const u8) []const u8 {
 
 fn writeExtensionHelperReference(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("extensions.");
-    try writeQuotedIdent(field.name, writer);
+    try writeExtensionHelperIdent(field, writer);
+}
+
+fn writeExtensionHelperIdent(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    try writeQuotedIdent(schema.extensionFullName(field), writer);
 }
 
 fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
@@ -2706,7 +2712,7 @@ fn writeScopedMessageExtensionAccessors(ctx: *const CodegenContext, target: *con
 
 fn writeMessageExtensionAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
-    const helper_name = extensionAccessorSuffix(field.name);
+    const helper_name = extensionAccessorSuffix(schema.extensionFullName(field));
 
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
@@ -5539,18 +5545,19 @@ fn writeTextExtensionBlockPrefix(file: *const schema.FileDescriptor, field: *con
 }
 
 fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
+    const full_name = schema.extensionFullName(field);
     if (qualified) {
-        if (std.mem.startsWith(u8, field.name, ".")) {
-            try writeEscapedStringContents(field.name[1..], writer);
-        } else if (std.mem.indexOfScalar(u8, field.name, '.') != null or file.package.len == 0) {
-            try writeEscapedStringContents(field.name, writer);
+        if (std.mem.startsWith(u8, full_name, ".")) {
+            try writeEscapedStringContents(full_name[1..], writer);
+        } else if (std.mem.indexOfScalar(u8, full_name, '.') != null or file.package.len == 0) {
+            try writeEscapedStringContents(full_name, writer);
         } else {
             try writeEscapedStringContents(file.package, writer);
             try writer.writeByte('.');
-            try writeEscapedStringContents(field.name, writer);
+            try writeEscapedStringContents(full_name, writer);
         }
     } else {
-        try writeEscapedStringContents(leafTypeName(field.name), writer);
+        try writeEscapedStringContents(leafTypeName(full_name), writer);
     }
 }
 
@@ -7401,7 +7408,7 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
     const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const ");
-    try writeQuotedIdent(field.name, writer);
+    try writeExtensionHelperIdent(field, writer);
     try writer.writeAll(" = struct {\n");
     try indent(writer, depth + 1);
     try writer.print("pub const number = {d};\n", .{field.number});

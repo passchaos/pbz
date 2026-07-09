@@ -1253,6 +1253,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
         if (idx < 0 or idx >= file.imports.items.len) return error.InvalidFieldType;
         file.imports.items[@intCast(idx)].kind = .weak;
     }
+    try assignDecodedExtensionFullNames(allocator, &file);
     try validateDecodedImportSemantics(&file);
     try collapseMapEntryMessages(allocator, &file);
     resolveDecodedEnumDefaults(&file);
@@ -1311,6 +1312,17 @@ fn validateDependencyIndexes(public_deps: []const i32, weak_deps: []const i32, d
             if (idx == other) return error.InvalidFieldType;
         }
     }
+}
+
+fn assignDecodedExtensionFullNames(allocator: std.mem.Allocator, file: *schema.FileDescriptor) std.mem.Allocator.Error!void {
+    for (file.extensions.items) |*field| field.full_name = null;
+    for (file.messages.items) |*message| try assignDecodedMessageExtensionFullNames(allocator, file, message, file.package);
+}
+
+fn assignDecodedMessageExtensionFullNames(allocator: std.mem.Allocator, file: *schema.FileDescriptor, message: *schema.MessageDescriptor, parent_scope: []const u8) std.mem.Allocator.Error!void {
+    const scope = try decodedQualifiedName(allocator, &file.owned_strings, parent_scope, message.name);
+    for (message.extensions.items) |*field| field.full_name = try decodedQualifiedName(allocator, &file.owned_strings, scope, field.name);
+    for (message.messages.items) |*nested| try assignDecodedMessageExtensionFullNames(allocator, file, nested, scope);
 }
 
 fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void {
@@ -1415,7 +1427,7 @@ fn isIdentifierContinue(c: u8) bool {
 
 fn validateDecodedExtensionDeclarations(file: *const schema.FileDescriptor) Error!void {
     for (file.extensions.items) |*field| {
-        try validateDecodedExtensionConflict(file, field);
+        try validateDecodedExtensionConflict(file, file.package, field);
         try validateDecodedExtensionDeclaration(file, field);
     }
     for (file.messages.items) |*message| try validateDecodedMessageExtensionDeclarations(file, message);
@@ -1423,7 +1435,7 @@ fn validateDecodedExtensionDeclarations(file: *const schema.FileDescriptor) Erro
 
 fn validateDecodedMessageExtensionDeclarations(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
     for (message.extensions.items) |*field| {
-        try validateDecodedExtensionConflict(file, field);
+        try validateDecodedExtensionConflict(file, file.package, field);
         try validateDecodedExtensionDeclaration(file, field);
     }
     for (message.messages.items) |*nested| try validateDecodedMessageExtensionDeclarations(file, nested);
@@ -1609,23 +1621,23 @@ fn validateDecodedProto3Enum(enumeration: *const schema.EnumDescriptor) Error!vo
     if (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0) return error.InvalidFieldType;
 }
 
-fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
-    for (file.extensions.items) |*other| try validateDecodedExtensionConflictPair(field, other);
-    for (file.messages.items) |*message| try validateDecodedExtensionConflictInMessage(field, message);
+fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, package: []const u8, field: *const schema.FieldDescriptor) Error!void {
+    for (file.extensions.items) |*other| try validateDecodedExtensionConflictPair(package, field, package, other);
+    for (file.messages.items) |*message| try validateDecodedExtensionConflictInMessage(package, field, package, message);
 }
 
-fn validateDecodedExtensionConflictInMessage(field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor) Error!void {
-    for (message.extensions.items) |*other| try validateDecodedExtensionConflictPair(field, other);
-    for (message.messages.items) |*nested| try validateDecodedExtensionConflictInMessage(field, nested);
+fn validateDecodedExtensionConflictInMessage(field_package: []const u8, field: *const schema.FieldDescriptor, message_package: []const u8, message: *const schema.MessageDescriptor) Error!void {
+    for (message.extensions.items) |*other| try validateDecodedExtensionConflictPair(field_package, field, message_package, other);
+    for (message.messages.items) |*nested| try validateDecodedExtensionConflictInMessage(field_package, field, message_package, nested);
 }
 
-fn validateDecodedExtensionConflictPair(field: *const schema.FieldDescriptor, other: *const schema.FieldDescriptor) Error!void {
+fn validateDecodedExtensionConflictPair(field_package: []const u8, field: *const schema.FieldDescriptor, other_package: []const u8, other: *const schema.FieldDescriptor) Error!void {
     if (field == other) return;
     const extendee = field.extendee orelse return;
     const other_extendee = other.extendee orelse return;
     if (!descriptorNamesMatch(extendee, other_extendee)) return;
     if (field.number == other.number) return error.InvalidFieldType;
-    if (std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
+    if (schema.extensionSymbolsEqualWithPackages(field_package, field, other_package, other)) return error.InvalidFieldType;
 }
 
 fn validateDecodedExtensionDeclaration(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
@@ -1650,7 +1662,7 @@ fn validateDecodedExtensionFieldDeclaration(field: *const schema.FieldDescriptor
         return;
     };
     if (declaration.reserved) return error.InvalidFieldType;
-    if (declaration.full_name.len != 0 and !descriptorNamesMatch(declaration.full_name, field.name)) return error.InvalidFieldType;
+    if (declaration.full_name.len != 0 and !descriptorNamesMatch(declaration.full_name, schema.extensionFullName(field))) return error.InvalidFieldType;
     if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
     if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
     if (declaration.type_name.len != 0 and !descriptorExtensionTypeMatches(field, declaration.type_name)) return error.InvalidFieldType;
@@ -2045,6 +2057,14 @@ fn fieldNumberFromDescriptor(value: i32) wire.Error!wire.FieldNumber {
     if (value <= 0 or value > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldNumber;
     if (value >= 19000 and value <= 19999) return error.InvalidFieldNumber;
     return @intCast(value);
+}
+
+fn decodedQualifiedName(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), scope: []const u8, name: []const u8) std.mem.Allocator.Error![]const u8 {
+    if (scope.len == 0 or std.mem.startsWith(u8, name, ".") or std.mem.indexOfScalar(u8, name, '.') != null) return name;
+    const full_name = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ scope, name });
+    errdefer allocator.free(full_name);
+    try owned_strings.append(allocator, full_name);
+    return full_name;
 }
 
 fn decodeDefaultValue(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), kind: schema.FieldKind, text: []const u8) Error!schema.OptionValue {
@@ -5614,9 +5634,13 @@ test "descriptor rejects duplicate decoded extensions" {
         try file.messages.append(allocator, host);
         try file.messages.append(allocator, scope);
         try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .string }, .extendee = "Host" });
-        const bytes = try encodeFileDescriptorProto(allocator, &file, "dup-ext-name.proto");
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "scoped-ext-name.proto");
         defer allocator.free(bytes);
-        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+        var decoded = try decodeFileDescriptorProto(allocator, bytes);
+        defer decoded.deinit();
+        try std.testing.expect(decoded.extensions.items[0].full_name == null);
+        try std.testing.expectEqualStrings("tag", decoded.extensions.items[0].name);
+        try std.testing.expectEqualStrings("Scope.tag", decoded.findMessage("Scope").?.extensions.items[0].full_name.?);
     }
 }
 

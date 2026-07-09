@@ -199,12 +199,12 @@ pub const Parser = struct {
                 try self.addFileOption(try self.parseOptionAssignmentStatement());
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(self.file.messages.items.len);
-                try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start));
+                try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start, self.file.package));
             } else if (self.matchIdent("enum")) {
                 const index: i32 = @intCast(self.file.enums.items.len);
                 try self.file.enums.append(self.allocator, try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start));
             } else if (self.matchIdent("extend")) {
-                try self.parseExtend(&self.file.extensions);
+                try self.parseExtend(&self.file.extensions, "");
             } else if (self.matchIdent("service")) {
                 const index: i32 = @intCast(self.file.services.items.len);
                 try self.file.services.append(self.allocator, try self.parseServiceAfterKeyword(&.{ 6, index }, decl_start));
@@ -436,9 +436,10 @@ pub const Parser = struct {
         }
     }
 
-    fn parseMessageAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize) Error!schema.MessageDescriptor {
+    fn parseMessageAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize, parent_scope: []const u8) Error!schema.MessageDescriptor {
         var message = schema.MessageDescriptor{ .name = try self.expectIdentifier() };
         errdefer message.deinit(self.allocator);
+        const message_scope = try self.qualifiedName(parent_scope, message.name);
         try self.expectSymbol('{');
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
@@ -451,7 +452,7 @@ pub const Parser = struct {
                 const path = try self.childPath(source_path, 3, index);
                 defer self.allocator.free(path);
                 const nested_start = self.previous_end;
-                try message.messages.append(self.allocator, try self.parseMessageAfterKeyword(path, nested_start));
+                try message.messages.append(self.allocator, try self.parseMessageAfterKeyword(path, nested_start, message_scope));
             } else if (self.matchIdent("enum")) {
                 const index: i32 = @intCast(message.enums.items.len);
                 const path = try self.childPath(source_path, 4, index);
@@ -478,7 +479,7 @@ pub const Parser = struct {
                 try self.addRepeatedLocations(source_path, 9, range_start_index, message.reserved_ranges.items.len, reserved_start, self.previousEnd());
                 try self.addRepeatedLocations(source_path, 10, name_start_index, message.reserved_names.items.len, reserved_start, self.previousEnd());
             } else if (self.matchIdent("extend")) {
-                try self.parseExtend(&message.extensions);
+                try self.parseExtend(&message.extensions, message_scope);
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -613,7 +614,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseExtend(self: *Parser, output: *std.ArrayList(schema.FieldDescriptor)) Error!void {
+    fn parseExtend(self: *Parser, output: *std.ArrayList(schema.FieldDescriptor), scope: []const u8) Error!void {
         const extendee = try self.parseTypeNameSlice();
         try self.expectSymbol('{');
         while (!self.consumeSymbol('}')) {
@@ -625,8 +626,17 @@ pub const Parser = struct {
                 return error.InvalidSyntax;
             }
             field.extendee = extendee;
+            field.full_name = if (scope.len == 0) null else try self.qualifiedName(scope, field.name);
             try output.append(self.allocator, field);
         }
+    }
+
+    fn qualifiedName(self: *Parser, scope: []const u8, name: []const u8) std.mem.Allocator.Error![]const u8 {
+        if (scope.len == 0 or std.mem.startsWith(u8, name, ".") or std.mem.indexOfScalar(u8, name, '.') != null) return name;
+        const full_name = try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ scope, name });
+        errdefer self.allocator.free(full_name);
+        try self.file.owned_strings.append(self.allocator, full_name);
+        return full_name;
     }
 
     fn parseField(self: *Parser, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
@@ -1295,7 +1305,7 @@ pub const Parser = struct {
                 const field_extendee = field.extendee orelse "";
                 const other_extendee = other.extendee orelse "";
                 if (!std.mem.eql(u8, field_extendee, other_extendee)) continue;
-                if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
+                if (field.number == other.number or schema.extensionSymbolsEqual(self.file.package, field, other)) return error.DuplicateField;
             }
         }
         for (self.file.messages.items) |*message| try self.validateMessageExtensionDeclarations(message);
@@ -1363,7 +1373,7 @@ pub const Parser = struct {
             return;
         };
         if (declaration.reserved) return error.ReservedField;
-        if (declaration.full_name.len != 0 and !nameMatchesType(declaration.full_name, field.name)) return error.InvalidFieldType;
+        if (declaration.full_name.len != 0 and !nameMatchesType(declaration.full_name, schema.extensionFullName(field))) return error.InvalidFieldType;
         if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
         if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
         if (declaration.type_name.len != 0 and !extensionTypeMatches(self, field, declaration.type_name)) return error.InvalidFieldType;
@@ -2958,12 +2968,18 @@ test "parser rejects map and duplicate extension fields" {
         \\extend Target { optional int32 a = 150; }
         \\extend Target { optional int32 b = 150; }
     ));
-    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+    var scoped = try Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Target { extensions 100 to 200; }
         \\extend Target { optional int32 a = 150; }
         \\message Scope { extend Target { optional string a = 151; } }
-    ));
+    );
+    defer scoped.deinit();
+    try std.testing.expect(scoped.extensions.items[0].full_name == null);
+    try std.testing.expectEqualStrings("a", scoped.extensions.items[0].name);
+    const scoped_ext = scoped.findMessage("Scope").?.extensions.items[0];
+    try std.testing.expectEqualStrings("a", scoped_ext.name);
+    try std.testing.expectEqualStrings("Scope.a", scoped_ext.full_name.?);
 }
 
 test "parser rejects required label outside proto2" {

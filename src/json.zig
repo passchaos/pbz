@@ -1248,17 +1248,18 @@ fn writeFieldName(file: *const schema.FileDescriptor, registry: ?*const registry
 
 fn writeJsonStringExtensionName(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("\"[");
-    if (std.mem.startsWith(u8, field.name, ".")) {
-        try writeJsonStringContents(field.name[1..], writer);
-    } else if (std.mem.indexOfScalar(u8, field.name, '.') != null) {
-        try writeJsonStringContents(field.name, writer);
+    const full_name = schema.extensionFullName(field);
+    if (std.mem.startsWith(u8, full_name, ".")) {
+        try writeJsonStringContents(full_name[1..], writer);
+    } else if (std.mem.indexOfScalar(u8, full_name, '.') != null) {
+        try writeJsonStringContents(full_name, writer);
     } else {
         const package = extensionDefiningPackage(registry, field) orelse file.package;
         if (package.len != 0) {
             try writeJsonStringContents(package, writer);
             try writer.writeByte('.');
         }
-        try writeJsonStringContents(field.name, writer);
+        try writeJsonStringContents(full_name, writer);
     }
     try writer.writeAll("]\"");
 }
@@ -1648,6 +1649,30 @@ test "json parses and stringifies proto2 extension fields" {
     var leaf = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[tag]\":8}", .{});
     defer leaf.deinit();
     try std.testing.expectEqual(@as(i32, 8), leaf.getByNumber(ext.number).?.values.items[0].int32);
+}
+
+test "json parses and stringifies scoped proto2 extensions" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\message Scope { extend Host { optional string tag = 100; } }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const desc = file.findMessage("Host").?;
+    const ext = registry.findExtensionByName("demo.Host", "demo.Scope.tag").?;
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[demo.Scope.tag]\":\"scoped\"}", .{});
+    defer parsed.deinit();
+    try std.testing.expectEqualSlices(u8, "scoped", parsed.getByNumber(ext.number).?.values.items[0].string);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &file, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"[demo.Scope.tag]\":\"scoped\"}", rendered);
 }
 
 test "json parse ignores null fields" {
