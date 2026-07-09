@@ -227,16 +227,13 @@ pub const Registry = struct {
         switch (kind) {
             .scalar => {},
             .message => |name| {
-                if (self.findType(name, scope) == null) return;
                 if (self.findMessageVisible(file, name, scope) == null and self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;
             },
             .enumeration => |name| {
-                const global = self.findType(name, scope) orelse return;
-                if (global != .enumeration or self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;
+                if (self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;
             },
             .group => |name| {
-                const global = self.findType(name, scope) orelse return;
-                if (global != .message or self.findMessageVisible(file, name, scope) == null) return error.InvalidFieldType;
+                if (self.findMessageVisible(file, name, scope) == null) return error.InvalidFieldType;
             },
             .map => |map_type| try self.validateKindTypeReference(file, map_type.value.*, scope),
         }
@@ -675,6 +672,16 @@ test "registry computes direct and public import chains" {
     bad.name = "bad.proto";
     try registry.addFile(&bad);
     try std.testing.expectError(error.InvalidFieldType, registry.validateFileReferences(&bad));
+
+    var missing = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.missing;
+        \\message Bad { optional MissingType field = 1; }
+    );
+    defer missing.deinit();
+    missing.name = "missing.proto";
+    try registry.addFile(&missing);
+    try std.testing.expectError(error.InvalidFieldType, registry.validateFileReferences(&missing));
 }
 
 test "registry finds extension fields" {

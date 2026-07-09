@@ -173,7 +173,9 @@ pub fn generatePluginResponseFromRequest(allocator: std.mem.Allocator, request: 
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
     for (request.proto_files.items) |*file| try registry.addFile(file);
-    try registry.validateAllFileReferences();
+    registry.validateAllFileReferences() catch {
+        return try encodePluginErrorResponse(allocator, "invalid or unresolved type reference");
+    };
 
     var selected: std.ArrayList(*const schema.FileDescriptor) = .empty;
     defer selected.deinit(allocator);
@@ -9234,6 +9236,26 @@ test "codegen emits protoc response from request file_to_generate" {
         }
     }
     try std.testing.expect(saw_error);
+
+    var unresolved_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer unresolved_request.deinit();
+    try unresolved_request.files_to_generate.append(allocator, "bad.proto");
+    try unresolved_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional MissingType field = 1; }
+    ));
+    unresolved_request.proto_files.items[0].name = "bad.proto";
+    const unresolved_response = try generatePluginResponseFromRequest(allocator, &unresolved_request);
+    defer allocator.free(unresolved_response);
+    var unresolved_reader = wire.Reader.init(unresolved_response);
+    var saw_unresolved_error = false;
+    while (try unresolved_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => saw_unresolved_error = std.mem.indexOf(u8, try unresolved_reader.readBytes(), "unresolved type") != null,
+            else => try unresolved_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_unresolved_error);
 }
 
 test "codegen request plugin options include imports and raw bytes entrypoint" {
@@ -9441,12 +9463,15 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     }
     try std.testing.expect(saw_invalid_parameter);
 
+    const common_fd = try @import("descriptor.zig").encodeFileDescriptorProto(allocator, &request.proto_files.items[0], request.proto_files.items[0].name);
+    defer allocator.free(common_fd);
     const fd = try @import("descriptor.zig").encodeFileDescriptorProto(allocator, &request.proto_files.items[1], request.proto_files.items[1].name);
     defer allocator.free(fd);
     var raw_writer = wire.Writer.init(allocator);
     defer raw_writer.deinit();
     try raw_writer.writeString(1, "app.proto");
     try raw_writer.writeString(2, "paths=source_relative");
+    try raw_writer.writeMessage(15, common_fd);
     try raw_writer.writeMessage(15, fd);
     const raw_response = try generatePluginResponseFromRequestBytes(allocator, raw_writer.slice());
     defer allocator.free(raw_response);

@@ -145,6 +145,17 @@ test "memory loader allows missing weak imports" {
     try std.testing.expect(loaded.registry.findMessage("Root", null) != null);
 }
 
+test "memory loader rejects unresolved type references" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("root.proto",
+        \\syntax = "proto2";
+        \\message Root { optional MissingType field = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "root.proto"));
+}
+
 pub fn loadPath(allocator: std.mem.Allocator, root_dir_path: []const u8, root_path: []const u8) Error!LoadResult {
     const io = std.Io.Threaded.global_single_threaded.io();
     const root_dir = std.fs.openDirAbsolute(io, root_dir_path, .{}) catch return error.FileNotFound;
