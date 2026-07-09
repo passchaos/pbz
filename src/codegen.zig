@@ -1194,6 +1194,19 @@ fn writeMessageExtensionAccessor(field: *const schema.FieldDescriptor, writer: *
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "addExtension_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".appendToUnknown(self, allocator, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "replaceExtension_", writer);
         try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: ");
         try writer.writeAll(fieldType(field.*));
@@ -5933,6 +5946,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".appendAllToUnknown(self, allocator, values);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"addExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, value: i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".appendToUnknown(self, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".replaceAllInUnknown(self, allocator, values);") != null);
     const source = try allocator.dupeZ(u8, content);
