@@ -18,7 +18,7 @@ validated feature set.
 - Multi-file registry and loader
   - package/import-aware lookup for messages/enums/extensions across FileDescriptor values with duplicate type/extension conflict detection and cross-file extension declaration validation
   - in-memory and filesystem source tree loaders that recursively parse imports
-  - `.proto` parser
+- `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, and enum validation including allow_alias
   - JSON field-name validation for default lowerCamelCase collisions, explicit `json_name` collisions, extension-looking names, embedded NULs, and extension-field `json_name` misuse
