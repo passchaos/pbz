@@ -1813,6 +1813,10 @@ fn validateExtensionRanges(message: *const schema.MessageDescriptor) ParseError!
             if (other.start <= 0 or other.start >= other_end) return error.InvalidRange;
             if (range.start < other_end and other.start < end) return error.InvalidRange;
         }
+        for (message.reserved_ranges.items) |reserved| {
+            const reserved_end = reserved.end orelse std.math.maxInt(i64);
+            if (range.start < reserved_end and reserved.start < end) return error.InvalidRange;
+        }
     }
 }
 
@@ -2724,6 +2728,18 @@ test "parser rejects overlapping reserved declarations" {
     try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { reserved "old", "old"; }
+    ));
+}
+
+test "parser rejects extension ranges overlapping reserved ranges" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { extensions 100 to 200; reserved 150 to 160; }
+    ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved 150 to 160; extensions 100 to 200; }
     ));
 }
 
