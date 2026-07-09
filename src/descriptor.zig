@@ -1343,7 +1343,29 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
             if (std.mem.eql(u8, service.name, other.name)) return error.InvalidFieldType;
         }
     }
+    try validateDecodedFileEnumValueSymbols(file);
     for (file.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
+}
+
+fn validateDecodedFileEnumValueSymbols(file: *const schema.FileDescriptor) Error!void {
+    for (file.enums.items, 0..) |*enumeration, enum_index| {
+        for (enumeration.values.items) |value| {
+            for (file.messages.items) |message| {
+                if (std.mem.eql(u8, value.name, message.name)) return error.InvalidFieldType;
+            }
+            for (file.enums.items) |other_enum| {
+                if (std.mem.eql(u8, value.name, other_enum.name)) return error.InvalidFieldType;
+            }
+            for (file.services.items) |service| {
+                if (std.mem.eql(u8, value.name, service.name)) return error.InvalidFieldType;
+            }
+            for (file.enums.items[enum_index + 1 ..]) |other_enum| {
+                for (other_enum.values.items) |other_value| {
+                    if (std.mem.eql(u8, value.name, other_value.name)) return error.InvalidFieldType;
+                }
+            }
+        }
+    }
 }
 
 fn isIdentifier(value: []const u8) bool {
@@ -1853,10 +1875,38 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
         }
     }
+    try validateDecodedMessageEnumValueSymbols(message);
     try validateDecodedFieldJsonNameUniqueness(message.fields.items);
     for (message.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
     try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items);
     try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items);
+}
+
+fn validateDecodedMessageEnumValueSymbols(message: *const schema.MessageDescriptor) Error!void {
+    for (message.enums.items, 0..) |*enumeration, enum_index| {
+        for (enumeration.values.items) |value| {
+            for (message.fields.items) |field| {
+                if (std.mem.eql(u8, value.name, field.name)) return error.InvalidFieldType;
+            }
+            for (message.oneofs.items) |oneof| {
+                if (std.mem.eql(u8, value.name, oneof.name)) return error.InvalidFieldType;
+            }
+            for (message.messages.items) |nested| {
+                if (std.mem.eql(u8, value.name, nested.name)) return error.InvalidFieldType;
+            }
+            for (message.enums.items) |other_enum| {
+                if (std.mem.eql(u8, value.name, other_enum.name)) return error.InvalidFieldType;
+            }
+            for (message.extensions.items) |extension| {
+                if (std.mem.eql(u8, value.name, extension.name)) return error.InvalidFieldType;
+            }
+            for (message.enums.items[enum_index + 1 ..]) |other_enum| {
+                for (other_enum.values.items) |other_value| {
+                    if (std.mem.eql(u8, value.name, other_value.name)) return error.InvalidFieldType;
+                }
+            }
+        }
+    }
 }
 
 fn validateDecodedOneofFieldShape(field: *const schema.FieldDescriptor) Error!void {
@@ -5678,5 +5728,33 @@ test "descriptor rejects invalid enum descriptors" {
         try file.writeString(12, "proto3");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var first = schema.EnumDescriptor{ .name = "First" };
+        try first.values.append(allocator, .{ .name = "SHARED", .number = 0 });
+        var second = schema.EnumDescriptor{ .name = "Second" };
+        try second.values.append(allocator, .{ .name = "SHARED", .number = 0 });
+        try file.enums.append(allocator, first);
+        try file.enums.append(allocator, second);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "enum-value-conflict.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var msg = schema.MessageDescriptor{ .name = "M" };
+        try msg.fields.append(allocator, .{ .name = "hit", .number = 1, .cardinality = .optional, .kind = .{ .scalar = .int32 } });
+        var enumeration = schema.EnumDescriptor{ .name = "Bad" };
+        try enumeration.values.append(allocator, .{ .name = "hit", .number = 0 });
+        try msg.enums.append(allocator, enumeration);
+        try file.messages.append(allocator, msg);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "nested-enum-value-conflict.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
 }

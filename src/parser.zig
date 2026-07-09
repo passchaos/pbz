@@ -1188,6 +1188,28 @@ pub const Parser = struct {
                 if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
             }
         }
+        try validateFileEnumValueSymbols(file);
+    }
+
+    fn validateFileEnumValueSymbols(file: *const schema.FileDescriptor) ParseError!void {
+        for (file.enums.items, 0..) |*enumeration, enum_index| {
+            for (enumeration.values.items) |value| {
+                for (file.messages.items) |message| {
+                    if (std.mem.eql(u8, value.name, message.name)) return error.DuplicateSymbol;
+                }
+                for (file.enums.items) |other_enum| {
+                    if (std.mem.eql(u8, value.name, other_enum.name)) return error.DuplicateSymbol;
+                }
+                for (file.services.items) |service| {
+                    if (std.mem.eql(u8, value.name, service.name)) return error.DuplicateSymbol;
+                }
+                for (file.enums.items[enum_index + 1 ..]) |other_enum| {
+                    for (other_enum.values.items) |other_value| {
+                        if (std.mem.eql(u8, value.name, other_value.name)) return error.DuplicateSymbol;
+                    }
+                }
+            }
+        }
     }
 
     fn validateMessageTypeSymbols(message: *const schema.MessageDescriptor) ParseError!void {
@@ -1205,7 +1227,35 @@ pub const Parser = struct {
                 if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
             }
         }
+        try validateMessageEnumValueSymbols(message);
         for (message.messages.items) |*nested| try validateMessageTypeSymbols(nested);
+    }
+
+    fn validateMessageEnumValueSymbols(message: *const schema.MessageDescriptor) ParseError!void {
+        for (message.enums.items, 0..) |*enumeration, enum_index| {
+            for (enumeration.values.items) |value| {
+                for (message.fields.items) |field| {
+                    if (std.mem.eql(u8, value.name, field.name)) return error.DuplicateSymbol;
+                }
+                for (message.oneofs.items) |oneof| {
+                    if (std.mem.eql(u8, value.name, oneof.name)) return error.DuplicateSymbol;
+                }
+                for (message.messages.items) |nested| {
+                    if (std.mem.eql(u8, value.name, nested.name)) return error.DuplicateSymbol;
+                }
+                for (message.enums.items) |other_enum| {
+                    if (std.mem.eql(u8, value.name, other_enum.name)) return error.DuplicateSymbol;
+                }
+                for (message.extensions.items) |extension| {
+                    if (std.mem.eql(u8, value.name, extension.name)) return error.DuplicateSymbol;
+                }
+                for (message.enums.items[enum_index + 1 ..]) |other_enum| {
+                    for (other_enum.values.items) |other_value| {
+                        if (std.mem.eql(u8, value.name, other_value.name)) return error.DuplicateSymbol;
+                    }
+                }
+            }
+        }
     }
 
     fn validateServices(self: *Parser) ParseError!void {
@@ -2460,6 +2510,23 @@ test "parser validates enum values" {
     try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum Bad { A = 1; A = 2; }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum First { SHARED = 0; }
+        \\enum Second { SHARED = 0; }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Clash {}
+        \\enum Bad { Clash = 0; }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  optional int32 hit = 1;
+        \\  enum Bad { hit = 0; }
+        \\}
     ));
 }
 
