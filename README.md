@@ -188,6 +188,10 @@ if (!packed.isType("demo.Payload")) return error.TypeMismatch;
 
 var string_wrapper = try pbz.StringValue.jsonParseOwned(allocator, "\"zig\"");
 defer string_wrapper.deinit(allocator);
+var packed_string = try pbz.Any.packEncoded(allocator, "google.protobuf.StringValue", string_wrapper);
+defer packed_string.deinit(allocator);
+var unpacked_string = try packed_string.unpackEncodedOwned(pbz.StringValue, allocator, "google.protobuf.StringValue");
+defer unpacked_string.deinit(allocator);
 ```
 
 ## TextFormat support

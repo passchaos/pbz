@@ -595,6 +595,24 @@ pub const Any = struct {
         return self.value;
     }
 
+    pub fn unpackEncoded(self: Any, comptime T: type, allocator: std.mem.Allocator, expected_full_name: []const u8) !T {
+        const payload = try self.unpackBytes(expected_full_name);
+        if (@typeInfo(@TypeOf(T.decode)).@"fn".params.len == 2) return try T.decode(allocator, payload);
+        return try T.decode(payload);
+    }
+
+    pub fn unpackEncodedOwned(self: Any, comptime T: type, allocator: std.mem.Allocator, expected_full_name: []const u8) !T {
+        if (@hasDecl(T, "decodeOwned")) return try T.decodeOwned(allocator, try self.unpackBytes(expected_full_name));
+        var decoded = try self.unpackEncoded(T, allocator, expected_full_name);
+        errdefer if (@hasDecl(T, "deinit")) decoded.deinit(allocator);
+        if (@hasDecl(T, "cloneOwned")) {
+            const owned = try decoded.cloneOwned(allocator);
+            if (@hasDecl(T, "deinit")) decoded.deinit(allocator);
+            return owned;
+        }
+        return decoded;
+    }
+
     pub fn deinit(self: *Any, allocator: std.mem.Allocator) void {
         if (self.type_url.len != 0) allocator.free(self.type_url);
         if (self.value.len != 0) allocator.free(self.value);
@@ -728,6 +746,13 @@ test "any pack and type matching helpers" {
     try std.testing.expect(packed_message.isType("google.protobuf.StringValue"));
     const decoded = try StringValue.decode(packed_message.value);
     try std.testing.expectEqualSlices(u8, "zig", decoded.value);
+    const unpacked = try packed_message.unpackEncoded(StringValue, allocator, "google.protobuf.StringValue");
+    try std.testing.expectEqualSlices(u8, "zig", unpacked.value);
+    var unpacked_owned = try packed_message.unpackEncodedOwned(StringValue, allocator, "google.protobuf.StringValue");
+    defer unpacked_owned.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "zig", unpacked_owned.value);
+    try std.testing.expect(unpacked_owned.value.ptr != packed_message.value.ptr);
+    try std.testing.expectError(error.TypeMismatch, packed_message.unpackEncoded(StringValue, allocator, "google.protobuf.Int32Value"));
 }
 
 pub const NullValue = enum(i32) {
