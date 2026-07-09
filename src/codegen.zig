@@ -3340,6 +3340,13 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\                try out.append(allocator, try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16));
         \\                i += 2;
         \\            },
+        \\            '0'...'7' => {
+        \\                const start = i;
+        \\                var end = i + 1;
+        \\                while (end < body.len and end < start + 3 and body[end] >= '0' and body[end] <= '7') : (end += 1) {}
+        \\                try out.append(allocator, try std.fmt.parseInt(u8, body[start..end], 8));
+        \\                i = end - 1;
+        \\            },
         \\            else => |c| try out.append(allocator, c),
         \\        }
         \\    }
@@ -4397,6 +4404,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.ascii.eqlIgnoreCase(value, \"-inf\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[start..end], 8)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\") or std.mem.eql(u8, line, \"child <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
