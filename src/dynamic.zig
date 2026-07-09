@@ -757,7 +757,7 @@ pub const DynamicMessage = struct {
 
 fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
     const reg = registry orelse return null;
-    return reg.findExtension(descriptor.name, number);
+    return reg.findExtensionForMessage(descriptor, number);
 }
 
 fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const FieldValue, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer, deterministic: bool) EncodeError!void {
@@ -2609,6 +2609,45 @@ test "dynamic decodeWithRegistry decodes proto2 extensions" {
     try msg.decodeWithRegistry(&file, &registry, writer.slice());
     try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
     try std.testing.expectEqualSlices(u8, "hello", msg.get("note").?.values.items[0].string);
+}
+
+test "dynamic registry extension lookup distinguishes same leaf message names" {
+    const allocator = std.testing.allocator;
+    var a_file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package a;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer a_file.deinit();
+    a_file.name = "a.proto";
+    var b_file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package b;
+        \\message Host { optional int32 id = 1; }
+    );
+    defer b_file.deinit();
+    b_file.name = "b.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&a_file);
+    try registry.addFile(&b_file);
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(100, "wrong-host");
+
+    var b_msg = DynamicMessage.init(allocator, b_file.findMessage("Host").?);
+    defer b_msg.deinit();
+    try b_msg.decodeWithRegistry(&b_file, &registry, writer.slice());
+    try std.testing.expect(b_msg.get("note") == null);
+    try std.testing.expectEqual(@as(usize, 1), b_msg.unknownCount());
+
+    var a_msg = DynamicMessage.init(allocator, a_file.findMessage("Host").?);
+    defer a_msg.deinit();
+    try a_msg.decodeWithRegistry(&a_file, &registry, writer.slice());
+    try std.testing.expectEqualStrings("wrong-host", a_msg.get("note").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 0), a_msg.unknownCount());
 }
 
 test "dynamic decodeWithRegistry resolves imported message fields" {

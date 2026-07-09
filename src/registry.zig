@@ -167,6 +167,36 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findExtensionForMessage(self: *const Registry, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (self.extensionTargetsMessage(field, message, number)) return field;
+            }
+            for (file.messages.items) |*scope| {
+                if (self.findExtensionForMessageInScope(scope, message, number)) |field| return field;
+            }
+        }
+        return null;
+    }
+
+    fn findExtensionForMessageInScope(self: *const Registry, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+        for (scope.extensions.items) |*field| {
+            if (self.extensionTargetsMessage(field, message, number)) return field;
+        }
+        for (scope.messages.items) |*nested| {
+            if (self.findExtensionForMessageInScope(nested, message, number)) |field| return field;
+        }
+        return null;
+    }
+
+    fn extensionTargetsMessage(self: *const Registry, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) bool {
+        if (field.number != number) return false;
+        const extendee = field.extendee orelse return false;
+        const owner = self.fileContainingExtension(field) orelse return false;
+        const resolved = self.findMessageVisible(owner, extendee, null) orelse return false;
+        return resolved == message;
+    }
+
     pub fn findMessageVisible(self: *const Registry, from_file: *const schema.FileDescriptor, name: []const u8, scope: ?[]const u8) ?*const schema.MessageDescriptor {
         if (self.findTypeVisible(from_file, name, scope)) |type_ref| switch (type_ref) {
             .message => |message| return message,
