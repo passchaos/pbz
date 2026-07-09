@@ -1870,13 +1870,27 @@ fn writeJsonParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try writer.writeAll("var it = object.iterator();\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (it.next()) |entry| {\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("if (entry.value_ptr.* == .null) continue;\n");
     if (has_parse_fields) {
         try indent(writer, depth + 2);
         try writer.writeAll("const key = entry.key_ptr.*;\n");
         try indent(writer, depth + 2);
         try writer.writeAll("const value = entry.value_ptr.*;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (value == .null) {\n");
+        for (message.fields.items) |*field| {
+            if (field.oneof_name == null) try writeJsonClearField(file, field, writer, depth + 3);
+        }
+        for (message.oneofs.items) |oneof| {
+            for (message.fields.items) |*field| {
+                if (field.oneof_name) |name| {
+                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonClearOneofField(oneof, field, writer, depth + 3);
+                }
+            }
+        }
+        try indent(writer, depth + 3);
+        try writer.writeAll("return error.UnknownField;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
         for (message.fields.items) |*field| {
             if (field.oneof_name == null) try writeJsonParseField(file, field, writer, depth + 2);
         }
@@ -1963,6 +1977,47 @@ fn messageJsonParseUsesArenaAllocator(message: *const schema.MessageDescriptor) 
 
 fn fieldJsonParseUsesAllocator(field: schema.FieldDescriptor) bool {
     return field.kind == .map or (field.cardinality == .repeated and (field.kind == .scalar or field.kind == .enumeration or field.kind == .message or field.kind == .group));
+}
+
+fn writeJsonClearField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (");
+    try writeJsonKeyCondition(field, writer);
+    try writer.writeAll(") {\n");
+    if (field.cardinality == .repeated or field.kind == .map) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const old = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll("; self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = &.{}; if (old.len != 0) allocator.free(old);\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = ");
+        try writeFieldDefault(field.*, writer);
+        try writer.writeAll(";\n");
+        if (hasPresence(file, field.*)) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(" = false;\n");
+        }
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeJsonClearOneofField(oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (");
+    try writeJsonKeyCondition(field, writer);
+    try writer.writeAll(") { self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(" = .none; continue; }\n");
 }
 
 fn writeJsonParseField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -3292,6 +3347,7 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = blk: { const old = self.@\"counts\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false)") != null);
@@ -3492,6 +3548,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().jsonParse(allocator, text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (value == .null)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"id\" = try @This().jsonInt(i32, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"display_name\") or std.mem.eql(u8, key, \"shownName\")") != null);
@@ -3499,7 +3556,9 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (array.items) |item| try list.append(allocator, try @This().jsonString(item));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"tags\" = blk: { const old = self.@\"tags\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"tags\" = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"alias\" = try @This().jsonString(value) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .none; continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"alt_name\") or std.mem.eql(u8, key, \"altName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"pick_kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);

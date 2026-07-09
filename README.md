@@ -242,7 +242,8 @@ are available, lowerCamelCase/json_name field names, presence-aware
 optional fields, bytes/base64, proto2 group payload fields, and scalar/enum/message oneof arms. Generated enum JSON
 stringify emits enum names when known and falls back to numbers for unknown values.
 Generated JSON parsers use protobuf JSON last-value-wins behavior for duplicate
-fields or alternate spellings and replace previous repeated/map slices safely.
+fields or alternate spellings, treat `null` as clearing the previous value, and
+replace previous repeated/map slices safely.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
