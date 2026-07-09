@@ -1871,11 +1871,15 @@ fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: sch
 
 fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
     for (message.reserved_ranges.items, 0..) |range, i| {
-        const end = range.end orelse std.math.maxInt(i64);
-        if (range.start >= end) return error.InvalidRange;
+        const end = range.end orelse @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
+        if (range.start <= 0 or range.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidRange;
+        if (range.end != null and end > @as(i64, std.math.maxInt(wire.FieldNumber)) + 1) return error.InvalidRange;
+        if (end <= range.start) return error.InvalidRange;
         for (message.reserved_ranges.items[i + 1 ..]) |other| {
-            const other_end = other.end orelse std.math.maxInt(i64);
-            if (other.start >= other_end) return error.InvalidRange;
+            const other_end = other.end orelse @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
+            if (other.start <= 0 or other.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidRange;
+            if (other.end != null and other_end > @as(i64, std.math.maxInt(wire.FieldNumber)) + 1) return error.InvalidRange;
+            if (other_end <= other.start) return error.InvalidRange;
             if (range.start < other_end and other.start < end) return error.InvalidRange;
         }
     }
@@ -2890,6 +2894,25 @@ test "parser rejects fields using reserved names or numbers" {
         \\syntax = "proto2";
         \\message Bad { reserved "old"; optional int32 old = 1; }
     ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved -10; }
+    ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved 2147483647; }
+    ));
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { reserved 1 to 2147483647; }
+    ));
+
+    var enum_negative = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Ok { A = 0; reserved -10; }
+    );
+    defer enum_negative.deinit();
+    try std.testing.expectEqual(@as(i64, -10), enum_negative.findEnum("Ok").?.reserved_ranges.items[0].start);
 }
 
 test "parser honors enum allow_alias option" {

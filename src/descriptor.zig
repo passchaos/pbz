@@ -1910,7 +1910,7 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
     for (message.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
     try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items);
     try validateDecodedExtensionDeclarationNames(message.extension_ranges.items);
-    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items);
+    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items, false, if (message.messageSetWireFormat()) std.math.maxInt(i32) else @as(i64, std.math.maxInt(wire.FieldNumber)) + 1);
 }
 
 fn validateDecodedMessageEnumValueSymbols(message: *const schema.MessageDescriptor) Error!void {
@@ -2359,7 +2359,7 @@ fn validateEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const sche
     }
     if (alias_state.allow_alias and !has_duplicate_numbers) return error.InvalidFieldType;
     try validateEnumValueCanonicalNames(allocator, enumeration);
-    try validateDecodedReservedRanges(enumeration.reserved_ranges.items, enumeration.reserved_names.items);
+    try validateDecodedReservedRanges(enumeration.reserved_ranges.items, enumeration.reserved_names.items, true, std.math.maxInt(i64));
 }
 
 fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor) Error!void {
@@ -2374,11 +2374,20 @@ fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *c
     }
 }
 
-fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []const []const u8) Error!void {
+fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []const []const u8, is_enum: bool, max_end: i64) Error!void {
     for (ranges, 0..) |range, i| {
-        const end = range.end orelse std.math.maxInt(i64);
+        const end = range.end orelse max_end;
+        if (!is_enum) {
+            if (range.start <= 0 or range.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldType;
+            if (range.end != null and end > max_end) return error.InvalidFieldType;
+        }
         if (end <= range.start) return error.InvalidFieldType;
         for (ranges[i + 1 ..]) |other| {
+            const other_end = other.end orelse max_end;
+            if (!is_enum) {
+                if (other.start <= 0 or other.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldType;
+                if (other.end != null and other_end > max_end) return error.InvalidFieldType;
+            }
             if (rangesOverlap(range, other)) return error.InvalidFieldType;
         }
     }
@@ -4539,6 +4548,42 @@ test "descriptor rejects invalid reserved ranges" {
         try file.writeString(1, "bad-enum-reserved.proto");
         try file.writeMessage(5, enumeration.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.reserved_ranges.append(allocator, .{ .start = -10, .end = -9 });
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "negative-message-reserved.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.reserved_ranges.append(allocator, .{ .start = @as(i64, std.math.maxInt(wire.FieldNumber)) + 1, .end = @as(i64, std.math.maxInt(wire.FieldNumber)) + 2 });
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "huge-message-reserved.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var enumeration = schema.EnumDescriptor{ .name = "Ok" };
+        try enumeration.values.append(allocator, .{ .name = "A", .number = 0 });
+        try enumeration.reserved_ranges.append(allocator, .{ .start = -10, .end = -9 });
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        try file.enums.append(allocator, enumeration);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "negative-enum-reserved.proto");
+        defer allocator.free(bytes);
+        var decoded = try decodeFileDescriptorProto(allocator, bytes);
+        defer decoded.deinit();
+        try std.testing.expectEqual(@as(i64, -10), decoded.findEnum("Ok").?.reserved_ranges.items[0].start);
     }
 }
 
