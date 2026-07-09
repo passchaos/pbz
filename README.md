@@ -55,7 +55,7 @@ validated feature set.
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated decoders retain unknown wire fields and preserve closed-enum unknown numeric values for singular/repeated/map/oneof enum fields; generated encoders replay retained unknowns
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
-  - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, and oneof fields; generated wire UTF-8 validation for string/map-string fields; and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
+  - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, and oneof fields; generated wire/TextFormat UTF-8 validation for string/map-string fields; and generated wire/TextFormat closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, initialized parse helpers with recursive required validation, protobuf merge semantics for duplicate singular message/group fields, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
 
@@ -257,7 +257,8 @@ adjacent quoted string literal concatenation, common quoted string escapes
 including C-style control, hex/octal bytes, decimal/hex/octal integer input,
 closed-enum validation, numeric unknown varint/string/group preservation, float
 `nan`/`inf` spellings, `#` line comments outside quoted strings including nested
-blocks, and common semicolon/comma separators.
+blocks, common semicolon/comma separators, and `features.utf8_validation`
+enforcement for string/map-string values.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 

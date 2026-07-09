@@ -285,14 +285,14 @@ fn writeTextParseField(file: *const schema.FileDescriptor, field: *const schema.
         try indent(writer, depth + 1);
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
         try writer.writeAll(".append(allocator, ");
-        try writeTextParseValueExpr(file, field.kind, "raw_value", writer);
+        try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
         try writer.writeAll(") catch |err| return err;\n");
     } else {
         try indent(writer, depth + 1);
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = ");
-        try writeTextParseValueExpr(file, field.kind, "raw_value", writer);
+        try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
         try writer.writeAll(";\n");
         if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
@@ -412,7 +412,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try writer.writeAll("if (std.mem.eql(u8, entry_line, \"}\") or std.mem.eql(u8, entry_line, \">\")) break;\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (@This().textFieldValue(entry_line, \"key\")) |raw_key| { entry.key = ");
-    try writeTextParseValueExpr(file, .{ .scalar = map_type.key }, "raw_key", writer);
+    try writeTextParseValueExpr(file, field, .{ .scalar = map_type.key }, "raw_key", writer);
     try writer.writeAll("; continue; }\n");
     if (map_type.value.* == .message and codegenCanReferenceMessage(file, map_type.value.message)) {
         try indent(writer, depth + 2);
@@ -439,7 +439,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     if (map_type.value.* == .scalar or map_type.value.* == .enumeration) {
         try indent(writer, depth + 2);
         try writer.writeAll("if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = ");
-        try writeTextParseValueExpr(file, map_type.value.*, "raw_value", writer);
+        try writeTextParseValueExpr(file, field, map_type.value.*, "raw_value", writer);
         try writer.writeAll("; continue; }\n");
     }
     try indent(writer, depth + 2);
@@ -481,7 +481,7 @@ fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = ");
-    try writeTextParseValueExpr(file, field.kind, "raw_value", writer);
+    try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
     try writer.writeAll(" }; continue; }\n");
 }
 
@@ -545,7 +545,7 @@ fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
     return field.cardinality == .required or field.proto3_optional or field.kind == .message or field.kind == .group or if (field.features) |features| features.field_presence != .implicit else false;
 }
 
-fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (kind) {
         .scalar => |scalar| switch (scalar) {
             .double => try writer.print("try @This().textFloat(f64, {s})", .{value_expr}),
@@ -555,7 +555,14 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
             .uint32, .fixed32 => try writer.print("try @This().textInt(u32, {s})", .{value_expr}),
             .uint64, .fixed64 => try writer.print("try @This().textInt(u64, {s})", .{value_expr}),
             .bool => try writer.print("try @This().textBool({s})", .{value_expr}),
-            .string, .bytes => try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr}),
+            .string => {
+                if (fieldUtf8ValidationOptional(file, field) == .verify) {
+                    try writer.print("blk: {{ const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s}); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; }}", .{value_expr});
+                } else {
+                    try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr});
+                }
+            },
+            .bytes => try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr}),
         },
         .enumeration => |name| {
             try writer.print("try @This().textEnum({s}, ", .{value_expr});
@@ -2060,6 +2067,11 @@ fn fieldMessageEncoding(file: *const schema.FileDescriptor, field: *const schema
 
 fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
     if (field.features) |features| return features.utf8_validation;
+    return file.features.utf8_validation;
+}
+
+fn fieldUtf8ValidationOptional(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
+    if (field) |descriptor| return fieldUtf8Validation(file, descriptor);
     return file.features.utf8_validation;
 }
 
@@ -4448,13 +4460,13 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.encode(owned_allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlockField(line: []const u8, comptime name: []const u8) bool") != null);
@@ -5105,6 +5117,15 @@ test "codegen honors utf8 validation features for wire strings" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.value = value; }") != null);
+
+    const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
+    const text_content = content[text_start..];
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.@\"strict\" = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.@\"relaxed\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "@\"tags_list\".append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.key = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_key); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.value = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.@\"pick\" = .{ .@\"alias\" = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
 }
 
 test "codegen honors editions enum type features in JSON parse" {
