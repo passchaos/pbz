@@ -118,6 +118,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeOwnedAllocator(writer, depth + 1);
     try writer.writeAll("\n");
+    try writeUnknownFieldMethods(writer, depth + 1);
+    try writer.writeAll("\n");
     try writeMergeFrom(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeEncode(file, message, writer, depth + 1);
@@ -770,17 +772,88 @@ fn writeOwnedAllocator(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n");
 }
 
+fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn unknownFieldCount(self: @This()) usize {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self.@\"_unknown_fields\".len;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn unknownFields(self: @This()) []const []const u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self.@\"_unknown_fields\";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var list: std.ArrayList([]const u8) = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer list.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (try r.nextTag()) |tag| {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag.number == number) try list.append(allocator, raw);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.@\"_unknown_fields\";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const next = try allocator.alloc([]const u8, old.len + 1);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer allocator.free(next);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) @memcpy(next[0..old.len], old);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned = try allocator.dupe(u8, raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer allocator.free(owned);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("next[old.len] = owned;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.@\"_unknown_fields\" = next;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) allocator.free(self.@\"_unknown_fields\");\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.@\"_unknown_fields\" = &.{};\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeMergeFrom(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {\n");
-    if (!mergeUsesAllocator(message)) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = allocator;\n");
-    }
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeMergeField(file, field, writer, depth + 1);
     }
     for (message.oneofs.items) |oneof| try writeMergeOneof(message, oneof, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -4599,6 +4672,14 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); self.@\"kind\" = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.@\"payload\" = try r.readBytes(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"_unknown_fields\": []const []const u8 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCount(self: @This()) usize") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFields(self: @This()) []const []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var r = pbz.Reader.init(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == number) try list.append(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const owned = try allocator.dupe(u8, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else => { try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);") != null);
@@ -4887,6 +4968,7 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try owned_allocator.alloc(u8, self.@\"Box\".len + other.@\"Box\".len)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (other.@\"pick\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| self.@\"pick\" = .{ .@\"picked\" = value }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); if (self.@\"has_child\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); if (self.@\"has_Box\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_Box\") { try w.writeTag(4, .start_group); try w.appendSlice(self.@\"Box\"); try w.writeTag(4, .end_group); }") != null);

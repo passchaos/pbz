@@ -54,6 +54,7 @@ validated feature set.
   - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated decoders retain unknown wire fields and preserve closed-enum unknown numeric values for singular/repeated/map/oneof enum fields; generated encoders replay retained unknowns
+  - generated message structs expose unknown field count/list/filter, raw unknown append, clear helpers, and merge unknown fields through `mergeFrom`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, and oneof fields; generated wire/TextFormat UTF-8 validation for string/map-string fields; and generated wire/TextFormat closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
@@ -236,7 +237,10 @@ as packed, generated decoders accept both packed and expanded input, and generat
 `encodeDeterministic` emits fields by number and sorts map entries by key.
 Generated message structs include a `mergeFrom` helper and generated decoders
 merge duplicate singular message/group payload fields while preserving repeated
-append and oneof replacement semantics.
+append, oneof replacement semantics, and unknown fields. They also expose
+`unknownFieldCount`, `unknownFields`, `unknownFieldsByNumberAlloc`,
+`appendUnknownRaw`, and `clearUnknownFields` helpers for callers that need to
+inspect or carry forward proto2 extensions/unknown data in typed wrappers.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
 scalar/enum/message map fields, encoded message payload fields when their generated types
