@@ -2623,44 +2623,62 @@ fn decodeFeatureSet(bytes: []const u8) Error!schema.FeatureSet {
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => features.field_presence = switch (try reader.readInt32()) {
+                0 => features.field_presence,
+                1 => .explicit,
                 2 => .implicit,
                 3 => .legacy_required,
-                else => .explicit,
+                else => return error.InvalidFieldType,
             },
             2 => features.enum_type = switch (try reader.readInt32()) {
+                0 => features.enum_type,
+                1 => .open,
                 2 => .closed,
-                else => .open,
+                else => return error.InvalidFieldType,
             },
             3 => features.repeated_field_encoding = switch (try reader.readInt32()) {
+                0 => features.repeated_field_encoding,
+                1 => .packed_encoding,
                 2 => .expanded,
-                else => .packed_encoding,
+                else => return error.InvalidFieldType,
             },
             4 => features.utf8_validation = switch (try reader.readInt32()) {
+                0 => features.utf8_validation,
+                2 => .verify,
                 3 => .none,
-                else => .verify,
+                else => return error.InvalidFieldType,
             },
             5 => features.message_encoding = switch (try reader.readInt32()) {
+                0 => features.message_encoding,
+                1 => .length_prefixed,
                 2 => .delimited,
-                else => .length_prefixed,
+                else => return error.InvalidFieldType,
             },
             6 => features.json_format = switch (try reader.readInt32()) {
+                0 => features.json_format,
+                1 => .allow,
                 2 => .legacy_best_effort,
-                else => .allow,
+                else => return error.InvalidFieldType,
             },
             7 => features.enforce_naming_style = switch (try reader.readInt32()) {
+                0 => features.enforce_naming_style,
                 1 => .style2024,
+                2 => .style_legacy,
                 3 => .style2026,
-                else => .style_legacy,
+                else => return error.InvalidFieldType,
             },
             8 => features.default_symbol_visibility = switch (try reader.readInt32()) {
+                0 => features.default_symbol_visibility,
+                1 => .export_all,
                 2 => .export_top_level,
                 3 => .local_all,
                 4 => .strict,
-                else => .export_all,
+                else => return error.InvalidFieldType,
             },
             9 => features.enforce_proto_limits = switch (try reader.readInt32()) {
+                0 => features.enforce_proto_limits,
+                1 => .legacy_no_explicit_limits,
                 2 => .proto_limits2026,
-                else => .legacy_no_explicit_limits,
+                else => return error.InvalidFieldType,
             },
             else => try reader.skipValue(tag),
         }
@@ -3227,6 +3245,33 @@ test "descriptor rejects invalid FeatureSetDefaults" {
         try writer.writeInt32(4, @intFromEnum(schema.Edition.edition_2026));
         try writer.writeInt32(5, @intFromEnum(schema.Edition.edition_2023));
         try std.testing.expectError(error.InvalidFieldType, decodeFeatureSetDefaults(allocator, writer.slice()));
+    }
+}
+
+test "descriptor rejects invalid decoded FeatureSet enum values" {
+    const allocator = std.testing.allocator;
+    inline for (.{
+        .{ 1, 99, "bad-field-presence-feature.proto" },
+        .{ 2, 99, "bad-enum-type-feature.proto" },
+        .{ 3, 99, "bad-repeated-encoding-feature.proto" },
+        .{ 4, 1, "bad-utf8-validation-feature.proto" },
+        .{ 5, 99, "bad-message-encoding-feature.proto" },
+        .{ 6, 99, "bad-json-format-feature.proto" },
+        .{ 7, 99, "bad-naming-style-feature.proto" },
+        .{ 8, 99, "bad-visibility-feature.proto" },
+        .{ 9, 99, "bad-proto-limits-feature.proto" },
+    }) |case| {
+        var features = wire.Writer.init(allocator);
+        defer features.deinit();
+        try features.writeInt32(case[0], case[1]);
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeMessage(50, features.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, case[2]);
+        try file.writeMessage(8, options.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
 
