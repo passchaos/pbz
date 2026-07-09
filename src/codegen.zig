@@ -3393,7 +3393,7 @@ fn writeTextMapValue(file: *const schema.FileDescriptor, kind: schema.FieldKind,
 
 fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("pub const JsonStringifyOptions = struct { enum_as_name: bool = true };\n\n");
+    try writer.writeAll("pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false };\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
@@ -4557,7 +4557,9 @@ fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer,
     try indent(writer, depth);
     try writer.writeAll("if (!first) try writer.writeAll(\",\"); first = false;\n");
     try indent(writer, depth);
-    try writer.writeAll("try writer.writeAll(\"\\\"");
+    try writer.writeAll("try writer.writeAll(if (options.preserve_proto_field_names) \"\\\"");
+    try writeEscapedStringContents(field.name, writer);
+    try writer.writeAll("\\\":\" else \"\\\"");
     try writeJsonFieldNameLiteralContents(field, writer);
     try writer.writeAll("\\\":\");\n");
 }
@@ -6126,9 +6128,10 @@ test "codegen emits typed json stringify and parse methods" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"id\\\":\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"userId\\\":\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"shownName\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"id\\\":\" else \"\\\"id\\\":\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"user_id\\\":\" else \"\\\"userId\\\":\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"display_name\\\":\" else \"\\\"shownName\\\":\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{value});") != null);
