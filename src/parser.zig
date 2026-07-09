@@ -758,7 +758,7 @@ pub const Parser = struct {
     fn applyMessageOption(self: *Parser, message: *schema.MessageDescriptor, option: schema.FieldOption) Error!void {
         const leaf = optionLeaf(option.name);
         if (std.mem.eql(u8, leaf, "map_entry")) {
-            message.map_entry = schema.optionAsBool(option.value) orelse return error.InvalidFieldType;
+            return error.InvalidFieldType;
         }
         self.applyFeatureOption(&message.features, option);
     }
@@ -1990,6 +1990,18 @@ test "parser handles proto3 optional and map fields" {
     const bag = file.findMessage("Bag").?;
     try std.testing.expect(bag.findField("label").?.proto3_optional);
     try std.testing.expect(bag.findField("counts").?.kind == .map);
+}
+
+test "parser rejects explicit map_entry message option" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message BadEntry {
+        \\  option map_entry = true;
+        \\  string key = 1;
+        \\  int32 value = 2;
+        \\}
+    ));
 }
 
 fn decodeStringLiteralAlloc(allocator: std.mem.Allocator, text: []const u8) Error![]u8 {

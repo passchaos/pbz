@@ -1287,6 +1287,7 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
     if (file.package.len != 0 and !isFullIdentifier(file.package)) return error.InvalidFieldType;
     for (file.messages.items, 0..) |message, i| {
         if (!isIdentifier(message.name)) return error.InvalidFieldType;
+        if (message.map_entry) return error.InvalidFieldType;
         for (file.messages.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, message.name, other.name)) return error.InvalidFieldType;
         }
@@ -3249,6 +3250,19 @@ test "descriptor rejects invalid synthetic map entry key type" {
         try file.messages.append(allocator, msg);
 
         const bytes = try encodeFileDescriptorProto(allocator, &file, "bad-map-entry-name.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto3);
+        var entry = schema.MessageDescriptor{ .name = "TopEntry", .map_entry = true };
+        try entry.fields.append(allocator, .{ .name = "key", .number = 1, .kind = .{ .scalar = .string } });
+        try entry.fields.append(allocator, .{ .name = "value", .number = 2, .kind = .{ .scalar = .int32 } });
+        try file.messages.append(allocator, entry);
+
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "top-map-entry.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
