@@ -1229,6 +1229,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             else => try reader.skipValue(tag),
         }
     }
+    try validateDependencyIndexes(public_deps.items, weak_deps.items, file.imports.items.len);
     for (public_deps.items) |idx| {
         if (idx < 0 or idx >= file.imports.items.len) return error.InvalidFieldType;
         file.imports.items[@intCast(idx)].kind = .public;
@@ -1242,6 +1243,24 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try validateDecodedFileDescriptor(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
+}
+
+fn validateDependencyIndexes(public_deps: []const i32, weak_deps: []const i32, dependency_count: usize) Error!void {
+    for (public_deps, 0..) |idx, i| {
+        if (idx < 0 or idx >= dependency_count) return error.InvalidFieldType;
+        for (public_deps[i + 1 ..]) |other| {
+            if (idx == other) return error.InvalidFieldType;
+        }
+        for (weak_deps) |weak| {
+            if (idx == weak) return error.InvalidFieldType;
+        }
+    }
+    for (weak_deps, 0..) |idx, i| {
+        if (idx < 0 or idx >= dependency_count) return error.InvalidFieldType;
+        for (weak_deps[i + 1 ..]) |other| {
+            if (idx == other) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void {
@@ -3306,6 +3325,24 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeString(1, "bad-weak-dep.proto");
         try file.writeString(3, "dep.proto");
         try file.writeInt32(11, -1);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-public-dep.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeInt32(10, 0);
+        try file.writeInt32(10, 0);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "conflicting-dep-kind.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeInt32(10, 0);
+        try file.writeInt32(11, 0);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
