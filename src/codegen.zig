@@ -120,6 +120,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeOwnedAllocator(writer, depth + 1);
     try writer.writeAll("\n");
+    try writeFieldAccessors(file, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
     try writer.writeAll("\n");
     try writeMessageExtensionAccessors(file, message, writer, depth + 1);
@@ -957,6 +959,518 @@ fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Write
     try writer.writeAll(",\n");
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
+}
+
+fn writeFieldAccessors(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeFieldAccessor(file, field, writer, depth);
+    }
+    for (message.oneofs.items) |oneof| {
+        for (message.fields.items) |*field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name)) try writeOneofFieldAccessor(file, field, oneof, writer, depth);
+            }
+        }
+    }
+}
+
+fn writeFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated or field.kind == .map) return try writeRepeatedFieldAccessor(file, field, writer, depth);
+    try writeSingularFieldAccessor(file, field, writer, depth);
+}
+
+fn writeSingularFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const presence = hasPresence(file, field.*);
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("has", field.name, writer);
+    try writer.writeAll("(self: @This()) bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return ");
+    if (presence) {
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+    } else {
+        try writeFieldNonDefaultExpression(field, writer);
+    }
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("(self: @This()) ");
+    if (presence) try writer.writeByte('?');
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    if (presence) {
+        try writer.writeAll("return if (self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(") self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" else null;\n");
+    } else {
+        try writer.writeAll("return self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(";\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getOrDefault", field.name, writer);
+    try writer.writeAll("(self: @This()) ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("set", field.name, writer);
+    try writer.writeAll("(self: *@This(), value: ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(") void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = value;\n");
+    if (presence) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(" = true;\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("clear", field.name, writer);
+    try writer.writeAll("(self: *@This()) void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = ");
+    try writeFieldDefault(field.*, writer);
+    try writer.writeAll(";\n");
+    if (presence) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(" = false;\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    if (fieldMessageTypeName(field)) |type_name| {
+        if (codegenCanReferenceMessage(file, type_name)) try writeSingularMessageFieldAccessor(field, type_name, writer, depth);
+    }
+}
+
+fn writeSingularMessageFieldAccessor(field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("setMessage", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedAccessorIdent("set", field.name, writer);
+    try writer.writeAll("(try value.encode(owned_allocator));\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getMessage", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payload = self.");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("() orelse return null;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".decode(allocator, payload);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeRepeatedFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("has", field.name, writer);
+    try writer.writeAll("(self: @This()) bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("(self: @This()) ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("append", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const merged = try allocator.alloc(");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(", old.len + 1);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) @memcpy(merged[0..old.len], old);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("merged[old.len] = value;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = merged;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendAll", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (values.len == 0) return;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const merged = try allocator.alloc(");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(", old.len + values.len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) @memcpy(merged[0..old.len], old);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("@memcpy(merged[old.len..], values);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = merged;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("replace", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (values.len == 0) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = &.{};\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("return;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned = try allocator.dupe(");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(", values);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = owned;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("clear", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator) void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = &.{};\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    if (fieldMessageTypeName(field)) |type_name| {
+        if (codegenCanReferenceMessage(file, type_name)) try writeRepeatedMessageFieldAccessor(field, type_name, writer, depth);
+    }
+}
+
+fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendMessage", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedAccessorIdent("append", field.name, writer);
+    try writer.writeAll("(allocator, try value.encode(owned_allocator));\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendMessages", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (values) |value| try self.");
+    try writeQuotedAccessorIdent("appendMessage", field.name, writer);
+    try writer.writeAll("(allocator, value);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("replaceMessages", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (values.len == 0) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = &.{};\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("return;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned = try allocator.alloc([]const u8, values.len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer allocator.free(owned);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (values, 0..) |value, i| owned[i] = try value.encode(owned_allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = owned;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getMessages", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var list: std.ArrayList(");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(") = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer { for (list.items) |*item| item.deinit(allocator); list.deinit(allocator); }\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |payload| try list.append(allocator, try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".decode(allocator, payload));\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeOneofFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("has", field.name, writer);
+    try writer.writeAll("(self: @This()) bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") { .");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" => true, else => false };\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("(self: @This()) ?");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") { .");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" => |value| value, else => null };\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("set", field.name, writer);
+    try writer.writeAll("(self: *@This(), value: ");
+    try writeFieldType(field.*, writer);
+    try writer.writeAll(") void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(" = .{ .");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = value };\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("clear", field.name, writer);
+    try writer.writeAll("(self: *@This()) void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self.");
+    try writeQuotedAccessorIdent("has", field.name, writer);
+    try writer.writeAll("()) self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(" = .none;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    if (fieldMessageTypeName(field)) |type_name| {
+        if (codegenCanReferenceMessage(file, type_name)) try writeOneofMessageFieldAccessor(field, oneof, type_name, writer, depth);
+    }
+}
+
+fn writeOneofMessageFieldAccessor(field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("setMessage", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(" = .{ .");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = try value.encode(owned_allocator) };\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getMessage", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payload = self.");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("() orelse return null;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".decode(allocator, payload);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn fieldMessageTypeName(field: *const schema.FieldDescriptor) ?[]const u8 {
+    return switch (field.kind) {
+        .message, .group => |type_name| type_name,
+        else => null,
+    };
+}
+
+fn writeFieldNonDefaultExpression(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    switch (field.kind) {
+        .scalar => |scalar| {
+            try writer.writeAll("self.");
+            try writeQuotedIdent(field.name, writer);
+            switch (scalar) {
+                .string, .bytes => try writer.writeAll(".len != 0"),
+                .bool => {},
+                else => try writer.writeAll(" != 0"),
+            }
+        },
+        .enumeration => {
+            try writer.writeAll("self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" != 0");
+        },
+        .message, .group => {
+            try writer.writeAll("self.");
+            try writePresenceIdent(field.name, writer);
+        },
+        .map => {
+            try writer.writeAll("self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len != 0");
+        },
+    }
 }
 
 fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5722,6 +6236,18 @@ fn writeQuotedIdentWithPrefix(name: []const u8, prefix: []const u8, writer: *std
     try writer.writeAll("\"");
 }
 
+fn writeQuotedAccessorIdent(prefix: []const u8, name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"");
+    try writer.writeAll(prefix);
+    try writer.writeAll("Field");
+    try writer.writeByte('_');
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll("\"");
+}
+
 fn extensionAccessorSuffix(name: []const u8) []const u8 {
     return leafTypeName(name);
 }
@@ -5947,6 +6473,54 @@ test "codegen emits field metadata including imported type names" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_key = \"string\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_kind = \"message\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_name = \".demo.common.Role\";") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits field accessors for presence repeated map message and oneof fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child { optional int32 id = 1; }
+        \\message Parent {
+        \\  required int32 id = 1;
+        \\  optional string name = 2 [default = "anon"];
+        \\  repeated int32 nums = 3;
+        \\  optional Child child = 4;
+        \\  repeated Child children = 5;
+        \\  map<string, Child> keyed = 6;
+        \\  oneof pick { string alias = 7; Child picked = 8; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasField_id\"(self: @This()) bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getField_id\"(self: @This()) ?i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getOrDefaultField_name\"(self: @This()) []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setField_name\"(self: *@This(), value: []const u8) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_name\"(self: *@This()) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendField_nums\"(self: *@This(), allocator: std.mem.Allocator, value: i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendAllField_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceField_keyed\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"keyedEntry\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_keyed\"(self: *@This(), allocator: std.mem.Allocator) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_child\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageField_children\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceMessagesField_children\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Child\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessagesField_children\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasField_alias\"(self: @This()) bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return switch (self.@\"pick\") { .@\"alias\" => true, else => false };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getField_alias\"(self: @This()) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setField_alias\"(self: *@This(), value: []const u8) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_alias\"(self: *@This()) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
