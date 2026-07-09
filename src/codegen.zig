@@ -4428,6 +4428,17 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
+    try indent(writer, depth);
+    try writer.writeAll("pub fn replaceInUnknown(message: anytype, allocator: std.mem.Allocator, value: ");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try clearFromUnknown(message, allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try appendToUnknown(message, allocator, value);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn writeAll(w: *pbz.Writer, values: ");
@@ -5634,6 +5645,9 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearFromUnknown(message: anytype, allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try message.clearUnknownFieldsByNumber(allocator, number);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceInUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try clearFromUnknown(message, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try appendToUnknown(message, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeValue(r: *pbz.Reader) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeRaw(raw: []const u8) !?[]const u8") != null);
