@@ -277,7 +277,7 @@ namespace containing per-extension metadata constants (`number`, `extendee`,
 plus registry-aware `extendee_type_ref` / `value_type_ref` aliases, generated
 `value_enum_ref` aliases for enum extension values, typed `default_value_zig`,
 `write`/`writeAll`, `decodeValue` / `decodeAppend`, and
-typed enum extension get/set/default facades plus
+typed enum extension get/set/default facades including cross-file `*On` variants plus
 `hasOn` / `getOn` / `setOn` / `clearOn` style facades so applications can
 encode/decode extension values or wire them into dynamic registries and custom
 typed wrappers. Extension metadata

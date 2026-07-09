@@ -7491,9 +7491,92 @@ fn writeExtensionFacadeHelpers(ctx: *const CodegenContext, field: *const schema.
         try writer.writeAll("}\n");
     }
 
+    if (field.kind == .enumeration and canReferenceEnumWithContext(ctx, field.kind)) {
+        try writeExtensionEnumFacadeHelpers(ctx, field, writer, depth);
+    }
     if (field.kind == .message and canReferenceMessageWithContext(ctx, field.kind)) {
         try writeExtensionMessageFacadeHelpers(ctx, field, writer, depth);
     }
+}
+
+fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn getEnumsOn(message: ");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator) ![]");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try getOn(message, allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const out = try allocator.alloc(");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(", raw.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer allocator.free(out);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (raw, 0..) |value, i| out[i] = ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(".fromInt(value) orelse return error.InvalidEnumValue;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return out;\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn addEnumOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, value: ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try addOn(message, allocator, value.toInt());\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+        return;
+    }
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn getEnumOn(message: ");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(", allocator: std.mem.Allocator) !?");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = (try getOn(message, allocator)) orelse return null;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return ");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(".fromInt(raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn getEnumOrDefaultOn(message: ");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(", allocator: std.mem.Allocator) !");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return (try getEnumOn(message, allocator)) orelse ");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(".fromInt(default_value_zig) orelse unreachable;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn setEnumOn(message: *");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(", allocator: std.mem.Allocator, value: ");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try setOn(message, allocator, value.toInt());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -8727,6 +8810,7 @@ test "codegen with registry emits extension type refs" {
     var common = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.common;
+        \\enum Role { UNKNOWN = 0; ADMIN = 1; }
         \\message Host { extensions 100 to max; }
         \\message Note { optional int32 id = 1; }
     );
@@ -8738,6 +8822,7 @@ test "codegen with registry emits extension type refs" {
         \\import "common.proto";
         \\extend .demo.common.Host {
         \\  optional .demo.common.Note note = 100;
+        \\  optional .demo.common.Role role = 101;
         \\}
     );
     defer app.deinit();
@@ -8761,6 +8846,13 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setMessageOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"Note\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?imports.@\"common.proto\".@\"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_enum_ref = @\"demo.common.Role\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return @\"demo.common.Role\".fromInt(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return (try getEnumOn(message, allocator)) orelse @\"demo.common.Role\".fromInt(default_value_zig) orelse unreachable;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try setOn(message, allocator, value.toInt());") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
