@@ -519,7 +519,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
     try writer.writeAll("\n");
-    try writeMessageExtensionAccessors(file, message, writer, depth + 1);
+    try writeMessageExtensionAccessors(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeMergeFrom(file, message, writer, depth + 1);
     try writer.writeAll("\n");
@@ -2671,16 +2671,17 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n");
 }
 
-fn writeMessageExtensionAccessors(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessageExtensionAccessors(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     var wrote_any = false;
     for (file.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, message, field)) {
-            try writeMessageExtensionAccessor(file, field, writer, depth);
+            try writeMessageExtensionAccessor(ctx, field, writer, depth);
             wrote_any = true;
         }
     }
     for (file.messages.items) |*scope| {
-        if (try writeScopedMessageExtensionAccessors(file, message, scope, writer, depth)) wrote_any = true;
+        if (try writeScopedMessageExtensionAccessors(ctx, message, scope, writer, depth)) wrote_any = true;
     }
     if (!wrote_any) {
         try indent(writer, depth);
@@ -2688,21 +2689,23 @@ fn writeMessageExtensionAccessors(file: *const schema.FileDescriptor, message: *
     }
 }
 
-fn writeScopedMessageExtensionAccessors(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeScopedMessageExtensionAccessors(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    const file = ctx.file;
     var wrote_any = false;
     for (scope.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, target, field)) {
-            try writeMessageExtensionAccessor(file, field, writer, depth);
+            try writeMessageExtensionAccessor(ctx, field, writer, depth);
             wrote_any = true;
         }
     }
     for (scope.messages.items) |*nested| {
-        if (try writeScopedMessageExtensionAccessors(file, target, nested, writer, depth)) wrote_any = true;
+        if (try writeScopedMessageExtensionAccessors(ctx, target, nested, writer, depth)) wrote_any = true;
     }
     return wrote_any;
 }
 
-fn writeMessageExtensionAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessageExtensionAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     const helper_name = extensionAccessorSuffix(field.name);
 
     try indent(writer, depth);
@@ -2768,6 +2771,10 @@ fn writeMessageExtensionAccessor(file: *const schema.FileDescriptor, field: *con
         try writer.writeAll("}\n\n");
     }
 
+    if (field.kind == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.enumeration)) {
+        try writeMessageEnumExtensionAccessor(ctx, field, helper_name, writer, depth);
+    }
+
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedIdentWithPrefix(helper_name, if (field.cardinality == .repeated) "appendExtension_" else "setExtension_", writer);
@@ -2831,6 +2838,98 @@ fn writeMessageExtensionAccessor(file: *const schema.FileDescriptor, field: *con
     try writer.writeAll("try ");
     try writeExtensionHelperReference(field, writer);
     try writer.writeAll(".clearFromUnknown(self, allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeMessageEnumExtensionAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, helper_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "getEnumExtensions_", writer);
+        try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "getExtension_", writer);
+        try writer.writeAll("(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const out = try allocator.alloc(");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(", raw.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer allocator.free(out);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (raw, 0..) |value, i| out[i] = ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(".fromInt(value) orelse return error.InvalidEnumValue;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return out;\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "addEnumExtension_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "addExtension_", writer);
+        try writer.writeAll("(allocator, value.toInt());\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+        return;
+    }
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "getEnumExtension_", writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = (try self.");
+    try writeQuotedIdentWithPrefix(helper_name, "getExtension_", writer);
+    try writer.writeAll("(allocator)) orelse return null;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return ");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(".fromInt(raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "getEnumOrDefaultExtension_", writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return (try self.");
+    try writeQuotedIdentWithPrefix(helper_name, "getEnumExtension_", writer);
+    try writer.writeAll("(allocator)) orelse ");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(".fromInt(");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".default_value_zig) orelse unreachable;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "setEnumExtension_", writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+    try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedIdentWithPrefix(helper_name, "setExtension_", writer);
+    try writer.writeAll("(allocator, value.toInt());\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 }
@@ -9965,6 +10064,12 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value_zig: i32 = 7;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getExtension_role\"(allocator)) orelse extensions.@\"role\".default_value_zig;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumExtension_role\"(self: @This(), allocator: std.mem.Allocator) !?@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return @\"Kind\".fromInt(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumOrDefaultExtension_role\"(self: @This(), allocator: std.mem.Allocator) !@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getEnumExtension_role\"(allocator)) orelse @\"Kind\".fromInt(extensions.@\"role\".default_value_zig) orelse unreachable;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumExtension_role\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"setExtension_role\"(allocator, value.toInt());") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
