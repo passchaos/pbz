@@ -109,14 +109,14 @@ fn writeMessageDescriptor(
         if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, scope, field, 3, &tmp);
     }
     for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 4, &tmp);
-    for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, range, 5, &tmp);
+    for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, message, range, 5, &tmp);
     for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, scope, field, 6, &tmp);
     if (hasMessageOptions(message)) try writeMessageOptions(allocator, message, 7, &tmp);
     for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, file, oneof, 8, &tmp);
     for (message.fields.items) |*field| {
         if (field.proto3_optional and field.oneof_name == null) try writeSyntheticOneofDescriptor(allocator, field, 8, &tmp);
     }
-    for (message.reserved_ranges.items) |range| try writeReservedRange(allocator, range, 9, &tmp);
+    for (message.reserved_ranges.items) |range| try writeReservedRange(allocator, message, range, 9, &tmp);
     for (message.reserved_names.items) |reserved_name| try tmp.writeString(10, reserved_name);
 
     try writer.writeMessage(field_number, tmp.slice());
@@ -284,11 +284,11 @@ fn hasOneofOptions(oneof: *const schema.OneofDescriptor) bool {
     return oneof.options.items.len != 0 or oneof.features != null;
 }
 
-fn writeExtensionRange(allocator: std.mem.Allocator, range: *const schema.ExtensionRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+fn writeExtensionRange(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor, range: *const schema.ExtensionRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
-    try tmp.writeInt32(1, @intCast(range.start));
-    if (range.end) |end| try tmp.writeInt32(2, @intCast(end));
+    try tmp.writeInt32(1, try descriptorI32RangeBound(range.start));
+    try tmp.writeInt32(2, try descriptorMessageRangeEnd(message, range.end));
     if (range.options.items.len != 0 or range.declarations.items.len != 0 or range.verification != null or range.features != null) try writeExtensionRangeOptions(allocator, range, 3, &tmp);
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -392,20 +392,36 @@ fn writePackedInt32List(allocator: std.mem.Allocator, field_number: wire.FieldNu
     try writer.writeBytes(field_number, packed_writer.slice());
 }
 
-fn writeReservedRange(allocator: std.mem.Allocator, range: schema.ReservedRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
+fn writeReservedRange(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor, range: schema.ReservedRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
-    try tmp.writeInt32(1, @intCast(range.start));
-    if (range.end) |end| try tmp.writeInt32(2, @intCast(end));
+    try tmp.writeInt32(1, try descriptorI32RangeBound(range.start));
+    try tmp.writeInt32(2, try descriptorMessageRangeEnd(message, range.end));
     try writer.writeMessage(field_number, tmp.slice());
 }
 
 fn writeEnumReservedRange(allocator: std.mem.Allocator, range: schema.ReservedRange, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
     var tmp = wire.Writer.init(allocator);
     defer tmp.deinit();
-    try tmp.writeInt32(1, @intCast(range.start));
-    if (range.end) |end| try tmp.writeInt32(2, @intCast(end - 1));
+    try tmp.writeInt32(1, try descriptorI32RangeBound(range.start));
+    try tmp.writeInt32(2, try descriptorEnumReservedEnd(range.end));
     try writer.writeMessage(field_number, tmp.slice());
+}
+
+fn descriptorMessageRangeEnd(message: *const schema.MessageDescriptor, maybe_end: ?i64) Error!i32 {
+    const end = maybe_end orelse return if (message.messageSetWireFormat()) std.math.maxInt(i32) else @as(i32, @intCast(@as(i64, std.math.maxInt(wire.FieldNumber)) + 1));
+    return try descriptorI32RangeBound(end);
+}
+
+fn descriptorEnumReservedEnd(maybe_end: ?i64) Error!i32 {
+    const end = maybe_end orelse return std.math.maxInt(i32);
+    if (end <= std.math.minInt(i32) or end - 1 > std.math.maxInt(i32)) return error.InvalidFieldType;
+    return @intCast(end - 1);
+}
+
+fn descriptorI32RangeBound(value: i64) Error!i32 {
+    if (value < std.math.minInt(i32) or value > std.math.maxInt(i32)) return error.InvalidFieldType;
+    return @intCast(value);
 }
 
 fn writeServiceDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, service: *const schema.ServiceDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -5517,7 +5533,7 @@ test "descriptor preserves extension range options" {
 
     const range = &decoded.findMessage("Host").?.extension_ranges.items[0];
     try std.testing.expectEqual(@as(i64, 100), range.start);
-    try std.testing.expectEqual(@as(?i64, null), range.end);
+    try std.testing.expectEqual(@as(?i64, @as(i64, std.math.maxInt(wire.FieldNumber)) + 1), range.end);
     try std.testing.expectEqual(@as(usize, 1), range.declarations.items.len);
     try std.testing.expectEqual(@as(i32, 100), range.declarations.items[0].number);
     try std.testing.expectEqualStrings(".demo.ext", range.declarations.items[0].full_name);
@@ -5525,6 +5541,36 @@ test "descriptor preserves extension range options" {
     try std.testing.expect(range.declarations.items[0].reserved);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
     try std.testing.expectEqual(schema.FeatureSet.EnumType.closed, range.features.?.enum_type);
+}
+
+test "descriptor encodes max range ends" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message HostExt { extensions 100 to max; }
+        \\message HostReserved { reserved 200 to max; }
+        \\message MsExt { option message_set_wire_format = true; extensions 4 to max; }
+        \\message MsReserved { option message_set_wire_format = true; extensions 4 to 4; reserved 5 to max; }
+        \\enum E { A = 0; reserved 10 to max; }
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "max-ranges.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const field_max_end: i64 = @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
+    const host_ext = decoded.findMessage("HostExt").?;
+    try std.testing.expectEqual(@as(?i64, field_max_end), host_ext.extension_ranges.items[0].end);
+    const host_reserved = decoded.findMessage("HostReserved").?;
+    try std.testing.expectEqual(@as(?i64, field_max_end), host_reserved.reserved_ranges.items[0].end);
+    const ms_ext = decoded.findMessage("MsExt").?;
+    try std.testing.expectEqual(@as(?i64, std.math.maxInt(i32)), ms_ext.extension_ranges.items[0].end);
+    const ms_reserved = decoded.findMessage("MsReserved").?;
+    try std.testing.expectEqual(@as(?i64, 5), ms_reserved.extension_ranges.items[0].end);
+    try std.testing.expectEqual(@as(?i64, std.math.maxInt(i32)), ms_reserved.reserved_ranges.items[0].end);
+    try std.testing.expectEqual(@as(?i64, @as(i64, std.math.maxInt(i32)) + 1), decoded.findEnum("E").?.reserved_ranges.items[0].end);
 }
 
 test "descriptor rejects extensions that violate decoded declarations" {
