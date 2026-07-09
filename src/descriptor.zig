@@ -1372,7 +1372,15 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
         }
     }
     try validateDecodedFileEnumValueSymbols(file);
+    if (file.syntax == .proto3) {
+        for (file.messages.items) |*message| try validateDecodedNoProto3ExtensionRanges(message);
+    }
     for (file.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
+}
+
+fn validateDecodedNoProto3ExtensionRanges(message: *const schema.MessageDescriptor) Error!void {
+    if (message.extension_ranges.items.len != 0) return error.InvalidFieldType;
+    for (message.messages.items) |*nested| try validateDecodedNoProto3ExtensionRanges(nested);
 }
 
 fn validateDecodedFileEnumValueSymbols(file: *const schema.FileDescriptor) Error!void {
@@ -4523,6 +4531,24 @@ test "descriptor rejects declarations that use reserved fields or enum values" {
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
+}
+
+test "descriptor rejects extension ranges in proto3" {
+    const allocator = std.testing.allocator;
+    var range = wire.Writer.init(allocator);
+    defer range.deinit();
+    try range.writeInt32(1, 100);
+    try range.writeInt32(2, 200);
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "Bad");
+    try message.writeMessage(5, range.slice());
+    var file = wire.Writer.init(allocator);
+    defer file.deinit();
+    try file.writeString(1, "proto3-ext-range.proto");
+    try file.writeString(12, "proto3");
+    try file.writeMessage(4, message.slice());
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
 }
 
 test "descriptor rejects invalid extension ranges" {

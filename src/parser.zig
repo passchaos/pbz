@@ -491,7 +491,7 @@ pub const Parser = struct {
                 try self.addSourceLocation(path, field_start, self.previousEnd());
             }
         }
-        try validateMessageFields(&message);
+        try validateMessageFields(&message, self.file.syntax);
         try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return message;
     }
@@ -1804,7 +1804,8 @@ fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
     return false;
 }
 
-fn validateExtensionRanges(message: *const schema.MessageDescriptor) ParseError!void {
+fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
+    if (syntax == .proto3 and message.extension_ranges.items.len != 0) return error.InvalidSyntax;
     for (message.extension_ranges.items, 0..) |range, i| {
         const end = range.end orelse std.math.maxInt(i64);
         if (range.start <= 0 or range.start >= end) return error.InvalidRange;
@@ -1837,9 +1838,9 @@ fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
     }
 }
 
-fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!void {
+fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
     try validateReserved(message);
-    try validateExtensionRanges(message);
+    try validateExtensionRanges(message, syntax);
     try validateOneofs(message);
     try validateJsonNames(message);
     for (message.fields.items, 0..) |field, i| {
@@ -2740,6 +2741,18 @@ test "parser rejects extension ranges overlapping reserved ranges" {
     try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { reserved 150 to 160; extensions 100 to 200; }
+    ));
+}
+
+test "parser rejects extension ranges in proto3" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Bad { extensions 100 to 200; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Outer { message Bad { extensions 100 to 200; } }
     ));
 }
 
