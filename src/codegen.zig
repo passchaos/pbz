@@ -3393,13 +3393,23 @@ fn writeTextMapValue(file: *const schema.FileDescriptor, kind: schema.FieldKind,
 
 fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("pub const JsonStringifyOptions = struct { enum_as_name: bool = true };\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.jsonStringifyAllocWithOptions(allocator, .{});\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: JsonStringifyOptions) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer out.deinit();\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonStringifyWithAllocator(allocator, &out.writer);\n");
+    try writer.writeAll("try self.jsonStringifyWithOptions(allocator, &out.writer, options);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try out.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -3408,16 +3418,25 @@ fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.M
     try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.jsonStringifyWithAllocator(std.heap.page_allocator, writer);\n");
+    try writer.writeAll("try self.jsonStringifyWithOptions(std.heap.page_allocator, writer, .{});\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.jsonStringifyWithOptions(allocator, writer, .{});\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: JsonStringifyOptions) !void {\n");
     if (!messageJsonStringifyUsesAllocator(file, message)) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
     }
+    try indent(writer, depth + 1);
+    try writer.writeAll("_ = options;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("try writer.writeAll(\"{\");\n");
     if (messageJsonStringifyHasFields(file, message)) {
@@ -4224,7 +4243,8 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return value;
         \\}
         \\
-        \\fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void {
+        \\fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void {
+        \\    if (!enum_as_name) return try writer.print("{d}", .{value});
         \\    inline for (numbers, 0..) |number, i| {
         \\        if (value == number) return try std.json.Stringify.value(names[i], .{}, writer);
         \\    }
@@ -4702,7 +4722,7 @@ fn writeJsonMessageField(file: *const schema.FileDescriptor, field: *const schem
         try indent(writer, depth + 1);
         try writer.writeAll("defer nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try nested.jsonStringifyWithAllocator(allocator, writer);\n");
+        try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, options);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -4718,7 +4738,7 @@ fn writeDecodeAndStringifyPayload(type_name: []const u8, payload_expr: []const u
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.jsonStringifyWithAllocator(allocator, writer);\n");
+    try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, options);\n");
 }
 
 fn jsonMapValueSupported(file: *const schema.FileDescriptor, kind: schema.FieldKind) bool {
@@ -4747,7 +4767,7 @@ fn writeJsonMapEntryValue(file: *const schema.FileDescriptor, kind: schema.Field
             try writeMessageTypeReference(name, writer);
             try writer.writeAll(".decode(allocator, ");
             try writer.writeAll(value_expr);
-            try writer.writeAll("); defer nested.deinit(allocator); try nested.jsonStringifyWithAllocator(allocator, writer)");
+            try writer.writeAll("); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, options)");
         } else try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
     }
@@ -4863,9 +4883,9 @@ fn writeJsonExtensionValue(file: *const schema.FileDescriptor, kind: schema.Fiel
         .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
         .message => |type_name| {
-            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, payload_: []const u8) !void { var nested = try ");
+            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: JsonStringifyOptions, payload_: []const u8) !void { var nested = try ");
             try writeMessageTypeReference(type_name, writer);
-            try writer.writeAll(".decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithAllocator(allocator_, writer_); } }.write(allocator, writer, ");
+            try writer.writeAll(".decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, options_); } }.write(allocator, writer, options, ");
             try writer.writeAll(value_expr);
             try writer.writeAll(")");
         },
@@ -4898,6 +4918,7 @@ fn writeJsonEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8,
     try writeEnumNameArray(file, enum_name, writer);
     try writer.writeAll(", ");
     try writeEnumNumberArray(file, enum_name, writer);
+    try writer.writeAll(", options.enum_as_name");
     try writer.writeAll(")");
 }
 
@@ -5701,7 +5722,7 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithAllocator(allocator, writer)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, options)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |payload, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".jsonParseWithOptions(arena_allocator") != null);
@@ -5892,8 +5913,8 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{entry.key})") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(entry.value, .{}, writer)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (entry.key) \"\\\"true\\\"\" else \"\\\"false\\\"\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1})") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithAllocator(allocator, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, options);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = blk: { const old = self.@\"counts\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
@@ -6108,7 +6129,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"id\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"userId\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"shownName\\\":\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.base64.standard.Encoder.encodeWriter(writer, value);") != null);
@@ -6143,7 +6164,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"pick_kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
 }
 
@@ -6367,7 +6388,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"[demo.nums]\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, payload_: []const u8) !void { var nested = try @\"Note\".decode(allocator_, payload_);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: JsonStringifyOptions, payload_: []const u8) !void { var nested = try @\"Note\".decode(allocator_, payload_);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"tag\".decodeRaw(raw) catch null) |value| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"note\".decodeRaw(raw) catch null) |payload| {") != null);
