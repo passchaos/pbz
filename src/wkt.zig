@@ -1600,11 +1600,7 @@ fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptim
     return switch (scalar) {
         .double => try parseWrapperFloat(T, value),
         .float => try parseWrapperFloat(T, value),
-        .int64, .uint64, .int32, .uint32 => switch (value) {
-            .integer => |v| @intCast(v),
-            .string => |v| try std.fmt.parseInt(T, v, 10),
-            else => error.TypeMismatch,
-        },
+        .int64, .uint64, .int32, .uint32 => try parseWrapperInt(T, value),
         .bool => switch (value) {
             .bool => |v| v,
             else => error.TypeMismatch,
@@ -1617,6 +1613,14 @@ fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptim
             .string => |v| try decodeBase64ForWrapper(allocator, v),
             else => error.TypeMismatch,
         },
+    };
+}
+
+fn parseWrapperInt(comptime T: type, value: std.json.Value) !T {
+    return switch (value) {
+        .integer => |v| std.math.cast(T, v) orelse error.Overflow,
+        .number_string, .string => |v| try std.fmt.parseInt(T, v, 10),
+        else => error.TypeMismatch,
     };
 }
 
@@ -1695,6 +1699,10 @@ test "wrapper wire and json helpers" {
 test "wrapper json parse helpers" {
     const allocator = std.testing.allocator;
     try std.testing.expectEqual(@as(i64, 9007199254740993), (try Int64Value.jsonParse(allocator, "\"9007199254740993\"")).value);
+    try std.testing.expectEqual(@as(u64, 9007199254740993), (try UInt64Value.jsonParse(allocator, "\"9007199254740993\"")).value);
+    try std.testing.expectError(error.Overflow, Int32Value.jsonParse(allocator, "2147483648"));
+    try std.testing.expectError(error.Overflow, UInt32Value.jsonParse(allocator, "-1"));
+    try std.testing.expectError(error.Overflow, UInt64Value.jsonParse(allocator, "-1"));
     try std.testing.expectEqual(true, (try BoolValue.jsonParse(allocator, "true")).value);
     try std.testing.expectEqual(false, (try BoolValue.jsonParse(allocator, "null")).value);
     try std.testing.expect(std.math.isNan((try DoubleValue.jsonParse(allocator, "\"NaN\"")).value));
