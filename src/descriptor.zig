@@ -2415,7 +2415,7 @@ fn decodeMethodOptions(allocator: std.mem.Allocator, method: *schema.MethodDescr
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             33 => try method.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
-            34 => try method.options.append(allocator, .{ .name = "idempotency_level", .value = .{ .integer = try reader.readInt32() } }),
+            34 => try method.options.append(allocator, .{ .name = "idempotency_level", .value = .{ .integer = try readKnownEnumNumber(&reader, 0, 2) } }),
             35 => method.features = try decodeFeatureSet(try reader.readBytes()),
             999 => try method.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
@@ -2464,7 +2464,7 @@ fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor,
         switch (tag.number) {
             1 => try file.options.append(allocator, .{ .name = "java_package", .value = .{ .string = try reader.readBytes() } }),
             8 => try file.options.append(allocator, .{ .name = "java_outer_classname", .value = .{ .string = try reader.readBytes() } }),
-            9 => try file.options.append(allocator, .{ .name = "optimize_for", .value = .{ .integer = try reader.readInt32() } }),
+            9 => try file.options.append(allocator, .{ .name = "optimize_for", .value = .{ .integer = try readKnownEnumNumber(&reader, 1, 3) } }),
             10 => try file.options.append(allocator, .{ .name = "java_multiple_files", .value = .{ .boolean = try reader.readBool() } }),
             11 => try file.options.append(allocator, .{ .name = "go_package", .value = .{ .string = try reader.readBytes() } }),
             16 => try file.options.append(allocator, .{ .name = "cc_generic_services", .value = .{ .boolean = try reader.readBool() } }),
@@ -2511,16 +2511,16 @@ fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!Dec
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            1 => try result.options.append(allocator, .{ .name = "ctype", .value = .{ .integer = try reader.readInt32() } }),
+            1 => try result.options.append(allocator, .{ .name = "ctype", .value = .{ .integer = try readKnownEnumNumber(&reader, 0, 2) } }),
             2 => result.packed_override = try reader.readBool(),
             3 => try result.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
             5 => try result.options.append(allocator, .{ .name = "lazy", .value = .{ .boolean = try reader.readBool() } }),
-            6 => try result.options.append(allocator, .{ .name = "jstype", .value = .{ .integer = try reader.readInt32() } }),
+            6 => try result.options.append(allocator, .{ .name = "jstype", .value = .{ .integer = try readKnownEnumNumber(&reader, 0, 2) } }),
             10 => try result.options.append(allocator, .{ .name = "weak", .value = .{ .boolean = try reader.readBool() } }),
             15 => try result.options.append(allocator, .{ .name = "unverified_lazy", .value = .{ .boolean = try reader.readBool() } }),
             16 => try result.options.append(allocator, .{ .name = "debug_redact", .value = .{ .boolean = try reader.readBool() } }),
-            17 => try result.options.append(allocator, .{ .name = "retention", .value = .{ .integer = try reader.readInt32() } }),
-            19 => try result.options.append(allocator, .{ .name = "targets", .value = .{ .integer = try reader.readInt32() } }),
+            17 => try result.options.append(allocator, .{ .name = "retention", .value = .{ .integer = try readKnownEnumNumber(&reader, 0, 2) } }),
+            19 => try result.options.append(allocator, .{ .name = "targets", .value = .{ .integer = try readKnownEnumNumber(&reader, 0, 9) } }),
             20 => try result.edition_defaults.append(allocator, try decodeFieldEditionDefault(try reader.readBytes())),
             21 => result.features = try decodeFeatureSet(try reader.readBytes()),
             22 => result.feature_support = try decodeFeatureSupport(try reader.readBytes()),
@@ -2529,6 +2529,12 @@ fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!Dec
         }
     }
     return result;
+}
+
+fn readKnownEnumNumber(reader: *wire.Reader, min: i32, max: i32) Error!i32 {
+    const value = try reader.readInt32();
+    if (value < min or value > max) return error.InvalidFieldType;
+    return value;
 }
 
 fn decodeFieldEditionDefault(bytes: []const u8) Error!schema.FieldEditionDefault {
@@ -4642,6 +4648,61 @@ test "descriptor preserves known file options" {
     try std.testing.expectEqualStrings("Example\\Demo\\Metadata", exactOptionString(decoded.options.items, "php_metadata_namespace").?);
     try std.testing.expectEqualStrings("Example::Demo", exactOptionString(decoded.options.items, "ruby_package").?);
     try std.testing.expectEqual(@as(usize, 19), decoded.options.items.len);
+}
+
+test "descriptor rejects invalid known option enum values" {
+    const allocator = std.testing.allocator;
+    {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeInt32(9, 99);
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-optimize.proto");
+        try file.writeMessage(8, options.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    inline for (.{ .{ 1, "bad-ctype.proto" }, .{ 6, "bad-jstype.proto" }, .{ 17, "bad-retention.proto" }, .{ 19, "bad-target.proto" } }) |case| {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeInt32(case[0], 99);
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeMessage(8, options.slice());
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, case[1]);
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var method_options = wire.Writer.init(allocator);
+        defer method_options.deinit();
+        try method_options.writeInt32(34, 99);
+        var method = wire.Writer.init(allocator);
+        defer method.deinit();
+        try method.writeString(1, "Do");
+        try method.writeString(2, ".Req");
+        try method.writeString(3, ".Res");
+        try method.writeMessage(4, method_options.slice());
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        try service.writeString(1, "Svc");
+        try service.writeMessage(2, method.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-idempotency.proto");
+        try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor preserves message field and enum known options" {
