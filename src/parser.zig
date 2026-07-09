@@ -2225,6 +2225,33 @@ test "parser handles proto2 proto3 and editions declarations" {
     try std.testing.expectEqual(@as(usize, 1), file.services.items.len);
 }
 
+test "parser accepts unstable and test-only edition declarations" {
+    const allocator = std.testing.allocator;
+    var unstable = try Parser.parse(allocator,
+        \\edition = "UNSTABLE";
+        \\message M { int32 id = 1; }
+    );
+    defer unstable.deinit();
+    try std.testing.expectEqual(schema.Syntax.editions, unstable.syntax);
+    try std.testing.expectEqual(schema.Edition.unstable, unstable.edition);
+
+    var test_only = try Parser.parse(allocator,
+        \\edition = "99998_TEST_ONLY";
+        \\message M { int32 id = 1; }
+    );
+    defer test_only.deinit();
+    try std.testing.expectEqual(schema.Edition.edition_99998_test_only, test_only.edition);
+
+    try std.testing.expectError(error.InvalidEdition, Parser.parse(allocator,
+        \\edition = "PROTO2";
+        \\message Bad { int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidEdition, Parser.parse(allocator,
+        \\edition = "UNKNOWN";
+        \\message Bad { int32 id = 1; }
+    ));
+}
+
 test "parser rejects weak imports under edition 2024 and beyond" {
     const allocator = std.testing.allocator;
     try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,

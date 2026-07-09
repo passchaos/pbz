@@ -35,6 +35,12 @@ pub const Edition = enum(i32) {
         if (std.mem.eql(u8, year, "2023")) return .edition_2023;
         if (std.mem.eql(u8, year, "2024")) return .edition_2024;
         if (std.mem.eql(u8, year, "2026")) return .edition_2026;
+        if (std.mem.eql(u8, year, "UNSTABLE")) return .unstable;
+        if (std.mem.eql(u8, year, "1_TEST_ONLY")) return .edition_1_test_only;
+        if (std.mem.eql(u8, year, "2_TEST_ONLY")) return .edition_2_test_only;
+        if (std.mem.eql(u8, year, "99997_TEST_ONLY")) return .edition_99997_test_only;
+        if (std.mem.eql(u8, year, "99998_TEST_ONLY")) return .edition_99998_test_only;
+        if (std.mem.eql(u8, year, "99999_TEST_ONLY")) return .edition_99999_test_only;
         return null;
     }
 
@@ -1021,6 +1027,14 @@ test "schema resolves feature defaults for proto2 proto3 and editions" {
     try std.testing.expectEqual(Syntax.editions, file.syntax);
     try std.testing.expectEqual(Edition.edition_2023, file.edition);
     try std.testing.expectEqual(FeatureSet.RepeatedFieldEncoding.expanded, file.features.repeated_field_encoding);
+}
+
+test "schema parses edition source literals" {
+    try std.testing.expectEqual(Edition.edition_2023, Edition.fromYear("2023").?);
+    try std.testing.expectEqual(Edition.unstable, Edition.fromYear("UNSTABLE").?);
+    try std.testing.expectEqual(Edition.edition_99998_test_only, Edition.fromYear("99998_TEST_ONLY").?);
+    try std.testing.expect(Edition.fromYear("PROTO2") == null);
+    try std.testing.expect(Edition.fromYear("UNKNOWN") == null);
 }
 
 test "schema finds closest FeatureSetDefaults entry for editions" {
