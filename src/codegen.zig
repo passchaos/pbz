@@ -11,6 +11,8 @@ const CodegenContext = struct {
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry = null,
     pbz_import: []const u8 = "pbz",
+    emit_json: bool = true,
+    emit_text: bool = true,
 };
 
 pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) Error![]u8 {
@@ -137,6 +139,8 @@ const PluginParameterOptions = struct {
     include_imports: bool = false,
     generated_info: bool = true,
     pbz_import: []const u8 = "pbz",
+    emit_json: bool = true,
+    emit_text: bool = true,
 };
 
 pub fn generatePluginResponseFromRequestBytes(allocator: std.mem.Allocator, bytes: []const u8) Error![]u8 {
@@ -198,6 +202,10 @@ fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!Pl
         } else if (std.mem.eql(u8, key, "pbz_import") or std.mem.eql(u8, key, "runtime_import")) {
             options.pbz_import = maybe_value orelse return error.InvalidPluginParameter;
             if (options.pbz_import.len == 0) return error.InvalidPluginParameter;
+        } else if (std.mem.eql(u8, key, "json") or std.mem.eql(u8, key, "emit_json")) {
+            options.emit_json = try parseParameterBool(maybe_value orelse "true");
+        } else if (std.mem.eql(u8, key, "text") or std.mem.eql(u8, key, "text_format") or std.mem.eql(u8, key, "emit_text")) {
+            options.emit_text = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "paths")) {
             const value = maybe_value orelse return error.InvalidPluginParameter;
             if (!std.mem.eql(u8, value, "source_relative")) return error.InvalidPluginParameter;
@@ -244,7 +252,7 @@ fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []cons
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
-        const content = try generateZigFileWithContext(.{ .allocator = allocator, .file = file, .registry = registry, .pbz_import = options.pbz_import });
+        const content = try generateZigFileWithContext(.{ .allocator = allocator, .file = file, .registry = registry, .pbz_import = options.pbz_import, .emit_json = options.emit_json, .emit_text = options.emit_text });
         errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
         if (options.generated_info) {
@@ -518,10 +526,14 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeValidateRequired(file, message, writer, depth + 1);
     try writer.writeAll("\n");
-    try writeJsonMethods(ctx, message, writer, depth + 1);
-    try writer.writeAll("\n");
-    try writeTextMethods(ctx, message, writer, depth + 1);
-    try writer.writeAll("\n");
+    if (ctx.emit_json) {
+        try writeJsonMethods(ctx, message, writer, depth + 1);
+        try writer.writeAll("\n");
+    }
+    if (ctx.emit_text) {
+        try writeTextMethods(ctx, message, writer, depth + 1);
+        try writer.writeAll("\n");
+    }
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(ctx, nested, writer, depth + 1);
     try indent(writer, depth);
@@ -7713,6 +7725,35 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
         }
     }
     try std.testing.expect(saw_custom_runtime);
+
+    var no_helpers_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer no_helpers_request.deinit();
+    no_helpers_request.parameter = "json=false,text_format=false";
+    try no_helpers_request.files_to_generate.append(allocator, "app.proto");
+    try no_helpers_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App { optional int32 id = 1; }"));
+    no_helpers_request.proto_files.items[0].name = "app.proto";
+    const no_helpers_response = try generatePluginResponseFromRequest(allocator, &no_helpers_request);
+    defer allocator.free(no_helpers_response);
+    var no_helpers_reader = wire.Reader.init(no_helpers_response);
+    var saw_no_helper_content = false;
+    while (try no_helpers_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                var file_reader = wire.Reader.init(try no_helpers_reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        15 => {
+                            const content = try file_reader.readBytes();
+                            saw_no_helper_content = std.mem.indexOf(u8, content, "jsonStringify") == null and std.mem.indexOf(u8, content, "formatText") == null;
+                        },
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try no_helpers_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_no_helper_content);
 
     var invalid_request = plugin.CodeGeneratorRequest.init(allocator);
     defer invalid_request.deinit();
