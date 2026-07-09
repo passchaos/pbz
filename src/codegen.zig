@@ -1815,7 +1815,7 @@ fn writeJsonParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.validateRequired();\n");
+    try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -3381,7 +3381,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_json_arena\" = arena") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitialized(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().jsonParse(allocator, text);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequired();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"id\" = try @This().jsonInt(i32, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
@@ -3441,6 +3441,9 @@ test "codegen emits recursive required validation for message payloads" {
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
+    const json_initialized_start = std.mem.indexOf(u8, content, "pub fn jsonParseInitialized").?;
+    const json_initialized = content[json_initialized_start..];
+    try std.testing.expect(std.mem.indexOf(u8, json_initialized, "try self.validateRequiredRecursive(allocator);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);

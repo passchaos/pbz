@@ -484,6 +484,28 @@ pub fn parseAllocWithRegistry(
     return message;
 }
 
+pub fn parseInitializedAlloc(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    descriptor: *const schema.MessageDescriptor,
+    input: []const u8,
+) !dynamic.DynamicMessage {
+    return parseInitializedAllocWithRegistry(allocator, file, null, descriptor, input);
+}
+
+pub fn parseInitializedAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    descriptor: *const schema.MessageDescriptor,
+    input: []const u8,
+) !dynamic.DynamicMessage {
+    var message = try parseAllocWithRegistry(allocator, file, registry, descriptor, input);
+    errdefer message.deinit();
+    try message.validateRequired();
+    return message;
+}
+
 const TextParser = struct {
     allocator: std.mem.Allocator,
     input: []const u8,
@@ -1061,6 +1083,47 @@ test "text format validates string utf8 according to syntax and features" {
         try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed.get("labels").?.values.items[0].map_entry.value.string);
         try std.testing.expectError(error.InvalidUtf8, parseAlloc(allocator, &file, desc, "strict: '\xc0'"));
     }
+}
+
+test "text parseInitialized validates required fields recursively" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child { required int32 id = 1; }
+        \\message Parent { required Child child = 1; }
+    );
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+
+    try std.testing.expectError(error.MissingRequiredField, parseInitializedAlloc(allocator, &file, parent_desc, ""));
+    try std.testing.expectError(error.MissingRequiredField, parseInitializedAlloc(allocator, &file, parent_desc, "child {}"));
+
+    var parsed = try parseInitializedAlloc(allocator, &file, parent_desc, "child { id: 7 }");
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 7), parsed.get("child").?.values.items[0].message.get("id").?.values.items[0].int32);
+
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Child { required int32 id = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\message Parent { required common.Child child = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    const imported_parent = app.findMessage("Parent").?;
+
+    try std.testing.expectError(error.MissingRequiredField, parseInitializedAllocWithRegistry(allocator, &app, &registry, imported_parent, "child {}"));
+    var imported = try parseInitializedAllocWithRegistry(allocator, &app, &registry, imported_parent, "child { id: 9 }");
+    defer imported.deinit();
+    try std.testing.expectEqual(@as(i32, 9), imported.get("child").?.values.items[0].message.get("id").?.values.items[0].int32);
 }
 
 test "text format formats and parses proto2 extensions" {

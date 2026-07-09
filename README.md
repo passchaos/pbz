@@ -39,7 +39,7 @@ validated feature set.
   - nested message and group round-trips, including protobuf merge semantics for duplicate singular message/group fields, imported message and enum decode through Registry, plus registry-aware encode helpers for imported enum scalar/repeated/map fields
   - unknown field preservation/querying, extension encoding/decoding with Registry, registry-aware initialized encode/decode helpers, deterministic encoding including map key ordering, and recursive message merging
 - JSON support
-  - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums including editions open/closed enum numeric validation, nested messages, and registry-aware imported message/enum parsing plus imported enum-name stringify
+  - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums including editions open/closed enum numeric validation, nested messages, initialized parse helpers with recursive required validation, and registry-aware imported message/enum parsing plus imported enum-name stringify
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including Any expanded payload JSON, Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing and float special values, FieldMask path validation, and strict Empty object parsing
 - Conformance helpers
@@ -56,7 +56,7 @@ validated feature set.
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated typed JSON stringify/parse helpers for scalar, enum names with editions open/closed unknown-number validation, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, scalar/enum oneof fields, generated wire UTF-8 validation for string/map-string fields, and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
-  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
+  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, initialized parse helpers with recursive required validation, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
 
 ## Quick example
 
@@ -150,6 +150,9 @@ nested messages recursively; `parseJsonAllocWithRegistry` resolves imported
 message and enum field types through a `Registry`, `stringifyJsonAllocWithRegistry`
 uses the same registry to print imported enum names, and ignore-unknown parsing
 also skips unknown enum names for local and imported enum fields.
+Use `parseJsonInitializedAlloc` / `parseJsonInitializedAllocWithRegistry` when
+proto2 or editions legacy-required data must be validated recursively before the
+parsed dynamic message is returned.
 
 ## Well-known types
 
@@ -183,6 +186,8 @@ formatting imported enum names. Formatting dynamic messages with extension
 values emits the same bracketed field-name form. Numeric unknown fields are
 formatted and parsed using their field number, for example
 `100: 123`, `101: "raw-bytes"`, or `102 { 103: 1 }`.
+Use `parseTextInitializedAlloc` / `parseTextInitializedAllocWithRegistry` for
+the same parsing behavior plus recursive required-field validation.
 
 ## Conformance helpers
 
