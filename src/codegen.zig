@@ -2883,6 +2883,44 @@ fn writeMessageEnumExtensionAccessor(ctx: *const CodegenContext, field: *const s
         try writer.writeAll("(allocator, value.toInt());\n");
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "appendEnumExtensions_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "appendExtension_", writer);
+        try writer.writeAll("(allocator, raw);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "replaceEnumExtensions_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.");
+        try writeQuotedIdentWithPrefix(helper_name, "replaceExtension_", writer);
+        try writer.writeAll("(allocator, raw);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
         return;
     }
 
@@ -7536,6 +7574,40 @@ fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const sch
         try writer.writeAll("try addOn(message, allocator, value.toInt());\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn appendAllEnumsOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, values: []const ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try appendAllOn(message, allocator, raw);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn replaceAllEnumsOn(message: *");
+        try writeExtensionExtendeeTypeRef(ctx, field, writer);
+        try writer.writeAll(", allocator: std.mem.Allocator, values: []const ");
+        try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try replaceAllOn(message, allocator, raw);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
         return;
     }
 
@@ -8823,6 +8895,7 @@ test "codegen with registry emits extension type refs" {
         \\extend .demo.common.Host {
         \\  optional .demo.common.Note note = 100;
         \\  optional .demo.common.Role role = 101;
+        \\  repeated .demo.common.Role roles = 102;
         \\}
     );
     defer app.deinit();
@@ -8853,6 +8926,12 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try getEnumOn(message, allocator)) orelse @\"demo.common.Role\".fromInt(default_value_zig) orelse unreachable;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try setOn(message, allocator, value.toInt());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumsOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) ![]@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn addEnumOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllEnumsOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, raw);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -10025,6 +10104,7 @@ test "codegen emits proto2 extension metadata" {
         \\  repeated int32 packed_nums = 103 [packed = true];
         \\  repeated Note notes = 104;
         \\  optional Kind role = 105 [default = ADMIN];
+        \\  repeated Kind roles = 106;
         \\}
     );
     defer file.deinit();
@@ -10162,6 +10242,11 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getEnumExtension_role\"(allocator)) orelse @\"Kind\".fromInt(extensions.@\"role\".default_value_zig) orelse unreachable;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumExtension_role\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Kind\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"setExtension_role\"(allocator, value.toInt());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumExtensions_roles\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumExtensions_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendExtension_roles\"(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceEnumExtensions_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"replaceExtension_roles\"(allocator, raw);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
