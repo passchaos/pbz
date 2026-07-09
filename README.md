@@ -56,7 +56,7 @@ validated feature set.
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated typed JSON stringify/parse helpers for scalar, enum names with editions open/closed unknown-number validation, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, scalar/enum oneof fields, generated wire UTF-8 validation for string/map-string fields, and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
-  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, initialized parse helpers with recursive required validation, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
+  - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, initialized parse helpers with recursive required validation, protobuf merge semantics for duplicate singular message/group fields, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
 
 ## Quick example
 
@@ -182,9 +182,11 @@ defer parsed_text_msg.deinit();
 Use `parseTextAllocWithRegistry` when parsing TextFormat that contains proto2
 extension references such as `[demo.ext_field]` or imported message/enum
 fields; use `formatTextAllocWithRegistry` / `formatTextWithRegistry` when
-formatting imported enum names. Formatting dynamic messages with extension
-values emits the same bracketed field-name form. Numeric unknown fields are
-formatted and parsed using their field number, for example
+formatting imported enum names. Duplicate singular message/group fields are
+merged using protobuf message merge semantics, while repeated fields append and
+oneof fields replace the selected arm. Formatting dynamic messages with
+extension values emits the same bracketed field-name form. Numeric unknown
+fields are formatted and parsed using their field number, for example
 `100: 123`, `101: "raw-bytes"`, or `102 { 103: 1 }`.
 Use `parseTextInitializedAlloc` / `parseTextInitializedAllocWithRegistry` for
 the same parsing behavior plus recursive required-field validation.

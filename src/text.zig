@@ -682,9 +682,53 @@ const TextParser = struct {
                 self.allocator.destroy(nested);
             }
             try self.parseMessage(file, nested, close);
-            try message.add(field, if (field.kind == .group) .{ .group = nested } else .{ .message = nested });
+            try self.addOrMergeAggregate(message, field, nested);
             self.consumeSeparator();
         }
+    }
+
+    fn addOrMergeAggregate(self: *TextParser, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, nested: *dynamic.DynamicMessage) !void {
+        if (shouldMergeAggregateField(field)) {
+            if (message.getByNumber(field.number)) |entry| {
+                if (entry.values.items.len != 0) {
+                    switch (entry.values.items[0]) {
+                        .message => |target| if (field.kind == .message) {
+                            errdefer {
+                                nested.deinit();
+                                self.allocator.destroy(nested);
+                            }
+                            try target.mergeFrom(nested);
+                            nested.deinit();
+                            self.allocator.destroy(nested);
+                            return;
+                        },
+                        .group => |target| if (field.kind == .group) {
+                            errdefer {
+                                nested.deinit();
+                                self.allocator.destroy(nested);
+                            }
+                            try target.mergeFrom(nested);
+                            nested.deinit();
+                            self.allocator.destroy(nested);
+                            return;
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
+
+        const value = if (field.kind == .group) dynamic.Value{ .group = nested } else dynamic.Value{ .message = nested };
+        message.add(field, value) catch |err| {
+            nested.deinit();
+            self.allocator.destroy(nested);
+            return err;
+        };
+    }
+
+    fn shouldMergeAggregateField(field: *const schema.FieldDescriptor) bool {
+        if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null) return false;
+        return field.kind == .message or field.kind == .group;
     }
 
     fn parseMapEntry(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, map_type: schema.MapType, end: u8) !dynamic.Value {
@@ -1124,6 +1168,68 @@ test "text parseInitialized validates required fields recursively" {
     var imported = try parseInitializedAllocWithRegistry(allocator, &app, &registry, imported_parent, "child { id: 9 }");
     defer imported.deinit();
     try std.testing.expectEqual(@as(i32, 9), imported.get("child").?.values.items[0].message.get("id").?.values.items[0].int32);
+}
+
+test "text parser merges duplicate singular message and group fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Grand { optional int32 a = 1; optional int32 b = 2; }
+        \\message Child {
+        \\  optional int32 id = 1;
+        \\  optional string name = 2;
+        \\  repeated int32 nums = 3;
+        \\  optional Grand grand = 4;
+        \\  optional group Legacy = 5 { optional int32 a = 6; optional int32 b = 7; }
+        \\}
+        \\message Parent {
+        \\  optional Child child = 1;
+        \\  optional group Box = 2 { optional int32 a = 3; optional int32 b = 4; }
+        \\  repeated Child children = 5;
+        \\  oneof pick { Child picked = 6; }
+        \\}
+    );
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+
+    var parsed = try parseAlloc(allocator, &file, parent_desc,
+        \\child { id: 1 nums: 10 grand { a: 100 } Legacy { a: 1000 } }
+        \\child { name: "two" nums: 20 grand { b: 200 } Legacy { b: 2000 } }
+        \\Box { a: 11 }
+        \\Box { b: 22 }
+        \\children { id: 1 }
+        \\children { name: "two" }
+        \\picked { id: 1 }
+        \\picked { name: "two" nums: 20 }
+    );
+    defer parsed.deinit();
+
+    const merged_child = parsed.get("child").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 1), merged_child.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "two", merged_child.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 2), merged_child.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 10), merged_child.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 20), merged_child.get("nums").?.values.items[1].int32);
+    const merged_grand = merged_child.get("grand").?.values.items[0].message;
+    try std.testing.expectEqual(@as(i32, 100), merged_grand.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 200), merged_grand.get("b").?.values.items[0].int32);
+    const merged_legacy = merged_child.get("Legacy").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 1000), merged_legacy.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2000), merged_legacy.get("b").?.values.items[0].int32);
+
+    const merged_box = parsed.get("Box").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 11), merged_box.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 22), merged_box.get("b").?.values.items[0].int32);
+
+    try std.testing.expectEqual(@as(usize, 2), parsed.get("children").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("children").?.values.items[0].message.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "two", parsed.get("children").?.values.items[1].message.get("name").?.values.items[0].string);
+
+    const picked = parsed.get("picked").?.values.items[0].message;
+    try std.testing.expect(picked.get("id") == null);
+    try std.testing.expectEqualSlices(u8, "two", picked.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 1), picked.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 20), picked.get("nums").?.values.items[0].int32);
 }
 
 test "text format formats and parses proto2 extensions" {
