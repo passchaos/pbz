@@ -87,6 +87,8 @@ pub const generateZigFileWithRegistry = codegen.generateZigFileWithRegistry;
 pub const generatePluginResponse = codegen.generatePluginResponse;
 pub const generatePluginResponseFromRequest = codegen.generatePluginResponseFromRequest;
 pub const generatePluginResponseFromRequestBytes = codegen.generatePluginResponseFromRequestBytes;
+pub const runPluginRequest = codegen.runPluginRequest;
+pub const runPluginRequestBytes = codegen.runPluginRequestBytes;
 pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;
@@ -148,6 +150,10 @@ test "root exports request-based plugin codegen" {
     const response = try generatePluginResponseFromRequest(allocator, &request);
     defer allocator.free(response);
     try std.testing.expect(response.len != 0);
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try runPluginRequest(allocator, &request, &out.writer);
+    try std.testing.expect(out.written().len != 0);
 }
 
 test "root exports registry-aware text formatting" {

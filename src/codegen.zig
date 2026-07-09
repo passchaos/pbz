@@ -141,6 +141,18 @@ pub fn generatePluginResponseFromRequestBytes(allocator: std.mem.Allocator, byte
     return try generatePluginResponseFromRequest(allocator, &request);
 }
 
+pub fn runPluginRequestBytes(allocator: std.mem.Allocator, bytes: []const u8, writer: *std.Io.Writer) Error!void {
+    const response = try generatePluginResponseFromRequestBytes(allocator, bytes);
+    defer allocator.free(response);
+    try writer.writeAll(response);
+}
+
+pub fn runPluginRequest(allocator: std.mem.Allocator, request: *const plugin.CodeGeneratorRequest, writer: *std.Io.Writer) Error!void {
+    const response = try generatePluginResponseFromRequest(allocator, request);
+    defer allocator.free(response);
+    try writer.writeAll(response);
+}
+
 pub fn generatePluginResponseFromRequest(allocator: std.mem.Allocator, request: *const plugin.CodeGeneratorRequest) Error![]u8 {
     const options = parsePluginParameters(request.parameter) catch {
         return try encodePluginErrorResponse(allocator, "invalid generator parameter");
@@ -7712,6 +7724,47 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
         }
     }
     try std.testing.expect(saw_raw_app);
+}
+
+test "codegen runs plugin requests to writers" {
+    const allocator = std.testing.allocator;
+    var request = plugin.CodeGeneratorRequest.init(allocator);
+    defer request.deinit();
+    try request.files_to_generate.append(allocator, "app.proto");
+    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message App { optional int32 id = 1; }
+    ));
+    request.proto_files.items[0].name = "app.proto";
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    defer out.deinit();
+    try runPluginRequest(allocator, &request, &out.writer);
+    try std.testing.expect(out.written().len != 0);
+
+    const fd = try @import("descriptor.zig").encodeFileDescriptorProto(allocator, &request.proto_files.items[0], request.proto_files.items[0].name);
+    defer allocator.free(fd);
+    var raw = wire.Writer.init(allocator);
+    defer raw.deinit();
+    try raw.writeString(1, "app.proto");
+    try raw.writeMessage(15, fd);
+    var raw_out: std.Io.Writer.Allocating = .init(allocator);
+    defer raw_out.deinit();
+    try runPluginRequestBytes(allocator, raw.slice(), &raw_out.writer);
+    try std.testing.expect(raw_out.written().len != 0);
+
+    var reader = wire.Reader.init(raw_out.written());
+    var saw_file = false;
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                saw_file = true;
+                try reader.skipValue(tag);
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_file);
 }
 
 test "codegen quotes zig identifiers" {
