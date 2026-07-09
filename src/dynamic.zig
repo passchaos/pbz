@@ -176,6 +176,32 @@ pub const DynamicMessage = struct {
         return names;
     }
 
+    pub fn getEnumMapValueNameWithFile(self: *const DynamicMessage, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, key: Value) !?[]const u8 {
+        return try self.getEnumMapValueNameWithRegistry(file, null, field, key);
+    }
+
+    pub fn getEnumMapValueNameWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor, key: Value) !?[]const u8 {
+        const map_type = switch (field.kind) {
+            .map => |map| map,
+            else => return error.TypeMismatch,
+        };
+        const enumeration = registryEnumDescriptor(file, registry, self.descriptor, map_type.value.*) orelse return error.TypeMismatch;
+        const values = if (self.getByNumber(field.number)) |field_value| field_value.values.items else return null;
+        for (values) |value| {
+            const entry = switch (value) {
+                .map_entry => |map_entry| map_entry,
+                else => return error.TypeMismatch,
+            };
+            if (!valueEqual(entry.key, key)) continue;
+            const number = switch (entry.value) {
+                .enumeration => |v| v,
+                else => return error.TypeMismatch,
+            };
+            return enumNameForNumber(enumeration, number) orelse error.InvalidEnumValue;
+        }
+        return null;
+    }
+
     pub fn unknownCount(self: *const DynamicMessage) usize {
         return self.unknown_fields.items.len;
     }
@@ -1423,6 +1449,24 @@ fn valueLessThan(a: Value, b: Value) bool {
     };
 }
 
+fn valueEqual(a: Value, b: Value) bool {
+    return switch (a) {
+        .boolean => |av| b == .boolean and av == b.boolean,
+        .int32 => |av| b == .int32 and av == b.int32,
+        .int64 => |av| b == .int64 and av == b.int64,
+        .uint32 => |av| b == .uint32 and av == b.uint32,
+        .uint64 => |av| b == .uint64 and av == b.uint64,
+        .sint32 => |av| b == .sint32 and av == b.sint32,
+        .sint64 => |av| b == .sint64 and av == b.sint64,
+        .fixed32 => |av| b == .fixed32 and av == b.fixed32,
+        .fixed64 => |av| b == .fixed64 and av == b.fixed64,
+        .sfixed32 => |av| b == .sfixed32 and av == b.sfixed32,
+        .sfixed64 => |av| b == .sfixed64 and av == b.sfixed64,
+        .string => |av| b == .string and std.mem.eql(u8, av, b.string),
+        else => false,
+    };
+}
+
 fn valueAsDefault(value: Value) DefaultValue {
     return switch (value) {
         .double => |v| .{ .double = v },
@@ -2061,6 +2105,7 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
         \\  optional bytes blob = 5;
         \\  optional Code code = 6;
         \\  repeated Code codes = 7;
+        \\  map<string, Code> code_by_name = 8;
         \\}
     ;
     var file = try parser.Parser.parse(allocator, source);
@@ -2095,6 +2140,23 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
 
     try message.add(desc.findField("codes").?, .{ .enumeration = 123 });
     try std.testing.expectError(error.InvalidEnumValue, message.getEnumNamesWithFile(allocator, &file, desc.findField("codes").?));
+
+    const map_field = desc.findField("code_by_name").?;
+    const ok_entry = try allocator.create(MapEntry);
+    ok_entry.* = .{ .key = .{ .string = try allocator.dupe(u8, "ok") }, .value = .{ .enumeration = 5 } };
+    try message.add(map_field, .{ .map_entry = ok_entry });
+    const ok_key = try allocator.dupe(u8, "ok");
+    defer allocator.free(ok_key);
+    try std.testing.expectEqualStrings("OK", (try message.getEnumMapValueNameWithFile(&file, map_field, .{ .string = ok_key })).?);
+    const missing_key = try allocator.dupe(u8, "missing");
+    defer allocator.free(missing_key);
+    try std.testing.expectEqual(@as(?[]const u8, null), try message.getEnumMapValueNameWithFile(&file, map_field, .{ .string = missing_key }));
+    const bad_entry = try allocator.create(MapEntry);
+    bad_entry.* = .{ .key = .{ .string = try allocator.dupe(u8, "bad") }, .value = .{ .enumeration = 123 } };
+    try message.add(map_field, .{ .map_entry = bad_entry });
+    const bad_key = try allocator.dupe(u8, "bad");
+    defer allocator.free(bad_key);
+    try std.testing.expectError(error.InvalidEnumValue, message.getEnumMapValueNameWithFile(&file, map_field, .{ .string = bad_key }));
 }
 
 test "dynamic decodeInitialized enforces proto2 required fields" {
