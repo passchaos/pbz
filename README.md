@@ -263,7 +263,7 @@ defer decoded_file.deinit();
 ```
 
 The current descriptor support covers core file/message/import/field/enum/service
-metadata, map-entry/proto3-optional descriptors, packed field options, enum
+metadata, proto2 group descriptors and nested group messages, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode,
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name validation, enum allow_alias, enum descriptor validation,

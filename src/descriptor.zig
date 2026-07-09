@@ -1896,7 +1896,7 @@ fn kindFromType(allocator: std.mem.Allocator, field_type: i32, type_name: ?[]con
 fn requireTypeName(type_name: ?[]const u8) Error![]const u8 {
     const name = type_name orelse return error.InvalidFieldType;
     if (name.len == 0) return error.InvalidFieldType;
-    return name;
+    return if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
 }
 
 fn collapseMapEntryMessages(allocator: std.mem.Allocator, file: *schema.FileDescriptor) Error!void {
@@ -2052,6 +2052,40 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expectEqual(@as(f64, 1.5), msg.findField("ratio").?.default_value.?.float);
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
+}
+
+test "descriptor preserves proto2 group fields and nested group messages" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Parent {
+        \\  optional group Legacy = 1 { optional int32 id = 2; }
+        \\  repeated group Items = 3 { optional string name = 4; }
+        \\}
+    );
+    defer file.deinit();
+
+    const encoded = try encodeFileDescriptorProto(allocator, &file, "groups.proto");
+    defer allocator.free(encoded);
+    var decoded = try decodeFileDescriptorProto(allocator, encoded);
+    defer decoded.deinit();
+
+    const parent = decoded.findMessage("Parent").?;
+    const legacy = parent.findField("Legacy").?;
+    try std.testing.expect(legacy.kind == .group);
+    try std.testing.expectEqualStrings("Legacy", legacy.kind.group);
+    try std.testing.expectEqual(schema.Cardinality.optional, legacy.cardinality);
+    const items = parent.findField("Items").?;
+    try std.testing.expect(items.kind == .group);
+    try std.testing.expectEqualStrings("Items", items.kind.group);
+    try std.testing.expectEqual(schema.Cardinality.repeated, items.cardinality);
+
+    const legacy_msg = parent.findMessage("Legacy").?;
+    try std.testing.expect(legacy_msg.findField("id").?.kind == .scalar);
+    try std.testing.expectEqual(schema.ScalarType.int32, legacy_msg.findField("id").?.kind.scalar);
+    const items_msg = parent.findMessage("Items").?;
+    try std.testing.expect(items_msg.findField("name").?.kind == .scalar);
+    try std.testing.expectEqual(schema.ScalarType.string, items_msg.findField("name").?.kind.scalar);
 }
 
 test "descriptor encodes enum defaults using enum value names" {
