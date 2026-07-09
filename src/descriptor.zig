@@ -1453,6 +1453,7 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
+    if (file.syntax == .editions and field.kind == .group) return error.InvalidFieldType;
 }
 
 fn validateDecodedEnumSyntax(file: *const schema.FileDescriptor) Error!void {
@@ -3050,6 +3051,28 @@ test "descriptor preserves proto2 group fields and nested group messages" {
     const items_msg = parent.findMessage("Items").?;
     try std.testing.expect(items_msg.findField("name").?.kind == .scalar);
     try std.testing.expectEqual(schema.ScalarType.string, items_msg.findField("name").?.kind.scalar);
+}
+
+test "descriptor rejects legacy group fields under editions" {
+    const allocator = std.testing.allocator;
+    var field = wire.Writer.init(allocator);
+    defer field.deinit();
+    try field.writeString(1, "Legacy");
+    try field.writeInt32(3, 1);
+    try field.writeInt32(4, 1);
+    try field.writeInt32(5, 10);
+    try field.writeString(6, ".Bad.Legacy");
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "Bad");
+    try message.writeMessage(2, field.slice());
+    var file = wire.Writer.init(allocator);
+    defer file.deinit();
+    try file.writeString(1, "editions-group.proto");
+    try file.writeString(12, "editions");
+    try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2023));
+    try file.writeMessage(4, message.slice());
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
 }
 
 test "descriptor encodes enum defaults using enum value names" {
