@@ -2603,6 +2603,11 @@ test "dynamic decodeWithRegistry resolves imported enum fields" {
     try std.testing.expectEqual(@as(i32, 2), event.get("kind").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(i32, 1), event.get("many").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(usize, 1), event.get("many").?.values.items.len);
+    try std.testing.expectEqualStrings("B", event.getEnumNameOrDefaultWithRegistry(&app, &registry, event_desc.findField("kind").?).?);
+    const names = try event.getEnumNamesWithRegistry(allocator, &app, &registry, event_desc.findField("many").?);
+    defer allocator.free(names);
+    try std.testing.expectEqual(@as(usize, 1), names.len);
+    try std.testing.expectEqualStrings("A", names[0]);
     try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
 }
 
@@ -2650,6 +2655,9 @@ test "dynamic decodeWithRegistry resolves imported enum map entries" {
     const entry = event.get("kinds").?.values.items[0].map_entry;
     try std.testing.expectEqualStrings("ok", entry.key.string);
     try std.testing.expectEqual(@as(i32, 2), entry.value.enumeration);
+    const ok_key = try allocator.dupe(u8, "ok");
+    defer allocator.free(ok_key);
+    try std.testing.expectEqualStrings("B", (try event.getEnumMapValueNameWithRegistry(&app, &registry, event_desc.findField("kinds").?, .{ .string = ok_key })).?);
     try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
     try std.testing.expectEqualSlices(u8, bad_raw, event.unknown_fields.items[0].data);
 }
