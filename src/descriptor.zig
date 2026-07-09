@@ -1301,13 +1301,38 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
 }
 
 fn validateDecodedExtensionDeclarations(file: *const schema.FileDescriptor) Error!void {
-    for (file.extensions.items) |*field| try validateDecodedExtensionDeclaration(file, field);
+    for (file.extensions.items) |*field| {
+        try validateDecodedExtensionConflict(file, field);
+        try validateDecodedExtensionDeclaration(file, field);
+    }
     for (file.messages.items) |*message| try validateDecodedMessageExtensionDeclarations(file, message);
 }
 
 fn validateDecodedMessageExtensionDeclarations(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
-    for (message.extensions.items) |*field| try validateDecodedExtensionDeclaration(file, field);
+    for (message.extensions.items) |*field| {
+        try validateDecodedExtensionConflict(file, field);
+        try validateDecodedExtensionDeclaration(file, field);
+    }
     for (message.messages.items) |*nested| try validateDecodedMessageExtensionDeclarations(file, nested);
+}
+
+fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
+    for (file.extensions.items) |*other| try validateDecodedExtensionConflictPair(field, other);
+    for (file.messages.items) |*message| try validateDecodedExtensionConflictInMessage(field, message);
+}
+
+fn validateDecodedExtensionConflictInMessage(field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor) Error!void {
+    for (message.extensions.items) |*other| try validateDecodedExtensionConflictPair(field, other);
+    for (message.messages.items) |*nested| try validateDecodedExtensionConflictInMessage(field, nested);
+}
+
+fn validateDecodedExtensionConflictPair(field: *const schema.FieldDescriptor, other: *const schema.FieldDescriptor) Error!void {
+    if (field == other) return;
+    const extendee = field.extendee orelse return;
+    const other_extendee = other.extendee orelse return;
+    if (!descriptorNamesMatch(extendee, other_extendee)) return;
+    if (field.number == other.number) return error.InvalidFieldType;
+    if (std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
 }
 
 fn validateDecodedExtensionDeclaration(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
@@ -3957,6 +3982,38 @@ test "descriptor rejects extensions that violate decoded declarations" {
         try file.messages.append(allocator, host);
         try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
         const bytes = try encodeFileDescriptorProto(allocator, &file, "missing-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+}
+
+test "descriptor rejects duplicate decoded extensions" {
+    const allocator = std.testing.allocator;
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "first", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        try file.extensions.append(allocator, .{ .name = "second", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "dup-ext-number.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        var scope = schema.MessageDescriptor{ .name = "Scope" };
+        try scope.extensions.append(allocator, .{ .name = "tag", .number = 101, .cardinality = .optional, .kind = .{ .scalar = .string }, .extendee = "Host" });
+        try file.messages.append(allocator, host);
+        try file.messages.append(allocator, scope);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .string }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "dup-ext-name.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
