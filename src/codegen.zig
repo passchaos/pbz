@@ -562,6 +562,8 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
             try writeEnumNameArray(file, name, writer);
             try writer.writeAll(", ");
             try writeEnumNumberArray(file, name, writer);
+            try writer.writeAll(", ");
+            try writer.writeAll(if (enumIsClosed(file, name)) "true" else "false");
             try writer.writeAll(")");
         },
         else => try writer.writeAll("@compileError(\"unsupported TextFormat parse field kind\")"),
@@ -3280,11 +3282,18 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try out.toOwnedSlice(allocator);
         \\}
         \\
-        \\fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32 {
+        \\fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
         \\    inline for (names, 0..) |name, i| {
         \\        if (std.mem.eql(u8, value, name)) return numbers[i];
         \\    }
-        \\    return try std.fmt.parseInt(i32, value, 10);
+        \\    const number = try std.fmt.parseInt(i32, value, 10);
+        \\    if (closed) {
+        \\        inline for (numbers) |known| {
+        \\            if (number == known) return number;
+        \\        }
+        \\        return error.InvalidEnumValue;
+        \\    }
+        \\    return number;
         \\}
         \\
         \\fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
@@ -4245,13 +4254,13 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\") or std.mem.eql(u8, line, \"counts <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry_line, \"value {\") or std.mem.eql(u8, entry_line, \"value <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.encode(owned_allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
@@ -4260,7 +4269,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.ascii.eqlIgnoreCase(value, \"-inf\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\") or std.mem.eql(u8, line, \"child <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseText(allocator, block);") != null);
@@ -4935,6 +4944,9 @@ test "codegen validates closed enum values in wire decode" {
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value = try packed_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; self.@\"pick\" = .{ .@\"choice\" = value }; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"single\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"many_list\".append(allocator, try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"choice\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) };") != null);
 }
 
 test "codegen validates closed enum map values in wire decode" {
