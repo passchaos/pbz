@@ -83,6 +83,7 @@ pub const BytesValue = wkt.BytesValue;
 pub const CodeGeneratorRequest = plugin.CodeGeneratorRequest;
 pub const CodeGeneratorResponse = plugin.CodeGeneratorResponse;
 pub const generateZigFile = codegen.generateZigFile;
+pub const generateZigFileWithRegistry = codegen.generateZigFileWithRegistry;
 pub const generatePluginResponse = codegen.generatePluginResponse;
 pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
@@ -102,6 +103,33 @@ test {
     _ = plugin;
     _ = codegen;
     _ = conformance;
+}
+
+test "root exports registry-aware codegen" {
+    const std = @import("std");
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message User { optional int32 id = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event { optional .common.User user = 1; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var reg = Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&common);
+    try reg.addFile(&app);
+    const generated = try generateZigFileWithRegistry(allocator, &app, &reg);
+    defer allocator.free(generated);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "imports.@\"common.proto\".@\"User\"") != null);
 }
 
 test "root exports registry-aware text formatting" {

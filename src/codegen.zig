@@ -1,23 +1,41 @@
 const std = @import("std");
 const schema = @import("schema.zig");
 const plugin = @import("plugin.zig");
+const registry_mod = @import("registry.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error || plugin.Error;
+pub const Error = std.mem.Allocator.Error || std.Io.Writer.Error || plugin.Error || registry_mod.Error;
+
+const CodegenContext = struct {
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry = null,
+};
 
 pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) Error![]u8 {
+    return try generateZigFileWithContext(allocator, .{ .file = file });
+}
+
+pub fn generateZigFileWithRegistry(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry) Error![]u8 {
+    return try generateZigFileWithContext(allocator, .{ .file = file, .registry = registry });
+}
+
+fn generateZigFileWithContext(allocator: std.mem.Allocator, ctx: CodegenContext) Error![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(\"pbz\");\n\n");
-    try writeFileMetadata(allocator, file, &out.writer, 0);
-    for (file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
-    for (file.messages.items) |*message| try writeMessage(file, message, &out.writer, 0);
-    try writeExtensionMetadata(file, &out.writer, 0);
-    try writeServiceMetadata(file, &out.writer, 0);
+    try writeFileMetadata(allocator, ctx.file, &out.writer, 0);
+    for (ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
+    for (ctx.file.messages.items) |*message| try writeMessage(&ctx, message, &out.writer, 0);
+    try writeExtensionMetadata(ctx.file, &out.writer, 0);
+    try writeServiceMetadata(ctx.file, &out.writer, 0);
     return try out.toOwnedSlice();
 }
 
 pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor) Error![]u8 {
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    for (files) |file| try registry.addFile(file);
+
     var response_files = try allocator.alloc(plugin.CodeGeneratorResponse.File, files.len);
     @memset(response_files, .{});
     defer {
@@ -28,7 +46,7 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
-        const content = try generateZigFile(allocator, file);
+        const content = try generateZigFileWithRegistry(allocator, file, &registry);
         errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
         response_files[i] = .{ .name = name, .content = content };
@@ -87,7 +105,8 @@ fn writeImportDecl(allocator: std.mem.Allocator, import: schema.Import, writer: 
     try writer.writeAll(";\n");
 }
 
-fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdent(message.name, writer);
@@ -99,7 +118,7 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
         try writer.print(" = {d};\n", .{field.number});
     }
     if (message.fields.items.len != 0) try writer.writeAll("\n");
-    for (message.fields.items) |*field| try writeFieldMetadataDecl(file, field, writer, depth + 1);
+    for (message.fields.items) |*field| try writeFieldMetadataDecl(ctx, field, writer, depth + 1);
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     for (message.fields.items) |*field| {
         if (field.kind == .map) try writeMapEntryType(field, writer, depth + 1);
@@ -120,7 +139,7 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeOwnedAllocator(writer, depth + 1);
     try writer.writeAll("\n");
-    try writeFieldAccessors(file, message, writer, depth + 1);
+    try writeFieldAccessors(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
     try writer.writeAll("\n");
@@ -149,7 +168,7 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writeTextMethods(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
-    for (message.messages.items) |*nested| try writeMessage(file, nested, writer, depth + 1);
+    for (message.messages.items) |*nested| try writeMessage(ctx, nested, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
 }
@@ -188,7 +207,8 @@ fn writeOneofTypeName(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writeQuotedIdentWithSuffix(name, "Oneof", writer);
 }
 
-fn writeFieldMetadataDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFieldMetadataDecl(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdentWithSuffix(field.name, "_field", writer);
@@ -224,6 +244,14 @@ fn writeFieldMetadataDecl(file: *const schema.FileDescriptor, field: *const sche
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("pub const has_type_ref = ");
+    try writer.writeAll(if (canReferenceMessageWithContext(ctx, field.kind)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const type_ref = ");
+    try writeMessageTypeReferenceOrVoid(ctx, field.kind, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("pub const has_presence = ");
     try writer.writeAll(if (hasPresence(file, field.*)) "true" else "false");
     try writer.writeAll(";\n");
@@ -247,6 +275,14 @@ fn writeFieldMetadataDecl(file: *const schema.FileDescriptor, field: *const sche
         try indent(writer, depth + 1);
         try writer.writeAll("pub const map_value_type_name = ");
         try writeZigStringLiteral(fieldTypeName(field.kind.map.value.*), writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_value_has_type_ref = ");
+        try writer.writeAll(if (canReferenceMessageWithContext(ctx, field.kind.map.value.*)) "true" else "false");
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_value_type_ref = ");
+        try writeMessageTypeReferenceOrVoid(ctx, field.kind.map.value.*, writer);
         try writer.writeAll(";\n");
     }
     try indent(writer, depth);
@@ -961,25 +997,26 @@ fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Write
     try writer.writeAll("};\n\n");
 }
 
-fn writeFieldAccessors(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFieldAccessors(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     for (message.fields.items) |*field| {
-        if (field.oneof_name == null) try writeFieldAccessor(file, field, writer, depth);
+        if (field.oneof_name == null) try writeFieldAccessor(ctx, field, writer, depth);
     }
     for (message.oneofs.items) |oneof| {
         for (message.fields.items) |*field| {
             if (field.oneof_name) |name| {
-                if (std.mem.eql(u8, name, oneof.name)) try writeOneofFieldAccessor(file, field, oneof, writer, depth);
+                if (std.mem.eql(u8, name, oneof.name)) try writeOneofFieldAccessor(ctx, field, oneof, writer, depth);
             }
         }
     }
 }
 
-fn writeFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.cardinality == .repeated or field.kind == .map) return try writeRepeatedFieldAccessor(file, field, writer, depth);
-    try writeSingularFieldAccessor(file, field, writer, depth);
+fn writeFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated or field.kind == .map) return try writeRepeatedFieldAccessor(ctx, field, writer, depth);
+    try writeSingularFieldAccessor(ctx, field, writer, depth);
 }
 
-fn writeSingularFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeSingularFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     const presence = hasPresence(file, field.*);
 
     try indent(writer, depth);
@@ -1072,16 +1109,16 @@ fn writeSingularFieldAccessor(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("}\n\n");
 
     if (fieldMessageTypeName(field)) |type_name| {
-        if (codegenCanReferenceMessage(file, type_name)) try writeSingularMessageFieldAccessor(field, type_name, writer, depth);
+        if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeSingularMessageFieldAccessor(ctx, field, type_name, writer, depth);
     }
 }
 
-fn writeSingularMessageFieldAccessor(field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeSingularMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("setMessage", field.name, writer);
     try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
@@ -1096,7 +1133,7 @@ fn writeSingularMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("getMessage", field.name, writer);
     try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const payload = self.");
@@ -1104,13 +1141,13 @@ fn writeSingularMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("() orelse return null;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, payload);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 }
 
-fn writeRepeatedFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("has", field.name, writer);
@@ -1244,16 +1281,16 @@ fn writeRepeatedFieldAccessor(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("}\n\n");
 
     if (fieldMessageTypeName(field)) |type_name| {
-        if (codegenCanReferenceMessage(file, type_name)) try writeRepeatedMessageFieldAccessor(field, type_name, writer, depth);
+        if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeRepeatedMessageFieldAccessor(ctx, field, type_name, writer, depth);
     }
 }
 
-fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeRepeatedMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("appendMessage", field.name, writer);
     try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
@@ -1268,7 +1305,7 @@ fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("appendMessages", field.name, writer);
     try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("for (values) |value| try self.");
@@ -1281,7 +1318,7 @@ fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("replaceMessages", field.name, writer);
     try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const old = self.");
@@ -1320,11 +1357,11 @@ fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("getMessages", field.name, writer);
     try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var list: std.ArrayList(");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") = .empty;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer { for (list.items) |*item| item.deinit(allocator); list.deinit(allocator); }\n");
@@ -1332,7 +1369,7 @@ fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |payload| try list.append(allocator, try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, payload));\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
@@ -1340,7 +1377,7 @@ fn writeRepeatedMessageFieldAccessor(field: *const schema.FieldDescriptor, type_
     try writer.writeAll("}\n\n");
 }
 
-fn writeOneofFieldAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeOneofFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("has", field.name, writer);
@@ -1398,16 +1435,16 @@ fn writeOneofFieldAccessor(file: *const schema.FileDescriptor, field: *const sch
     try writer.writeAll("}\n\n");
 
     if (fieldMessageTypeName(field)) |type_name| {
-        if (codegenCanReferenceMessage(file, type_name)) try writeOneofMessageFieldAccessor(field, oneof, type_name, writer, depth);
+        if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeOneofMessageFieldAccessor(ctx, field, oneof, type_name, writer, depth);
     }
 }
 
-fn writeOneofMessageFieldAccessor(field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeOneofMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("setMessage", field.name, writer);
     try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
@@ -1424,7 +1461,7 @@ fn writeOneofMessageFieldAccessor(field: *const schema.FieldDescriptor, oneof: s
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("getMessage", field.name, writer);
     try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const payload = self.");
@@ -1432,7 +1469,7 @@ fn writeOneofMessageFieldAccessor(field: *const schema.FieldDescriptor, oneof: s
     try writer.writeAll("() orelse return null;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, payload);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
@@ -2576,6 +2613,110 @@ fn writeMessageTypeReference(type_name: []const u8, writer: *std.Io.Writer) Erro
     const trimmed = if (std.mem.startsWith(u8, type_name, ".")) type_name[1..] else type_name;
     const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
     try writeQuotedIdent(leaf, writer);
+}
+
+const MessageReference = struct {
+    message: *const schema.MessageDescriptor,
+    file: *const schema.FileDescriptor,
+    import_path: ?[]const u8 = null,
+};
+
+fn canReferenceMessageWithContext(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
+    const type_name = switch (kind) {
+        .message, .group => |name| name,
+        else => return false,
+    };
+    return codegenCanReferenceMessageWithContext(ctx, type_name);
+}
+
+fn codegenCanReferenceMessageWithContext(ctx: *const CodegenContext, type_name: []const u8) bool {
+    return resolveMessageReference(ctx, type_name) != null;
+}
+
+fn writeMessageTypeReferenceOrVoid(ctx: *const CodegenContext, kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
+    const type_name = switch (kind) {
+        .message, .group => |name| name,
+        else => return try writer.writeAll("void"),
+    };
+    if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    } else {
+        try writer.writeAll("void");
+    }
+}
+
+fn writeMessageTypeReferenceWithContext(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
+    const reference = resolveMessageReference(ctx, type_name) orelse {
+        return try writeMessageTypeReference(type_name, writer);
+    };
+    if (reference.import_path) |import_path| {
+        try writer.writeAll("imports.");
+        try writeQuotedIdent(import_path, writer);
+        try writer.writeByte('.');
+        if (!(try writeMessagePathInFile(reference.file, reference.message, writer))) try writeMessageTypeReference(type_name, writer);
+    } else {
+        if (!(try writeMessagePathInFile(reference.file, reference.message, writer))) try writeMessageTypeReference(type_name, writer);
+    }
+}
+
+fn resolveMessageReference(ctx: *const CodegenContext, type_name: []const u8) ?MessageReference {
+    if (ctx.registry) |registry| {
+        if (registry.findMessage(type_name, ctx.file.package)) |message| {
+            const owner = findFileContainingMessage(registry, message) orelse return null;
+            if (owner == ctx.file) return .{ .message = message, .file = owner };
+            if (directImportPathForFile(ctx.file, owner)) |path| return .{ .message = message, .file = owner, .import_path = path };
+            return null;
+        }
+    }
+    if (ctx.file.findMessageDeep(type_name)) |message| return .{ .message = message, .file = ctx.file };
+    return null;
+}
+
+fn findFileContainingMessage(registry: *const registry_mod.Registry, target: *const schema.MessageDescriptor) ?*const schema.FileDescriptor {
+    for (registry.files.items) |file| {
+        for (file.messages.items) |*message| {
+            if (message == target or messageContainsMessage(message, target)) return file;
+        }
+    }
+    return null;
+}
+
+fn directImportPathForFile(file: *const schema.FileDescriptor, imported_file: *const schema.FileDescriptor) ?[]const u8 {
+    if (file == imported_file) return "";
+    if (imported_file.name.len == 0) return null;
+    for (file.imports.items) |import| {
+        if (std.mem.eql(u8, import.path, imported_file.name)) return import.path;
+    }
+    return null;
+}
+
+fn messageContainsMessage(message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) bool {
+    for (message.messages.items) |*nested| {
+        if (nested == target or messageContainsMessage(nested, target)) return true;
+    }
+    return false;
+}
+
+fn writeMessagePathInFile(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, writer: *std.Io.Writer) Error!bool {
+    for (file.messages.items) |*message| {
+        if (try writeMessagePathInMessage(message, target, writer)) return true;
+    }
+    return false;
+}
+
+fn writeMessagePathInMessage(message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, writer: *std.Io.Writer) Error!bool {
+    if (message == target) {
+        try writeQuotedIdent(message.name, writer);
+        return true;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainsMessage(nested, target) or nested == target) {
+            try writeQuotedIdent(message.name, writer);
+            try writer.writeByte('.');
+            return try writeMessagePathInMessage(nested, target, writer);
+        }
+    }
+    return false;
 }
 
 fn writeDecode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -6529,12 +6670,72 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
+test "codegen with registry emits imported message type refs and accessors" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\message User {
+        \\  optional int32 id = 1;
+        \\  message Profile { optional string name = 1; }
+        \\}
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message Request {
+        \\  optional .demo.common.User user = 1;
+        \\  repeated .demo.common.User.Profile profiles = 2;
+        \\  map<string, .demo.common.User.Profile> keyed = 3;
+        \\  oneof pick { .demo.common.User picked = 4; }
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\".@\"Profile\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"User\".@\"Profile\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_user\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageField_profiles\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\".@\"Profile\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessagesField_profiles\"(self: @This(), allocator: std.mem.Allocator) ![]imports.@\"common.proto\".@\"User\".@\"Profile\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
 test "codegen emits protoc response" {
     const allocator = std.testing.allocator;
-    var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto3\"; message A { int32 id = 1; }");
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\message User { optional int32 id = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message A { optional .demo.common.User user = 1; }
+    );
     defer file.deinit();
     file.name = "a.proto";
-    const files = [_]*const schema.FileDescriptor{&file};
+    const files = [_]*const schema.FileDescriptor{ &common, &file };
     const response = try generatePluginResponse(allocator, &files);
     defer allocator.free(response);
     try std.testing.expect(response.len != 0);
@@ -6544,6 +6745,7 @@ test "codegen emits protoc response" {
     var saw_minimum_edition = false;
     var saw_maximum_edition = false;
     var saw_file_name = false;
+    var saw_registry_import_ref = false;
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             2 => saw_supported_features = (try reader.readUInt64()) == plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions }),
@@ -6554,6 +6756,10 @@ test "codegen emits protoc response" {
                 while (try file_reader.nextTag()) |file_tag| {
                     switch (file_tag.number) {
                         1 => saw_file_name = std.mem.eql(u8, try file_reader.readBytes(), "a.pb.zig"),
+                        15 => {
+                            const content = try file_reader.readBytes();
+                            saw_registry_import_ref = saw_registry_import_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null;
+                        },
                         else => try file_reader.skipValue(file_tag),
                     }
                 }
@@ -6565,6 +6771,7 @@ test "codegen emits protoc response" {
     try std.testing.expect(saw_minimum_edition);
     try std.testing.expect(saw_maximum_edition);
     try std.testing.expect(saw_file_name);
+    try std.testing.expect(saw_registry_import_ref);
 }
 
 test "codegen quotes zig identifiers" {

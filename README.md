@@ -47,7 +47,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; generated plugin responses advertise proto3 optional and editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
-  - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata
+  - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for direct imported message type references
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
@@ -218,13 +218,16 @@ aliases while preserving import kind/path metadata.
 Generated message structs also expose per-field metadata structs (`*_field`)
 with protobuf field number, name/json_name, cardinality, kind, raw type_name
 including imported message/enum names, Zig storage type, presence, default text,
-packed status, and map key/value metadata for wrapper code and future cross-file
-typed reference resolution.  They include generated field accessors (`hasField_*`,
+packed status, map key/value metadata, and generated `type_ref` aliases for same-file
+or direct-imported message fields when `generateZigFileWithRegistry` is used. They include generated field accessors (`hasField_*`,
 `getField_*`, `getOrDefaultField_*`, `setField_*`, `clearField_*`, repeated/map
 `appendField_*` / `appendAllField_*` / `replaceField_*` helpers, and oneof-arm accessors) while keeping oneof storage as a
 Zig `union(enum)`. Same-file message/group payload fields additionally expose
 `setMessageField_*` / `getMessageField_*` and repeated message batch helpers that
-encode/decode the underlying payload bytes through the generated message types.
+encode/decode the underlying payload bytes through same-file or direct-imported generated message types.
+`pbz.generateZigFileWithRegistry` additionally resolves message fields through a
+`Registry` and emits direct-import module type refs/accessors when the referenced
+`.proto` file is imported by the generated file.
 For `service` declarations, generated files include a `services` namespace with
 service/method metadata, an unimplemented `Handler` stub, and a `Client` wrapper
 that dispatches serialized request/response payloads through a caller-provided
