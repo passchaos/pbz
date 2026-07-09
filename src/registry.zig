@@ -64,6 +64,14 @@ pub const Registry = struct {
     }
 
     fn validateNoExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
+        var extensions: std.ArrayList(*const schema.FieldDescriptor) = .empty;
+        defer extensions.deinit(self.allocator);
+        try collectFileExtensions(self.allocator, file, &extensions);
+        for (extensions.items, 0..) |field, i| {
+            for (extensions.items[i + 1 ..]) |other| {
+                if (extensionsConflictResolved(self, file, field, file, other)) return error.DuplicateSymbol;
+            }
+        }
         for (file.extensions.items) |*field| try self.validateExtensionConflict(file, field);
         for (file.messages.items) |*message| try self.validateMessageExtensionConflicts(file, message);
     }
@@ -458,6 +466,16 @@ fn fileContainsMessage(file: *const schema.FileDescriptor, target: *const schema
         if (message == target or messageContainsMessage(message, target)) return true;
     }
     return false;
+}
+
+fn collectFileExtensions(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, output: *std.ArrayList(*const schema.FieldDescriptor)) std.mem.Allocator.Error!void {
+    for (file.extensions.items) |*field| try output.append(allocator, field);
+    for (file.messages.items) |*message| try collectMessageExtensions(allocator, message, output);
+}
+
+fn collectMessageExtensions(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor, output: *std.ArrayList(*const schema.FieldDescriptor)) std.mem.Allocator.Error!void {
+    for (message.extensions.items) |*field| try output.append(allocator, field);
+    for (message.messages.items) |*nested| try collectMessageExtensions(allocator, nested, output);
 }
 
 fn messageContainsMessage(message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) bool {
@@ -902,6 +920,38 @@ test "registry rejects duplicate extension symbols across files" {
     try registry.addFile(&first);
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_number));
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_name));
+}
+
+test "registry rejects duplicate extension symbols within one file descriptor" {
+    const allocator = std.testing.allocator;
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        file.package = "demo";
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "first", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        try file.extensions.append(allocator, .{ .name = "second", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        var registry = Registry.init(allocator);
+        defer registry.deinit();
+        try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&file));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        file.package = "demo";
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 101, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        var registry = Registry.init(allocator);
+        defer registry.deinit();
+        try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&file));
+    }
 }
 
 test "registry allows same extension numbers on different package extendees" {
