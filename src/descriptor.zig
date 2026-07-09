@@ -1252,6 +1252,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try validateDecodedDefaults(&file);
     try validateDecodedFieldSyntax(&file);
     try validateDecodedEnumSyntax(&file);
+    try validateDecodedMessageSets(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
 }
@@ -1455,6 +1456,43 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
     if (file.syntax == .editions and field.kind == .group) return error.InvalidFieldType;
+}
+
+fn validateDecodedMessageSets(file: *const schema.FileDescriptor) Error!void {
+    for (file.messages.items) |*message| try validateDecodedMessageSetMessage(file, message);
+}
+
+fn validateDecodedMessageSetMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+    if (message.messageSetWireFormat()) {
+        if (file.syntax == .proto3) return error.InvalidFieldType;
+        if (message.fields.items.len != 0) return error.InvalidFieldType;
+        var has_message_set_range = false;
+        for (message.extension_ranges.items) |range| {
+            const end = range.end orelse std.math.maxInt(i64);
+            if (range.start <= 4 and end > 4) has_message_set_range = true;
+        }
+        if (!has_message_set_range) return error.InvalidFieldType;
+    }
+    for (file.extensions.items) |*field| try validateDecodedMessageSetExtension(file, message, field);
+    for (file.messages.items) |*scope| try validateDecodedMessageSetExtensionsInMessage(file, message, scope);
+    for (message.messages.items) |*nested| try validateDecodedMessageSetMessage(file, nested);
+}
+
+fn validateDecodedMessageSetExtensionsInMessage(file: *const schema.FileDescriptor, message_set: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) Error!void {
+    for (scope.extensions.items) |*field| try validateDecodedMessageSetExtension(file, message_set, field);
+    for (scope.messages.items) |*nested| try validateDecodedMessageSetExtensionsInMessage(file, message_set, nested);
+}
+
+fn validateDecodedMessageSetExtension(file: *const schema.FileDescriptor, message_set: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!void {
+    if (!message_set.messageSetWireFormat()) return;
+    const extendee = field.extendee orelse return;
+    const extendee_message = file.findMessageDeep(extendee) orelse return;
+    if (extendee_message != message_set) return;
+    if (field.cardinality == .repeated or field.cardinality == .required) return error.InvalidFieldType;
+    switch (field.kind) {
+        .message => {},
+        else => return error.InvalidFieldType,
+    }
 }
 
 fn validateDecodedEnumSyntax(file: *const schema.FileDescriptor) Error!void {
