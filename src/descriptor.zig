@@ -3532,6 +3532,62 @@ test "descriptor rejects extensions that violate decoded declarations" {
         defer file.deinit();
         file.setSyntax(.proto2);
         var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.tag", .type_name = "int32", .reserved = true });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "reserved-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.other", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "name-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.tags", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "tags", .number = 100, .cardinality = .repeated, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "repeated-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.tag", .type_name = "int32", .repeated = true });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "singular-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
         const range = schema.ExtensionRange{ .start = 100, .end = 200, .verification = .declaration };
         try host.extension_ranges.append(allocator, range);
         try file.messages.append(allocator, host);
