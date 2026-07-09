@@ -1253,7 +1253,8 @@ fn writeMessageExtensionAccessor(file: *const schema.FileDescriptor, field: *con
         try writer.writeAll("return (try self.");
         try writeQuotedIdentWithPrefix(helper_name, "getExtension_", writer);
         try writer.writeAll("(allocator)) orelse ");
-        try writeFieldKindDefault(field.kind, field.default_value, writer);
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".default_value_zig");
         try writer.writeAll(";\n");
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
@@ -5223,6 +5224,14 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writer.writeAll("pub const default_value = ");
     try writeOptionValueTextLiteral(field.default_value, writer);
     try writer.writeAll(";\n");
+    if (field.kind == .scalar or field.kind == .enumeration) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const default_value_zig: ");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(" = ");
+        try writeFieldKindDefault(field.kind, field.default_value, writer);
+        try writer.writeAll(";\n");
+    }
     try writeExtensionWriteHelpers(file, field, writer, depth + 1);
     try writeExtensionDecodeHelpers(file, field, writer, depth + 1);
     try indent(writer, depth);
@@ -6566,6 +6575,7 @@ test "codegen emits proto2 extension metadata" {
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
         \\message Host { extensions 100 to max; }
         \\message Note {}
         \\extend Host {
@@ -6574,6 +6584,7 @@ test "codegen emits proto2 extension metadata" {
         \\  optional Note note = 102;
         \\  repeated int32 packed_nums = 103 [packed = true];
         \\  repeated Note notes = 104;
+        \\  optional Kind role = 105 [default = ADMIN];
         \\}
     );
     defer file.deinit();
@@ -6588,6 +6599,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const u8\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const has_default = true;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"untagged\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value_zig: []const u8 = \"untagged\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn write(w: *pbz.Writer, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeString(100, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
@@ -6671,7 +6683,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtension_tag\"(self: @This(), allocator: std.mem.Allocator) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"tag\".decodeFirstFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionOrDefault_tag\"(self: @This(), allocator: std.mem.Allocator) ![]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getExtension_tag\"(allocator)) orelse \"untagged\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getExtension_tag\"(allocator)) orelse extensions.@\"tag\".default_value_zig;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtension_tag\"(self: *@This(), allocator: std.mem.Allocator, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".replaceInUnknown(self, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearExtension_tag\"(self: *@This(), allocator: std.mem.Allocator) !void") != null);
@@ -6698,6 +6710,10 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".appendToUnknown(self, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".replaceAllInUnknown(self, allocator, values);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"role\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value_zig: i32 = 7;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getExtension_role\"(allocator)) orelse extensions.@\"role\".default_value_zig;") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
