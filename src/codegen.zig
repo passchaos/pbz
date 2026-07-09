@@ -344,7 +344,12 @@ fn writeTextParseExtensionField(file: *const schema.FileDescriptor, field: *cons
     try writer.writeAll("const raw = try ");
     try writeExtensionHelperReference(field, writer);
     try writer.writeAll(".encodeRaw(allocator, ");
-    try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+    if (field.kind == .enumeration) {
+        try writeTextParseEnumExpr(file, field.kind.enumeration, "raw_value", writer);
+        try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) { continue; } return err; }");
+    } else {
+        try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+    }
     try writer.writeAll(");\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer allocator.free(raw);\n");
@@ -401,16 +406,30 @@ fn writeTextParseField(file: *const schema.FileDescriptor, field: *const schema.
     try writer.writeAll(") |raw_value| {\n");
     if (field.cardinality == .repeated) {
         try indent(writer, depth + 1);
-        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(".append(allocator, ");
-        try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
-        try writer.writeAll(") catch |err| return err;\n");
+        if (field.kind == .enumeration) {
+            try writer.writeAll("const parsed_enum = ");
+            try writeTextParseEnumExpr(file, field.kind.enumeration, "raw_value", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };\n");
+            try indent(writer, depth + 1);
+            try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+            try writer.writeAll(".append(allocator, parsed_enum) catch |err| return err;\n");
+        } else {
+            try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+            try writer.writeAll(".append(allocator, ");
+            try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+            try writer.writeAll(") catch |err| return err;\n");
+        }
     } else {
         try indent(writer, depth + 1);
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = ");
-        try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+        if (field.kind == .enumeration) {
+            try writeTextParseEnumExpr(file, field.kind.enumeration, "raw_value", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) { continue; } return err; }");
+        } else {
+            try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+        }
         try writer.writeAll(";\n");
         if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
@@ -523,6 +542,8 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll("{};\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("var skip_entry = false;\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_entry_line| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("const entry_line = @This().textCleanLine(raw_entry_line);\n");
@@ -556,14 +577,23 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     }
     if (map_type.value.* == .scalar or map_type.value.* == .enumeration) {
         try indent(writer, depth + 2);
-        try writer.writeAll("if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = ");
-        try writeTextParseValueExpr(file, field, map_type.value.*, "raw_value", writer);
-        try writer.writeAll("; continue; }\n");
+        try writer.writeAll("if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { ");
+        if (map_type.value.* == .enumeration) {
+            try writer.writeAll("entry.value = ");
+            try writeTextParseEnumExpr(file, map_type.value.enumeration, "raw_value", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) { skip_entry = true; continue; } return err; }; continue; }\n");
+        } else {
+            try writer.writeAll("entry.value = ");
+            try writeTextParseValueExpr(file, field, map_type.value.*, "raw_value", writer);
+            try writer.writeAll("; continue; }\n");
+        }
     }
     try indent(writer, depth + 2);
     try writer.writeAll("return error.UnknownField;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (skip_entry) continue;\n");
     try indent(writer, depth + 1);
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
     try writer.writeAll(".append(allocator, entry) catch |err| return err;\n");
@@ -599,7 +629,12 @@ fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = ");
-    try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+    if (field.kind == .enumeration) {
+        try writeTextParseEnumExpr(file, field.kind.enumeration, "raw_value", writer);
+        try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) { continue; } return err; }");
+    } else {
+        try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
+    }
     try writer.writeAll(" }; continue; }\n");
 }
 
@@ -758,6 +793,16 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const sc
         },
         else => try writer.writeAll("@compileError(\"unsupported TextFormat parse field kind\")"),
     }
+}
+
+fn writeTextParseEnumExpr(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("@This().textEnum({s}, ", .{value_expr});
+    try writeEnumNameArray(file, enum_name, writer);
+    try writer.writeAll(", ");
+    try writeEnumNumberArray(file, enum_name, writer);
+    try writer.writeAll(", ");
+    try writer.writeAll(if (enumIsClosed(file, enum_name)) "true" else "false");
+    try writer.writeAll(")");
 }
 
 fn writeOneofValueEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -5987,13 +6032,13 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.encode(owned_allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == ';' or c == ',')") != null);
@@ -6837,9 +6882,9 @@ test "codegen validates closed enum values in wire decode" {
     try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { try @\"many_list\".append(allocator, value); } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.@\"pick\" = .{ .@\"choice\" = value }; } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn enumKnown(value: i32, comptime numbers: []const i32) bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"single\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"many_list\".append(allocator, try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"choice\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"single\" = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_enum = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"choice\" = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
 }
 
 test "codegen validates closed enum map values in wire decode" {

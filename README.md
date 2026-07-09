@@ -294,7 +294,9 @@ messages expose `TextFormatOptions` plus `formatText*WithOptions` for enum-name
 versus numeric enum output, with options propagated into nested generated message
 formatting; generated messages also expose `TextParseOptions` plus
 `parseTextWithOptions` / `parseTextInitializedWithOptions`, with
-`ignore_unknown_fields` propagated into nested generated message parsing;
+`ignore_unknown_fields` propagated into nested generated message parsing and
+unknown enum TextFormat values skipped for scalar, repeated, map value, oneof,
+and same-file extension enum fields;
 generated
 `parseText` / `parseTextInitialized` cover basic line-oriented scalar, enum,
 repeated, scalar/enum/message map, scalar/enum oneof input, plus same-file proto2
