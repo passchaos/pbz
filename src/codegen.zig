@@ -270,9 +270,9 @@ fn writeTextParseField(file: *const schema.FileDescriptor, field: *const schema.
         .map => return try writeTextParseMapField(file, field, writer, depth),
     }
     try indent(writer, depth);
-    try writer.writeAll("if (@This().textFieldValue(line, ");
-    try writeZigStringLiteral(field.name, writer);
-    try writer.writeAll(")) |raw_value| {\n");
+    try writer.writeAll("if (");
+    try writeTextFieldValueLookup(field, "line", writer);
+    try writer.writeAll(") |raw_value| {\n");
     if (field.cardinality == .repeated) {
         try indent(writer, depth + 1);
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
@@ -302,11 +302,9 @@ fn writeTextParseField(file: *const schema.FileDescriptor, field: *const schema.
 fn writeTextParseMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     if (!codegenCanReferenceMessage(file, type_name)) return;
     try indent(writer, depth);
-    try writer.writeAll("if (std.mem.eql(u8, line, \"");
-    try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll(" {\") or std.mem.eql(u8, line, \"");
-    try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll(" <\")) {\n");
+    try writer.writeAll("if (");
+    try writeTextBlockCondition(field, "line", writer);
+    try writer.writeAll(") {\n");
     try writeTextParseMessagePayloadAssign(field, type_name, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
@@ -391,14 +389,9 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     };
     if (map_type.value.* != .scalar and map_type.value.* != .enumeration) return;
     try indent(writer, depth);
-    try writer.writeAll("if (std.mem.eql(u8, line, ");
-    try writer.writeByte('"');
-    try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll(" {\"");
-    try writer.writeAll(") or std.mem.eql(u8, line, \"");
-    try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll(" <\"");
-    try writer.writeAll(")) {\n");
+    try writer.writeAll("if (");
+    try writeTextBlockCondition(field, "line", writer);
+    try writer.writeAll(") {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var entry = ");
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
@@ -436,11 +429,9 @@ fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
         .message, .group => |type_name| {
             if (!codegenCanReferenceMessage(file, type_name)) return;
             try indent(writer, depth);
-            try writer.writeAll("if (std.mem.eql(u8, line, \"");
-            try writeEscapedStringContents(field.name, writer);
-            try writer.writeAll(" {\") or std.mem.eql(u8, line, \"");
-            try writeEscapedStringContents(field.name, writer);
-            try writer.writeAll(" <\")) {\n");
+            try writer.writeAll("if (");
+            try writeTextBlockCondition(field, "line", writer);
+            try writer.writeAll(") {\n");
             try writeTextParseMessagePayloadAssign(field, type_name, writer, depth + 1);
             try indent(writer, depth + 1);
             try writer.writeAll("continue;\n");
@@ -451,15 +442,79 @@ fn writeTextParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
         else => return,
     }
     try indent(writer, depth);
-    try writer.writeAll("if (@This().textFieldValue(line, ");
-    try writeZigStringLiteral(field.name, writer);
-    try writer.writeAll(")) |raw_value| { self.");
+    try writer.writeAll("if (");
+    try writeTextFieldValueLookup(field, "line", writer);
+    try writer.writeAll(") |raw_value| { self.");
     try writeQuotedIdent(oneof.name, writer);
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = ");
     try writeTextParseValueExpr(file, field.kind, "raw_value", writer);
     try writer.writeAll(" }; continue; }\n");
+}
+
+fn writeTextFieldValueLookup(field: *const schema.FieldDescriptor, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@This().textFieldValue(");
+    try writer.writeAll(line_expr);
+    try writer.writeAll(", ");
+    try writeZigStringLiteral(field.name, writer);
+    try writer.writeAll(")");
+    try writeTextAlternateValueLookups(field, line_expr, writer);
+}
+
+fn writeTextAlternateValueLookups(field: *const schema.FieldDescriptor, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    if (field.json_name) |json_name| {
+        if (!std.mem.eql(u8, json_name, field.name)) {
+            try writer.writeAll(" orelse @This().textFieldValue(");
+            try writer.writeAll(line_expr);
+            try writer.writeAll(", ");
+            try writeZigStringLiteral(json_name, writer);
+            try writer.writeAll(")");
+        }
+    } else if (std.mem.indexOfScalar(u8, field.name, '_') != null) {
+        try writer.writeAll(" orelse @This().textFieldValue(");
+        try writer.writeAll(line_expr);
+        try writer.writeAll(", ");
+        try writeZigLowerCamelStringLiteral(field.name, writer);
+        try writer.writeAll(")");
+    }
+}
+
+fn writeTextBlockCondition(field: *const schema.FieldDescriptor, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writeTextBlockNameCondition(field.name, line_expr, writer);
+    if (field.json_name) |json_name| {
+        if (!std.mem.eql(u8, json_name, field.name)) {
+            try writer.writeAll(" or ");
+            try writeTextBlockNameCondition(json_name, line_expr, writer);
+        }
+    } else if (std.mem.indexOfScalar(u8, field.name, '_') != null) {
+        try writer.writeAll(" or ");
+        try writeTextLowerCamelBlockNameCondition(field.name, line_expr, writer);
+    }
+}
+
+fn writeTextBlockNameCondition(name: []const u8, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("std.mem.eql(u8, ");
+    try writer.writeAll(line_expr);
+    try writer.writeAll(", \"");
+    try writeEscapedStringContents(name, writer);
+    try writer.writeAll(" {\") or std.mem.eql(u8, ");
+    try writer.writeAll(line_expr);
+    try writer.writeAll(", \"");
+    try writeEscapedStringContents(name, writer);
+    try writer.writeAll(" <\")");
+}
+
+fn writeTextLowerCamelBlockNameCondition(name: []const u8, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("std.mem.eql(u8, ");
+    try writer.writeAll(line_expr);
+    try writer.writeAll(", \"");
+    try writeLowerCamelEscaped(name, writer);
+    try writer.writeAll(" {\") or std.mem.eql(u8, ");
+    try writer.writeAll(line_expr);
+    try writer.writeAll(", \"");
+    try writeLowerCamelEscaped(name, writer);
+    try writer.writeAll(" <\")");
 }
 
 fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
@@ -4186,7 +4241,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"picked_msg {\") or std.mem.eql(u8, line, \"picked_msg <\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"picked_msg {\") or std.mem.eql(u8, line, \"picked_msg <\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \"pickedMsg {\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \">\")") != null);
 
