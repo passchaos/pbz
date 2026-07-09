@@ -1744,7 +1744,7 @@ fn validateDecodedExtensionFieldDeclaration(field: *const schema.FieldDescriptor
         if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
     }
     const declaration = matching_declaration orelse {
-        if (range.verification == .declaration) return error.InvalidFieldType;
+        if (range.verification == .declaration or range.declarations.items.len != 0) return error.InvalidFieldType;
         return;
     };
     if (declaration.reserved) return error.InvalidFieldType;
@@ -6041,6 +6041,20 @@ test "descriptor rejects extensions that violate decoded declarations" {
         try file.messages.append(allocator, host);
         try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .string }, .extendee = "Host" });
         const bytes = try encodeFileDescriptorProto(allocator, &file, "bad-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.tag", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "other", .number = 101, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "undeclared-ext-in-declared-range.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }

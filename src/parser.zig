@@ -1453,7 +1453,7 @@ pub const Parser = struct {
             if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
         }
         const declaration = matching_declaration orelse {
-            if (range.verification == .declaration) return error.ReservedField;
+            if (range.verification == .declaration or range.declarations.items.len != 0) return error.ReservedField;
             return;
         };
         if (declaration.reserved) return error.ReservedField;
@@ -3443,6 +3443,17 @@ test "parser validates extension range declarations against defined extensions" 
         \\}
         \\message Ext {}
         \\extend Host { optional Ext ext = 100; }
+    ));
+    try std.testing.expectError(error.ReservedField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" }
+        \\  ];
+        \\}
+        \\message Ext {}
+        \\extend Host { optional Ext other = 101; }
     ));
     try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
         \\syntax = "proto2";

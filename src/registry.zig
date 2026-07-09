@@ -504,7 +504,7 @@ fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range
         if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
     }
     const declaration = matching_declaration orelse {
-        if (range.verification == .declaration) return error.InvalidExtensionDeclaration;
+        if (range.verification == .declaration or range.declarations.items.len != 0) return error.InvalidExtensionDeclaration;
         return;
     };
     if (declaration.reserved) return error.InvalidExtensionDeclaration;
@@ -902,6 +902,35 @@ test "registry validates cross-file extension declarations" {
     defer missing_declaration.deinit();
     missing_declaration.name = "missing-declaration.proto";
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&missing_declaration));
+}
+
+test "registry enforces declaration coverage when any declaration exists" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".demo.ext" type: ".demo.Ext" }
+        \\  ];
+        \\}
+        \\message Ext {}
+    );
+    defer host.deinit();
+    host.name = "host.proto";
+    var extension = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "host.proto";
+        \\extend Host { optional Ext other = 101; }
+    );
+    defer extension.deinit();
+    extension.name = "extension.proto";
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&host);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&extension));
 }
 
 test "registry rejects cross-file extension declaration mismatches" {
