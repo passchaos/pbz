@@ -157,7 +157,7 @@ uses the same registry to print imported enum names, and ignore-unknown parsing
 also skips unknown enum names for local and imported enum fields.
 Use `parseJsonInitializedAlloc` / `parseJsonInitializedAllocWithRegistry` when
 proto2 or editions legacy-required data must be validated recursively before the
-parsed dynamic message is returned.
+parsed dynamic message is returned, including expanded `Any` payloads.
 
 ## Well-known types
 

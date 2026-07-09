@@ -12,6 +12,7 @@ pub const Options = struct {
     preserve_proto_field_names: bool = false,
     ignore_unknown_fields: bool = false,
     always_print_primitive_fields: bool = false,
+    validate_any_payloads: bool = false,
 };
 
 pub fn stringifyAlloc(
@@ -100,7 +101,9 @@ pub fn parseInitializedAllocWithRegistry(
     bytes: []const u8,
     options: Options,
 ) anyerror!dynamic.DynamicMessage {
-    var message = try parseAllocWithRegistry(allocator, file, registry, descriptor, bytes, options);
+    var initialized_options = options;
+    initialized_options.validate_any_payloads = true;
+    var message = try parseAllocWithRegistry(allocator, file, registry, descriptor, bytes, initialized_options);
     errdefer message.deinit();
     try message.validateRequired();
     return message;
@@ -264,7 +267,7 @@ fn parseValue(
         .message => |name| blk: {
             if (registryEnumDescriptor(file, registry, current, name)) |_| break :blk try parseEnumWithRegistry(file, registry, current, name, json_value);
             const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
-            if (try parseKnownMessage(allocator, file, registry, descriptor, name, json_value)) |known| break :blk .{ .message = known };
+            if (try parseKnownMessage(allocator, file, registry, descriptor, name, json_value, options)) |known| break :blk .{ .message = known };
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
             errdefer {
@@ -812,7 +815,7 @@ fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const regis
     return false;
 }
 
-fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value) !?*dynamic.DynamicMessage {
+fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value, options: Options) !?*dynamic.DynamicMessage {
     if (typeNameEquals(name, "google.protobuf.Struct")) return try parseStructMessage(allocator, file, descriptor, json_value);
     if (typeNameEquals(name, "google.protobuf.Value")) return try parseValueMessage(allocator, file, descriptor, json_value);
     if (typeNameEquals(name, "google.protobuf.ListValue")) return try parseListValueMessage(allocator, file, descriptor, json_value);
@@ -840,7 +843,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
         return try emptyKnownMessage(allocator, descriptor);
     }
     if (typeNameEquals(name, "google.protobuf.Any")) {
-        return try parseAnyMessage(allocator, file, registry, descriptor, json_value);
+        return try parseAnyMessage(allocator, file, registry, descriptor, json_value, options);
     }
     const text = switch (json_value) {
         .string => |value| value,
@@ -878,7 +881,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
     return null;
 }
 
-fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value) !*dynamic.DynamicMessage {
+fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, json_value: std.json.Value, options: Options) !*dynamic.DynamicMessage {
     const object = switch (json_value) {
         .object => |object| object,
         else => return error.TypeMismatch,
@@ -910,7 +913,8 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
             payload.deinit();
             allocator.destroy(payload);
         }
-        try fillMessageObject(allocator, file, registry, payload, object, .{}, true);
+        try fillMessageObject(allocator, file, registry, payload, object, options, true);
+        if (options.validate_any_payloads) try payload.validateRequired();
         const encoded = try payload.encodedDeterministicWithRegistry(file, registry);
         defer allocator.free(encoded);
         try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
@@ -1903,6 +1907,34 @@ test "json expands Any message payloads when type is known" {
     try decoded_payload.decode(&file, parsed_value);
     try std.testing.expectEqual(@as(i32, 8), decoded_payload.get("id").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "parsed", decoded_payload.get("label").?.values.items[0].string);
+}
+
+test "json initialized parse validates expanded Any payloads" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Msg { required int32 id = 1; }
+        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Holder { optional .google.protobuf.Any any = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+
+    var parsed = try parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\"}}", .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.get("any").?.values.items[0].message.get("value") != null);
+
+    try std.testing.expectError(error.MissingRequiredField, parseInitializedAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\"}}", .{}));
+    var initialized = try parseInitializedAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"id\":7}}", .{});
+    defer initialized.deinit();
+    const any_msg = initialized.get("any").?.values.items[0].message;
+    const payload = any_msg.get("value").?.values.items[0].bytes;
+    var decoded = dynamic.DynamicMessage.init(allocator, file.findMessage("Msg").?);
+    defer decoded.deinit();
+    try decoded.decodeInitialized(&file, payload);
+    try std.testing.expectEqual(@as(i32, 7), decoded.get("id").?.values.items[0].int32);
 }
 
 test "json expands Any payloads using registry imports" {
