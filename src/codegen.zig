@@ -210,18 +210,23 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
 fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: *const registry_mod.Registry) Error![]u8 {
     var response_files = try allocator.alloc(plugin.CodeGeneratorResponse.File, files.len);
     @memset(response_files, .{});
+    var generated_infos = try allocator.alloc(schema.GeneratedCodeInfo, files.len);
+    @memset(generated_infos, .{});
     defer {
         for (response_files) |file| {
             if (file.name) |name| allocator.free(name);
             if (file.content.len != 0) allocator.free(file.content);
         }
+        for (generated_infos) |*info| info.deinit(allocator);
+        allocator.free(generated_infos);
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
         const content = try generateZigFileWithRegistry(allocator, file, registry);
         errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
-        response_files[i] = .{ .name = name, .content = content };
+        try populateGeneratedCodeInfo(allocator, file, content, &generated_infos[i]);
+        response_files[i] = .{ .name = name, .content = content, .generated_code_info_value = &generated_infos[i] };
     }
     return try (plugin.CodeGeneratorResponse{
         .supported_features = generatedResponseFeatureMask(),
@@ -249,6 +254,16 @@ fn encodePluginErrorResponse(allocator: std.mem.Allocator, message: []const u8) 
 
 fn generatedResponseFeatureMask() u64 {
     return plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions });
+}
+
+fn populateGeneratedCodeInfo(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, content: []const u8, info: *schema.GeneratedCodeInfo) std.mem.Allocator.Error!void {
+    var annotation = schema.GeneratedCodeInfo.Annotation{};
+    errdefer annotation.deinit(allocator);
+    annotation.source_file = file.name;
+    annotation.begin = 0;
+    annotation.end = @intCast(content.len);
+    annotation.semantic = .set;
+    try info.annotations.append(allocator, annotation);
 }
 
 fn writeFileMetadata(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -7315,6 +7330,7 @@ test "codegen emits protoc response" {
     var saw_maximum_edition = false;
     var saw_file_name = false;
     var saw_registry_import_ref = false;
+    var saw_generated_info = false;
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             2 => saw_supported_features = (try reader.readUInt64()) == generatedResponseFeatureMask(),
@@ -7329,6 +7345,18 @@ test "codegen emits protoc response" {
                             const content = try file_reader.readBytes();
                             saw_registry_import_ref = saw_registry_import_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null;
                         },
+                        16 => {
+                            var info = try @import("descriptor.zig").decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
+                            defer info.deinit(allocator);
+                            if (info.annotations.items.len != 0) {
+                                const annotation = &info.annotations.items[0];
+                                saw_generated_info = saw_generated_info or
+                                    std.mem.eql(u8, annotation.source_file orelse "", "a.proto") and
+                                        annotation.begin.? == 0 and
+                                        annotation.end.? > 0 and
+                                        annotation.semantic.? == .set;
+                            }
+                        },
                         else => try file_reader.skipValue(file_tag),
                     }
                 }
@@ -7341,6 +7369,7 @@ test "codegen emits protoc response" {
     try std.testing.expect(saw_maximum_edition);
     try std.testing.expect(saw_file_name);
     try std.testing.expect(saw_registry_import_ref);
+    try std.testing.expect(saw_generated_info);
 }
 
 test "codegen emits protoc response from request file_to_generate" {
