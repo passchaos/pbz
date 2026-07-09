@@ -256,13 +256,60 @@ fn generatedResponseFeatureMask() u64 {
     return plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions });
 }
 
-fn populateGeneratedCodeInfo(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, content: []const u8, info: *schema.GeneratedCodeInfo) std.mem.Allocator.Error!void {
+fn populateGeneratedCodeInfo(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, content: []const u8, info: *schema.GeneratedCodeInfo) Error!void {
+    try appendGeneratedAnnotation(allocator, info, file.name, &.{}, 0, content.len, .set);
+    for (file.messages.items, 0..) |message, i| {
+        try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 4, @intCast(i) }, message.name, .set);
+    }
+    for (file.enums.items, 0..) |enumeration, i| {
+        try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 5, @intCast(i) }, enumeration.name, .set);
+    }
+    for (file.services.items, 0..) |service, i| {
+        try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 6, @intCast(i) }, service.name, .set);
+    }
+    for (file.extensions.items, 0..) |field, i| {
+        try appendGeneratedExtensionAnnotation(allocator, info, file.name, content, &.{ 7, @intCast(i) }, field.name);
+    }
+}
+
+fn appendGeneratedSymbolAnnotation(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, symbol: []const u8, semantic: schema.GeneratedCodeInfo.Semantic) Error!void {
+    const range = findGeneratedSymbolRange(allocator, content, symbol) catch return;
+    defer allocator.free(range.needle);
+    try appendGeneratedAnnotation(allocator, info, source_file, path, range.begin, range.end, semantic);
+}
+
+fn appendGeneratedExtensionAnnotation(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, extension_name: []const u8) Error!void {
+    const extensions_idx = std.mem.indexOf(u8, content, "pub const extensions = struct") orelse return;
+    const range = findGeneratedSymbolRangeFrom(allocator, content, extension_name, extensions_idx) catch return;
+    defer allocator.free(range.needle);
+    try appendGeneratedAnnotation(allocator, info, source_file, path, range.begin, range.end, .set);
+}
+
+const GeneratedSymbolRange = struct { begin: usize, end: usize, needle: []u8 };
+
+fn findGeneratedSymbolRange(allocator: std.mem.Allocator, content: []const u8, symbol: []const u8) Error!GeneratedSymbolRange {
+    return try findGeneratedSymbolRangeFrom(allocator, content, symbol, 0);
+}
+
+fn findGeneratedSymbolRangeFrom(allocator: std.mem.Allocator, content: []const u8, symbol: []const u8, start_index: usize) Error!GeneratedSymbolRange {
+    var needle_writer: std.Io.Writer.Allocating = .init(allocator);
+    errdefer needle_writer.deinit();
+    try needle_writer.writer.writeAll("pub const ");
+    try writeQuotedIdent(symbol, &needle_writer.writer);
+    const needle = try needle_writer.toOwnedSlice();
+    const begin = std.mem.indexOfPos(u8, content, start_index, needle) orelse return error.OutOfMemory;
+    const next = std.mem.indexOfPos(u8, content, begin + needle.len, "\npub const ") orelse content.len;
+    return .{ .begin = begin, .end = next, .needle = needle };
+}
+
+fn appendGeneratedAnnotation(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, path: []const i32, begin: usize, end: usize, semantic: schema.GeneratedCodeInfo.Semantic) std.mem.Allocator.Error!void {
     var annotation = schema.GeneratedCodeInfo.Annotation{};
     errdefer annotation.deinit(allocator);
-    annotation.source_file = file.name;
-    annotation.begin = 0;
-    annotation.end = @intCast(content.len);
-    annotation.semantic = .set;
+    try annotation.path.appendSlice(allocator, path);
+    annotation.source_file = source_file;
+    annotation.begin = @intCast(begin);
+    annotation.end = @intCast(end);
+    annotation.semantic = semantic;
     try info.annotations.append(allocator, annotation);
 }
 
@@ -7331,6 +7378,7 @@ test "codegen emits protoc response" {
     var saw_file_name = false;
     var saw_registry_import_ref = false;
     var saw_generated_info = false;
+    var saw_message_annotation = false;
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             2 => saw_supported_features = (try reader.readUInt64()) == generatedResponseFeatureMask(),
@@ -7348,13 +7396,16 @@ test "codegen emits protoc response" {
                         16 => {
                             var info = try @import("descriptor.zig").decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
                             defer info.deinit(allocator);
-                            if (info.annotations.items.len != 0) {
-                                const annotation = &info.annotations.items[0];
-                                saw_generated_info = saw_generated_info or
-                                    std.mem.eql(u8, annotation.source_file orelse "", "a.proto") and
-                                        annotation.begin.? == 0 and
-                                        annotation.end.? > 0 and
-                                        annotation.semantic.? == .set;
+                            for (info.annotations.items) |*annotation| {
+                                const source_matches = std.mem.eql(u8, annotation.source_file orelse "", "a.proto");
+                                const range_valid = annotation.begin.? >= 0 and annotation.end.? > annotation.begin.?;
+                                const semantic_matches = annotation.semantic.? == .set;
+                                if (annotation.path.items.len == 0) {
+                                    saw_generated_info = saw_generated_info or source_matches and annotation.begin.? == 0 and range_valid and semantic_matches;
+                                }
+                                if (std.mem.eql(i32, annotation.path.items, &.{ 4, 0 })) {
+                                    saw_message_annotation = saw_message_annotation or source_matches and range_valid and semantic_matches;
+                                }
                             }
                         },
                         else => try file_reader.skipValue(file_tag),
@@ -7370,6 +7421,7 @@ test "codegen emits protoc response" {
     try std.testing.expect(saw_file_name);
     try std.testing.expect(saw_registry_import_ref);
     try std.testing.expect(saw_generated_info);
+    try std.testing.expect(saw_message_annotation);
 }
 
 test "codegen emits protoc response from request file_to_generate" {
