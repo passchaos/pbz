@@ -1087,6 +1087,11 @@ pub const Parser = struct {
     }
 
     fn validateFieldFeatureSemantics(self: *Parser, field: *const schema.FieldDescriptor, context: ?*schema.MessageDescriptor) ParseError!void {
+        if (@intFromEnum(self.file.edition) >= @intFromEnum(schema.Edition.edition_2024)) {
+            for (field.options.items) |option| {
+                if (std.mem.eql(u8, optionLeaf(option.name), "ctype")) return error.InvalidFieldType;
+            }
+        }
         if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null or field.proto3_optional) return;
         if (field.kind == .message or field.kind == .group) return;
         const features = field.features orelse self.file.features;
@@ -2517,6 +2522,10 @@ test "parser applies feature options across declaration scopes" {
 
 test "parser validates editions implicit presence feature constraints" {
     const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\message Bad { bytes data = 1 [ctype = CORD]; }
+    ));
     try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
         \\edition = "2023";
         \\option features.field_presence = IMPLICIT;

@@ -1491,10 +1491,11 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
     if (file.syntax == .editions and field.kind == .group) return error.InvalidFieldType;
-    try validateDecodedFieldOptionApplicability(field, is_extension);
+    try validateDecodedFieldOptionApplicability(file, field, is_extension);
 }
 
-fn validateDecodedFieldOptionApplicability(field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
+fn validateDecodedFieldOptionApplicability(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
+    if (@intFromEnum(file.edition) >= @intFromEnum(schema.Edition.edition_2024) and optionEnumNumber(field.options.items, "ctype") != null) return error.InvalidFieldType;
     if (optionEnumNumber(field.options.items, "jstype")) |jstype| {
         if (jstype != 0 and !fieldKindAllowsJSType(field.kind)) return error.InvalidFieldType;
     }
@@ -3522,6 +3523,29 @@ test "descriptor rejects invalid decoded field option applicability" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, case[1]);
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeInt32(1, 1);
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "data");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 12);
+        try field.writeMessage(8, options.slice());
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-edition-ctype.proto");
+        try file.writeString(12, "editions");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2024));
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
