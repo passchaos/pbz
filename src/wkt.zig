@@ -1,5 +1,8 @@
 const std = @import("std");
 const wire = @import("wire.zig");
+const schema_mod = @import("schema.zig");
+const dynamic_mod = @import("dynamic.zig");
+const registry_mod = @import("registry.zig");
 
 pub const Timestamp = struct {
     seconds: i64 = 0,
@@ -582,6 +585,16 @@ pub const Any = struct {
         return try packBytesWithPrefix(allocator, prefix, full_name, payload);
     }
 
+    pub fn packDynamic(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
+        return try packDynamicWithRegistry(allocator, file, null, full_name, message);
+    }
+
+    pub fn packDynamicWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
+        const payload = try message.encodedWithRegistry(file, registry);
+        defer allocator.free(payload);
+        return try packBytes(allocator, full_name, payload);
+    }
+
     pub fn typeName(self: Any) []const u8 {
         return anyTypeName(self.type_url);
     }
@@ -611,6 +624,20 @@ pub const Any = struct {
             return owned;
         }
         return decoded;
+    }
+
+    pub fn unpackDynamic(self: Any, allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, descriptor: *const schema_mod.MessageDescriptor, expected_full_name: []const u8) !dynamic_mod.DynamicMessage {
+        var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
+        errdefer message.deinit();
+        try message.decode(file, try self.unpackBytes(expected_full_name));
+        return message;
+    }
+
+    pub fn unpackDynamicWithRegistry(self: Any, allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: *const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor, expected_full_name: []const u8) !dynamic_mod.DynamicMessage {
+        var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
+        errdefer message.deinit();
+        try message.decodeWithRegistry(file, registry, try self.unpackBytes(expected_full_name));
+        return message;
     }
 
     pub fn deinit(self: *Any, allocator: std.mem.Allocator) void {
@@ -753,6 +780,31 @@ test "any pack and type matching helpers" {
     try std.testing.expectEqualSlices(u8, "zig", unpacked_owned.value);
     try std.testing.expect(unpacked_owned.value.ptr != packed_message.value.ptr);
     try std.testing.expectError(error.TypeMismatch, packed_message.unpackEncoded(StringValue, allocator, "google.protobuf.Int32Value"));
+}
+
+test "any packs and unpacks dynamic messages" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Payload { int32 id = 1; }
+    );
+    defer file.deinit();
+    const descriptor = file.findMessage("Payload").?;
+    var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
+    defer message.deinit();
+    try message.add(descriptor.findField("id").?, .{ .int32 = 7 });
+
+    var any = try Any.packDynamic(allocator, &file, "demo.Payload", &message);
+    defer any.deinit(allocator);
+    try std.testing.expectEqualStrings("type.googleapis.com/demo.Payload", any.type_url);
+    try std.testing.expect(any.isType(".demo.Payload"));
+
+    var unpacked = try any.unpackDynamic(allocator, &file, descriptor, "demo.Payload");
+    defer unpacked.deinit();
+    const id = unpacked.get("id").?.values.items[0].int32;
+    try std.testing.expectEqual(@as(i32, 7), id);
+    try std.testing.expectError(error.TypeMismatch, any.unpackDynamic(allocator, &file, descriptor, "demo.Other"));
 }
 
 pub const NullValue = enum(i32) {
