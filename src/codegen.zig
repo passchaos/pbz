@@ -99,6 +99,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
         try writer.print(" = {d};\n", .{field.number});
     }
     if (message.fields.items.len != 0) try writer.writeAll("\n");
+    for (message.fields.items) |*field| try writeFieldMetadataDecl(file, field, writer, depth + 1);
+    if (message.fields.items.len != 0) try writer.writeAll("\n");
     for (message.fields.items) |*field| {
         if (field.kind == .map) try writeMapEntryType(field, writer, depth + 1);
     }
@@ -182,6 +184,91 @@ fn writeOneofField(oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth:
 
 fn writeOneofTypeName(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writeQuotedIdentWithSuffix(name, "Oneof", writer);
+}
+
+fn writeFieldMetadataDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdentWithSuffix(field.name, "_field", writer);
+    try writer.writeAll(" = struct {\n");
+    try indent(writer, depth + 1);
+    try writer.print("pub const number = {d};\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const name = ");
+    try writeZigStringLiteral(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const json_name = ");
+    if (field.json_name) |json_name| {
+        try writeZigStringLiteral(json_name, writer);
+    } else {
+        try writeZigLowerCamelStringLiteral(field.name, writer);
+    }
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const cardinality = ");
+    try writeZigStringLiteral(@tagName(field.cardinality), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const kind = ");
+    try writeZigStringLiteral(fieldKindName(field.kind), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const type_name = ");
+    try writeZigStringLiteral(fieldTypeName(field.kind), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const zig_type = ");
+    try writeZigStringLiteral(fieldType(field.*), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const has_presence = ");
+    try writer.writeAll(if (hasPresence(file, field.*)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const default_value = ");
+    try writeOptionValueTextLiteral(field.default_value, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const is_packed = ");
+    try writer.writeAll(if (field.resolvedPacked(file)) "true" else "false");
+    try writer.writeAll(";\n");
+    if (field.kind == .map) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_key = ");
+        try writeZigStringLiteral(@tagName(field.kind.map.key), writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_value_kind = ");
+        try writeZigStringLiteral(fieldKindName(field.kind.map.value.*), writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_value_type_name = ");
+        try writeZigStringLiteral(fieldTypeName(field.kind.map.value.*), writer);
+        try writer.writeAll(";\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn fieldKindName(kind: schema.FieldKind) []const u8 {
+    return switch (kind) {
+        .scalar => |scalar| @tagName(scalar),
+        .message => "message",
+        .enumeration => "enum",
+        .group => "group",
+        .map => "map",
+    };
+}
+
+fn fieldTypeName(kind: schema.FieldKind) []const u8 {
+    return switch (kind) {
+        .scalar => |scalar| @tagName(scalar),
+        .message => |name| name,
+        .enumeration => |name| name,
+        .group => |name| name,
+        .map => "",
+    };
 }
 
 fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5821,6 +5908,46 @@ test "codegen emits package and import module metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"common.proto_kind\" = \"normal\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"public/common.proto\" = @import(\"public/common.pb.zig\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"public/common.proto_kind\" = \"public\";") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits field metadata including imported type names" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message M {
+        \\  optional .demo.common.User user = 1;
+        \\  repeated int32 nums = 2 [packed = true];
+        \\  string display_name = 3 [json_name = "shownName"];
+        \\  map<string, .demo.common.Role> roles = 4;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"user_field\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const number = 1;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"optional\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const kind = \"message\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_name = \".demo.common.User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const has_presence = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums_field\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const is_packed = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"display_name_field\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const json_name = \"shownName\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"roles_field\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const kind = \"map\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_key = \"string\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_kind = \"message\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_name = \".demo.common.Role\";") != null);
+
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);

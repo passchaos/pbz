@@ -214,6 +214,11 @@ a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton wit
 Generated files expose `proto_package`, `proto_syntax`, and an `imports`
 namespace that maps imported `.proto` paths to their generated `.pb.zig` module
 aliases while preserving import kind/path metadata.
+Generated message structs also expose per-field metadata structs (`*_field`)
+with protobuf field number, name/json_name, cardinality, kind, raw type_name
+including imported message/enum names, Zig storage type, presence, default text,
+packed status, and map key/value metadata for wrapper code and future cross-file
+typed reference resolution.
 For `service` declarations, generated files include a `services` namespace with
 service/method metadata, an unimplemented `Handler` stub, and a `Client` wrapper
 that dispatches serialized request/response payloads through a caller-provided
