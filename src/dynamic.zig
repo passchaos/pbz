@@ -133,6 +133,17 @@ pub const DynamicMessage = struct {
         return defaultForField(field);
     }
 
+    pub fn getOrDefaultWithFile(self: *const DynamicMessage, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) DefaultValue {
+        return self.getOrDefaultWithRegistry(file, null, field);
+    }
+
+    pub fn getOrDefaultWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) DefaultValue {
+        if (self.getByNumber(field.number)) |field_value| {
+            if (field_value.values.items.len != 0) return valueAsDefault(field_value.values.items[field_value.values.items.len - 1]);
+        }
+        return defaultForFieldWithRegistry(file, registry, self.descriptor, field);
+    }
+
     pub fn unknownCount(self: *const DynamicMessage) usize {
         return self.unknown_fields.items.len;
     }
@@ -1422,6 +1433,14 @@ fn defaultForField(field: *const schema.FieldDescriptor) DefaultValue {
     };
 }
 
+fn defaultForFieldWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) DefaultValue {
+    if (field.default_value) |value| return defaultFromOption(field.kind, value);
+    if (registryEnumDescriptor(file, registry, current, field.kind)) |enumeration| {
+        if (enumeration.values.items.len != 0) return .{ .enumeration = enumeration.values.items[0].number };
+    }
+    return defaultForField(field);
+}
+
 fn defaultFromOption(kind: schema.FieldKind, value: schema.OptionValue) DefaultValue {
     return switch (kind) {
         .scalar => |scalar| switch (scalar) {
@@ -1994,12 +2013,14 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     const source =
         \\syntax = "proto2";
         \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\enum Code { OK = 5; FAIL = 6; }
         \\message Defaults {
         \\  optional int32 count = 1 [default = 42];
         \\  optional string name = 2 [default = "anon"];
         \\  optional bool enabled = 3 [default = true];
         \\  optional Kind kind = 4 [default = ADMIN];
         \\  optional bytes blob = 5;
+        \\  optional Code code = 6;
         \\}
     ;
     var file = try parser.Parser.parse(allocator, source);
@@ -2014,6 +2035,8 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expect(message.getOrDefault(desc.findField("enabled").?).boolean);
     // Enum symbolic defaults resolve through the parser into their numeric value.
     try std.testing.expectEqual(@as(i32, 1), message.getOrDefault(desc.findField("kind").?).enumeration);
+    try std.testing.expectEqual(@as(i32, 0), message.getOrDefault(desc.findField("code").?).enumeration);
+    try std.testing.expectEqual(@as(i32, 5), message.getOrDefaultWithFile(&file, desc.findField("code").?).enumeration);
     try std.testing.expectEqualStrings("", message.getOrDefault(desc.findField("blob").?).bytes);
 
     try message.add(desc.findField("count").?, .{ .int32 = 7 });
