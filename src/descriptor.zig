@@ -3207,6 +3207,43 @@ test "descriptor preserves source code info locations" {
     try std.testing.expectEqualStrings("field trailing\n", decoded.source_code_info.locations.items[1].trailing_comments.?);
 }
 
+test "descriptor round-trips parser source code info comments and nested paths" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\// Outer leading
+        \\message Outer {
+        \\  // Child leading
+        \\  message Child { optional int32 id = 1; }
+        \\  // child field leading
+        \\  optional Child child = 1; // child field trailing
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "source-comments.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const outer_location = findSourceLocation(&decoded, &.{ 4, 0 }).?;
+    try std.testing.expectEqualStrings("Outer leading\n", outer_location.leading_comments.?);
+    const nested_location = findSourceLocation(&decoded, &.{ 4, 0, 3, 0 }).?;
+    try std.testing.expectEqualStrings("Child leading\n", nested_location.leading_comments.?);
+    const field_location = findSourceLocation(&decoded, &.{ 4, 0, 2, 0 }).?;
+    try std.testing.expectEqualStrings("child field leading\n", field_location.leading_comments.?);
+    try std.testing.expectEqualStrings("child field trailing\n", field_location.trailing_comments.?);
+    const nested_field_location = findSourceLocation(&decoded, &.{ 4, 0, 3, 0, 2, 0 }).?;
+    try std.testing.expectEqual(@as(usize, 4), nested_field_location.span.items.len);
+}
+
+fn findSourceLocation(file: *const schema.FileDescriptor, path: []const i32) ?*const schema.SourceCodeInfo.Location {
+    for (file.source_code_info.locations.items) |*location| {
+        if (std.mem.eql(i32, location.path.items, path)) return location;
+    }
+    return null;
+}
+
 test "descriptor preserves extension range options" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
