@@ -1746,6 +1746,54 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     if (field.kind == .map and field.kind.map.value.* == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.map.value.enumeration)) {
         try writeMapEnumFieldAccessor(ctx, field, field.kind.map, field.kind.map.value.enumeration, writer, depth);
     }
+    if (field.kind == .map and field.kind.map.value.* == .message and codegenCanReferenceMessageWithContext(ctx, field.kind.map.value.message)) {
+        try writeMapMessageFieldAccessor(ctx, field, field.kind.map, field.kind.map.value.message, writer, depth);
+    }
+}
+
+fn writeMapMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, map_type: schema.MapType, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendMessageEntry", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, key: ");
+    try writer.writeAll(scalarZigType(map_type.key));
+    try writer.writeAll(", value: ");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedAccessorIdent("append", field.name, writer);
+    try writer.writeAll("(allocator, .{ .key = key, .value = try value.encode(owned_allocator) });\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getMessageEntry", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator, key: ");
+    try writer.writeAll(scalarZigType(map_type.key));
+    try writer.writeAll(") !");
+    try writer.writeByte('?');
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (");
+    try writeMapKeyEqualExpr(map_type.key, "entry.key", "key", writer);
+    try writer.writeAll(") return try ");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(".decode(allocator, entry.value);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return null;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeMapEnumFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, map_type: schema.MapType, enum_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -8148,6 +8196,10 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendAllField_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceField_keyed\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"keyedEntry\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_keyed\"(self: *@This(), allocator: std.mem.Allocator) void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8, value: @\"Child\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_keyed\"(allocator, .{ .key = key, .value = try value.encode(owned_allocator) });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageEntryField_keyed\"(self: @This(), allocator: std.mem.Allocator, key: []const u8) !?@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry.key, key)) return try @\"Child\".decode(allocator, entry.value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_child\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
