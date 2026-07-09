@@ -4650,6 +4650,15 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try writer.writeAll("}\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn decodeAllFromUnknown(message: anytype, allocator: std.mem.Allocator) ![]");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try decodeFromUnknownFieldsAlloc(message, allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn decodeFirstFromUnknown(message: anytype, allocator: std.mem.Allocator) !");
     try writer.writeAll("?");
     try writer.writeAll(extensionSingleZigType(field.kind));
@@ -5728,6 +5737,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFromUnknownFieldsAlloc(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeAllRaw(allocator, message.unknownFields());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllFromUnknown(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeFromUnknownFieldsAlloc(message, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFirstFromUnknown(message: anytype, allocator: std.mem.Allocator) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (values.len == 0) null else values[values.len - 1];") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums\" = struct") != null);
