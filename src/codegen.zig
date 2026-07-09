@@ -462,8 +462,8 @@ fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
 fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (kind) {
         .scalar => |scalar| switch (scalar) {
-            .double => try writer.print("try std.fmt.parseFloat(f64, {s})", .{value_expr}),
-            .float => try writer.print("try std.fmt.parseFloat(f32, {s})", .{value_expr}),
+            .double => try writer.print("try @This().textFloat(f64, {s})", .{value_expr}),
+            .float => try writer.print("try @This().textFloat(f32, {s})", .{value_expr}),
             .int32, .sint32, .sfixed32 => try writer.print("try @This().textInt(i32, {s})", .{value_expr}),
             .int64, .sint64, .sfixed64 => try writer.print("try @This().textInt(i64, {s})", .{value_expr}),
             .uint32, .fixed32 => try writer.print("try @This().textInt(u32, {s})", .{value_expr}),
@@ -3157,6 +3157,13 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try std.fmt.parseInt(T, value, 0);
         \\}
         \\
+        \\fn textFloat(comptime T: type, value: []const u8) !T {
+        \\    if (std.ascii.eqlIgnoreCase(value, "nan")) return std.math.nan(T);
+        \\    if (std.ascii.eqlIgnoreCase(value, "inf") or std.ascii.eqlIgnoreCase(value, "infinity")) return std.math.inf(T);
+        \\    if (std.ascii.eqlIgnoreCase(value, "-inf") or std.ascii.eqlIgnoreCase(value, "-infinity")) return -std.math.inf(T);
+        \\    return try std.fmt.parseFloat(T, value);
+        \\}
+        \\
         \\fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
         \\    const body = if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) value[1 .. value.len - 1] else value;
         \\    var out: std.ArrayList(u8) = .empty;
@@ -4127,7 +4134,8 @@ test "codegen emits basic TextFormat formatters" {
         \\  Child child = 5;
         \\  map<string, Child> kids = 6;
         \\  map<string, int32> counts = 7;
-        \\  oneof pick { string alias = 8; Kind picked = 9; Child picked_msg = 10; }
+        \\  double ratio = 8;
+        \\  oneof pick { string alias = 9; Kind picked = 10; Child picked_msg = 11; }
         \\}
     );
     defer file.deinit();
@@ -4149,6 +4157,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\"))") != null);
@@ -4159,6 +4168,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textInt(comptime T: type, value: []const u8) !T") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textFloat(comptime T: type, value: []const u8) !T") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.ascii.eqlIgnoreCase(value, \"-inf\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32") != null);
