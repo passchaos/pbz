@@ -1990,10 +1990,22 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
         for (message.enums.items) |enumeration| {
             if (std.mem.eql(u8, nested.name, enumeration.name)) return error.InvalidFieldType;
         }
+        for (message.fields.items) |field| {
+            if (std.mem.eql(u8, nested.name, field.name)) return error.InvalidFieldType;
+        }
+        for (message.oneofs.items) |oneof| {
+            if (std.mem.eql(u8, nested.name, oneof.name)) return error.InvalidFieldType;
+        }
     }
     for (message.enums.items, 0..) |enumeration, i| {
         for (message.enums.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
+        }
+        for (message.fields.items) |field| {
+            if (std.mem.eql(u8, enumeration.name, field.name)) return error.InvalidFieldType;
+        }
+        for (message.oneofs.items) |oneof| {
+            if (std.mem.eql(u8, enumeration.name, oneof.name)) return error.InvalidFieldType;
         }
     }
     for (message.extensions.items, 0..) |extension, i| {
@@ -4642,6 +4654,58 @@ test "descriptor rejects invalid message descriptors" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, "dup-nested.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "Item");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        var nested = wire.Writer.init(allocator);
+        defer nested.deinit();
+        try nested.writeString(1, "Item");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(3, nested.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "field-nested-conflict.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "Kind");
+        var enum_value = wire.Writer.init(allocator);
+        defer enum_value.deinit();
+        try enum_value.writeString(1, "UNKNOWN");
+        try enum_value.writeInt32(2, 0);
+        var enumeration = wire.Writer.init(allocator);
+        defer enumeration.deinit();
+        try enumeration.writeString(1, "Kind");
+        try enumeration.writeMessage(2, enum_value.slice());
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "value");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeInt32(9, 0);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(4, enumeration.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "oneof-enum-conflict.proto");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }

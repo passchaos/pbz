@@ -1328,10 +1328,22 @@ pub const Parser = struct {
             for (message.enums.items) |*enumeration| {
                 if (std.mem.eql(u8, nested.name, enumeration.name)) return error.DuplicateSymbol;
             }
+            for (message.fields.items) |field| {
+                if (std.mem.eql(u8, nested.name, field.name)) return error.DuplicateSymbol;
+            }
+            for (message.oneofs.items) |oneof| {
+                if (std.mem.eql(u8, nested.name, oneof.name)) return error.DuplicateSymbol;
+            }
         }
         for (message.enums.items, 0..) |enumeration, i| {
             for (message.enums.items[i + 1 ..]) |other| {
                 if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
+            }
+            for (message.fields.items) |field| {
+                if (std.mem.eql(u8, enumeration.name, field.name)) return error.DuplicateSymbol;
+            }
+            for (message.oneofs.items) |oneof| {
+                if (std.mem.eql(u8, enumeration.name, oneof.name)) return error.DuplicateSymbol;
             }
         }
         for (message.extensions.items, 0..) |extension, i| {
@@ -2759,6 +2771,22 @@ test "parser rejects duplicate type symbols in the same scope" {
     try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Outer { message Item {} message Item {} }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Outer { optional int32 Item = 1; message Item {} }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Outer { optional int32 Kind = 1; enum Kind { UNKNOWN = 0; } }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Outer { oneof Item { int32 value = 1; } message Item {} }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Outer { oneof Kind { int32 value = 1; } enum Kind { UNKNOWN = 0; } }
     ));
     try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
         \\syntax = "proto2";
