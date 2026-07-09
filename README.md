@@ -194,8 +194,8 @@ var unpacked_string = try packed_string.unpackEncodedOwned(pbz.StringValue, allo
 defer unpacked_string.deinit(allocator);
 ```
 
-`pbz.Any` also provides `packDynamic` / `unpackDynamic` helpers for reflection
-workflows backed by `DynamicMessage`.
+`pbz.Any` also provides `packDynamic` / `unpackDynamic` helpers, including
+initialized variants, for reflection workflows backed by `DynamicMessage`.
 
 ## TextFormat support
 
