@@ -1333,6 +1333,7 @@ pub const Parser = struct {
 
     fn validateMessageExtensionDeclarations(self: *Parser, message: *const schema.MessageDescriptor) ParseError!void {
         for (message.extension_ranges.items) |range| try self.validateExtensionRangeDeclarations(range);
+        try validateExtensionDeclarationNames(message.extension_ranges.items);
         for (message.messages.items) |*nested| try self.validateMessageExtensionDeclarations(nested);
     }
 
@@ -1342,6 +1343,7 @@ pub const Parser = struct {
         for (range.declarations.items, 0..) |declaration, i| {
             if (declaration.number <= 0) return error.InvalidFieldType;
             if (declaration.number < range.start or declaration.number >= end) return error.ReservedField;
+            try validateExtensionDeclarationShape(declaration);
             for (range.declarations.items[i + 1 ..]) |other| {
                 if (declaration.number == other.number) return error.DuplicateField;
                 if (declaration.full_name.len != 0 and other.full_name.len != 0 and std.mem.eql(u8, declaration.full_name, other.full_name)) return error.DuplicateField;
@@ -1378,7 +1380,7 @@ pub const Parser = struct {
             return;
         };
         if (declaration.reserved) return error.ReservedField;
-        if (declaration.full_name.len != 0 and !nameMatchesType(declaration.full_name, schema.extensionFullName(field))) return error.InvalidFieldType;
+        if (declaration.full_name.len != 0 and !schema.extensionDeclarationNameMatches(self.file.package, declaration.full_name, field)) return error.InvalidFieldType;
         if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
         if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
         if (declaration.type_name.len != 0 and !extensionTypeMatches(self, field, declaration.type_name)) return error.InvalidFieldType;
@@ -1881,6 +1883,34 @@ fn validateOneofs(message: *const schema.MessageDescriptor) ParseError!void {
     }
 }
 
+fn validateExtensionDeclarationNames(ranges: []const schema.ExtensionRange) ParseError!void {
+    for (ranges, 0..) |range, range_index| {
+        for (range.declarations.items) |declaration| {
+            if (declaration.full_name.len == 0) continue;
+            for (ranges[range_index + 1 ..]) |other_range| {
+                for (other_range.declarations.items) |other| {
+                    if (std.mem.eql(u8, declaration.full_name, other.full_name)) return error.DuplicateField;
+                }
+            }
+        }
+    }
+}
+
+fn validateExtensionDeclarationShape(declaration: schema.ExtensionDeclaration) ParseError!void {
+    const has_full_name = declaration.full_name.len != 0;
+    const has_type = declaration.type_name.len != 0;
+    if (!has_full_name or !has_type) {
+        if (has_full_name != has_type or !declaration.reserved) return error.InvalidFieldType;
+        return;
+    }
+    if (!schema.declarationSymbolIsQualified(declaration.full_name)) return error.InvalidFieldType;
+    if (!extensionDeclarationTypeNameValid(declaration.type_name)) return error.InvalidFieldType;
+}
+
+fn extensionDeclarationTypeNameValid(type_name: []const u8) bool {
+    return schema.declarationTypeNameIsScalar(type_name) or schema.declarationSymbolIsQualified(type_name);
+}
+
 fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8) ?*const schema.EnumDescriptor {
     if (message.findEnum(leaf)) |enumeration| return enumeration;
     for (message.messages.items) |*nested| if (findEnumInMessage(nested, leaf)) |found| return found;
@@ -1891,28 +1921,8 @@ fn extensionTypeMatches(parser: *Parser, field: *const schema.FieldDescriptor, d
     _ = parser;
     return switch (field.kind) {
         .message, .enumeration, .group => |type_name| nameMatchesType(declared_type, type_name),
-        .scalar => |scalar| std.mem.eql(u8, declared_typeNameScalar(scalar), stripLeadingDot(declared_type)),
+        .scalar => |scalar| std.mem.eql(u8, schema.scalarTypeName(scalar), declared_type),
         .map => false,
-    };
-}
-
-fn declared_typeNameScalar(scalar: schema.ScalarType) []const u8 {
-    return switch (scalar) {
-        .double => "double",
-        .float => "float",
-        .int32 => "int32",
-        .int64 => "int64",
-        .uint32 => "uint32",
-        .uint64 => "uint64",
-        .sint32 => "sint32",
-        .sint64 => "sint64",
-        .fixed32 => "fixed32",
-        .fixed64 => "fixed64",
-        .sfixed32 => "sfixed32",
-        .sfixed64 => "sfixed64",
-        .bool => "bool",
-        .string => "string",
-        .bytes => "bytes",
     };
 }
 
@@ -2934,9 +2944,34 @@ test "parser validates extension range declarations against defined extensions" 
         \\syntax = "proto2";
         \\message Host {
         \\  extensions 100 to max [
-        \\    declaration = { number: 100 full_name: ".a" },
-        \\    declaration = { number: 100 full_name: ".b" }
+        \\    declaration = { number: 100 full_name: ".a" type: "int32" },
+        \\    declaration = { number: 100 full_name: ".b" type: "int32" }
         \\  ];
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to max [declaration = { number: 100 full_name: ".missing.type" }]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to max [declaration = { number: 100 full_name: "missing.dot" type: "int32" }]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to max [declaration = { number: 100 full_name: ".bad.type" type: ".b#az" }]; }
+    ));
+    var reserved_declaration = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to max [declaration = { number: 100 reserved: true }]; }
+    );
+    defer reserved_declaration.deinit();
+    try std.testing.expect(reserved_declaration.findMessage("Host").?.extension_ranges.items[0].declarations.items[0].reserved);
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host {
+        \\  extensions 100 to 100 [declaration = { number: 100 full_name: ".dup" type: "int32" }],
+        \\             101 to 101 [declaration = { number: 101 full_name: ".dup" type: "int32" }];
         \\}
     ));
 }

@@ -1397,12 +1397,7 @@ fn validateDecodedFileEnumValueSymbols(file: *const schema.FileDescriptor) Error
 }
 
 fn isIdentifier(value: []const u8) bool {
-    if (value.len == 0) return false;
-    if (!isIdentifierStart(value[0])) return false;
-    for (value[1..]) |c| {
-        if (!isIdentifierContinue(c)) return false;
-    }
-    return true;
+    return schema.isIdentifier(value);
 }
 
 fn isTypeNameReference(value: []const u8) bool {
@@ -1412,33 +1407,11 @@ fn isTypeNameReference(value: []const u8) bool {
 }
 
 fn isExtensionDeclarationTypeName(value: []const u8) bool {
-    return schema.ScalarType.fromName(value) != null or isTypeNameReference(value);
+    return schema.declarationTypeNameIsScalar(value) or schema.declarationSymbolIsQualified(value);
 }
 
 fn isFullIdentifier(value: []const u8) bool {
-    var index: usize = 0;
-    var expect_start = true;
-    while (index < value.len) : (index += 1) {
-        const c = value[index];
-        if (c == '.') {
-            if (expect_start) return false;
-            expect_start = true;
-            continue;
-        }
-        if (expect_start) {
-            if (!isIdentifierStart(c)) return false;
-            expect_start = false;
-        } else if (!isIdentifierContinue(c)) return false;
-    }
-    return !expect_start;
-}
-
-fn isIdentifierStart(c: u8) bool {
-    return std.ascii.isAlphabetic(c) or c == '_';
-}
-
-fn isIdentifierContinue(c: u8) bool {
-    return isIdentifierStart(c) or std.ascii.isDigit(c);
+    return schema.isFullIdentifier(value);
 }
 
 fn validateDecodedExtensionDeclarations(file: *const schema.FileDescriptor) Error!void {
@@ -1697,28 +1670,8 @@ fn descriptorNamesMatch(a: []const u8, b: []const u8) bool {
 fn descriptorExtensionTypeMatches(field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
         .message, .enumeration, .group => |type_name| descriptorNamesMatch(declared_type, type_name),
-        .scalar => |scalar| std.mem.eql(u8, descriptorNormalizeName(declared_type), descriptorScalarTypeName(scalar)),
+        .scalar => |scalar| std.mem.eql(u8, declared_type, schema.scalarTypeName(scalar)),
         .map => false,
-    };
-}
-
-fn descriptorScalarTypeName(scalar: schema.ScalarType) []const u8 {
-    return switch (scalar) {
-        .double => "double",
-        .float => "float",
-        .int32 => "int32",
-        .int64 => "int64",
-        .uint32 => "uint32",
-        .uint64 => "uint64",
-        .sint32 => "sint32",
-        .sint64 => "sint64",
-        .fixed32 => "fixed32",
-        .fixed64 => "fixed64",
-        .sfixed32 => "sfixed32",
-        .sfixed64 => "sfixed64",
-        .bool => "bool",
-        .string => "string",
-        .bytes => "bytes",
     };
 }
 
@@ -1907,6 +1860,7 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
     try validateDecodedFieldJsonNameUniqueness(message.fields.items);
     for (message.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
     try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items);
+    try validateDecodedExtensionDeclarationNames(message.extension_ranges.items);
     try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items);
 }
 
@@ -2425,11 +2379,34 @@ fn validateDecodedExtensionRange(range: *const schema.ExtensionRange) Error!void
     for (range.declarations.items, 0..) |declaration, index| {
         if (declaration.number <= 0) return error.InvalidFieldType;
         if (declaration.number < range.start or declaration.number >= end) return error.InvalidFieldType;
-        if (declaration.full_name.len != 0 and !isTypeNameReference(declaration.full_name)) return error.InvalidFieldType;
-        if (declaration.type_name.len != 0 and !isExtensionDeclarationTypeName(declaration.type_name)) return error.InvalidFieldType;
+        try validateDecodedExtensionDeclarationShape(declaration);
         for (range.declarations.items[index + 1 ..]) |other| {
             if (declaration.number == other.number) return error.InvalidFieldType;
             if (declaration.full_name.len != 0 and other.full_name.len != 0 and std.mem.eql(u8, declaration.full_name, other.full_name)) return error.InvalidFieldType;
+        }
+    }
+}
+
+fn validateDecodedExtensionDeclarationShape(declaration: schema.ExtensionDeclaration) Error!void {
+    const has_full_name = declaration.full_name.len != 0;
+    const has_type = declaration.type_name.len != 0;
+    if (!has_full_name or !has_type) {
+        if (has_full_name != has_type or !declaration.reserved) return error.InvalidFieldType;
+        return;
+    }
+    if (!schema.declarationSymbolIsQualified(declaration.full_name)) return error.InvalidFieldType;
+    if (!isExtensionDeclarationTypeName(declaration.type_name)) return error.InvalidFieldType;
+}
+
+fn validateDecodedExtensionDeclarationNames(extension_ranges: []const schema.ExtensionRange) Error!void {
+    for (extension_ranges, 0..) |range, range_index| {
+        for (range.declarations.items) |declaration| {
+            if (declaration.full_name.len == 0) continue;
+            for (extension_ranges[range_index + 1 ..]) |other_range| {
+                for (other_range.declarations.items) |other| {
+                    if (std.mem.eql(u8, declaration.full_name, other.full_name)) return error.InvalidFieldType;
+                }
+            }
         }
     }
 }
@@ -5642,6 +5619,61 @@ test "descriptor rejects extensions that violate decoded declarations" {
         try file.messages.append(allocator, host);
         try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
         const bytes = try encodeFileDescriptorProto(allocator, &file, "singular-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".missing.type" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "missing-decl-type.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = "missing.dot", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "decl-name-missing-dot.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".bad.type", .type_name = ".b#az" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "bad-decl-type.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var first = schema.ExtensionRange{ .start = 100, .end = 101 };
+        try first.declarations.append(allocator, .{ .number = 100, .full_name = ".dup", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, first);
+        var second = schema.ExtensionRange{ .start = 101, .end = 102 };
+        try second.declarations.append(allocator, .{ .number = 101, .full_name = ".dup", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, second);
+        try file.messages.append(allocator, host);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "duplicate-decl-name.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }

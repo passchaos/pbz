@@ -201,11 +201,27 @@ fn validateExtensionRangeDeclarationSet(range: schema.ExtensionRange) Error!void
     for (range.declarations.items, 0..) |declaration, i| {
         if (declaration.number <= 0) return error.InvalidExtensionDeclaration;
         if (declaration.number < range.start or declaration.number >= end) return error.InvalidExtensionDeclaration;
+        try validateExtensionDeclarationShape(declaration);
         for (range.declarations.items[i + 1 ..]) |other| {
             if (declaration.number == other.number) return error.InvalidExtensionDeclaration;
             if (declaration.full_name.len != 0 and other.full_name.len != 0 and std.mem.eql(u8, declaration.full_name, other.full_name)) return error.InvalidExtensionDeclaration;
         }
     }
+}
+
+fn validateExtensionDeclarationShape(declaration: schema.ExtensionDeclaration) Error!void {
+    const has_full_name = declaration.full_name.len != 0;
+    const has_type = declaration.type_name.len != 0;
+    if (!has_full_name or !has_type) {
+        if (has_full_name != has_type or !declaration.reserved) return error.InvalidExtensionDeclaration;
+        return;
+    }
+    if (!schema.declarationSymbolIsQualified(declaration.full_name)) return error.InvalidExtensionDeclaration;
+    if (!extensionDeclarationTypeNameValid(declaration.type_name)) return error.InvalidExtensionDeclaration;
+}
+
+fn extensionDeclarationTypeNameValid(type_name: []const u8) bool {
+    return schema.declarationTypeNameIsScalar(type_name) or schema.declarationSymbolIsQualified(type_name);
 }
 
 fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
@@ -278,28 +294,8 @@ fn namesMatch(a: []const u8, b: []const u8) bool {
 fn extensionTypeMatches(field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
         .message, .enumeration, .group => |type_name| namesMatch(declared_type, type_name),
-        .scalar => |scalar| std.mem.eql(u8, normalizeName(declared_type), scalarTypeName(scalar)),
+        .scalar => |scalar| std.mem.eql(u8, declared_type, schema.scalarTypeName(scalar)),
         .map => false,
-    };
-}
-
-fn scalarTypeName(scalar: schema.ScalarType) []const u8 {
-    return switch (scalar) {
-        .double => "double",
-        .float => "float",
-        .int32 => "int32",
-        .int64 => "int64",
-        .uint32 => "uint32",
-        .uint64 => "uint64",
-        .sint32 => "sint32",
-        .sint64 => "sint64",
-        .fixed32 => "fixed32",
-        .fixed64 => "fixed64",
-        .sfixed32 => "sfixed32",
-        .sfixed64 => "sfixed64",
-        .bool => "bool",
-        .string => "string",
-        .bytes => "bytes",
     };
 }
 
@@ -516,4 +512,12 @@ test "registry rejects cross-file extension declaration mismatches" {
     defer registry.deinit();
     try registry.addFile(&host);
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&extension));
+}
+
+test "registry rejects invalid extension declarations" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to max [declaration = { number: 100 full_name: ".missing.type" }]; }
+    ));
 }

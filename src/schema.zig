@@ -116,6 +116,70 @@ pub const ScalarType = enum {
     }
 };
 
+pub fn scalarTypeName(scalar: ScalarType) []const u8 {
+    return switch (scalar) {
+        .double => "double",
+        .float => "float",
+        .int32 => "int32",
+        .int64 => "int64",
+        .uint32 => "uint32",
+        .uint64 => "uint64",
+        .sint32 => "sint32",
+        .sint64 => "sint64",
+        .fixed32 => "fixed32",
+        .fixed64 => "fixed64",
+        .sfixed32 => "sfixed32",
+        .sfixed64 => "sfixed64",
+        .bool => "bool",
+        .string => "string",
+        .bytes => "bytes",
+    };
+}
+
+pub fn declarationTypeNameIsScalar(type_name: []const u8) bool {
+    return ScalarType.fromName(type_name) != null;
+}
+
+pub fn declarationSymbolIsQualified(type_name: []const u8) bool {
+    if (!std.mem.startsWith(u8, type_name, ".")) return false;
+    return isFullIdentifier(type_name[1..]);
+}
+
+pub fn isFullIdentifier(value: []const u8) bool {
+    var index: usize = 0;
+    var expect_start = true;
+    while (index < value.len) : (index += 1) {
+        const c = value[index];
+        if (c == '.') {
+            if (expect_start) return false;
+            expect_start = true;
+            continue;
+        }
+        if (expect_start) {
+            if (!isIdentifierStart(c)) return false;
+            expect_start = false;
+        } else if (!isIdentifierContinue(c)) return false;
+    }
+    return !expect_start;
+}
+
+pub fn isIdentifier(value: []const u8) bool {
+    if (value.len == 0) return false;
+    if (!isIdentifierStart(value[0])) return false;
+    for (value[1..]) |c| {
+        if (!isIdentifierContinue(c)) return false;
+    }
+    return true;
+}
+
+fn isIdentifierStart(c: u8) bool {
+    return std.ascii.isAlphabetic(c) or c == '_';
+}
+
+fn isIdentifierContinue(c: u8) bool {
+    return isIdentifierStart(c) or std.ascii.isDigit(c);
+}
+
 pub const FieldKind = union(enum) {
     scalar: ScalarType,
     message: []const u8,
@@ -824,6 +888,11 @@ pub fn extensionNameMatches(package: []const u8, field: *const FieldDescriptor, 
     if (extensionEffectiveNameEquals(package, field, query)) return true;
     if (std.mem.indexOfScalar(u8, query, '.') == null) return std.mem.eql(u8, optionLeaf(extensionFullName(field)), query);
     return false;
+}
+
+pub fn extensionDeclarationNameMatches(package: []const u8, declaration_full_name: []const u8, field: *const FieldDescriptor) bool {
+    const declaration = normalizeProtoName(declaration_full_name);
+    return extensionEffectiveNameEquals(package, field, declaration);
 }
 
 fn extensionEffectiveNameEquals(package: []const u8, field: *const FieldDescriptor, normalized_query: []const u8) bool {
