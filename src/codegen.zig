@@ -1093,7 +1093,7 @@ fn writeMessageExtensionAccessors(file: *const schema.FileDescriptor, message: *
     var wrote_any = false;
     for (file.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, message, field)) {
-            try writeMessageExtensionAccessor(field, writer, depth);
+            try writeMessageExtensionAccessor(file, field, writer, depth);
             wrote_any = true;
         }
     }
@@ -1110,7 +1110,7 @@ fn writeScopedMessageExtensionAccessors(file: *const schema.FileDescriptor, targ
     var wrote_any = false;
     for (scope.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, target, field)) {
-            try writeMessageExtensionAccessor(field, writer, depth);
+            try writeMessageExtensionAccessor(file, field, writer, depth);
             wrote_any = true;
         }
     }
@@ -1120,7 +1120,7 @@ fn writeScopedMessageExtensionAccessors(file: *const schema.FileDescriptor, targ
     return wrote_any;
 }
 
-fn writeMessageExtensionAccessor(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessageExtensionAccessor(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const helper_name = extensionAccessorSuffix(field.name);
 
     try indent(writer, depth);
@@ -1219,6 +1219,10 @@ fn writeMessageExtensionAccessor(field: *const schema.FieldDescriptor, writer: *
         try writer.writeAll("}\n\n");
     }
 
+    if (field.kind == .message and codegenCanReferenceMessage(file, field.kind.message)) {
+        try writeMessageExtensionTypedAccessor(field, helper_name, writer, depth);
+    }
+
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedIdentWithPrefix(helper_name, "clearExtension_", writer);
@@ -1229,6 +1233,90 @@ fn writeMessageExtensionAccessor(field: *const schema.FieldDescriptor, writer: *
     try writer.writeAll(".clearFromUnknown(self, allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
+}
+
+fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, helper_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    const type_name = field.kind.message;
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "addExtensionMessage_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload = try value.encode(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".appendToUnknown(self, allocator, payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "getExtensionMessages_", writer);
+        try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payloads = try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".decodeAllFromUnknown(self, allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(payloads);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList(");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(") = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer { for (list.items) |*item| item.deinit(allocator); list.deinit(allocator); }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (payloads) |payload| try list.append(allocator, try ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(".decode(allocator, payload));\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "setExtensionMessage_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload = try value.encode(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".replaceInUnknown(self, allocator, payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "getExtensionMessage_", writer);
+        try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !");
+        try writer.writeAll("?");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload = (try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".decodeFirstFromUnknown(self, allocator)) orelse return null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(".decode(allocator, payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    }
 }
 
 fn writeMergeFrom(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5942,6 +6030,12 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".replaceInUnknown(self, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearExtension_tag\"(self: *@This(), allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".clearFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtensionMessage_note\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try value.encode(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"note\".replaceInUnknown(self, allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessage_note\"(self: @This(), allocator: std.mem.Allocator) !?@\"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const payload = (try extensions.@\"note\".decodeFirstFromUnknown(self, allocator)) orelse return null;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"Note\".decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtension_nums\"(self: @This(), allocator: std.mem.Allocator) ![]i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);

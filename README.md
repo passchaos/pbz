@@ -259,7 +259,10 @@ provide `appendAllToUnknown` / `replaceAllInUnknown` batch helpers.
 For same-file proto2 extensions, extendee generated message structs also expose
 message-level `hasExtension_*`, `countExtension_*`, `getExtension_*`,
 `setExtension_*`/`addExtension_*`/`appendExtension_*`, `replaceExtension_*`, and
-`clearExtension_*` facades over the same unknown/raw extension storage.
+`clearExtension_*` facades over the same unknown/raw extension storage; when an
+extension value type is a same-file generated message, additional
+`setExtensionMessage_*` / `getExtensionMessage_*` helpers encode/decode the
+message payload for callers.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
 scalar/enum/message map fields, encoded message payload fields when their generated types
