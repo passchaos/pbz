@@ -416,7 +416,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try writer.writeAll("; continue; }\n");
     if (map_type.value.* == .message and codegenCanReferenceMessage(file, map_type.value.message)) {
         try indent(writer, depth + 2);
-        try writer.writeAll("if (std.mem.eql(u8, entry_line, \"value {\") or std.mem.eql(u8, entry_line, \"value <\")) {\n");
+        try writer.writeAll("if (@This().textBlockField(entry_line, \"value\")) {\n");
         try indent(writer, depth + 3);
         try writer.writeAll("const block = try @This().textBlock(allocator, &lines);\n");
         try indent(writer, depth + 3);
@@ -526,27 +526,19 @@ fn writeTextBlockCondition(field: *const schema.FieldDescriptor, line_expr: []co
 }
 
 fn writeTextBlockNameCondition(name: []const u8, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("std.mem.eql(u8, ");
+    try writer.writeAll("@This().textBlockField(");
     try writer.writeAll(line_expr);
-    try writer.writeAll(", \"");
-    try writeEscapedStringContents(name, writer);
-    try writer.writeAll(" {\") or std.mem.eql(u8, ");
-    try writer.writeAll(line_expr);
-    try writer.writeAll(", \"");
-    try writeEscapedStringContents(name, writer);
-    try writer.writeAll(" <\")");
+    try writer.writeAll(", ");
+    try writeZigStringLiteral(name, writer);
+    try writer.writeAll(")");
 }
 
 fn writeTextLowerCamelBlockNameCondition(name: []const u8, line_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("std.mem.eql(u8, ");
+    try writer.writeAll("@This().textBlockField(");
     try writer.writeAll(line_expr);
-    try writer.writeAll(", \"");
-    try writeLowerCamelEscaped(name, writer);
-    try writer.writeAll(" {\") or std.mem.eql(u8, ");
-    try writer.writeAll(line_expr);
-    try writer.writeAll(", \"");
-    try writeLowerCamelEscaped(name, writer);
-    try writer.writeAll(" <\")");
+    try writer.writeAll(", ");
+    try writeZigLowerCamelStringLiteral(name, writer);
+    try writer.writeAll(")");
 }
 
 fn hasPresenceForTextParseMessage(field: schema.FieldDescriptor) bool {
@@ -3290,9 +3282,38 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return std.mem.trim(u8, rest[1..], " \t\r");
         \\}
         \\
+        \\fn textBlockField(line: []const u8, comptime name: []const u8) bool {
+        \\    if (!std.mem.startsWith(u8, line, name)) return false;
+        \\    var rest = std.mem.trimLeft(u8, line[name.len..], " \t");
+        \\    if (rest.len != 0 and rest[0] == ':') rest = std.mem.trimLeft(u8, rest[1..], " \t");
+        \\    return std.mem.eql(u8, rest, "{") or std.mem.eql(u8, rest, "<");
+        \\}
+        \\
         \\fn textCleanLine(raw_line: []const u8) []const u8 {
-        \\    var line = std.mem.trim(u8, raw_line, " \t\r");
-        \\    if (std.mem.indexOfScalar(u8, line, '#')) |idx| line = std.mem.trim(u8, line[0..idx], " \t\r");
+        \\    var end = raw_line.len;
+        \\    var quote: ?u8 = null;
+        \\    var escaped = false;
+        \\    for (raw_line, 0..) |c, i| {
+        \\        if (escaped) {
+        \\            escaped = false;
+        \\            continue;
+        \\        }
+        \\        if (quote) |q| {
+        \\            if (c == '\\') {
+        \\                escaped = true;
+        \\            } else if (c == q) {
+        \\                quote = null;
+        \\            }
+        \\            continue;
+        \\        }
+        \\        if (c == '"' or c == '\'') {
+        \\            quote = c;
+        \\        } else if (c == '#') {
+        \\            end = i;
+        \\            break;
+        \\        }
+        \\    }
+        \\    var line = std.mem.trim(u8, raw_line[0..end], " \t\r");
         \\    while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
         \\        line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
         \\    }
@@ -3317,40 +3338,78 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
-        \\    const body = if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) value[1 .. value.len - 1] else value;
         \\    var out: std.ArrayList(u8) = .empty;
         \\    errdefer out.deinit(allocator);
         \\    var i: usize = 0;
-        \\    while (i < body.len) : (i += 1) {
-        \\        if (body[i] != '\\') {
-        \\            try out.append(allocator, body[i]);
-        \\            continue;
+        \\    var read_quoted = false;
+        \\    while (true) {
+        \\        while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}
+        \\        if (i >= value.len) break;
+        \\        const quote = value[i];
+        \\        if (quote != '"' and quote != '\'') {
+        \\            if (read_quoted) return error.InvalidEscape;
+        \\            try out.appendSlice(allocator, value[i..]);
+        \\            break;
         \\        }
+        \\        read_quoted = true;
         \\        i += 1;
-        \\        if (i >= body.len) return error.InvalidEscape;
-        \\        switch (body[i]) {
-        \\            'n' => try out.append(allocator, '\n'),
-        \\            'r' => try out.append(allocator, '\r'),
-        \\            't' => try out.append(allocator, '\t'),
-        \\            '\\' => try out.append(allocator, '\\'),
-        \\            '"' => try out.append(allocator, '"'),
-        \\            '\'' => try out.append(allocator, '\''),
-        \\            'x' => {
-        \\                if (i + 2 >= body.len) return error.InvalidEscape;
-        \\                try out.append(allocator, try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16));
-        \\                i += 2;
-        \\            },
-        \\            '0'...'7' => {
-        \\                const start = i;
-        \\                var end = i + 1;
-        \\                while (end < body.len and end < start + 3 and body[end] >= '0' and body[end] <= '7') : (end += 1) {}
-        \\                try out.append(allocator, try std.fmt.parseInt(u8, body[start..end], 8));
-        \\                i = end - 1;
-        \\            },
-        \\            else => |c| try out.append(allocator, c),
+        \\        var closed = false;
+        \\        while (i < value.len) {
+        \\            const c = value[i];
+        \\            i += 1;
+        \\            if (c == quote) {
+        \\                closed = true;
+        \\                break;
+        \\            }
+        \\            if (c != '\\') {
+        \\                try out.append(allocator, c);
+        \\                continue;
+        \\            }
+        \\            if (i >= value.len) return error.InvalidEscape;
+        \\            const esc = value[i];
+        \\            i += 1;
+        \\            switch (esc) {
+        \\                'n' => try out.append(allocator, '\n'),
+        \\                'r' => try out.append(allocator, '\r'),
+        \\                't' => try out.append(allocator, '\t'),
+        \\                'a' => try out.append(allocator, 0x07),
+        \\                'b' => try out.append(allocator, 0x08),
+        \\                'f' => try out.append(allocator, 0x0c),
+        \\                'v' => try out.append(allocator, 0x0b),
+        \\                '\\' => try out.append(allocator, '\\'),
+        \\                '"' => try out.append(allocator, '"'),
+        \\                '\'' => try out.append(allocator, '\''),
+        \\                '?' => try out.append(allocator, '?'),
+        \\                'x', 'X' => {
+        \\                    const start = i;
+        \\                    var end = i;
+        \\                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+        \\                    if (end == start) return error.InvalidEscape;
+        \\                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+        \\                    i = end;
+        \\                },
+        \\                '0'...'7' => {
+        \\                    const start = i - 1;
+        \\                    var end = i;
+        \\                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
+        \\                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+        \\                    i = end;
+        \\                },
+        \\                else => |unknown| try out.append(allocator, unknown),
+        \\            }
         \\        }
+        \\        if (!closed) return error.InvalidEscape;
         \\    }
         \\    return try out.toOwnedSlice(allocator);
+        \\}
+        \\
+        \\fn textHexDigit(c: u8) ?u8 {
+        \\    return switch (c) {
+        \\        '0'...'9' => c - '0',
+        \\        'a'...'f' => c - 'a' + 10,
+        \\        'A'...'F' => c - 'A' + 10,
+        \\        else => null,
+        \\    };
         \\}
         \\
         \\fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
@@ -3426,7 +3485,8 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    errdefer out.deinit();
         \\    var depth: usize = 1;
         \\    while (lines.next()) |raw_line| {
-        \\        const line = std.mem.trim(u8, raw_line, " \t\r");
+        \\        const line = textCleanLine(raw_line);
+        \\        if (line.len == 0) continue;
         \\        if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
         \\            depth -= 1;
         \\            if (depth == 0) return try out.toOwnedSlice();
@@ -4390,30 +4450,33 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ratio\" = try @This().textFloat(f64, raw_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\") or std.mem.eql(u8, line, \"counts <\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry_line, \"value {\") or std.mem.eql(u8, entry_line, \"value <\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.encode(owned_allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlockField(line: []const u8, comptime name: []const u8) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textInt(comptime T: type, value: []const u8) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFloat(comptime T: type, value: []const u8) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.ascii.eqlIgnoreCase(value, \"-inf\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[start..end], 8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, value[start..end], 16)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, value[start..end], 8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textHexDigit(c: u8) ?u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var quote: ?u8 = null;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\") or std.mem.eql(u8, line, \"child <\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseText(allocator, block);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"picked_msg {\") or std.mem.eql(u8, line, \"picked_msg <\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \"pickedMsg {\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \">\")") != null);
 

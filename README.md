@@ -252,10 +252,12 @@ and oneof fields; generated `parseText` / `parseTextInitialized` cover basic
 line-oriented scalar, enum, repeated, scalar/enum/message map, scalar/enum oneof
 input, plus message/group block payloads with duplicate singular message/group
 merge semantics when their generated types are available, `{}` or `<>` block
-delimiters, proto/lowerCamel/`json_name` field spellings, common quoted string
-escapes including hex/octal bytes, decimal/hex/octal integer input, closed-enum validation, numeric
-unknown varint/string/group preservation, float `nan`/`inf` spellings, line
-comments, and common semicolon/comma separators.
+delimiters with optional colon, proto/lowerCamel/`json_name` field spellings,
+adjacent quoted string literal concatenation, common quoted string escapes
+including C-style control, hex/octal bytes, decimal/hex/octal integer input,
+closed-enum validation, numeric unknown varint/string/group preservation, float
+`nan`/`inf` spellings, `#` line comments outside quoted strings including nested
+blocks, and common semicolon/comma separators.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
