@@ -86,6 +86,7 @@ pub const generateZigFile = codegen.generateZigFile;
 pub const generateZigFileWithRegistry = codegen.generateZigFileWithRegistry;
 pub const generatePluginResponse = codegen.generatePluginResponse;
 pub const generatePluginResponseFromRequest = codegen.generatePluginResponseFromRequest;
+pub const generatePluginResponseFromRequestBytes = codegen.generatePluginResponseFromRequestBytes;
 pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;

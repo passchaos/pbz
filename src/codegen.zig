@@ -130,14 +130,28 @@ fn normalizedTypeName(type_name: []const u8) []const u8 {
     return if (std.mem.startsWith(u8, type_name, ".")) type_name[1..] else type_name;
 }
 
+const PluginParameterOptions = struct {
+    include_imports: bool = false,
+};
+
+pub fn generatePluginResponseFromRequestBytes(allocator: std.mem.Allocator, bytes: []const u8) Error![]u8 {
+    var request = try plugin.CodeGeneratorRequest.decode(allocator, bytes);
+    defer request.deinit();
+    return try generatePluginResponseFromRequest(allocator, &request);
+}
+
 pub fn generatePluginResponseFromRequest(allocator: std.mem.Allocator, request: *const plugin.CodeGeneratorRequest) Error![]u8 {
+    const options = parsePluginParameters(request.parameter) catch {
+        return try encodePluginErrorResponse(allocator, "invalid generator parameter");
+    };
+
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
     for (request.proto_files.items) |*file| try registry.addFile(file);
 
     var selected: std.ArrayList(*const schema.FileDescriptor) = .empty;
     defer selected.deinit(allocator);
-    if (request.files_to_generate.items.len == 0) {
+    if (options.include_imports or request.files_to_generate.items.len == 0) {
         for (request.proto_files.items) |*file| try selected.append(allocator, file);
     } else {
         for (request.files_to_generate.items) |name| {
@@ -151,6 +165,38 @@ pub fn generatePluginResponseFromRequest(allocator: std.mem.Allocator, request: 
     }
 
     return try generatePluginResponseForSelected(allocator, selected.items, &registry);
+}
+
+fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!PluginParameterOptions {
+    var options = PluginParameterOptions{};
+    var parts = std.mem.splitScalar(u8, parameter, ',');
+    while (parts.next()) |raw_part| {
+        const part = std.mem.trim(u8, raw_part, " \t\r\n");
+        if (part.len == 0) continue;
+        const key, const maybe_value = splitParameter(part);
+        if (std.mem.eql(u8, key, "include_imports") or std.mem.eql(u8, key, "emit_imports")) {
+            options.include_imports = try parseParameterBool(maybe_value orelse "true");
+        } else if (std.mem.eql(u8, key, "paths")) {
+            const value = maybe_value orelse return error.InvalidPluginParameter;
+            if (!std.mem.eql(u8, value, "source_relative")) return error.InvalidPluginParameter;
+        } else {
+            return error.InvalidPluginParameter;
+        }
+    }
+    return options;
+}
+
+fn splitParameter(part: []const u8) struct { []const u8, ?[]const u8 } {
+    if (std.mem.indexOfScalar(u8, part, '=')) |idx| {
+        return .{ std.mem.trim(u8, part[0..idx], " \t\r\n"), std.mem.trim(u8, part[idx + 1 ..], " \t\r\n") };
+    }
+    return .{ part, null };
+}
+
+fn parseParameterBool(value: []const u8) error{InvalidPluginParameter}!bool {
+    if (std.ascii.eqlIgnoreCase(value, "true") or std.mem.eql(u8, value, "1")) return true;
+    if (std.ascii.eqlIgnoreCase(value, "false") or std.mem.eql(u8, value, "0")) return false;
+    return error.InvalidPluginParameter;
 }
 
 pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor) Error![]u8 {
@@ -7069,6 +7115,86 @@ test "codegen emits protoc response from request file_to_generate" {
         }
     }
     try std.testing.expect(saw_error);
+}
+
+test "codegen request plugin options include imports and raw bytes entrypoint" {
+    const allocator = std.testing.allocator;
+    var request = plugin.CodeGeneratorRequest.init(allocator);
+    defer request.deinit();
+    request.parameter = "paths=source_relative,include_imports=true";
+    try request.files_to_generate.append(allocator, "app.proto");
+    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\message User { optional int32 id = 1; }
+    ));
+    request.proto_files.items[0].name = "common.proto";
+    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message App { optional .demo.common.User user = 1; }
+    ));
+    request.proto_files.items[1].name = "app.proto";
+
+    const include_response = try generatePluginResponseFromRequest(allocator, &request);
+    defer allocator.free(include_response);
+    var include_reader = wire.Reader.init(include_response);
+    var include_file_count: usize = 0;
+    while (try include_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                include_file_count += 1;
+                try include_reader.skipValue(tag);
+            },
+            else => try include_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 2), include_file_count);
+
+    var invalid_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer invalid_request.deinit();
+    invalid_request.parameter = "unknown_option=true";
+    try invalid_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message A {}"));
+    invalid_request.proto_files.items[0].name = "a.proto";
+    const invalid_response = try generatePluginResponseFromRequest(allocator, &invalid_request);
+    defer allocator.free(invalid_response);
+    var invalid_reader = wire.Reader.init(invalid_response);
+    var saw_invalid_parameter = false;
+    while (try invalid_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => saw_invalid_parameter = std.mem.indexOf(u8, try invalid_reader.readBytes(), "invalid generator parameter") != null,
+            else => try invalid_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_invalid_parameter);
+
+    const fd = try @import("descriptor.zig").encodeFileDescriptorProto(allocator, &request.proto_files.items[1], request.proto_files.items[1].name);
+    defer allocator.free(fd);
+    var raw_writer = wire.Writer.init(allocator);
+    defer raw_writer.deinit();
+    try raw_writer.writeString(1, "app.proto");
+    try raw_writer.writeString(2, "paths=source_relative");
+    try raw_writer.writeMessage(15, fd);
+    const raw_response = try generatePluginResponseFromRequestBytes(allocator, raw_writer.slice());
+    defer allocator.free(raw_response);
+    var raw_reader = wire.Reader.init(raw_response);
+    var saw_raw_app = false;
+    while (try raw_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                var file_reader = wire.Reader.init(try raw_reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        1 => saw_raw_app = saw_raw_app or std.mem.eql(u8, try file_reader.readBytes(), "app.pb.zig"),
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try raw_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_raw_app);
 }
 
 test "codegen quotes zig identifiers" {
