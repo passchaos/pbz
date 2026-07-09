@@ -1639,9 +1639,16 @@ fn parseWrapperFloat(comptime T: type, value: std.json.Value) !T {
     return switch (value) {
         .float => |v| @floatCast(v),
         .integer => |v| @floatFromInt(v),
-        .number_string, .string => |v| try std.fmt.parseFloat(T, v),
+        .number_string, .string => |v| parseWrapperSpecialFloat(T, v) orelse try std.fmt.parseFloat(T, v),
         else => error.TypeMismatch,
     };
+}
+
+fn parseWrapperSpecialFloat(comptime T: type, value: []const u8) ?T {
+    if (std.mem.eql(u8, value, "NaN")) return std.math.nan(T);
+    if (std.mem.eql(u8, value, "Infinity")) return std.math.inf(T);
+    if (std.mem.eql(u8, value, "-Infinity")) return -std.math.inf(T);
+    return null;
 }
 
 fn decodeBase64ForWrapper(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
@@ -1718,6 +1725,7 @@ test "wrapper json parse helpers" {
     try std.testing.expectEqual(false, (try BoolValue.jsonParse(allocator, "null")).value);
     try std.testing.expect(std.math.isNan((try DoubleValue.jsonParse(allocator, "\"NaN\"")).value));
     try std.testing.expect(std.math.isPositiveInf((try FloatValue.jsonParse(allocator, "\"Infinity\"")).value));
+    try std.testing.expect(std.math.isNegativeInf((try DoubleValue.jsonParse(allocator, "\"-Infinity\"")).value));
     const nan_json = try (DoubleValue{ .value = std.math.nan(f64) }).jsonStringifyAlloc(allocator);
     defer allocator.free(nan_json);
     try std.testing.expectEqualSlices(u8, "\"NaN\"", nan_json);
