@@ -318,15 +318,35 @@ pub const FieldMask = struct {
 
     pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) ![][]const u8 {
         var paths: std.ArrayList([]const u8) = .empty;
-        errdefer paths.deinit(allocator);
+        errdefer {
+            for (paths.items) |path| allocator.free(path);
+            paths.deinit(allocator);
+        }
         var reader = wire.Reader.init(bytes);
         while (try reader.nextTag()) |tag| {
             if (tag.number == 1) {
                 try wire.Reader.expectWireType(tag, .length_delimited);
-                try paths.append(allocator, try allocator.dupe(u8, try reader.readBytes()));
+                const path = try allocator.dupe(u8, try reader.readBytes());
+                paths.append(allocator, path) catch |err| {
+                    allocator.free(path);
+                    return err;
+                };
             } else try reader.skipValue(tag);
         }
         return try paths.toOwnedSlice(allocator);
+    }
+
+    pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !FieldMask {
+        return .{ .paths = try decode(allocator, bytes) };
+    }
+
+    pub fn deinit(self: *FieldMask, allocator: std.mem.Allocator) void {
+        freeStringList(allocator, self.paths);
+        self.* = undefined;
+    }
+
+    pub fn cloneOwned(self: FieldMask, allocator: std.mem.Allocator) !FieldMask {
+        return .{ .paths = try cloneStringList(allocator, self.paths) };
     }
 
     pub fn jsonStringifyAlloc(self: FieldMask, allocator: std.mem.Allocator) ![]u8 {
@@ -356,11 +376,40 @@ pub const FieldMask = struct {
         var it = std.mem.splitScalar(u8, unquoted, ',');
         while (it.next()) |part| {
             if (part.len == 0) return error.InvalidFieldMask;
-            try paths.append(allocator, try lowerCamelToSnake(allocator, part));
+            const path = try lowerCamelToSnake(allocator, part);
+            paths.append(allocator, path) catch |err| {
+                allocator.free(path);
+                return err;
+            };
         }
         return try paths.toOwnedSlice(allocator);
     }
+
+    pub fn jsonParseOwned(allocator: std.mem.Allocator, text: []const u8) !FieldMask {
+        return .{ .paths = try jsonParse(allocator, text) };
+    }
 };
+
+fn cloneStringList(allocator: std.mem.Allocator, values: []const []const u8) ![][]const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer {
+        for (list.items) |value| allocator.free(value);
+        list.deinit(allocator);
+    }
+    for (values) |value| {
+        const owned = try allocator.dupe(u8, value);
+        list.append(allocator, owned) catch |err| {
+            allocator.free(owned);
+            return err;
+        };
+    }
+    return try list.toOwnedSlice(allocator);
+}
+
+fn freeStringList(allocator: std.mem.Allocator, values: []const []const u8) void {
+    for (values) |value| allocator.free(value);
+    allocator.free(values);
+}
 
 fn writeLowerCamelPath(path: []const u8, writer: *std.Io.Writer) !void {
     var upper_next = false;
@@ -437,6 +486,32 @@ test "field mask wire and json helpers" {
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo.\""));
 }
 
+test "field mask owned helpers" {
+    const allocator = std.testing.allocator;
+    const paths = [_][]const u8{ "foo_bar", "nested.value" };
+    const mask = FieldMask{ .paths = &paths };
+
+    var cloned = try mask.cloneOwned(allocator);
+    defer cloned.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 2), cloned.paths.len);
+    try std.testing.expect(cloned.paths.ptr != mask.paths.ptr);
+    try std.testing.expect(cloned.paths[0].ptr != mask.paths[0].ptr);
+    try std.testing.expectEqualSlices(u8, "foo_bar", cloned.paths[0]);
+    try std.testing.expectEqualSlices(u8, "nested.value", cloned.paths[1]);
+
+    const bytes = try mask.encode(allocator);
+    defer allocator.free(bytes);
+    var decoded = try FieldMask.decodeOwned(allocator, bytes);
+    defer decoded.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "foo_bar", decoded.paths[0]);
+    try std.testing.expectEqualSlices(u8, "nested.value", decoded.paths[1]);
+
+    var parsed = try FieldMask.jsonParseOwned(allocator, "\"fooBar,nested.value\"");
+    defer parsed.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "foo_bar", parsed.paths[0]);
+    try std.testing.expectEqualSlices(u8, "nested.value", parsed.paths[1]);
+}
+
 pub const Any = struct {
     type_url: []const u8 = "",
     value: []const u8 = "",
@@ -451,21 +526,35 @@ pub const Any = struct {
 
     pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !Any {
         var out = Any{};
+        errdefer out.deinit(allocator);
         var reader = wire.Reader.init(bytes);
         while (try reader.nextTag()) |tag| {
             switch (tag.number) {
                 1 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    out.type_url = try allocator.dupe(u8, try reader.readBytes());
+                    const next = try allocator.dupe(u8, try reader.readBytes());
+                    if (out.type_url.len != 0) allocator.free(out.type_url);
+                    out.type_url = next;
                 },
                 2 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    out.value = try allocator.dupe(u8, try reader.readBytes());
+                    const next = try allocator.dupe(u8, try reader.readBytes());
+                    if (out.value.len != 0) allocator.free(out.value);
+                    out.value = next;
                 },
                 else => try reader.skipValue(tag),
             }
         }
         return out;
+    }
+
+    pub fn cloneOwned(self: Any, allocator: std.mem.Allocator) !Any {
+        const type_url = try allocator.dupe(u8, self.type_url);
+        errdefer allocator.free(type_url);
+        return .{
+            .type_url = type_url,
+            .value = try allocator.dupe(u8, self.value),
+        };
     }
 
     pub fn deinit(self: *Any, allocator: std.mem.Allocator) void {
@@ -506,8 +595,10 @@ pub const Any = struct {
             .string => |value| value,
             else => return error.TypeMismatch,
         };
+        const owned_type_url = try allocator.dupe(u8, type_url);
+        errdefer allocator.free(owned_type_url);
         return .{
-            .type_url = try allocator.dupe(u8, type_url),
+            .type_url = owned_type_url,
             .value = try decodeBase64(allocator, encoded),
         };
     }
@@ -536,6 +627,28 @@ test "any wire and json helpers" {
     defer parsed_url_safe.deinit(allocator);
     try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xff }, parsed_url_safe.value);
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"value\":\"YWJj\"}"));
+}
+
+test "any clone and duplicate field decode helpers" {
+    const allocator = std.testing.allocator;
+    const any = Any{ .type_url = "type.googleapis.com/old.Msg", .value = "old" };
+    var cloned = try any.cloneOwned(allocator);
+    defer cloned.deinit(allocator);
+    try std.testing.expect(cloned.type_url.ptr != any.type_url.ptr);
+    try std.testing.expect(cloned.value.ptr != any.value.ptr);
+    try std.testing.expectEqualSlices(u8, any.type_url, cloned.type_url);
+    try std.testing.expectEqualSlices(u8, any.value, cloned.value);
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(1, "type.googleapis.com/old.Msg");
+    try writer.writeBytes(2, "old");
+    try writer.writeString(1, "type.googleapis.com/new.Msg");
+    try writer.writeBytes(2, "new");
+    var decoded = try Any.decode(allocator, writer.slice());
+    defer decoded.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "type.googleapis.com/new.Msg", decoded.type_url);
+    try std.testing.expectEqualSlices(u8, "new", decoded.value);
 }
 
 pub const NullValue = enum(i32) {
@@ -1180,6 +1293,26 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
             return out;
         }
 
+        pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !Self {
+            const decoded = try Self.decode(bytes);
+            return try decoded.cloneOwned(allocator);
+        }
+
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            switch (scalar) {
+                .string, .bytes => if (self.value.len != 0) allocator.free(self.value),
+                else => {},
+            }
+            self.* = undefined;
+        }
+
+        pub fn cloneOwned(self: Self, allocator: std.mem.Allocator) !Self {
+            return switch (scalar) {
+                .string, .bytes => .{ .value = try allocator.dupe(u8, self.value) },
+                else => self,
+            };
+        }
+
         pub fn jsonStringifyAlloc(self: Self, allocator: std.mem.Allocator) ![]u8 {
             var out: std.Io.Writer.Allocating = .init(allocator);
             errdefer out.deinit();
@@ -1214,6 +1347,10 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
             defer parsed.deinit();
             if (parsed.value == .null) return .{ .value = defaultWrapperValue(T) };
             return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, parsed.value) };
+        }
+
+        pub fn jsonParseOwned(allocator: std.mem.Allocator, text: []const u8) !Self {
+            return try jsonParse(allocator, text);
         }
     };
 }
@@ -1340,6 +1477,31 @@ test "wrapper json parse helpers" {
     try std.testing.expectEqualSlices(u8, "hi", bytes.value);
     const null_bytes = try BytesValue.jsonParse(allocator, "null");
     try std.testing.expectEqualSlices(u8, "", null_bytes.value);
+}
+
+test "wrapper owned helpers" {
+    const allocator = std.testing.allocator;
+
+    const borrowed_string = StringValue{ .value = "zig" };
+    var cloned_string = try borrowed_string.cloneOwned(allocator);
+    defer cloned_string.deinit(allocator);
+    try std.testing.expect(cloned_string.value.ptr != borrowed_string.value.ptr);
+    try std.testing.expectEqualSlices(u8, "zig", cloned_string.value);
+
+    const string_bytes = try borrowed_string.encode(allocator);
+    defer allocator.free(string_bytes);
+    var decoded_string = try StringValue.decodeOwned(allocator, string_bytes);
+    defer decoded_string.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "zig", decoded_string.value);
+    try std.testing.expect(decoded_string.value.ptr != string_bytes.ptr);
+
+    var parsed_bytes = try BytesValue.jsonParseOwned(allocator, "\"aGk=\"");
+    defer parsed_bytes.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "hi", parsed_bytes.value);
+
+    const scalar = Int32Value{ .value = 7 };
+    const cloned_scalar = try scalar.cloneOwned(allocator);
+    try std.testing.expectEqual(@as(i32, 7), cloned_scalar.value);
 }
 
 test "timestamp and duration validate ranges" {

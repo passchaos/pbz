@@ -170,6 +170,8 @@ defer allocator.free(json_ts);
 
 const d = pbz.Duration{ .seconds = -3, .nanos = -250_000_000 };
 const mask = pbz.FieldMask{ .paths = &.{"foo_bar"} };
+var owned_mask = try mask.cloneOwned(allocator);
+defer owned_mask.deinit(allocator);
 
 var object = try pbz.Struct.jsonParse(allocator,
     \\{"enabled":true,"items":[null,"zig"]}
@@ -179,6 +181,9 @@ var owned_object = try object.cloneOwned(allocator);
 defer owned_object.deinit(allocator);
 const object_wire = try object.encode(allocator);
 defer allocator.free(object_wire);
+
+var string_wrapper = try pbz.StringValue.jsonParseOwned(allocator, "\"zig\"");
+defer string_wrapper.deinit(allocator);
 ```
 
 ## TextFormat support
