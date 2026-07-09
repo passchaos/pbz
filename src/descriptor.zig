@@ -2108,7 +2108,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Array
                 decoded_options.options = .empty;
                 decoded_options.edition_defaults = .empty;
             },
-            9 => oneof_index_text = try oneofIndexText(try reader.readInt32()),
+            9 => oneof_index_text = try decodeOneofIndexText(allocator, owned_strings, try reader.readInt32()),
             10 => json_name = try reader.readBytes(),
             17 => proto3_optional = try reader.readBool(),
             else => try reader.skipValue(tag),
@@ -2983,20 +2983,12 @@ fn decodeFeatureSet(bytes: []const u8) Error!schema.FeatureSet {
     return features;
 }
 
-fn oneofIndexText(index: i32) Error![]const u8 {
-    return switch (index) {
-        0 => "0",
-        1 => "1",
-        2 => "2",
-        3 => "3",
-        4 => "4",
-        5 => "5",
-        6 => "6",
-        7 => "7",
-        8 => "8",
-        9 => "9",
-        else => error.InvalidFieldType,
-    };
+fn decodeOneofIndexText(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), index: i32) Error![]const u8 {
+    if (index < 0) return error.InvalidFieldType;
+    const text = try std.fmt.allocPrint(allocator, "{d}", .{index});
+    errdefer allocator.free(text);
+    try owned_strings.append(allocator, text);
+    return text;
 }
 
 fn labelFromNumber(value: i32) Error!schema.Cardinality {
@@ -4210,6 +4202,28 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
     {
         var field = wire.Writer.init(allocator);
         defer field.deinit();
+        try field.writeString(1, "value");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeInt32(9, -1);
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "pick");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "negative-oneof-index.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
         try field.writeString(1, "name");
         try field.writeInt32(3, 1);
         try field.writeInt32(4, 1);
@@ -4228,6 +4242,42 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         try file.writeString(1, "bad-oneof-index.proto");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Many");
+        var i: usize = 0;
+        while (i < 13) : (i += 1) {
+            var field = wire.Writer.init(allocator);
+            defer field.deinit();
+            const field_name = try std.fmt.allocPrint(allocator, "value_{d}", .{i});
+            defer allocator.free(field_name);
+            try field.writeString(1, field_name);
+            try field.writeInt32(3, @intCast(i + 1));
+            try field.writeInt32(4, 1);
+            try field.writeInt32(5, 5);
+            try field.writeInt32(9, @intCast(i));
+            try message.writeMessage(2, field.slice());
+        }
+        i = 0;
+        while (i < 13) : (i += 1) {
+            var oneof = wire.Writer.init(allocator);
+            defer oneof.deinit();
+            const name = try std.fmt.allocPrint(allocator, "pick_{d}", .{i});
+            defer allocator.free(name);
+            try oneof.writeString(1, name);
+            try message.writeMessage(8, oneof.slice());
+        }
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "large-oneof-index.proto");
+        try file.writeMessage(4, message.slice());
+        var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+        defer decoded.deinit();
+        const msg = decoded.findMessage("Many").?;
+        try std.testing.expectEqual(@as(usize, 13), msg.oneofs.items.len);
+        try std.testing.expectEqualStrings("pick_12", msg.findField("value_12").?.oneof_name.?);
     }
     {
         var first = wire.Writer.init(allocator);
