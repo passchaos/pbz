@@ -4056,11 +4056,21 @@ fn writeJsonParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try indent(writer, depth + 1);
     try writer.writeAll("while (map_it.next()) |map_entry| {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("try list.append(allocator, .{ .key = ");
-    try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
-    try writer.writeAll(", .value = ");
-    try writeJsonParseMapValueExpr(file, map_type.value.*, "map_entry.value_ptr.*", "arena_allocator", writer);
-    try writer.writeAll(" });\n");
+    if (map_type.value.* == .enumeration) {
+        try writer.writeAll("const parsed_value = ");
+        try writeJsonParseEnumExpr(file, map_type.value.enumeration, "map_entry.value_ptr.*", writer);
+        try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("try list.append(allocator, .{ .key = ");
+        try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
+        try writer.writeAll(", .value = parsed_value });\n");
+    } else {
+        try writer.writeAll("try list.append(allocator, .{ .key = ");
+        try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
+        try writer.writeAll(", .value = ");
+        try writeJsonParseMapValueExpr(file, map_type.value.*, "map_entry.value_ptr.*", "arena_allocator", writer);
+        try writer.writeAll(" });\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
@@ -5981,7 +5991,8 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_value = @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = try @This().jsonMapKeyBool(map_entry.key_ptr.*), .value = parsed_value });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try @\"Child\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kids\" = blk: { const old = self.@\"kids\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     const source = try allocator.dupeZ(u8, content);
