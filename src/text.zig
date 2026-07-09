@@ -794,8 +794,8 @@ const TextParser = struct {
             },
             .bytes => .{ .bytes = try self.readString() },
             .bool => .{ .boolean = try self.readBool() },
-            .double => .{ .double = try std.fmt.parseFloat(f64, try self.readAtom()) },
-            .float => .{ .float = try std.fmt.parseFloat(f32, try self.readAtom()) },
+            .double => .{ .double = try parseTextFloat(f64, try self.readAtom()) },
+            .float => .{ .float = try parseTextFloat(f32, try self.readAtom()) },
             .int32 => .{ .int32 = try parseTextInt(i32, try self.readAtom()) },
             .int64 => .{ .int64 = try parseTextInt(i64, try self.readAtom()) },
             .uint32 => .{ .uint32 = try parseTextInt(u32, try self.readAtom()) },
@@ -1039,6 +1039,21 @@ fn parseTextInt(comptime T: type, atom: []const u8) !T {
     return @intCast(unsigned);
 }
 
+fn parseTextFloat(comptime T: type, atom: []const u8) !T {
+    var text = atom;
+    var negative = false;
+    if (text.len != 0 and (text[0] == '+' or text[0] == '-')) {
+        negative = text[0] == '-';
+        text = text[1..];
+    }
+    if (std.ascii.eqlIgnoreCase(text, "nan")) return std.math.nan(T);
+    if (std.ascii.eqlIgnoreCase(text, "inf") or std.ascii.eqlIgnoreCase(text, "infinity")) {
+        const value = std.math.inf(T);
+        return if (negative) -value else value;
+    }
+    return try std.fmt.parseFloat(T, atom);
+}
+
 fn hexValue(c: u8) ?u8 {
     return switch (c) {
         '0'...'9' => c - '0',
@@ -1072,6 +1087,33 @@ test "text format parses dynamic messages" {
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
     try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 1), msg.get("kind").?.values.items[0].enumeration);
+}
+
+test "text format parses protobuf special float values" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Floats {
+        \\  optional double pos = 1;
+        \\  optional double neg = 2;
+        \\  optional float quiet = 3;
+        \\  optional float negative_quiet = 4;
+        \\}
+    );
+    defer file.deinit();
+    const desc = file.findMessage("Floats").?;
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\pos: +Infinity
+        \\neg: -inf
+        \\quiet: nan
+        \\negative_quiet: -nan
+    );
+    defer msg.deinit();
+
+    try std.testing.expect(std.math.isPositiveInf(msg.get("pos").?.values.items[0].double));
+    try std.testing.expect(std.math.isNegativeInf(msg.get("neg").?.values.items[0].double));
+    try std.testing.expect(std.math.isNan(msg.get("quiet").?.values.items[0].float));
+    try std.testing.expect(std.math.isNan(msg.get("negative_quiet").?.values.items[0].float));
 }
 
 test "text format honors closed enum feature for numeric values" {
