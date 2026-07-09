@@ -437,7 +437,11 @@ pub const Parser = struct {
 
     fn validateImports(self: *Parser) ParseError!void {
         var saw_option_import = false;
-        for (self.file.imports.items) |import| {
+        for (self.file.imports.items, 0..) |import, i| {
+            if (import.path.len == 0) return error.InvalidSyntax;
+            for (self.file.imports.items[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, import.path, other.path)) return error.InvalidSyntax;
+            }
             if (import.kind == .option) {
                 if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2024)) return error.InvalidSyntax;
                 saw_option_import = true;
@@ -2293,6 +2297,23 @@ test "parser rejects weak imports under edition 2024 and beyond" {
 
 test "parser validates option import edition and ordering" {
     const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\import "";
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\import "dep.proto";
+        \\import "dep.proto";
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2024";
+        \\import "dep.proto";
+        \\import option "dep.proto";
+        \\message Bad {}
+    ));
     try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
         \\syntax = "proto2";
         \\import option "options.proto";
