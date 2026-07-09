@@ -469,7 +469,7 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
             .uint32, .fixed32 => try writer.print("try std.fmt.parseInt(u32, {s}, 10)", .{value_expr}),
             .uint64, .fixed64 => try writer.print("try std.fmt.parseInt(u64, {s}, 10)", .{value_expr}),
             .bool => try writer.print("try @This().textBool({s})", .{value_expr}),
-            .string, .bytes => try writer.print("try @This().textUnquote({s})", .{value_expr}),
+            .string, .bytes => try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr}),
         },
         .enumeration => |name| {
             try writer.print("try @This().textEnum({s}, ", .{value_expr});
@@ -3144,9 +3144,34 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return error.TypeMismatch;
         \\}
         \\
-        \\fn textUnquote(value: []const u8) ![]const u8 {
-        \\    if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) return value[1 .. value.len - 1];
-        \\    return value;
+        \\fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+        \\    const body = if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) value[1 .. value.len - 1] else value;
+        \\    var out: std.ArrayList(u8) = .empty;
+        \\    errdefer out.deinit(allocator);
+        \\    var i: usize = 0;
+        \\    while (i < body.len) : (i += 1) {
+        \\        if (body[i] != '\\') {
+        \\            try out.append(allocator, body[i]);
+        \\            continue;
+        \\        }
+        \\        i += 1;
+        \\        if (i >= body.len) return error.InvalidEscape;
+        \\        switch (body[i]) {
+        \\            'n' => try out.append(allocator, '\n'),
+        \\            'r' => try out.append(allocator, '\r'),
+        \\            't' => try out.append(allocator, '\t'),
+        \\            '\\' => try out.append(allocator, '\\'),
+        \\            '"' => try out.append(allocator, '"'),
+        \\            '\'' => try out.append(allocator, '\''),
+        \\            'x' => {
+        \\                if (i + 2 >= body.len) return error.InvalidEscape;
+        \\                try out.append(allocator, try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16));
+        \\                i += 2;
+        \\            },
+        \\            else => |c| try out.append(allocator, c),
+        \\        }
+        \\    }
+        \\    return try out.toOwnedSlice(allocator);
         \\}
         \\
         \\fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32 {
@@ -4110,13 +4135,15 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(raw_value))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try std.fmt.parseInt(i32, raw_value, 10); continue; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(raw_value) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"child {\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);

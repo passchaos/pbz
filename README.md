@@ -250,7 +250,8 @@ TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
 and oneof fields; generated `parseText` / `parseTextInitialized` cover basic
 line-oriented scalar, enum, repeated, scalar/enum map, scalar/enum oneof input,
 plus message/group block payloads with duplicate singular message/group merge
-semantics when their generated types are available.
+semantics when their generated types are available, including common quoted
+string escapes.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
