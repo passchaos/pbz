@@ -2112,6 +2112,14 @@ fn writePackedEnumPayload(value_expr: []const u8, writer: *std.Io.Writer) Error!
     try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr});
 }
 
+fn writePackedKindPayload(kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writePackedScalarPayload(scalar, value_expr, writer),
+        .enumeration => try writePackedEnumPayload(value_expr, writer),
+        else => try writer.writeAll("@compileError(\"non-packable extension\")"),
+    }
+}
+
 fn writeEncodeMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
@@ -2914,6 +2922,30 @@ fn writeTextUnknownExtensionField(file: *const schema.FileDescriptor, field: *co
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+    if (field.resolvedPacked(file)) {
+        try indent(writer, depth);
+        try writer.writeAll("if (");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".decodePackedRaw(allocator, raw) catch null) |values| {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(values);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values) |value| {\n");
+        try indent(writer, depth + 2);
+        try writeTextExtensionFieldPrefix(file, field, writer);
+        switch (field.kind) {
+            .scalar => |scalar| try writeTextScalarValue(scalar, "value", writer),
+            .enumeration => |name| try writeTextEnumValue(file, name, "value", writer),
+            else => unreachable,
+        }
+        try writer.writeAll("; try writer.writeByte('\\n');\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("continue;\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
 }
 
 fn writeTextUnknownMessageExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -4326,8 +4358,23 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
         try writer.writeAll("pub fn writeAll(w: *pbz.Writer, values: ");
         try writer.writeAll(fieldType(field.*));
         try writer.writeAll(") !void {\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (values) |value| try write(w, value);\n");
+        if (field.resolvedPacked(file)) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (values.len == 0) return;\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("var packed_writer = pbz.Writer.init(w.allocator);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("defer packed_writer.deinit();\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (values) |value| ");
+            try writePackedKindPayload(field.kind, "value", writer);
+            try writer.writeAll(";\n");
+            try indent(writer, depth + 1);
+            try writer.print("try w.writeBytes({d}, packed_writer.slice());\n", .{field.number});
+        } else {
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (values) |value| try write(w, value);\n");
+        }
         try indent(writer, depth);
         try writer.writeAll("}\n");
 
@@ -4391,6 +4438,35 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
+    if (field.resolvedPacked(file)) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn decodePackedRaw(allocator: std.mem.Allocator, raw: []const u8) !?[]");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(" {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const tag = (try r.nextTag()) orelse return null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (tag.number != number or tag.wire_type != .length_delimited) return null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList(");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll(") = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("while (!packed_reader.eof()) try list.append(allocator, ");
+        try writeEntryReadExpr(field.kind, "packed_reader", writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![]");
     try writer.writeAll(extensionSingleZigType(field.kind));
@@ -4402,7 +4478,15 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer list.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (raw_fields) |raw| if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
+    try writer.writeAll("for (raw_fields) |raw| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
+    if (field.resolvedPacked(file)) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
     try indent(writer, depth);
@@ -4433,6 +4517,10 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
         try writer.writeAll("), raw: []const u8) !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
+        if (field.resolvedPacked(file)) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }\n");
+        }
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -5426,6 +5514,7 @@ test "codegen emits proto2 extension metadata" {
         \\  optional string tag = 100;
         \\  repeated int32 nums = 101;
         \\  optional Note note = 102;
+        \\  repeated int32 packed_nums = 103 [packed = true];
         \\}
     );
     defer file.deinit();
@@ -5450,7 +5539,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number != number or tag.wire_type != .length_delimited) return null;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeValue(&r);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![][]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |raw| if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |raw| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFromUnknownFieldsAlloc(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeAllRaw(allocator, message.unknownFields());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums\" = struct") != null);
@@ -5461,6 +5551,16 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, try decodeValue(r));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppendRaw(allocator: std.mem.Allocator, list: *std.ArrayList(i32), raw: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"packed_nums\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_writer = pbz.Writer.init(w.allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, value))));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(103, packed_writer.slice());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodePackedRaw(allocator: std.mem.Allocator, raw: []const u8) !?[]i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try list.append(allocator, try packed_reader.readInt32());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"packed_nums\".decodePackedRaw(allocator, raw) catch null) |values| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.packed_nums]: \"); try writer.print(\"{d}\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"[demo.tag]\") orelse @This().textFieldValue(line, \"[tag]\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"tag\".encodeRaw(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value));") != null);

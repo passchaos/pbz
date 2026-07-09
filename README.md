@@ -227,7 +227,8 @@ metadata also emits `encodeRaw`, `appendToUnknown`, `decodeRaw`,
 `decodeAllRaw`, and `decodeFromUnknownFieldsAlloc` helpers so typed message
 wrappers can shuttle proto2 extension payloads through their preserved unknown
 field storage; repeated extensions additionally expose `encodeAllRaw` and
-`decodeAppendRaw`.
+`decodeAppendRaw`, and repeated packable extensions honor resolved packed
+encoding with `decodePackedRaw` support for packed raw payloads.
 Extensions of `message_set_wire_format` messages emit MessageSet item groups
 from their generated `write` helper and expose a `decodeMessageSetItem` helper
 for extracting matching item payloads.
