@@ -108,7 +108,11 @@ pub const Registry = struct {
 
     fn validateExtensionAgainstDeclaration(self: *const Registry, field: *const schema.FieldDescriptor) Error!void {
         const extendee_name = field.extendee orelse return;
-        const extendee = self.findMessage(extendee_name, null) orelse return;
+        const owner = self.fileContainingExtension(field) orelse return error.InvalidExtensionDeclaration;
+        const extendee = self.findMessageVisible(owner, extendee_name, null) orelse {
+            if (isCustomOptionExtendee(extendee_name)) return;
+            return error.InvalidExtensionDeclaration;
+        };
         for (extendee.extension_ranges.items) |range| {
             const end = range.end orelse std.math.maxInt(i64);
             if (field.number >= range.start and field.number < end) {
@@ -196,6 +200,18 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn fileContainingExtension(self: *const Registry, target: *const schema.FieldDescriptor) ?*const schema.FileDescriptor {
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (field == target) return file;
+            }
+            for (file.messages.items) |*message| {
+                if (messageContainsExtension(message, target)) return file;
+            }
+        }
+        return null;
+    }
+
     pub fn validateAllFileReferences(self: *const Registry) Error!void {
         for (self.files.items) |file| try self.validateFileReferences(file);
     }
@@ -220,6 +236,9 @@ pub const Registry = struct {
     }
 
     fn validateFieldTypeReference(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scope: []const u8) Error!void {
+        if (field.extendee) |extendee_name| {
+            if (self.findMessageVisible(file, extendee_name, null) == null and !isCustomOptionExtendee(extendee_name)) return error.InvalidFieldType;
+        }
         try self.validateKindTypeReference(file, field.kind, scope);
     }
 
@@ -399,6 +418,34 @@ fn messageContainsEnum(message: *const schema.MessageDescriptor, target: *const 
     }
     for (message.messages.items) |*nested| {
         if (messageContainsEnum(nested, target)) return true;
+    }
+    return false;
+}
+
+fn messageContainsExtension(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) bool {
+    for (message.extensions.items) |*field| {
+        if (field == target) return true;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainsExtension(nested, target)) return true;
+    }
+    return false;
+}
+
+fn isCustomOptionExtendee(name: []const u8) bool {
+    const normalized = normalizeName(name);
+    inline for (.{
+        "google.protobuf.FileOptions",
+        "google.protobuf.MessageOptions",
+        "google.protobuf.FieldOptions",
+        "google.protobuf.OneofOptions",
+        "google.protobuf.EnumOptions",
+        "google.protobuf.EnumValueOptions",
+        "google.protobuf.ServiceOptions",
+        "google.protobuf.MethodOptions",
+        "google.protobuf.ExtensionRangeOptions",
+    }) |option_name| {
+        if (std.mem.eql(u8, normalized, option_name)) return true;
     }
     return false;
 }
@@ -761,6 +808,59 @@ test "registry rejects duplicate extension symbols across files" {
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_name));
 }
 
+test "registry validates extension extendee visibility" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\enum TargetEnum { UNKNOWN = 0; }
+    );
+    defer host.deinit();
+    host.name = "host.proto";
+
+    var missing_extendee = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend Missing { optional int32 tag = 100; }
+    );
+    defer missing_extendee.deinit();
+    missing_extendee.name = "missing.proto";
+
+    var enum_extendee = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\extend TargetEnum { optional int32 tag = 100; }
+    );
+    defer enum_extendee.deinit();
+    enum_extendee.name = "enum.proto";
+
+    var option_only = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2024";
+        \\package option_only;
+        \\import option "host.proto";
+        \\extend demo.Host { int32 tag = 100; }
+    );
+    defer option_only.deinit();
+    option_only.name = "option-only.proto";
+
+    var custom_option = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\extend google.protobuf.MessageOptions { optional string note = 1000; }
+    );
+    defer custom_option.deinit();
+    custom_option.name = "custom-option.proto";
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&host);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&missing_extendee));
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&enum_extendee));
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&option_only));
+    try registry.addFile(&custom_option);
+}
+
 test "registry validates cross-file extension declarations" {
     const allocator = std.testing.allocator;
     var host = try @import("parser.zig").Parser.parse(allocator,
@@ -775,12 +875,15 @@ test "registry validates cross-file extension declarations" {
         \\message Ext {}
     );
     defer host.deinit();
+    host.name = "host.proto";
     var extension = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo;
+        \\import "host.proto";
         \\extend Host { optional Ext ext = 100; }
     );
     defer extension.deinit();
+    extension.name = "extension.proto";
 
     var registry = Registry.init(allocator);
     defer registry.deinit();
@@ -790,9 +893,11 @@ test "registry validates cross-file extension declarations" {
     var missing_declaration = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo;
+        \\import "host.proto";
         \\extend Host { optional Ext other = 101; }
     );
     defer missing_declaration.deinit();
+    missing_declaration.name = "missing-declaration.proto";
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&missing_declaration));
 }
 
@@ -809,12 +914,15 @@ test "registry rejects cross-file extension declaration mismatches" {
         \\message Ext {}
     );
     defer host.deinit();
+    host.name = "host.proto";
     var extension = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo;
+        \\import "host.proto";
         \\extend Host { optional Ext ext = 100; }
     );
     defer extension.deinit();
+    extension.name = "extension.proto";
 
     var registry = Registry.init(allocator);
     defer registry.deinit();
