@@ -1249,6 +1249,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try collapseMapEntryMessages(allocator, &file);
     resolveDecodedEnumDefaults(&file);
     try validateDecodedFileDescriptor(&file);
+    try validateDecodedPackedOptions(&file);
     try validateDecodedDefaults(&file);
     try validateDecodedFieldSyntax(&file);
     try validateDecodedEnumSyntax(&file);
@@ -1438,6 +1439,23 @@ fn validateDecodedEnumDefault(file: *const schema.FileDescriptor, enum_name: []c
         },
         else => return error.InvalidFieldType,
     }
+}
+
+fn validateDecodedPackedOptions(file: *const schema.FileDescriptor) Error!void {
+    for (file.extensions.items) |*field| try validateDecodedPackedOption(file, field);
+    for (file.messages.items) |*message| try validateDecodedMessagePackedOptions(file, message);
+}
+
+fn validateDecodedMessagePackedOptions(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+    for (message.fields.items) |*field| try validateDecodedPackedOption(file, field);
+    for (message.extensions.items) |*field| try validateDecodedPackedOption(file, field);
+    for (message.messages.items) |*nested| try validateDecodedMessagePackedOptions(file, nested);
+}
+
+fn validateDecodedPackedOption(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
+    if (field.packed_override == null) return;
+    if (file.syntax == .editions) return error.InvalidFieldType;
+    if (!field.isPackable()) return error.InvalidFieldType;
 }
 
 fn validateDecodedFieldSyntax(file: *const schema.FileDescriptor) Error!void {
@@ -3398,6 +3416,39 @@ test "descriptor rejects invalid field labels" {
     try file.writeString(1, "bad-label.proto");
     try file.writeMessage(4, message.slice());
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+}
+
+test "descriptor rejects invalid decoded packed options" {
+    const allocator = std.testing.allocator;
+    inline for (.{
+        .{ 1, 5, "optional-packed.proto", "proto2" },
+        .{ 3, 9, "string-packed.proto", "proto2" },
+        .{ 3, 5, "editions-packed.proto", "editions" },
+    }) |case| {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeBool(2, true);
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, case[0]);
+        try field.writeInt32(5, case[1]);
+        try field.writeMessage(8, options.slice());
+
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, case[2]);
+        try file.writeString(12, case[3]);
+        if (std.mem.eql(u8, case[3], "editions")) try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2023));
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor rejects missing type names for message enum and group fields" {
