@@ -1474,6 +1474,36 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
     if (file.syntax == .editions and field.kind == .group) return error.InvalidFieldType;
+    try validateDecodedFieldOptionApplicability(field, is_extension);
+}
+
+fn validateDecodedFieldOptionApplicability(field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
+    if (optionEnumNumber(field.options.items, "jstype")) |jstype| {
+        if (jstype != 0 and !fieldKindAllowsJSType(field.kind)) return error.InvalidFieldType;
+    }
+    const lazy = exactOptionBool(field.options.items, "lazy") orelse false;
+    const unverified_lazy = exactOptionBool(field.options.items, "unverified_lazy") orelse false;
+    if (lazy or unverified_lazy) {
+        if (!fieldKindIsSubmessage(field.kind)) return error.InvalidFieldType;
+    }
+    if (unverified_lazy and is_extension) return error.InvalidFieldType;
+}
+
+fn fieldKindAllowsJSType(kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .int64, .uint64, .sint64, .fixed64, .sfixed64 => true,
+            else => false,
+        },
+        else => false,
+    };
+}
+
+fn fieldKindIsSubmessage(kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .message, .group => true,
+        else => false,
+    };
 }
 
 fn validateDecodedMessageSets(file: *const schema.FileDescriptor) Error!void {
@@ -3451,6 +3481,67 @@ test "descriptor rejects invalid decoded packed options" {
     }
 }
 
+test "descriptor rejects invalid decoded field option applicability" {
+    const allocator = std.testing.allocator;
+    inline for (.{ .{ 6, "bad-jstype.proto" }, .{ 5, "bad-lazy.proto" } }) |case| {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        if (case[0] == 6) {
+            try options.writeInt32(6, 1);
+        } else {
+            try options.writeBool(5, true);
+        }
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeMessage(8, options.slice());
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, case[1]);
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeBool(15, true);
+        var host = wire.Writer.init(allocator);
+        defer host.deinit();
+        try host.writeString(1, "Host");
+        var range = wire.Writer.init(allocator);
+        defer range.deinit();
+        try range.writeInt32(1, 100);
+        try range.writeInt32(2, 200);
+        try host.writeMessage(5, range.slice());
+        var ext = wire.Writer.init(allocator);
+        defer ext.deinit();
+        try ext.writeString(1, "Ext");
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "ext");
+        try field.writeString(2, ".Host");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 11);
+        try field.writeString(6, ".Ext");
+        try field.writeMessage(8, options.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-unverified-lazy-extension.proto");
+        try file.writeMessage(4, host.slice());
+        try file.writeMessage(4, ext.slice());
+        try file.writeMessage(7, field.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
 test "descriptor rejects missing type names for message enum and group fields" {
     const allocator = std.testing.allocator;
     inline for (.{ 10, 11, 14 }) |field_type| {
@@ -4809,18 +4900,17 @@ test "descriptor preserves message field and enum known options" {
         \\  option no_standard_descriptor_accessor = true;
         \\  option deprecated = true;
         \\  option deprecated_legacy_json_field_conflicts = true;
+        \\  message Child {}
         \\  optional bytes data = 1 [
         \\    ctype = CORD,
         \\    deprecated = true,
-        \\    lazy = true,
-        \\    jstype = JS_STRING,
-        \\    weak = true,
-        \\    unverified_lazy = true,
         \\    debug_redact = true,
         \\    retention = RETENTION_SOURCE,
         \\    targets = TARGET_TYPE_FIELD,
         \\    targets = TARGET_TYPE_MESSAGE
         \\  ];
+        \\  optional Child child = 2 [lazy = true, weak = true, unverified_lazy = true];
+        \\  optional int64 big = 3 [jstype = JS_STRING];
         \\}
         \\enum E {
         \\  option allow_alias = true;
@@ -4849,22 +4939,26 @@ test "descriptor preserves message field and enum known options" {
     try std.testing.expectEqual(@as(i64, 1), field_options[0].value.integer);
     try std.testing.expectEqualStrings("deprecated", field_options[1].name);
     try std.testing.expect(field_options[1].value.boolean);
-    try std.testing.expectEqualStrings("lazy", field_options[2].name);
+    try std.testing.expectEqualStrings("debug_redact", field_options[2].name);
     try std.testing.expect(field_options[2].value.boolean);
-    try std.testing.expectEqualStrings("jstype", field_options[3].name);
-    try std.testing.expectEqual(@as(i64, 1), field_options[3].value.integer);
-    try std.testing.expectEqualStrings("weak", field_options[4].name);
-    try std.testing.expect(field_options[4].value.boolean);
-    try std.testing.expectEqualStrings("unverified_lazy", field_options[5].name);
-    try std.testing.expect(field_options[5].value.boolean);
-    try std.testing.expectEqualStrings("debug_redact", field_options[6].name);
-    try std.testing.expect(field_options[6].value.boolean);
-    try std.testing.expectEqualStrings("retention", field_options[7].name);
-    try std.testing.expectEqual(@as(i64, 2), field_options[7].value.integer);
-    try std.testing.expectEqualStrings("targets", field_options[8].name);
-    try std.testing.expectEqual(@as(i64, 4), field_options[8].value.integer);
-    try std.testing.expectEqualStrings("targets", field_options[9].name);
-    try std.testing.expectEqual(@as(i64, 3), field_options[9].value.integer);
+    try std.testing.expectEqualStrings("retention", field_options[3].name);
+    try std.testing.expectEqual(@as(i64, 2), field_options[3].value.integer);
+    try std.testing.expectEqualStrings("targets", field_options[4].name);
+    try std.testing.expectEqual(@as(i64, 4), field_options[4].value.integer);
+    try std.testing.expectEqualStrings("targets", field_options[5].name);
+    try std.testing.expectEqual(@as(i64, 3), field_options[5].value.integer);
+
+    const child_options = decoded.findMessage("M").?.findField("child").?.options.items;
+    try std.testing.expectEqualStrings("lazy", child_options[0].name);
+    try std.testing.expect(child_options[0].value.boolean);
+    try std.testing.expectEqualStrings("weak", child_options[1].name);
+    try std.testing.expect(child_options[1].value.boolean);
+    try std.testing.expectEqualStrings("unverified_lazy", child_options[2].name);
+    try std.testing.expect(child_options[2].value.boolean);
+
+    const big_options = decoded.findMessage("M").?.findField("big").?.options.items;
+    try std.testing.expectEqualStrings("jstype", big_options[0].name);
+    try std.testing.expectEqual(@as(i64, 1), big_options[0].value.integer);
 
     const enum_options = decoded.findEnum("E").?.options.items;
     try std.testing.expectEqualStrings("allow_alias", enum_options[0].name);
