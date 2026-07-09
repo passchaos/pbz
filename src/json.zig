@@ -473,7 +473,7 @@ fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, opti
         if (std.mem.eql(u8, field.name, key)) return field;
         if (field.json_name) |json_name| {
             if (std.mem.eql(u8, json_name, key)) return field;
-        } else if (eqlLowerCamel(field.name, key)) return field;
+        } else if (schema.eqlDefaultJsonName(field.name, key)) return field;
     }
     return null;
 }
@@ -1210,7 +1210,7 @@ fn writeFieldName(field: *const schema.FieldDescriptor, options: Options, writer
     if (options.preserve_proto_field_names) return writeJsonString(field.name, writer);
     if (field.json_name) |json_name| return writeJsonString(json_name, writer);
     try writer.writeAll("\"");
-    try writeLowerCamel(field.name, writer);
+    try schema.writeDefaultJsonName(field.name, writer);
     try writer.writeAll("\"");
 }
 
@@ -1226,23 +1226,6 @@ fn writeLowerCamel(name: []const u8, writer: *std.Io.Writer) Error!void {
             try writer.writeByte(c);
         }
     }
-}
-
-fn eqlLowerCamel(name: []const u8, candidate: []const u8) bool {
-    var i: usize = 0;
-    var upper_next = false;
-    for (name) |c| {
-        if (c == '_') {
-            upper_next = true;
-            continue;
-        }
-        if (i >= candidate.len) return false;
-        const expected = if (upper_next) std.ascii.toUpper(c) else c;
-        upper_next = false;
-        if (candidate[i] != expected) return false;
-        i += 1;
-    }
-    return i == candidate.len;
 }
 
 test "json stringify dynamic message with scalars repeated maps enums and nested messages" {

@@ -799,6 +799,55 @@ pub fn optionLeaf(name: []const u8) []const u8 {
     return trimmed;
 }
 
+pub fn jsonNameLooksLikeExtension(json_name: []const u8) bool {
+    return json_name.len >= 2 and json_name[0] == '[' and json_name[json_name.len - 1] == ']';
+}
+
+pub fn eqlDefaultJsonName(field_name: []const u8, candidate: []const u8) bool {
+    var field_index: usize = 0;
+    var upper_next = false;
+    var candidate_index: usize = 0;
+    while (nextDefaultJsonNameChar(field_name, &field_index, &upper_next)) |c| {
+        if (candidate_index >= candidate.len or candidate[candidate_index] != c) return false;
+        candidate_index += 1;
+    }
+    return candidate_index == candidate.len;
+}
+
+pub fn defaultJsonNamesEqual(a: []const u8, b: []const u8) bool {
+    var a_index: usize = 0;
+    var b_index: usize = 0;
+    var a_upper = false;
+    var b_upper = false;
+    while (true) {
+        const a_char = nextDefaultJsonNameChar(a, &a_index, &a_upper);
+        const b_char = nextDefaultJsonNameChar(b, &b_index, &b_upper);
+        if (a_char == null or b_char == null) return a_char == null and b_char == null;
+        if (a_char.? != b_char.?) return false;
+    }
+}
+
+pub fn writeDefaultJsonName(field_name: []const u8, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    var index: usize = 0;
+    var upper_next = false;
+    while (nextDefaultJsonNameChar(field_name, &index, &upper_next)) |c| try writer.writeByte(c);
+}
+
+fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?u8 {
+    while (index.* < name.len) {
+        const c = name[index.*];
+        index.* += 1;
+        if (c == '_') {
+            upper_next.* = true;
+            continue;
+        }
+        const out = if (upper_next.*) std.ascii.toUpper(c) else c;
+        upper_next.* = false;
+        return out;
+    }
+    return null;
+}
+
 test "schema resolves feature defaults for proto2 proto3 and editions" {
     var file = FileDescriptor.init(std.testing.allocator);
     defer file.deinit();

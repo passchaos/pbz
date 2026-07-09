@@ -1690,10 +1690,10 @@ fn validateJsonNames(message: *const schema.MessageDescriptor) ParseError!void {
     for (message.fields.items, 0..) |field, i| {
         if (field.json_name) |json_name| {
             if (std.mem.indexOfScalar(u8, json_name, 0) != null) return error.InvalidFieldType;
-            if (jsonNameLooksLikeExtension(json_name)) return error.InvalidFieldType;
+            if (schema.jsonNameLooksLikeExtension(json_name)) return error.InvalidFieldType;
         }
         for (message.fields.items[i + 1 ..]) |other| {
-            if (defaultJsonNamesEqual(field.name, other.name)) return error.DuplicateField;
+            if (schema.defaultJsonNamesEqual(field.name, other.name)) return error.DuplicateField;
             if (effectiveJsonNamesEqual(&field, &other)) return error.DuplicateField;
         }
     }
@@ -1702,53 +1702,10 @@ fn validateJsonNames(message: *const schema.MessageDescriptor) ParseError!void {
 fn effectiveJsonNamesEqual(a: *const schema.FieldDescriptor, b: *const schema.FieldDescriptor) bool {
     if (a.json_name) |a_json| {
         if (b.json_name) |b_json| return std.mem.eql(u8, a_json, b_json);
-        return eqlDefaultJsonName(b.name, a_json);
+        return schema.eqlDefaultJsonName(b.name, a_json);
     }
-    if (b.json_name) |b_json| return eqlDefaultJsonName(a.name, b_json);
-    return defaultJsonNamesEqual(a.name, b.name);
-}
-
-fn jsonNameLooksLikeExtension(json_name: []const u8) bool {
-    return json_name.len >= 2 and json_name[0] == '[' and json_name[json_name.len - 1] == ']';
-}
-
-fn eqlDefaultJsonName(field_name: []const u8, candidate: []const u8) bool {
-    var field_index: usize = 0;
-    var upper_next = false;
-    var candidate_index: usize = 0;
-    while (nextDefaultJsonNameChar(field_name, &field_index, &upper_next)) |c| {
-        if (candidate_index >= candidate.len or candidate[candidate_index] != c) return false;
-        candidate_index += 1;
-    }
-    return candidate_index == candidate.len;
-}
-
-fn defaultJsonNamesEqual(a: []const u8, b: []const u8) bool {
-    var a_index: usize = 0;
-    var b_index: usize = 0;
-    var a_upper = false;
-    var b_upper = false;
-    while (true) {
-        const a_char = nextDefaultJsonNameChar(a, &a_index, &a_upper);
-        const b_char = nextDefaultJsonNameChar(b, &b_index, &b_upper);
-        if (a_char == null or b_char == null) return a_char == null and b_char == null;
-        if (a_char.? != b_char.?) return false;
-    }
-}
-
-fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?u8 {
-    while (index.* < name.len) {
-        const c = name[index.*];
-        index.* += 1;
-        if (c == '_') {
-            upper_next.* = true;
-            continue;
-        }
-        const out = if (upper_next.*) std.ascii.toUpper(c) else c;
-        upper_next.* = false;
-        return out;
-    }
-    return null;
+    if (b.json_name) |b_json| return schema.eqlDefaultJsonName(a.name, b_json);
+    return schema.defaultJsonNamesEqual(a.name, b.name);
 }
 
 fn validateOneofs(message: *const schema.MessageDescriptor) ParseError!void {
