@@ -926,11 +926,19 @@ pub const Parser = struct {
             if (!negative) {
                 if (parseU64(number_text)) |unsigned_value| {
                     if (unsigned_value > std.math.maxInt(i64)) return .{ .unsigned_integer = unsigned_value };
+                    return .{ .integer = @intCast(unsigned_value) };
                 } else |_| {}
             }
-            var value = try parseI64(number_text);
-            if (negative) value = -value;
-            return .{ .integer = value };
+            if (parseI64(number_text)) |parsed| {
+                return .{ .integer = if (negative) -parsed else parsed };
+            } else |err| switch (err) {
+                error.InvalidNumber => {
+                    var buf: [128]u8 = undefined;
+                    const signed = try signedText(&buf, negative, number_text);
+                    return .{ .float = std.fmt.parseFloat(f64, signed) catch return error.InvalidNumber };
+                },
+                else => return err,
+            }
         }
         if (self.current.tag == .symbol and (self.current.symbol == '{' or self.current.symbol == '<')) {
             return .{ .aggregate = try self.consumeBalancedAggregate() };
@@ -2476,6 +2484,7 @@ test "parser accepts max unsigned integer defaults" {
         \\  optional uint32 u32 = 1 [default = 0xFFFFFFFF];
         \\  optional uint64 u64 = 2 [default = 0xFFFFFFFFFFFFFFFF];
         \\  optional fixed64 f64 = 3 [default = 18446744073709551615];
+        \\  optional int32 i32 = 4 [default = 0x7FFFFFFF];
         \\}
     );
     defer file.deinit();
@@ -2483,8 +2492,9 @@ test "parser accepts max unsigned integer defaults" {
     try std.testing.expectEqual(@as(i64, 4294967295), msg.findField("u32").?.default_value.?.integer);
     try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("u64").?.default_value.?.unsigned_integer);
     try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("f64").?.default_value.?.unsigned_integer);
+    try std.testing.expectEqual(@as(i64, 2147483647), msg.findField("i32").?.default_value.?.integer);
 
-    try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
+    try std.testing.expectError(error.InvalidDefault, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { optional uint64 value = 1 [default = 0x10000000000000000]; }
     ));
@@ -2499,6 +2509,7 @@ test "parser accepts special float defaults" {
         \\  optional double neg = 2 [default = -inf];
         \\  optional float quiet = 3 [default = nan];
         \\  optional float plus = 4 [default = +inf];
+        \\  optional double huge = 5 [default = 18446744073709551616];
         \\}
     ;
     var file = try Parser.parse(allocator, source);
@@ -2508,6 +2519,7 @@ test "parser accepts special float defaults" {
     try std.testing.expect(std.math.isNegativeInf(msg.findField("neg").?.default_value.?.float));
     try std.testing.expectEqualStrings("nan", msg.findField("quiet").?.default_value.?.identifier);
     try std.testing.expect(std.math.isPositiveInf(msg.findField("plus").?.default_value.?.float));
+    try std.testing.expectEqual(@as(f64, 18446744073709551616), msg.findField("huge").?.default_value.?.float);
     try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { optional float value = 1 [default = -nan]; }
