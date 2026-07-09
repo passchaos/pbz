@@ -144,6 +144,22 @@ pub const DynamicMessage = struct {
         return defaultForFieldWithRegistry(file, registry, self.descriptor, field);
     }
 
+    pub fn getEnumNameOrDefaultWithFile(self: *const DynamicMessage, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+        return self.getEnumNameOrDefaultWithRegistry(file, null, field);
+    }
+
+    pub fn getEnumNameOrDefaultWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) ?[]const u8 {
+        const enumeration = registryEnumDescriptor(file, registry, self.descriptor, field.kind) orelse return null;
+        const number = switch (self.getOrDefaultWithRegistry(file, registry, field)) {
+            .enumeration => |value| value,
+            else => return null,
+        };
+        for (enumeration.values.items) |*value| {
+            if (value.number == number) return value.name;
+        }
+        return null;
+    }
+
     pub fn unknownCount(self: *const DynamicMessage) usize {
         return self.unknown_fields.items.len;
     }
@@ -2037,11 +2053,15 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expectEqual(@as(i32, 1), message.getOrDefault(desc.findField("kind").?).enumeration);
     try std.testing.expectEqual(@as(i32, 0), message.getOrDefault(desc.findField("code").?).enumeration);
     try std.testing.expectEqual(@as(i32, 5), message.getOrDefaultWithFile(&file, desc.findField("code").?).enumeration);
+    try std.testing.expectEqualStrings("ADMIN", message.getEnumNameOrDefaultWithFile(&file, desc.findField("kind").?).?);
+    try std.testing.expectEqualStrings("OK", message.getEnumNameOrDefaultWithFile(&file, desc.findField("code").?).?);
     try std.testing.expectEqualStrings("", message.getOrDefault(desc.findField("blob").?).bytes);
 
     try message.add(desc.findField("count").?, .{ .int32 = 7 });
     try std.testing.expect(message.has(desc.findField("count").?));
     try std.testing.expectEqual(@as(i32, 7), message.getOrDefault(desc.findField("count").?).int32);
+    try message.add(desc.findField("code").?, .{ .enumeration = 6 });
+    try std.testing.expectEqualStrings("FAIL", message.getEnumNameOrDefaultWithFile(&file, desc.findField("code").?).?);
 }
 
 test "dynamic decodeInitialized enforces proto2 required fields" {
