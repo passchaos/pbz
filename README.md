@@ -246,12 +246,15 @@ deterministic output.
 Generated message structs include a `mergeFrom` helper and generated decoders
 merge duplicate singular message/group payload fields while preserving repeated
 append, oneof replacement semantics, and unknown fields. They also expose
-`unknownFieldCount`, `unknownFields`, `unknownFieldsByNumberAlloc`,
+`unknownFieldCount`, `unknownFields`, `unknownFieldCountByNumber`,
+`hasUnknownFieldNumber`, `unknownFieldsByNumberAlloc`,
 `appendUnknownRaw`, `clearUnknownFieldsByNumber`, and `clearUnknownFields`
 helpers for callers that need to inspect, replace, delete, or carry forward
 proto2 extensions/unknown data in typed wrappers. Generated extension metadata
-also exposes `clearFromUnknown` and `replaceInUnknown` for removing or replacing
-that extension number in a typed message's unknown storage.
+also exposes `hasInUnknown`, `countInUnknown`, `clearFromUnknown`, and
+`replaceInUnknown` for checking, counting, removing, or replacing that extension
+number in a typed message's unknown storage; repeated extensions additionally
+provide `appendAllToUnknown` / `replaceAllInUnknown` batch helpers.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
 scalar/enum/message map fields, encoded message payload fields when their generated types

@@ -981,6 +981,30 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var count: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (try r.nextTag()) |tag| if (tag.number == number) count += 1;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return count;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return (try self.unknownFieldCountByNumber(number)) != 0;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var list: std.ArrayList([]const u8) = .empty;\n");
@@ -4422,6 +4446,20 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("}\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn hasInUnknown(message: anytype) !bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try message.hasUnknownFieldNumber(number);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn countInUnknown(message: anytype) !usize {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try message.unknownFieldCountByNumber(number);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn clearFromUnknown(message: anytype, allocator: std.mem.Allocator) !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("try message.clearUnknownFieldsByNumber(allocator, number);\n");
@@ -4476,6 +4514,30 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
         try writer.writeAll("try writeAll(&w, values);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("return try w.toOwnedSlice();\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn appendAllToUnknown(message: anytype, allocator: std.mem.Allocator, values: ");
+        try writer.writeAll(fieldType(field.*));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const raw = try encodeAllRaw(allocator, values);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(raw);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try message.appendUnknownRaw(allocator, raw);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn replaceAllInUnknown(message: anytype, allocator: std.mem.Allocator, values: ");
+        try writer.writeAll(fieldType(field.*));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try clearFromUnknown(message, allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try appendAllToUnknown(message, allocator, values);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -5279,6 +5341,10 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"_unknown_fields\": []const []const u8 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCount(self: @This()) usize") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFields(self: @This()) []const []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try r.nextTag()) |tag| if (tag.number == number) count += 1;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.unknownFieldCountByNumber(number)) != 0;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var r = pbz.Reader.init(raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == number) try list.append(allocator, raw);") != null);
@@ -5643,6 +5709,10 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try write(&w, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasInUnknown(message: anytype) !bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try message.hasUnknownFieldNumber(number);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn countInUnknown(message: anytype) !usize") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try message.unknownFieldCountByNumber(number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearFromUnknown(message: anytype, allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try message.clearUnknownFieldsByNumber(allocator, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceInUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
@@ -5665,6 +5735,10 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeAll(w: *pbz.Writer, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try write(w, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeAllRaw(allocator: std.mem.Allocator, values: []const i32) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllToUnknown(message: anytype, allocator: std.mem.Allocator, values: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllInUnknown(message: anytype, allocator: std.mem.Allocator, values: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllToUnknown(message, allocator, values);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, try decodeValue(r));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppendRaw(allocator: std.mem.Allocator, list: *std.ArrayList(i32), raw: []const u8) !void") != null);
