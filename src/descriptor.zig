@@ -1229,6 +1229,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             else => try reader.skipValue(tag),
         }
     }
+    try validateImportList(file.imports.items);
     try validateDependencyIndexes(public_deps.items, weak_deps.items, file.imports.items.len);
     for (public_deps.items) |idx| {
         if (idx < 0 or idx >= file.imports.items.len) return error.InvalidFieldType;
@@ -1243,6 +1244,15 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try validateDecodedFileDescriptor(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
+}
+
+fn validateImportList(imports: []const schema.Import) Error!void {
+    for (imports, 0..) |import, i| {
+        if (import.path.len == 0) return error.InvalidFieldType;
+        for (imports[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, import.path, other.path)) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn validateDependencyIndexes(public_deps: []const i32, weak_deps: []const i32, dependency_count: usize) Error!void {
@@ -3343,6 +3353,29 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeString(3, "dep.proto");
         try file.writeInt32(10, 0);
         try file.writeInt32(11, 0);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "empty-import.proto");
+        try file.writeString(3, "");
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-import.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeString(3, "dep.proto");
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "dup-option-import.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeString(15, "dep.proto");
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
