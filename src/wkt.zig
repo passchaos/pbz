@@ -386,8 +386,9 @@ pub const FieldMask = struct {
         while (it.next()) |part| {
             if (part.len == 0) return error.InvalidFieldMask;
             const path = try lowerCamelToSnake(allocator, part);
+            errdefer allocator.free(path);
+            try validateFieldMaskPath(path);
             paths.append(allocator, path) catch |err| {
-                allocator.free(path);
                 return err;
             };
         }
@@ -430,6 +431,7 @@ fn validateFieldMaskPath(path: []const u8) !void {
             continue;
         }
         if (std.ascii.isUpper(c)) return error.InvalidFieldMask;
+        if (last_was_dot and !std.ascii.isLower(c)) return error.InvalidFieldMask;
         if (!(std.ascii.isLower(c) or std.ascii.isDigit(c) or c == '_')) return error.InvalidFieldMask;
         last_was_dot = false;
     }
@@ -461,9 +463,13 @@ fn lowerCamelToSnake(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
             continue;
         }
         if (std.ascii.isUpper(c)) {
+            if (last_was_dot) return error.InvalidFieldMask;
             if (!last_was_dot and out.items.len != 0) try out.append(allocator, '_');
             try out.append(allocator, std.ascii.toLower(c));
-        } else try out.append(allocator, c);
+        } else if (std.ascii.isLower(c) or std.ascii.isDigit(c)) {
+            if (last_was_dot and !std.ascii.isLower(c)) return error.InvalidFieldMask;
+            try out.append(allocator, c);
+        } else return error.InvalidFieldMask;
         last_was_dot = false;
     }
     if (last_was_dot) return error.InvalidFieldMask;
@@ -509,6 +515,9 @@ test "field mask wire and json helpers" {
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo_bar\""));
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo,,bar\""));
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo.\""));
+    try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"Foo\""));
+    try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo-bar\""));
+    try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo.1bar\""));
 }
 
 test "field mask validates proto path strings before writing" {
@@ -519,6 +528,8 @@ test "field mask validates proto path strings before writing" {
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo."} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"Foo"} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo-bar"} }).validate());
+    try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"1foo"} }).validate());
+    try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo._bar"} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"Foo"} }).encode(allocator));
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo."} }).jsonStringifyAlloc(allocator));
 }
