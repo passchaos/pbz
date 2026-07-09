@@ -387,7 +387,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
         .map => |map_type| map_type,
         else => return,
     };
-    if (map_type.value.* != .scalar and map_type.value.* != .enumeration) return;
+    if (!textMapValueSupported(file, map_type.value.*)) return;
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeTextBlockCondition(field, "line", writer);
@@ -406,10 +406,34 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try writer.writeAll("if (@This().textFieldValue(entry_line, \"key\")) |raw_key| { entry.key = ");
     try writeTextParseValueExpr(file, .{ .scalar = map_type.key }, "raw_key", writer);
     try writer.writeAll("; continue; }\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = ");
-    try writeTextParseValueExpr(file, map_type.value.*, "raw_value", writer);
-    try writer.writeAll("; continue; }\n");
+    if (map_type.value.* == .message and codegenCanReferenceMessage(file, map_type.value.message)) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (std.mem.eql(u8, entry_line, \"value {\") or std.mem.eql(u8, entry_line, \"value <\")) {\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("const block = try @This().textBlock(allocator, &lines);\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("defer allocator.free(block);\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("var nested = try ");
+        try writeMessageTypeReference(map_type.value.message, writer);
+        try writer.writeAll(".parseText(allocator, block);\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("defer nested.deinit(allocator);\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("entry.value = try nested.encode(owned_allocator);\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("continue;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
+    }
+    if (map_type.value.* == .scalar or map_type.value.* == .enumeration) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = ");
+        try writeTextParseValueExpr(file, map_type.value.*, "raw_value", writer);
+        try writer.writeAll("; continue; }\n");
+    }
     try indent(writer, depth + 2);
     try writer.writeAll("return error.UnknownField;\n");
     try indent(writer, depth + 1);
@@ -4224,6 +4248,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\") or std.mem.eql(u8, line, \"counts <\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry_line, \"value {\") or std.mem.eql(u8, entry_line, \"value <\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.encode(owned_allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
