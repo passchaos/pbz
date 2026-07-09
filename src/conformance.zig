@@ -719,6 +719,48 @@ test "conformance dynamic runner converts proto2 extension json to text" {
     try std.testing.expectEqualSlices(u8, "[demo.tag]: 7\n", try reader.readBytes());
 }
 
+test "conformance dynamic runner handles message extension json payloads" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\message Note { optional int32 id = 1; }
+        \\extend Host { optional Note note = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    const parsed_response = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"[demo.note]\":{\"id\":7}}" },
+        .requested_output_format = .protobuf,
+        .message_type = "demo.Host",
+        .test_category = .json_test,
+    });
+    defer allocator.free(parsed_response);
+    var parsed_reader = wire.Reader.init(parsed_response);
+    const parsed_tag = (try parsed_reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 3), parsed_tag.number);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa2, 0x06, 0x02, 0x08, 0x07 }, try parsed_reader.readBytes());
+
+    var payload = wire.Writer.init(allocator);
+    defer payload.deinit();
+    try payload.writeBytes(100, &.{ 0x08, 0x07 });
+    const rendered_response = try runDynamic(allocator, &registry, .{
+        .payload = .{ .protobuf_payload = payload.slice() },
+        .requested_output_format = .json,
+        .message_type = "demo.Host",
+        .test_category = .binary_test,
+    });
+    defer allocator.free(rendered_response);
+    var rendered_reader = wire.Reader.init(rendered_response);
+    const rendered_tag = (try rendered_reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 4), rendered_tag.number);
+    try std.testing.expectEqualSlices(u8, "{\"[demo.note]\":{\"id\":7}}", try rendered_reader.readBytes());
+}
+
 test "conformance dynamic runner formats proto2 extension json output" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
