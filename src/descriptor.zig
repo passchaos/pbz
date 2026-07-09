@@ -2374,6 +2374,7 @@ fn decodeExtensionRange(allocator: std.mem.Allocator, bytes: []const u8) Error!s
 
 fn validateDecodedExtensionRange(range: *const schema.ExtensionRange) Error!void {
     if (range.start <= 0) return error.InvalidFieldType;
+    if (range.declarations.items.len != 0 and range.verification == .unverified) return error.InvalidFieldType;
     const end = range.end orelse std.math.maxInt(i64);
     if (end <= range.start) return error.InvalidFieldType;
     for (range.declarations.items, 0..) |declaration, index| {
@@ -5632,6 +5633,19 @@ test "descriptor rejects extensions that violate decoded declarations" {
         try host.extension_ranges.append(allocator, range);
         try file.messages.append(allocator, host);
         const bytes = try encodeFileDescriptorProto(allocator, &file, "missing-decl-type.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200, .verification = .unverified };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".bad.verification", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "unverified-decl.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }

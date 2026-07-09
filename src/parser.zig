@@ -1339,6 +1339,7 @@ pub const Parser = struct {
 
     fn validateExtensionRangeDeclarations(self: *Parser, range: schema.ExtensionRange) ParseError!void {
         _ = self;
+        if (range.declarations.items.len != 0 and range.verification == .unverified) return error.InvalidFieldType;
         const end = range.end orelse std.math.maxInt(i64);
         for (range.declarations.items, 0..) |declaration, i| {
             if (declaration.number <= 0) return error.InvalidFieldType;

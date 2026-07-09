@@ -197,6 +197,7 @@ pub const Registry = struct {
 };
 
 fn validateExtensionRangeDeclarationSet(range: schema.ExtensionRange) Error!void {
+    if (range.declarations.items.len != 0 and range.verification == .unverified) return error.InvalidExtensionDeclaration;
     const end = range.end orelse std.math.maxInt(i64);
     for (range.declarations.items, 0..) |declaration, i| {
         if (declaration.number <= 0) return error.InvalidExtensionDeclaration;
