@@ -1458,6 +1458,9 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
         for (message.reserved_ranges.items) |range| {
             if (rangeContains(range, field.number)) return error.InvalidFieldType;
         }
+        for (message.extension_ranges.items) |range| {
+            if (rangeContains(.{ .start = range.start, .end = range.end }, field.number)) return error.InvalidFieldType;
+        }
         for (message.reserved_names.items) |name| {
             if (std.mem.eql(u8, name, field.name)) return error.InvalidFieldType;
         }
@@ -1484,7 +1487,20 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
         }
     }
+    try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items);
     try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items);
+}
+
+fn validateDecodedExtensionRanges(extension_ranges: []const schema.ExtensionRange, reserved_ranges: []const schema.ReservedRange) Error!void {
+    for (extension_ranges, 0..) |range, i| {
+        const as_reserved = schema.ReservedRange{ .start = range.start, .end = range.end };
+        for (extension_ranges[i + 1 ..]) |other| {
+            if (rangesOverlap(as_reserved, .{ .start = other.start, .end = other.end })) return error.InvalidFieldType;
+        }
+        for (reserved_ranges) |reserved| {
+            if (rangesOverlap(as_reserved, reserved)) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldDescriptor {
@@ -3042,6 +3058,42 @@ test "descriptor rejects invalid extension ranges" {
         var decoded = try decodeFileDescriptorProto(allocator, bytes);
         defer decoded.deinit();
         try std.testing.expectEqual(@as(i64, 100), decoded.findMessage("Host").?.extension_ranges.items[0].start);
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try message.fields.append(allocator, .{ .name = "hit", .number = 150, .cardinality = .optional, .kind = .{ .scalar = .int32 } });
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "field-in-extension-range.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try message.extension_ranges.append(allocator, .{ .start = 150, .end = 250 });
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "overlap-extension-range.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try message.reserved_ranges.append(allocator, .{ .start = 150, .end = 160 });
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "extension-reserved-overlap.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
 }
 
