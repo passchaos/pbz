@@ -182,7 +182,7 @@ fn writeFieldDescriptor(
             const entry_name = try mapEntryName(allocator, field.name);
             defer allocator.free(entry_name);
             const scoped = if (containing_message) |message|
-                try std.fmt.allocPrint(allocator, "{s}.{s}", .{ message.name, entry_name })
+                try scopedMapEntryName(allocator, file, message, entry_name)
             else
                 try allocator.dupe(u8, entry_name);
             defer allocator.free(scoped);
@@ -929,6 +929,41 @@ fn joinScope(allocator: std.mem.Allocator, parent: []const u8, name: []const u8)
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ parent, name });
 }
 
+fn scopedMapEntryName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, entry_name: []const u8) std.mem.Allocator.Error![]const u8 {
+    var path: std.ArrayList([]const u8) = .empty;
+    defer path.deinit(allocator);
+    if (try appendMessageScopePath(allocator, file, message, &path)) {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(allocator);
+        for (path.items, 0..) |part, index| {
+            if (index != 0) try out.append(allocator, '.');
+            try out.appendSlice(allocator, part);
+        }
+        try out.append(allocator, '.');
+        try out.appendSlice(allocator, entry_name);
+        return try out.toOwnedSlice(allocator);
+    }
+    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ message.name, entry_name });
+}
+
+fn appendMessageScopePath(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, path: *std.ArrayList([]const u8)) std.mem.Allocator.Error!bool {
+    for (file.messages.items) |*message| {
+        if (try appendMessageScopePathInMessage(allocator, message, target, path)) return true;
+    }
+    return false;
+}
+
+fn appendMessageScopePathInMessage(allocator: std.mem.Allocator, current: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, path: *std.ArrayList([]const u8)) std.mem.Allocator.Error!bool {
+    try path.append(allocator, current.name);
+    errdefer _ = path.pop();
+    if (current == target) return true;
+    for (current.messages.items) |*nested| {
+        if (try appendMessageScopePathInMessage(allocator, nested, target, path)) return true;
+    }
+    _ = path.pop();
+    return false;
+}
+
 fn mapEntryName(allocator: std.mem.Allocator, field_name: []const u8) std.mem.Allocator.Error![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
@@ -1004,6 +1039,35 @@ test "descriptor encodes proto3 map entry and editions feature metadata" {
         }
     }
     try std.testing.expect(saw_edition);
+}
+
+test "descriptor encodes nested map entry type names with full scope" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Outer {
+        \\  message Inner {
+        \\    map<string, int32> tags = 1;
+        \\  }
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "nested-map.proto");
+    defer allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, ".demo.Outer.Inner.TagsEntry") != null);
+
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    const outer = decoded.findMessage("Outer").?;
+    const inner = outer.findMessage("Inner").?;
+    const tags = inner.findField("tags").?;
+    try std.testing.expect(tags.kind == .map);
+    try std.testing.expectEqual(schema.ScalarType.string, tags.kind.map.key);
+    try std.testing.expect(tags.kind.map.value.* == .scalar);
+    try std.testing.expectEqual(schema.ScalarType.int32, tags.kind.map.value.scalar);
 }
 
 pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FileDescriptor {
