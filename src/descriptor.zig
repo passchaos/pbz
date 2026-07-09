@@ -879,6 +879,13 @@ fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescri
     if (kind == .enumeration) {
         if (enumDefaultName(file, kind.enumeration, value)) |name| return try allocator.dupe(u8, name);
     }
+    if (kind == .scalar and kind.scalar == .bytes) {
+        const bytes = switch (value) {
+            .string, .identifier => |text| text,
+            else => return optionValueText(allocator, value),
+        };
+        return try escapeBytesDefaultAlloc(allocator, bytes);
+    }
     return optionValueText(allocator, value);
 }
 
@@ -1199,10 +1206,10 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             10 => try public_deps.append(allocator, try reader.readInt32()),
             11 => try weak_deps.append(allocator, try reader.readInt32()),
             15 => try file.imports.append(allocator, .{ .path = try reader.readBytes(), .kind = .option }),
-            4 => try file.messages.append(allocator, try decodeMessageDescriptor(allocator, try reader.readBytes())),
+            4 => try file.messages.append(allocator, try decodeMessageDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
             5 => try file.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             6 => try file.services.append(allocator, try decodeServiceDescriptor(allocator, try reader.readBytes())),
-            7 => try file.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
+            7 => try file.extensions.append(allocator, try decodeFieldDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
             8 => saw_file_features = try decodeFileOptions(allocator, &file, try reader.readBytes()) or saw_file_features,
             9 => file.source_code_info = try decodeSourceCodeInfo(allocator, try reader.readBytes()),
             12 => {
@@ -1575,7 +1582,7 @@ fn validateFeatureSetDefaults(defaults: *const schema.FeatureSetDefaults) Error!
     }
 }
 
-fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.MessageDescriptor {
+fn decodeMessageDescriptor(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), bytes: []const u8) Error!schema.MessageDescriptor {
     var message = schema.MessageDescriptor{ .name = "" };
     errdefer message.deinit(allocator);
     var oneof_indexes: std.ArrayList(struct { field_index: usize, oneof_index: usize }) = .empty;
@@ -1586,7 +1593,7 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
         switch (tag.number) {
             1 => message.name = try reader.readBytes(),
             2 => {
-                var field = try decodeFieldDescriptor(allocator, try reader.readBytes());
+                var field = try decodeFieldDescriptor(allocator, owned_strings, try reader.readBytes());
                 if (field.oneof_name) |idx_text| {
                     const idx = try std.fmt.parseInt(usize, idx_text, 10);
                     field.oneof_name = null;
@@ -1594,10 +1601,10 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
                 }
                 try message.fields.append(allocator, field);
             },
-            3 => try message.messages.append(allocator, try decodeMessageDescriptor(allocator, try reader.readBytes())),
+            3 => try message.messages.append(allocator, try decodeMessageDescriptor(allocator, owned_strings, try reader.readBytes())),
             4 => try message.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             5 => try message.extension_ranges.append(allocator, try decodeExtensionRange(allocator, try reader.readBytes())),
-            6 => try message.extensions.append(allocator, try decodeFieldDescriptor(allocator, try reader.readBytes())),
+            6 => try message.extensions.append(allocator, try decodeFieldDescriptor(allocator, owned_strings, try reader.readBytes())),
             7 => try decodeMessageOptions(allocator, &message, try reader.readBytes()),
             8 => try message.oneofs.append(allocator, try decodeOneofDescriptor(allocator, try reader.readBytes())),
             9 => try message.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), false)),
@@ -1686,7 +1693,7 @@ fn validateDecodedExtensionRanges(extension_ranges: []const schema.ExtensionRang
     }
 }
 
-fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldDescriptor {
+fn decodeFieldDescriptor(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), bytes: []const u8) Error!schema.FieldDescriptor {
     var name: []const u8 = "";
     var number: wire.FieldNumber = 0;
     var cardinality: schema.Cardinality = .optional;
@@ -1746,7 +1753,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         .cardinality = cardinality,
         .kind = kind,
         .extendee = extendee,
-        .default_value = if (default_value_text) |text| try decodeDefaultValue(kind, text) else null,
+        .default_value = if (default_value_text) |text| try decodeDefaultValue(allocator, owned_strings, kind, text) else null,
         .oneof_name = oneof_index_text,
         .json_name = json_name,
         .proto3_optional = proto3_optional,
@@ -1768,7 +1775,7 @@ fn fieldNumberFromDescriptor(value: i32) wire.Error!wire.FieldNumber {
     return @intCast(value);
 }
 
-fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) Error!schema.OptionValue {
+fn decodeDefaultValue(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), kind: schema.FieldKind, text: []const u8) Error!schema.OptionValue {
     return switch (kind) {
         .scalar => |scalar| switch (scalar) {
             .double => .{ .float = try parseFloatDefault(f64, text) },
@@ -1778,7 +1785,13 @@ fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) Error!schema.Opt
             .uint32, .fixed32 => .{ .integer = try parseUnsignedIntegerDefault(u32, text) },
             .uint64, .fixed64 => .{ .integer = try parseUnsignedIntegerDefault(u64, text) },
             .bool => .{ .boolean = try parseBoolDefault(text) },
-            .string, .bytes => .{ .string = text },
+            .string => .{ .string = text },
+            .bytes => blk: {
+                const decoded = try decodeBytesDefaultAlloc(allocator, text);
+                errdefer allocator.free(decoded);
+                try owned_strings.append(allocator, decoded);
+                break :blk .{ .string = decoded };
+            },
         },
         .enumeration => blk: {
             if (!isIdentifier(text)) return error.InvalidFieldType;
@@ -1827,6 +1840,99 @@ fn parseBoolDefault(text: []const u8) Error!bool {
     if (std.mem.eql(u8, text, "true")) return true;
     if (std.mem.eql(u8, text, "false")) return false;
     return error.InvalidFieldType;
+}
+
+fn escapeBytesDefaultAlloc(allocator: std.mem.Allocator, bytes: []const u8) std.mem.Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    for (bytes) |byte| {
+        switch (byte) {
+            0x07 => try out.appendSlice(allocator, "\\a"),
+            0x08 => try out.appendSlice(allocator, "\\b"),
+            0x0c => try out.appendSlice(allocator, "\\f"),
+            '\n' => try out.appendSlice(allocator, "\\n"),
+            '\r' => try out.appendSlice(allocator, "\\r"),
+            '\t' => try out.appendSlice(allocator, "\\t"),
+            0x0b => try out.appendSlice(allocator, "\\v"),
+            '\\' => try out.appendSlice(allocator, "\\\\"),
+            '\'' => try out.appendSlice(allocator, "\\'"),
+            '"' => try out.appendSlice(allocator, "\\\""),
+            '?' => try out.appendSlice(allocator, "\\?"),
+            0x20...0x21, 0x23...0x26, 0x28...0x3e, 0x40...0x5b, 0x5d...0x7e => try out.append(allocator, byte),
+            else => try appendOctalEscape(allocator, &out, byte),
+        }
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn appendOctalEscape(allocator: std.mem.Allocator, out: *std.ArrayList(u8), byte: u8) std.mem.Allocator.Error!void {
+    try out.append(allocator, '\\');
+    try out.append(allocator, '0' + @as(u8, @intCast((byte >> 6) & 0x7)));
+    try out.append(allocator, '0' + @as(u8, @intCast((byte >> 3) & 0x7)));
+    try out.append(allocator, '0' + @as(u8, @intCast(byte & 0x7)));
+}
+
+fn decodeBytesDefaultAlloc(allocator: std.mem.Allocator, text: []const u8) Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var i: usize = 0;
+    while (i < text.len) {
+        const c = text[i];
+        if (c != '\\') {
+            try out.append(allocator, c);
+            i += 1;
+            continue;
+        }
+        i += 1;
+        if (i >= text.len) return error.InvalidFieldType;
+        const esc = text[i];
+        i += 1;
+        switch (esc) {
+            'a' => try out.append(allocator, 0x07),
+            'b' => try out.append(allocator, 0x08),
+            'f' => try out.append(allocator, 0x0c),
+            'n' => try out.append(allocator, '\n'),
+            'r' => try out.append(allocator, '\r'),
+            't' => try out.append(allocator, '\t'),
+            'v' => try out.append(allocator, 0x0b),
+            '\\' => try out.append(allocator, '\\'),
+            '\'' => try out.append(allocator, '\''),
+            '"' => try out.append(allocator, '"'),
+            '?' => try out.append(allocator, '?'),
+            'x', 'X' => {
+                var value: u8 = 0;
+                var digits: usize = 0;
+                while (i < text.len and digits < 2) : (digits += 1) {
+                    const digit = hexValue(text[i]) orelse break;
+                    value = value * 16 + digit;
+                    i += 1;
+                }
+                if (digits == 0) return error.InvalidFieldType;
+                try out.append(allocator, value);
+            },
+            '0'...'7' => {
+                var value: u16 = esc - '0';
+                var digits: usize = 1;
+                while (i < text.len and digits < 3 and text[i] >= '0' and text[i] <= '7') : (digits += 1) {
+                    value = value * 8 + (text[i] - '0');
+                    i += 1;
+                }
+                if (value > std.math.maxInt(u8)) return error.InvalidFieldType;
+                try out.append(allocator, @intCast(value));
+            },
+            else => return error.InvalidFieldType,
+        }
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn hexValue(c: u8) ?u8 {
+    return switch (c) {
+        '0'...'9' => c - '0',
+        'a'...'f' => c - 'a' + 10,
+        'A'...'F' => c - 'A' + 10,
+        else => null,
+    };
 }
 
 fn resolveDecodedEnumDefaults(file: *schema.FileDescriptor) void {
@@ -2624,6 +2730,7 @@ test "descriptor decodes scalar default values with typed option values" {
 
     const encoded = try encodeFileDescriptorProto(allocator, &file, "defaults.proto");
     defer allocator.free(encoded);
+    try std.testing.expect(std.mem.indexOf(u8, encoded, "\\001\\002") != null);
     var decoded = try decodeFileDescriptorProto(allocator, encoded);
     defer decoded.deinit();
     const msg = decoded.findMessage("Defaults").?;
@@ -2632,6 +2739,30 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expectEqual(@as(f64, 1.5), msg.findField("ratio").?.default_value.?.float);
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
+}
+
+test "descriptor decodes bytes defaults from C escapes" {
+    const allocator = std.testing.allocator;
+    var field = wire.Writer.init(allocator);
+    defer field.deinit();
+    try field.writeString(1, "raw");
+    try field.writeInt32(3, 1);
+    try field.writeInt32(4, 1);
+    try field.writeInt32(5, 12);
+    try field.writeString(7, "\\001\\x02\\n\\\\\\\"");
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "Defaults");
+    try message.writeMessage(2, field.slice());
+    var file = wire.Writer.init(allocator);
+    defer file.deinit();
+    try file.writeString(1, "bytes-default.proto");
+    try file.writeMessage(4, message.slice());
+
+    var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+    defer decoded.deinit();
+    const raw = decoded.findMessage("Defaults").?.findField("raw").?.default_value.?.string;
+    try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02, '\n', '\\', '"' }, raw);
 }
 
 test "descriptor rejects invalid decoded field defaults" {
@@ -2743,6 +2874,24 @@ test "descriptor rejects invalid decoded field defaults" {
         defer file.deinit();
         try file.writeString(1, "bad-proto3-default.proto");
         try file.writeString(12, "proto3");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "raw");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 12);
+        try field.writeString(7, "\\x");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-bytes-default.proto");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
