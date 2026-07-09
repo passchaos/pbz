@@ -7342,6 +7342,7 @@ fn writeServiceDecl(ctx: *const CodegenContext, service: *const schema.ServiceDe
     try writeZigStringLiteral(service.name, writer);
     try writer.writeAll(";\n");
     for (service.methods.items) |*method| try writeMethodDecl(ctx, method, writer, depth + 1);
+    try writeServiceDispatchAdapters(ctx, service, writer, depth + 1);
     try writeServiceHandler(service, writer, depth + 1);
     try writeServiceTypedHandler(ctx, service, writer, depth + 1);
     try writeServiceClient(ctx, service, writer, depth + 1);
@@ -7402,6 +7403,86 @@ fn writeRpcMessageTypeReferenceOrVoid(ctx: *const CodegenContext, type_name: []c
     }
 }
 
+fn writeServiceDispatchAdapters(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writeServiceRawDispatchAdapter(service, writer, depth);
+    try writeServiceTypedDispatchAdapter(ctx, service, writer, depth);
+    for (service.methods.items) |*method| {
+        if (methodSupportsTypedRpc(ctx, method)) try writeServiceTypedDispatchAdapterHelper(ctx, method, writer, depth);
+    }
+}
+
+fn writeServiceRawDispatchAdapter(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn dispatchRaw(handler: anytype, method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
+    if (service.methods.items.len == 0) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = handler; _ = method; _ = request; _ = allocator;\n");
+    }
+    for (service.methods.items) |*method| {
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (std.mem.eql(u8, method, ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(")) return try handler.");
+        try writeQuotedIdent(method.name, writer);
+        try writer.writeAll("(request, allocator);\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("return error.UnknownMethod;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeServiceTypedDispatchAdapter(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn dispatchTyped(handler: anytype, method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
+    if (service.methods.items.len == 0) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = handler; _ = method; _ = request; _ = allocator;\n");
+    }
+    for (service.methods.items) |*method| {
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (std.mem.eql(u8, method, ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(")) return try ");
+        if (methodSupportsTypedRpc(ctx, method)) {
+            try writer.writeAll("@This().");
+            try writeQuotedIdentWithPrefix(method.name, "_pbzDispatchTyped_", writer);
+            try writer.writeAll("(handler, request, allocator);\n");
+        } else {
+            try writer.writeAll("handler.");
+            try writeQuotedIdent(method.name, writer);
+            try writer.writeAll("(request, allocator);\n");
+        }
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("return error.UnknownMethod;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeServiceTypedDispatchAdapterHelper(ctx: *const CodegenContext, method: *const schema.MethodDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("fn ");
+    try writeQuotedIdentWithPrefix(method.name, "_pbzDispatchTyped_", writer);
+    try writer.writeAll("(handler: anytype, request_payload: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var typed_request = try ");
+    try writeMessageTypeReferenceWithContext(ctx, method.input_type, writer);
+    try writer.writeAll(".decodeOwned(allocator, request_payload);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer typed_request.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var typed_response = try handler.");
+    try writeQuotedIdent(method.name, writer);
+    try writer.writeAll("(typed_request, allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer typed_response.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try typed_response.encode(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeServiceHandler(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const Handler = struct {\n");
@@ -7425,20 +7506,10 @@ fn writeServiceHandler(service: *const schema.ServiceDescriptor, writer: *std.Io
 fn writeServiceRawDispatchMethod(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn dispatch(self: *@This(), method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
-    if (service.methods.items.len == 0) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = self; _ = method; _ = request; _ = allocator;\n");
-    }
-    for (service.methods.items) |*method| {
-        try indent(writer, depth + 1);
-        try writer.writeAll("if (std.mem.eql(u8, method, ");
-        try writeZigStringLiteral(method.name, writer);
-        try writer.writeAll(")) return try self.");
-        try writeQuotedIdent(method.name, writer);
-        try writer.writeAll("(request, allocator);\n");
-    }
     try indent(writer, depth + 1);
-    try writer.writeAll("return error.UnknownMethod;\n");
+    try writer.writeAll("return try services.");
+    try writeQuotedIdent(service.name, writer);
+    try writer.writeAll(".dispatchRaw(self, method, request, allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -7447,10 +7518,7 @@ fn writeServiceTypedHandler(ctx: *const CodegenContext, service: *const schema.S
     try indent(writer, depth);
     try writer.writeAll("pub const TypedHandler = struct {\n");
     for (service.methods.items) |*method| try writeServiceTypedHandlerMethod(ctx, method, writer, depth + 1);
-    try writeServiceTypedDispatchMethod(ctx, service, writer, depth + 1);
-    for (service.methods.items) |*method| {
-        if (methodSupportsTypedRpc(ctx, method)) try writeServiceTypedDispatchHelper(ctx, method, writer, depth + 1);
-    }
+    try writeServiceTypedDispatchMethod(service, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n");
 }
@@ -7480,53 +7548,13 @@ fn writeServiceTypedHandlerMethod(ctx: *const CodegenContext, method: *const sch
     try writer.writeAll("}\n");
 }
 
-fn writeServiceTypedDispatchMethod(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeServiceTypedDispatchMethod(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn dispatch(self: *@This(), method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
-    if (service.methods.items.len == 0) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = self; _ = method; _ = request; _ = allocator;\n");
-    }
-    for (service.methods.items) |*method| {
-        try indent(writer, depth + 1);
-        try writer.writeAll("if (std.mem.eql(u8, method, ");
-        try writeZigStringLiteral(method.name, writer);
-        try writer.writeAll(")) return try ");
-        if (methodSupportsTypedRpc(ctx, method)) {
-            try writer.writeAll("@This().");
-            try writeQuotedIdentWithPrefix(method.name, "dispatchTyped_", writer);
-            try writer.writeAll("(self, request, allocator);\n");
-        } else {
-            try writer.writeAll("self.");
-            try writeQuotedIdent(method.name, writer);
-            try writer.writeAll("(request, allocator);\n");
-        }
-    }
     try indent(writer, depth + 1);
-    try writer.writeAll("return error.UnknownMethod;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
-}
-
-fn writeServiceTypedDispatchHelper(ctx: *const CodegenContext, method: *const schema.MethodDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth);
-    try writer.writeAll("fn ");
-    try writeQuotedIdentWithPrefix(method.name, "dispatchTyped_", writer);
-    try writer.writeAll("(self: *@This(), request_payload: []const u8, allocator: std.mem.Allocator) ![]u8 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var typed_request = try ");
-    try writeMessageTypeReferenceWithContext(ctx, method.input_type, writer);
-    try writer.writeAll(".decodeOwned(allocator, request_payload);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("defer typed_request.deinit(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var typed_response = try self.");
-    try writeQuotedIdent(method.name, writer);
-    try writer.writeAll("(typed_request, allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("defer typed_response.deinit(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return try typed_response.encode(allocator);\n");
+    try writer.writeAll("return try services.");
+    try writeQuotedIdent(service.name, writer);
+    try writer.writeAll(".dispatchTyped(self, method, request, allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -9298,16 +9326,20 @@ test "codegen emits service metadata and stubs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const Handler = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return error.Unimplemented;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn dispatch(self: *@This(), method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, method, \"Get\")) return try self.@\"Get\"(request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn dispatchRaw(handler: anytype, method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, method, \"Get\")) return try handler.@\"Get\"(request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try services.@\"Directory\".dispatchRaw(self, method, request, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return error.UnknownMethod;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn dispatchTyped(handler: anytype, method: []const u8, request: []const u8, allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const TypedHandler = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"Get\"(self: *@This(), request: @\"Req\", allocator: std.mem.Allocator) !@\"Res\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, method, \"Get\")) return try @This().@\"dispatchTyped_Get\"(self, request, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, method, \"Stream\")) return try self.@\"Stream\"(request, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn @\"dispatchTyped_Get\"(self: *@This(), request_payload: []const u8, allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try services.@\"Directory\".dispatchTyped(self, method, request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, method, \"Get\")) return try @This().@\"_pbzDispatchTyped_Get\"(handler, request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, method, \"Stream\")) return try handler.@\"Stream\"(request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn @\"_pbzDispatchTyped_Get\"(handler: anytype, request_payload: []const u8, allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var typed_request = try @\"Req\".decodeOwned(allocator, request_payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "defer typed_request.deinit(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var typed_response = try self.@\"Get\"(typed_request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var typed_response = try handler.@\"Get\"(typed_request, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "defer typed_response.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try typed_response.encode(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const Client = struct") != null);
@@ -9357,7 +9389,7 @@ test "codegen emits registry-aware service RPC type references" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = imports.@\"common.proto\".@\"Res\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"Get\"(self: *@This(), request: imports.@\"common.proto\".@\"Req\", allocator: std.mem.Allocator) !imports.@\"common.proto\".@\"Res\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var typed_request = try imports.@\"common.proto\".@\"Req\".decodeOwned(allocator, request_payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var typed_response = try self.@\"Get\"(typed_request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var typed_response = try handler.@\"Get\"(typed_request, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"GetTyped\"(self: @This(), request: imports.@\"common.proto\".@\"Req\", allocator: std.mem.Allocator) !imports.@\"common.proto\".@\"Res\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"Res\".decodeOwned(allocator, response_payload);") != null);
     const source = try allocator.dupeZ(u8, content);
