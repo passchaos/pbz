@@ -38,7 +38,7 @@ pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schem
     for (file.messages.items) |*message| try writeMessageDescriptor(allocator, file, message, "", 4, writer);
     for (file.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 5, writer);
     for (file.services.items) |*service| try writeServiceDescriptor(allocator, file, service, 6, writer);
-    for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, null, field, 7, writer);
+    for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, null, "", field, 7, writer);
     if (hasFileOptions(file)) try writeFileOptions(allocator, file, 8, writer);
     if (!file.source_code_info.isEmpty()) try writeSourceCodeInfo(allocator, &file.source_code_info, 9, writer);
     try writer.writeString(12, switch (file.syntax) {
@@ -103,14 +103,14 @@ fn writeMessageDescriptor(
     const scope = try joinScope(allocator, parent_scope, message.name);
     defer allocator.free(scope);
 
-    for (message.fields.items) |*field| try writeFieldDescriptor(allocator, file, message, field, 2, &tmp);
+    for (message.fields.items) |*field| try writeFieldDescriptor(allocator, file, message, scope, field, 2, &tmp);
     for (message.messages.items) |*nested| try writeMessageDescriptor(allocator, file, nested, scope, 3, &tmp);
     for (message.fields.items) |*field| {
         if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, scope, field, 3, &tmp);
     }
     for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 4, &tmp);
     for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, range, 5, &tmp);
-    for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, field, 6, &tmp);
+    for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, scope, field, 6, &tmp);
     if (hasMessageOptions(message)) try writeMessageOptions(allocator, message, 7, &tmp);
     for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, file, oneof, 8, &tmp);
     for (message.fields.items) |*field| {
@@ -156,14 +156,14 @@ fn writeMapEntryDescriptor(
     };
     try entry_message.fields.append(allocator, value_field);
 
-    _ = parent_scope;
-    try writeMessageDescriptor(allocator, file, &entry_message, "", field_number, writer);
+    try writeMessageDescriptor(allocator, file, &entry_message, parent_scope, field_number, writer);
 }
 
 fn writeFieldDescriptor(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
     containing_message: ?*const schema.MessageDescriptor,
+    containing_scope: []const u8,
     field: *const schema.FieldDescriptor,
     field_number: wire.FieldNumber,
     writer: *wire.Writer,
@@ -177,12 +177,13 @@ fn writeFieldDescriptor(
     try tmp.writeInt32(4, labelNumber(field.cardinality));
     try tmp.writeInt32(5, typeNumber(field.kind));
     switch (field.kind) {
-        .message, .enumeration, .group => |type_name| try writeQualifiedName(allocator, file, type_name, 6, &tmp),
+        .message, .group => |type_name| try writeQualifiedTypeName(allocator, file, containing_scope, type_name, .message, 6, &tmp),
+        .enumeration => |type_name| try writeQualifiedTypeName(allocator, file, containing_scope, type_name, .enumeration, 6, &tmp),
         .map => {
             const entry_name = try mapEntryName(allocator, field.name);
             defer allocator.free(entry_name);
-            const scoped = if (containing_message) |message|
-                try scopedMapEntryName(allocator, file, message, entry_name)
+            const scoped = if (containing_scope.len != 0)
+                try joinScope(allocator, containing_scope, entry_name)
             else
                 try allocator.dupe(u8, entry_name);
             defer allocator.free(scoped);
@@ -917,6 +918,22 @@ fn writeQualifiedName(allocator: std.mem.Allocator, file: *const schema.FileDesc
     try writer.writeString(field_number, qualified);
 }
 
+const DescriptorTypeKind = enum { message, enumeration };
+
+fn writeQualifiedTypeName(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    containing_scope: []const u8,
+    type_name: []const u8,
+    comptime kind: DescriptorTypeKind,
+    field_number: wire.FieldNumber,
+    writer: *wire.Writer,
+) Error!void {
+    const resolved = try resolveDescriptorTypeName(allocator, file, containing_scope, type_name, kind);
+    defer allocator.free(resolved);
+    try writer.writeString(field_number, resolved);
+}
+
 fn qualifiedName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, name: []const u8) std.mem.Allocator.Error![]u8 {
     if (std.mem.startsWith(u8, name, ".")) return try allocator.dupe(u8, name);
     if (file.package.len == 0) return try std.fmt.allocPrint(allocator, ".{s}", .{name});
@@ -924,44 +941,101 @@ fn qualifiedName(allocator: std.mem.Allocator, file: *const schema.FileDescripto
     return try std.fmt.allocPrint(allocator, ".{s}.{s}", .{ file.package, name });
 }
 
+fn resolveDescriptorTypeName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, containing_scope: []const u8, type_name: []const u8, comptime kind: DescriptorTypeKind) std.mem.Allocator.Error![]u8 {
+    if (std.mem.startsWith(u8, type_name, ".")) return try allocator.dupe(u8, type_name);
+    if (typeNameExistsInFile(file, type_name, kind)) return try qualifiedName(allocator, file, type_name);
+    var scope = containing_scope;
+    while (scope.len != 0) {
+        const candidate = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ scope, type_name });
+        defer allocator.free(candidate);
+        if (typeNameExistsInFile(file, candidate, kind)) return try qualifiedName(allocator, file, candidate);
+        if (std.mem.lastIndexOfScalar(u8, scope, '.')) |idx| {
+            scope = scope[0..idx];
+        } else {
+            break;
+        }
+    }
+    return try qualifiedName(allocator, file, type_name);
+}
+
+fn typeNameExistsInFile(file: *const schema.FileDescriptor, type_name: []const u8, comptime kind: DescriptorTypeKind) bool {
+    return switch (kind) {
+        .message => exactMessagePathExists(file, type_name),
+        .enumeration => exactEnumPathExists(file, type_name),
+    };
+}
+
+fn exactMessagePathExists(file: *const schema.FileDescriptor, type_name: []const u8) bool {
+    const normalized = normalizeDescriptorTypeName(file, type_name);
+    if (normalized.len == 0) return false;
+    const first, const rest = splitTypePath(normalized);
+    for (file.messages.items) |*message| {
+        if (std.mem.eql(u8, message.name, first)) {
+            if (rest.len == 0) return true;
+            return exactMessagePathExistsInMessage(message, rest);
+        }
+    }
+    return false;
+}
+
+fn exactMessagePathExistsInMessage(message: *const schema.MessageDescriptor, path: []const u8) bool {
+    const first, const rest = splitTypePath(path);
+    for (message.messages.items) |*nested| {
+        if (std.mem.eql(u8, nested.name, first)) {
+            if (rest.len == 0) return true;
+            return exactMessagePathExistsInMessage(nested, rest);
+        }
+    }
+    return false;
+}
+
+fn exactEnumPathExists(file: *const schema.FileDescriptor, type_name: []const u8) bool {
+    const normalized = normalizeDescriptorTypeName(file, type_name);
+    if (normalized.len == 0) return false;
+    const first, const rest = splitTypePath(normalized);
+    if (rest.len == 0) {
+        for (file.enums.items) |*enumeration| {
+            if (std.mem.eql(u8, enumeration.name, first)) return true;
+        }
+        return false;
+    }
+    for (file.messages.items) |*message| {
+        if (std.mem.eql(u8, message.name, first)) return exactEnumPathExistsInMessage(message, rest);
+    }
+    return false;
+}
+
+fn exactEnumPathExistsInMessage(message: *const schema.MessageDescriptor, path: []const u8) bool {
+    const first, const rest = splitTypePath(path);
+    if (rest.len == 0) {
+        for (message.enums.items) |*enumeration| {
+            if (std.mem.eql(u8, enumeration.name, first)) return true;
+        }
+        return false;
+    }
+    for (message.messages.items) |*nested| {
+        if (std.mem.eql(u8, nested.name, first)) return exactEnumPathExistsInMessage(nested, rest);
+    }
+    return false;
+}
+
+fn normalizeDescriptorTypeName(file: *const schema.FileDescriptor, type_name: []const u8) []const u8 {
+    var normalized = if (std.mem.startsWith(u8, type_name, ".")) type_name[1..] else type_name;
+    if (file.package.len != 0 and std.mem.startsWith(u8, normalized, file.package)) {
+        if (normalized.len == file.package.len) return "";
+        if (normalized.len > file.package.len and normalized[file.package.len] == '.') normalized = normalized[file.package.len + 1 ..];
+    }
+    return normalized;
+}
+
+fn splitTypePath(path: []const u8) struct { []const u8, []const u8 } {
+    if (std.mem.indexOfScalar(u8, path, '.')) |idx| return .{ path[0..idx], path[idx + 1 ..] };
+    return .{ path, "" };
+}
+
 fn joinScope(allocator: std.mem.Allocator, parent: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
     if (parent.len == 0) return try allocator.dupe(u8, name);
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ parent, name });
-}
-
-fn scopedMapEntryName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, entry_name: []const u8) std.mem.Allocator.Error![]const u8 {
-    var path: std.ArrayList([]const u8) = .empty;
-    defer path.deinit(allocator);
-    if (try appendMessageScopePath(allocator, file, message, &path)) {
-        var out: std.ArrayList(u8) = .empty;
-        errdefer out.deinit(allocator);
-        for (path.items, 0..) |part, index| {
-            if (index != 0) try out.append(allocator, '.');
-            try out.appendSlice(allocator, part);
-        }
-        try out.append(allocator, '.');
-        try out.appendSlice(allocator, entry_name);
-        return try out.toOwnedSlice(allocator);
-    }
-    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ message.name, entry_name });
-}
-
-fn appendMessageScopePath(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, path: *std.ArrayList([]const u8)) std.mem.Allocator.Error!bool {
-    for (file.messages.items) |*message| {
-        if (try appendMessageScopePathInMessage(allocator, message, target, path)) return true;
-    }
-    return false;
-}
-
-fn appendMessageScopePathInMessage(allocator: std.mem.Allocator, current: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, path: *std.ArrayList([]const u8)) std.mem.Allocator.Error!bool {
-    try path.append(allocator, current.name);
-    errdefer _ = path.pop();
-    if (current == target) return true;
-    for (current.messages.items) |*nested| {
-        if (try appendMessageScopePathInMessage(allocator, nested, target, path)) return true;
-    }
-    _ = path.pop();
-    return false;
 }
 
 fn mapEntryName(allocator: std.mem.Allocator, field_name: []const u8) std.mem.Allocator.Error![]u8 {
@@ -1068,6 +1142,41 @@ test "descriptor encodes nested map entry type names with full scope" {
     try std.testing.expectEqual(schema.ScalarType.string, tags.kind.map.key);
     try std.testing.expect(tags.kind.map.value.* == .scalar);
     try std.testing.expectEqual(schema.ScalarType.int32, tags.kind.map.value.scalar);
+}
+
+test "descriptor encodes nested message and enum type names with full scope" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Outer {
+        \\  message Child { optional int32 id = 1; }
+        \\  enum Kind { UNKNOWN = 0; ACTIVE = 1; }
+        \\  message Inner {
+        \\    optional Child child = 1;
+        \\    optional Kind kind = 2 [default = ACTIVE];
+        \\    message Local { optional string name = 1; }
+        \\    optional Local local = 3;
+        \\  }
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "nested-types.proto");
+    defer allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, ".demo.Outer.Child") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, ".demo.Outer.Kind") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, ".demo.Outer.Inner.Local") != null);
+
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    const outer = decoded.findMessage("Outer").?;
+    const inner = outer.findMessage("Inner").?;
+    try std.testing.expectEqualStrings("demo.Outer.Child", inner.findField("child").?.kind.message);
+    try std.testing.expectEqualStrings("demo.Outer.Kind", inner.findField("kind").?.kind.enumeration);
+    try std.testing.expectEqualStrings("demo.Outer.Inner.Local", inner.findField("local").?.kind.message);
+    try std.testing.expectEqual(@as(i64, 1), inner.findField("kind").?.default_value.?.integer);
 }
 
 pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FileDescriptor {
@@ -1941,7 +2050,7 @@ fn kindFromType(allocator: std.mem.Allocator, field_type: i32, type_name: ?[]con
         7 => .{ .scalar = .fixed32 },
         8 => .{ .scalar = .bool },
         9 => .{ .scalar = .string },
-        10 => .{ .group = try requireTypeName(type_name) },
+        10 => .{ .group = leafTypeName(try requireTypeName(type_name)) },
         11 => .{ .message = try requireTypeName(type_name) },
         12 => .{ .scalar = .bytes },
         13 => .{ .scalar = .uint32 },
@@ -1961,6 +2070,10 @@ fn requireTypeName(type_name: ?[]const u8) Error![]const u8 {
     const name = type_name orelse return error.InvalidFieldType;
     if (name.len == 0) return error.InvalidFieldType;
     return if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+}
+
+fn leafTypeName(type_name: []const u8) []const u8 {
+    return if (std.mem.lastIndexOfScalar(u8, type_name, '.')) |idx| type_name[idx + 1 ..] else type_name;
 }
 
 fn collapseMapEntryMessages(allocator: std.mem.Allocator, file: *schema.FileDescriptor) Error!void {
