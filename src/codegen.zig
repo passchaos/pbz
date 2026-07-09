@@ -7306,6 +7306,40 @@ fn writeEnumHelpers(enumeration: *const schema.EnumDescriptor, writer: *std.Io.W
     try writer.writeAll("}\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn fromName(name: []const u8) ?@This() {\n");
+    for (enumeration.values.items) |value| {
+        const first_index = enumFirstValueIndexForNumber(enumeration, value.number) orelse continue;
+        const first = &enumeration.values.items[first_index];
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (std.mem.eql(u8, name, ");
+        try writeZigStringLiteral(value.name, writer);
+        try writer.writeAll(")) return .");
+        try writeQuotedIdent(first.name, writer);
+        try writer.writeAll(";\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("return null;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonParse(value: std.json.Value) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return switch (value) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll(".string => |name| fromName(name) orelse error.InvalidEnumValue,\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll(".integer => |number| fromInt(std.math.cast(i32, number) orelse return error.Overflow) orelse error.InvalidEnumValue,\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll(".number_string => |text| fromInt(try std.fmt.parseInt(i32, text, 10)) orelse error.InvalidEnumValue,\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("else => error.TypeMismatch,\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("};\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("try std.json.Stringify.value(self.protoName(), .{}, writer);\n");
@@ -8518,6 +8552,10 @@ test "codegen emits zig message and enum skeletons" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn toInt(self: @This()) i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn protoName(self: @This()) []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"ADMIN\" => \"ADMIN\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn fromName(name: []const u8) ?@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, name, \"ADMIN\")) return .@\"ADMIN\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParse(value: std.json.Value) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".string => |name| fromName(name) orelse error.InvalidEnumValue,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"User\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"name_number\" = 1") != null);
@@ -8545,6 +8583,8 @@ test "codegen emits Zig enum aliases for proto allow_alias" {
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => .@\"STARTED\",") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"STARTED\" => \"STARTED\",") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"RUNNING\" =>") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, name, \"RUNNING\")) return .@\"STARTED\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, name, \"ACTIVE\")) return .@\"STARTED\";") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
