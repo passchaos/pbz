@@ -597,6 +597,26 @@ pub const Struct = struct {
         self.* = undefined;
     }
 
+    pub fn cloneOwned(self: Struct, allocator: std.mem.Allocator) anyerror!Struct {
+        var fields: std.ArrayList(Field) = .empty;
+        errdefer {
+            for (fields.items) |*field| deinitStructField(field, allocator);
+            fields.deinit(allocator);
+        }
+        for (self.fields) |field| {
+            const key = try allocator.dupe(u8, field.key);
+            var owns_key = true;
+            errdefer if (owns_key) allocator.free(key);
+            var value = try field.value.cloneOwned(allocator);
+            var owns_value = true;
+            errdefer if (owns_value) value.deinit(allocator);
+            fields.append(allocator, .{ .key = key, .value = value }) catch |err| return err;
+            owns_key = false;
+            owns_value = false;
+        }
+        return .{ .fields = try fields.toOwnedSlice(allocator) };
+    }
+
     pub fn jsonStringifyAlloc(self: Struct, allocator: std.mem.Allocator) anyerror![]u8 {
         var out: std.Io.Writer.Allocating = .init(allocator);
         errdefer out.deinit();
@@ -666,6 +686,22 @@ pub const ListValue = struct {
         }
         allocator.free(self.values);
         self.* = undefined;
+    }
+
+    pub fn cloneOwned(self: ListValue, allocator: std.mem.Allocator) anyerror!ListValue {
+        var values: std.ArrayList(Value) = .empty;
+        errdefer {
+            for (values.items) |*value| value.deinit(allocator);
+            values.deinit(allocator);
+        }
+        for (self.values) |value| {
+            var owned = try value.cloneOwned(allocator);
+            values.append(allocator, owned) catch |err| {
+                owned.deinit(allocator);
+                return err;
+            };
+        }
+        return .{ .values = try values.toOwnedSlice(allocator) };
     }
 
     pub fn jsonStringifyAlloc(self: ListValue, allocator: std.mem.Allocator) anyerror![]u8 {
@@ -783,6 +819,27 @@ pub const Value = union(enum) {
             },
         }
         self.* = undefined;
+    }
+
+    pub fn cloneOwned(self: Value, allocator: std.mem.Allocator) anyerror!Value {
+        return switch (self) {
+            .null_value => .null_value,
+            .number_value => |value| .{ .number_value = value },
+            .string_value => |value| .{ .string_value = try allocator.dupe(u8, value) },
+            .bool_value => |value| .{ .bool_value = value },
+            .struct_value => |value| blk: {
+                const nested = try allocator.create(Struct);
+                errdefer allocator.destroy(nested);
+                nested.* = try value.cloneOwned(allocator);
+                break :blk .{ .struct_value = nested };
+            },
+            .list_value => |value| blk: {
+                const nested = try allocator.create(ListValue);
+                errdefer allocator.destroy(nested);
+                nested.* = try value.cloneOwned(allocator);
+                break :blk .{ .list_value = nested };
+            },
+        };
     }
 
     pub fn jsonStringifyAlloc(self: Value, allocator: std.mem.Allocator) anyerror![]u8 {
@@ -948,6 +1005,33 @@ test "struct value and listvalue wire and json helpers" {
     const parsed_json = try parsed.jsonStringifyAlloc(allocator);
     defer allocator.free(parsed_json);
     try std.testing.expectEqualSlices(u8, "{\"n\":1.5,\"child\":{\"flag\":false},\"items\":[null,\"x\"]}", parsed_json);
+}
+
+test "struct value and listvalue clone owned helpers" {
+    const allocator = std.testing.allocator;
+    var parsed = try Struct.jsonParse(allocator, "{\"name\":\"pbz\",\"items\":[\"zig\",null],\"child\":{\"ok\":true}}");
+    defer parsed.deinit(allocator);
+
+    var cloned = try parsed.cloneOwned(allocator);
+    defer cloned.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 3), cloned.fields.len);
+    try std.testing.expect(cloned.fields.ptr != parsed.fields.ptr);
+    try std.testing.expect(cloned.fields[0].key.ptr != parsed.fields[0].key.ptr);
+    try std.testing.expectEqualSlices(u8, parsed.fields[0].key, cloned.fields[0].key);
+
+    const cloned_json = try cloned.jsonStringifyAlloc(allocator);
+    defer allocator.free(cloned_json);
+    try std.testing.expectEqualSlices(u8, "{\"name\":\"pbz\",\"items\":[\"zig\",null],\"child\":{\"ok\":true}}", cloned_json);
+
+    var value = try Value.jsonParse(allocator, "{\"nested\":[\"owned\"]}");
+    defer value.deinit(allocator);
+    var cloned_value = try value.cloneOwned(allocator);
+    defer cloned_value.deinit(allocator);
+    try std.testing.expect(cloned_value == .struct_value);
+    try std.testing.expect(cloned_value.struct_value != value.struct_value);
+    const value_json = try cloned_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(value_json);
+    try std.testing.expectEqualSlices(u8, "{\"nested\":[\"owned\"]}", value_json);
 }
 
 test "value json and wire reject invalid null enum and non-finite numbers" {

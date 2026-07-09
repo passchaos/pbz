@@ -175,6 +175,8 @@ var object = try pbz.Struct.jsonParse(allocator,
     \\{"enabled":true,"items":[null,"zig"]}
 );
 defer object.deinit(allocator);
+var owned_object = try object.cloneOwned(allocator);
+defer owned_object.deinit(allocator);
 const object_wire = try object.encode(allocator);
 defer allocator.free(object_wire);
 ```
