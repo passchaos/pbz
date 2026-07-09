@@ -4576,6 +4576,20 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeFirstFromUnknown(message: anytype, allocator: std.mem.Allocator) !");
+    try writer.writeAll("?");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const values = try decodeFromUnknownFieldsAlloc(message, allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(values);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return if (values.len == 0) null else values[values.len - 1];\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(");
@@ -5630,6 +5644,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFromUnknownFieldsAlloc(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeAllRaw(allocator, message.unknownFields());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFirstFromUnknown(message: anytype, allocator: std.mem.Allocator) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return if (values.len == 0) null else values[values.len - 1];") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"repeated\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeAll(w: *pbz.Writer, values: []const i32) !void") != null);
