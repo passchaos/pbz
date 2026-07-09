@@ -51,7 +51,7 @@ validated feature set.
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
-  - generated `missingRequiredFieldName` helper reports the first missing direct proto2 required field name
+  - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated typed JSON stringify/parse helpers for scalar, enum names with editions open/closed unknown-number validation, repeated scalar/enum, scalar/enum map, optional presence, bytes/base64, scalar/enum oneof fields, generated wire UTF-8 validation for string/map-string fields, and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
@@ -227,8 +227,9 @@ for extracting matching item payloads.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
 including generated message payload fields and map message values when their types are available.
-They also expose `missingRequiredFieldName` for callers that want the first
-missing direct required field name before handling `error.MissingRequiredField`.
+They also expose `missingRequiredFieldName` and `missingRequiredFieldPath` for
+callers that want direct or nested missing required field diagnostics before
+handling `error.MissingRequiredField`.
 Packable repeated scalar and enum fields emit packed wire format when resolved
 as packed, generated decoders accept both packed and expanded input, and generated
 `encodeDeterministic` emits fields by number and sorts map entries by key.

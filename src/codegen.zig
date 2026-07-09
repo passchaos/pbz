@@ -130,6 +130,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeMissingRequiredFieldName(message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeMissingRequiredFieldPath(file, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeValidateRequired(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeJsonMethods(file, message, writer, depth + 1);
@@ -624,6 +626,142 @@ fn writeMissingRequiredFieldName(message: *const schema.MessageDescriptor, write
     }
     try indent(writer, depth + 1);
     try writer.writeAll("return null;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeMissingRequiredFieldPath(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {\n");
+    var uses_allocator = false;
+    for (message.fields.items) |*field| {
+        if (isRequired(field.*)) {
+            uses_allocator = true;
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (!self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") return try allocator.dupe(u8, ");
+            try writeZigStringLiteral(field.name, writer);
+            try writer.writeAll(");\n");
+        }
+    }
+    for (message.fields.items) |*field| {
+        if (field.kind == .message or field.kind == .group or fieldHasMessageMapValue(field)) {
+            if (try writeMissingRequiredPathField(file, field, writer, depth + 1)) uses_allocator = true;
+        }
+    }
+    for (message.oneofs.items) |oneof| {
+        if (oneofHasMessageField(message, oneof.name)) {
+            uses_allocator = true;
+            try writeMissingRequiredPathOneof(file, message, oneof, writer, depth + 1);
+        }
+    }
+    if (!uses_allocator) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = self; _ = allocator;\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("return null;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeMissingRequiredPathField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    if (field.kind == .map) return try writeMissingRequiredPathMapField(file, field, writer, depth);
+    const type_name = switch (field.kind) {
+        .message => |name| name,
+        .group => |name| name,
+        else => return false,
+    };
+    if (!codegenCanReferenceMessage(file, type_name)) return false;
+    if (field.oneof_name != null) return false;
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |payload| {\n");
+        try writeMissingRequiredPathPayload(type_name, field.name, "payload", writer, depth + 1);
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) {\n");
+        try writeMissingRequiredPathPayload(type_name, field.name, "self.", writer, depth + 1);
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+    return true;
+}
+
+fn writeMissingRequiredPathMapField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    const map_type = switch (field.kind) {
+        .map => |map_type| map_type,
+        else => return false,
+    };
+    const type_name = switch (map_type.value.*) {
+        .message => |name| name,
+        else => return false,
+    };
+    if (!codegenCanReferenceMessage(file, type_name)) return false;
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try writeMissingRequiredPathPayload(type_name, field.name, "entry.value", writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+    return true;
+}
+
+fn writeMissingRequiredPathOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".none => {},\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            const type_name = switch (field.kind) {
+                .message => |message_name| message_name,
+                .group => |group_name| group_name,
+                else => continue,
+            };
+            if (std.mem.eql(u8, name, oneof.name) and codegenCanReferenceMessage(file, type_name)) {
+                try indent(writer, depth + 1);
+                try writer.writeAll(".");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" => |payload| {\n");
+                try writeMissingRequiredPathPayload(type_name, field.name, "payload", writer, depth + 2);
+                try indent(writer, depth + 1);
+                try writer.writeAll("},\n");
+            }
+        }
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeMissingRequiredPathPayload(type_name: []const u8, field_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("var nested = try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".decode(allocator, ");
+    try writer.writeAll(payload_expr);
+    if (std.mem.eql(u8, payload_expr, "self.")) try writeQuotedIdent(field_name, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth);
+    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(suffix);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try std.fmt.allocPrint(allocator, \"");
+    try writeEscapedStringContents(field_name, writer);
+    try writer.writeAll(".{s}\", .{suffix});\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -3610,12 +3748,17 @@ test "codegen emits recursive required validation for message payloads" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"keyed\") |entry|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"child.{s}\", .{suffix});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"children.{s}\", .{suffix});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"keyed.{s}\", .{suffix});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"picked.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
     const json_initialized_start = std.mem.indexOf(u8, content, "pub fn jsonParseInitialized").?;
     const json_initialized = content[json_initialized_start..];
