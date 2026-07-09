@@ -1450,6 +1450,14 @@ fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema
         try writeDecodePackedEnumField(file, field, writer, depth);
     } else if (field.oneof_name != null) {
         try writeOneofEnumDecodeAssign(file, field, writer);
+    } else if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+        try writer.writeAll("{ const value = try r.readInt32(); if (!@This().enumKnown(value, ");
+        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try writer.writeAll(")) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = value;");
+        try writeSetPresence(file, field, writer);
+        try writer.writeAll(" } },\n");
     } else {
         try writer.writeAll("{ const value = try r.readInt32();");
         try writeEnumClosedCheck(file, field, "value", writer);
@@ -1527,10 +1535,20 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     try indent(writer, depth + 1);
     try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
+    try writer.writeAll("const payload = try r.readBytes();\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("while (!packed_reader.eof()) { const value = try packed_reader.readInt32();");
-    try writeEnumClosedCheck(file, field, "value", writer);
+    try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();");
+    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+        try writer.writeAll(" if (!@This().enumKnown(value, ");
+        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try writer.writeAll(")) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(");
+        try writer.print("{d}", .{field.number});
+        try writer.writeAll(", .varint); try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }");
+    } else {
+        try writeEnumClosedCheck(file, field, "value", writer);
+    }
     try writer.writeAll(" try ");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
     try writer.writeAll(".append(allocator, value); }\n");
@@ -1538,10 +1556,18 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("} else {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("{ const value = try r.readInt32();");
-    try writeEnumClosedCheck(file, field, "value", writer);
-    try writer.writeAll(" try ");
-    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".append(allocator, value); }\n");
+    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+        try writer.writeAll(" if (!@This().enumKnown(value, ");
+        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try writer.writeAll(")) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { try ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".append(allocator, value); } }\n");
+    } else {
+        try writeEnumClosedCheck(file, field, "value", writer);
+        try writer.writeAll(" try ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".append(allocator, value); }\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -1637,12 +1663,20 @@ fn writeOneofMessageDecodeAssign(file: *const schema.FileDescriptor, field: *con
 fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     const oneof_name = field.oneof_name orelse return;
     try writer.writeAll("{ const value = try r.readInt32();");
-    try writeEnumClosedCheck(file, field, "value", writer);
+    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+        try writer.writeAll(" if (!@This().enumKnown(value, ");
+        try writeEnumNumberArray(file, field.kind.enumeration, writer);
+        try writer.writeAll(")) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else {");
+    } else {
+        try writeEnumClosedCheck(file, field, "value", writer);
+    }
     try writer.writeAll(" self.");
     try writeQuotedIdent(oneof_name, writer);
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" = value }; },\n");
+    try writer.writeAll(" = value };");
+    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) try writer.writeAll(" }");
+    try writer.writeAll(" },\n");
 }
 
 fn writeEnumClosedCheck(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -3229,6 +3263,13 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    try writer.print("{d}", .{value});
         \\}
         \\
+        \\fn enumKnown(value: i32, comptime numbers: []const i32) bool {
+        \\    inline for (numbers) |number| {
+        \\        if (value == number) return true;
+        \\    }
+        \\    return false;
+        \\}
+        \\
         \\fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8 {
         \\    if (!std.mem.startsWith(u8, line, name)) return null;
         \\    var rest = line[name.len..];
@@ -4159,9 +4200,11 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(1, packed_writer.slice())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(2, packed_writer.slice())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_reader = pbz.Reader.init(try r.readBytes())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_reader = pbz.Reader.init(payload)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try @\"ids_list\".append(allocator, try packed_reader.readInt32())") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value = try packed_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"kinds_list\".append(allocator, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.writeTag(2, .varint); try unknown_writer.appendSlice(payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -4955,10 +4998,12 @@ test "codegen validates closed enum values in wire decode" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; self.@\"single\" = value; self.@\"has_single\" = true; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value = try packed_reader.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; try @\"many_list\".append(allocator, value); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (value != 0 and value != 1) return error.InvalidEnumValue; self.@\"pick\" = .{ .@\"choice\" = value }; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.@\"single\" = value; self.@\"has_single\" = true; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1})) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(2, .varint);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { try @\"many_list\".append(allocator, value); } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.@\"pick\" = .{ .@\"choice\" = value }; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn enumKnown(value: i32, comptime numbers: []const i32) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"single\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"many_list\".append(allocator, try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"choice\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) };") != null);

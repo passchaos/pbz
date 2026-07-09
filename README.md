@@ -53,7 +53,7 @@ validated feature set.
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
   - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
-  - generated decoders retain unknown wire fields and generated encoders replay them
+  - generated decoders retain unknown wire fields and preserve closed-enum unknown numeric values for singular/repeated/oneof enum fields; generated encoders replay retained unknowns
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, and oneof fields; generated wire UTF-8 validation for string/map-string fields; and generated wire closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
