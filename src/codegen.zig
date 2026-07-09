@@ -10,6 +10,7 @@ const CodegenContext = struct {
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry = null,
+    pbz_import: []const u8 = "pbz",
 };
 
 pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) Error![]u8 {
@@ -33,7 +34,9 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
 
     var out: std.Io.Writer.Allocating = .init(ctx.allocator);
     errdefer out.deinit();
-    try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(\"pbz\");\n\n");
+    try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(");
+    try writeZigStringLiteral(active_ctx.pbz_import, &out.writer);
+    try out.writer.writeAll(");\n\n");
     try writeFileMetadata(ctx.allocator, active_ctx.file, &out.writer, 0);
     for (active_ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (active_ctx.file.messages.items) |*message| try writeMessage(&active_ctx, message, &out.writer, 0);
@@ -133,6 +136,7 @@ fn normalizedTypeName(type_name: []const u8) []const u8 {
 const PluginParameterOptions = struct {
     include_imports: bool = false,
     generated_info: bool = true,
+    pbz_import: []const u8 = "pbz",
 };
 
 pub fn generatePluginResponseFromRequestBytes(allocator: std.mem.Allocator, bytes: []const u8) Error![]u8 {
@@ -191,6 +195,9 @@ fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!Pl
             options.include_imports = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "generated_info") or std.mem.eql(u8, key, "annotate_code")) {
             options.generated_info = try parseParameterBool(maybe_value orelse "true");
+        } else if (std.mem.eql(u8, key, "pbz_import") or std.mem.eql(u8, key, "runtime_import")) {
+            options.pbz_import = maybe_value orelse return error.InvalidPluginParameter;
+            if (options.pbz_import.len == 0) return error.InvalidPluginParameter;
         } else if (std.mem.eql(u8, key, "paths")) {
             const value = maybe_value orelse return error.InvalidPluginParameter;
             if (!std.mem.eql(u8, value, "source_relative")) return error.InvalidPluginParameter;
@@ -237,7 +244,7 @@ fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []cons
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
-        const content = try generateZigFileWithRegistry(allocator, file, registry);
+        const content = try generateZigFileWithContext(.{ .allocator = allocator, .file = file, .registry = registry, .pbz_import = options.pbz_import });
         errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
         if (options.generated_info) {
@@ -7680,6 +7687,32 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     }
     try std.testing.expect(saw_no_info_file);
     try std.testing.expect(!saw_generated_info_field);
+
+    var import_name_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer import_name_request.deinit();
+    import_name_request.parameter = "pbz_import=custom_runtime";
+    try import_name_request.files_to_generate.append(allocator, "app.proto");
+    try import_name_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
+    import_name_request.proto_files.items[0].name = "app.proto";
+    const import_name_response = try generatePluginResponseFromRequest(allocator, &import_name_request);
+    defer allocator.free(import_name_response);
+    var import_name_reader = wire.Reader.init(import_name_response);
+    var saw_custom_runtime = false;
+    while (try import_name_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                var file_reader = wire.Reader.init(try import_name_reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        15 => saw_custom_runtime = std.mem.indexOf(u8, try file_reader.readBytes(), "const pbz = @import(\"custom_runtime\");") != null,
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try import_name_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_custom_runtime);
 
     var invalid_request = plugin.CodeGeneratorRequest.init(allocator);
     defer invalid_request.deinit();
