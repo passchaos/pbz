@@ -1639,7 +1639,7 @@ test "dynamic proto2 round-trips required optional repeated packed message and g
     const group = try allocator.create(DynamicMessage);
     group.* = DynamicMessage.init(allocator, group_desc);
     try group.add(group_desc.findField("flag").?, .{ .boolean = true });
-    try message.add(parent_desc.findField("Legacy").?, .{ .group = group });
+    try message.add(parent_desc.findField("legacy").?, .{ .group = group });
     try message.validateRequired();
 
     const encoded = try message.encoded(&file);
@@ -1656,7 +1656,7 @@ test "dynamic proto2 round-trips required optional repeated packed message and g
     try std.testing.expectEqual(@as(i32, -1), decoded.get("nums").?.values.items[0].sint32);
     try std.testing.expectEqual(@as(i32, 2), decoded.get("nums").?.values.items[1].sint32);
     try std.testing.expectEqualSlices(u8, "kid", decoded.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
-    try std.testing.expect(decoded.get("Legacy").?.values.items[0].group.get("flag").?.values.items[0].boolean);
+    try std.testing.expect(decoded.get("legacy").?.values.items[0].group.get("flag").?.values.items[0].boolean);
 }
 
 test "dynamic proto3 round-trips map fields and default packed repeated scalars" {
@@ -2427,11 +2427,11 @@ test "dynamic decode merges duplicate singular message and group fields" {
     const merged_grand = merged_child.get("grand").?.values.items[0].message;
     try std.testing.expectEqual(@as(i32, 100), merged_grand.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 200), merged_grand.get("b").?.values.items[0].int32);
-    const merged_legacy = merged_child.get("Legacy").?.values.items[0].group;
+    const merged_legacy = merged_child.get("legacy").?.values.items[0].group;
     try std.testing.expectEqual(@as(i32, 1000), merged_legacy.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2000), merged_legacy.get("b").?.values.items[0].int32);
 
-    const merged_box = parent.get("Box").?.values.items[0].group;
+    const merged_box = parent.get("box").?.values.items[0].group;
     try std.testing.expectEqual(@as(i32, 11), merged_box.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 22), merged_box.get("b").?.values.items[0].int32);
 
@@ -2486,12 +2486,12 @@ test "dynamic mergeFrom recursively merges singular messages and groups" {
     const left_legacy = try allocator.create(DynamicMessage);
     left_legacy.* = DynamicMessage.init(allocator, legacy_desc);
     try left_legacy.add(legacy_desc.findField("a").?, .{ .int32 = 1000 });
-    try left_child.add(child_desc.findField("Legacy").?, .{ .group = left_legacy });
+    try left_child.add(child_desc.findField("legacy").?, .{ .group = left_legacy });
     try left.add(parent_desc.findField("child").?, .{ .message = left_child });
     const left_box = try allocator.create(DynamicMessage);
     left_box.* = DynamicMessage.init(allocator, box_desc);
     try left_box.add(box_desc.findField("a").?, .{ .int32 = 11 });
-    try left.add(parent_desc.findField("Box").?, .{ .group = left_box });
+    try left.add(parent_desc.findField("box").?, .{ .group = left_box });
 
     var right = DynamicMessage.init(allocator, parent_desc);
     defer right.deinit();
@@ -2506,12 +2506,12 @@ test "dynamic mergeFrom recursively merges singular messages and groups" {
     const right_legacy = try allocator.create(DynamicMessage);
     right_legacy.* = DynamicMessage.init(allocator, legacy_desc);
     try right_legacy.add(legacy_desc.findField("b").?, .{ .int32 = 2000 });
-    try right_child.add(child_desc.findField("Legacy").?, .{ .group = right_legacy });
+    try right_child.add(child_desc.findField("legacy").?, .{ .group = right_legacy });
     try right.add(parent_desc.findField("child").?, .{ .message = right_child });
     const right_box = try allocator.create(DynamicMessage);
     right_box.* = DynamicMessage.init(allocator, box_desc);
     try right_box.add(box_desc.findField("b").?, .{ .int32 = 22 });
-    try right.add(parent_desc.findField("Box").?, .{ .group = right_box });
+    try right.add(parent_desc.findField("box").?, .{ .group = right_box });
 
     const repeated_child = try allocator.create(DynamicMessage);
     repeated_child.* = DynamicMessage.init(allocator, child_desc);
@@ -2531,10 +2531,10 @@ test "dynamic mergeFrom recursively merges singular messages and groups" {
     const merged_grand = merged_child.get("grand").?.values.items[0].message;
     try std.testing.expectEqual(@as(i32, 100), merged_grand.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 200), merged_grand.get("b").?.values.items[0].int32);
-    const merged_legacy = merged_child.get("Legacy").?.values.items[0].group;
+    const merged_legacy = merged_child.get("legacy").?.values.items[0].group;
     try std.testing.expectEqual(@as(i32, 1000), merged_legacy.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2000), merged_legacy.get("b").?.values.items[0].int32);
-    const merged_box = left.get("Box").?.values.items[0].group;
+    const merged_box = left.get("box").?.values.items[0].group;
     try std.testing.expectEqual(@as(i32, 11), merged_box.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 22), merged_box.get("b").?.values.items[0].int32);
     try std.testing.expectEqual(@as(usize, 1), left.get("children").?.values.items.len);

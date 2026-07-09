@@ -9595,13 +9595,13 @@ test "codegen emits JSON helpers for proto2 group payload fields" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"Box\": []const u8 = \"\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"Item\": []const []const u8 = &.{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".decode(allocator, self.@\"Box\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"Item\", 0..) |payload, i|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"box\": []const u8 = \"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"item\": []const []const u8 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".decode(allocator, self.@\"box\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"item\", 0..) |payload, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Item\".jsonParseWithOptions(arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"Item\" = blk: { const old = self.@\"Item\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"item\" = blk: { const old = self.@\"item\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -10138,15 +10138,15 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try owned_allocator.alloc(u8, self.@\"child\".len + other.@\"child\".len)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (other.@\"has_Box\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try owned_allocator.alloc(u8, self.@\"Box\".len + other.@\"Box\".len)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (other.@\"has_box\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try owned_allocator.alloc(u8, self.@\"box\".len + other.@\"box\".len)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (other.@\"pick\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| self.@\"pick\" = .{ .@\"picked\" = value }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); if (self.@\"has_child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); if (self.@\"has_Box\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_Box\") { try w.writeTag(4, .start_group); try w.appendSlice(self.@\"Box\"); try w.writeTag(4, .end_group); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".decode(allocator, self.@\"Box\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); if (self.@\"has_box\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_box\") { try w.writeTag(4, .start_group); try w.appendSlice(self.@\"box\"); try w.writeTag(4, .end_group); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".decode(allocator, self.@\"box\")") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

@@ -688,10 +688,12 @@ pub const Parser = struct {
 
     fn parseGroupField(self: *Parser, cardinality: schema.Cardinality, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
         const name = try self.expectIdentifier();
+        const field_name = try self.lowercaseOwned(name);
+        errdefer self.allocator.free(field_name);
         try self.expectSymbol('=');
         const number = try self.parseFieldNumber();
         var field = schema.FieldDescriptor{
-            .name = name,
+            .name = field_name,
             .number = number,
             .cardinality = if (cardinality == .implicit) .optional else cardinality,
             .kind = .{ .group = name },
@@ -713,6 +715,14 @@ pub const Parser = struct {
             nested.deinit(self.allocator);
         }
         return field;
+    }
+
+    fn lowercaseOwned(self: *Parser, name: []const u8) std.mem.Allocator.Error![]const u8 {
+        const owned = try self.allocator.dupe(u8, name);
+        for (owned) |*c| c.* = std.ascii.toLower(c.*);
+        errdefer self.allocator.free(owned);
+        try self.file.owned_strings.append(self.allocator, owned);
+        return owned;
     }
 
     fn parseFieldKind(self: *Parser) Error!schema.FieldKind {
@@ -2506,7 +2516,7 @@ test "parser rejects legacy groups under editions" {
         \\message Ok { optional group Legacy = 1 { optional int32 id = 2; } }
     );
     defer file.deinit();
-    try std.testing.expect(file.findMessage("Ok").?.findField("Legacy").?.kind == .group);
+    try std.testing.expect(file.findMessage("Ok").?.findField("legacy").?.kind == .group);
 }
 
 test "parser rejects invalid and reserved field numbers" {

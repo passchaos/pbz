@@ -3274,11 +3274,11 @@ test "descriptor preserves proto2 group fields and nested group messages" {
     defer decoded.deinit();
 
     const parent = decoded.findMessage("Parent").?;
-    const legacy = parent.findField("Legacy").?;
+    const legacy = parent.findField("legacy").?;
     try std.testing.expect(legacy.kind == .group);
     try std.testing.expectEqualStrings("Legacy", legacy.kind.group);
     try std.testing.expectEqual(schema.Cardinality.optional, legacy.cardinality);
-    const items = parent.findField("Items").?;
+    const items = parent.findField("items").?;
     try std.testing.expect(items.kind == .group);
     try std.testing.expectEqualStrings("Items", items.kind.group);
     try std.testing.expectEqual(schema.Cardinality.repeated, items.cardinality);

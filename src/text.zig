@@ -188,7 +188,11 @@ fn writeField(
         },
         .group => switch (value) {
             .group => |message| {
-                try writeFieldName(file, field, name, writer);
+                const group_name = if (field) |descriptor| switch (descriptor.kind) {
+                    .group => |type_name| type_name,
+                    else => name,
+                } else name;
+                try writeFieldName(file, field, group_name, writer);
                 try writer.writeAll(" {\n");
                 try writeMessageFields(file, registry, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
@@ -632,7 +636,7 @@ const TextParser = struct {
             return self.findExtension(descriptor, name) orelse return error.UnknownField;
         }
         const name = try self.readIdent();
-        return descriptor.findField(name) orelse return error.UnknownField;
+        return descriptor.findField(name) orelse findGroupFieldByTypeName(descriptor, name) orelse return error.UnknownField;
     }
 
     fn readExtensionName(self: *TextParser) ![]const u8 {
@@ -644,6 +648,16 @@ const TextParser = struct {
         try self.expect(']');
         if (raw.len == 0) return error.UnexpectedToken;
         return raw;
+    }
+
+    fn findGroupFieldByTypeName(descriptor: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
+        for (descriptor.fields.items) |*field| {
+            switch (field.kind) {
+                .group => |type_name| if (std.mem.eql(u8, type_name, name)) return field,
+                else => {},
+            }
+        }
+        return null;
     }
 
     fn findExtension(self: *TextParser, descriptor: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
@@ -1216,11 +1230,11 @@ test "text parser merges duplicate singular message and group fields" {
     const merged_grand = merged_child.get("grand").?.values.items[0].message;
     try std.testing.expectEqual(@as(i32, 100), merged_grand.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 200), merged_grand.get("b").?.values.items[0].int32);
-    const merged_legacy = merged_child.get("Legacy").?.values.items[0].group;
+    const merged_legacy = merged_child.get("legacy").?.values.items[0].group;
     try std.testing.expectEqual(@as(i32, 1000), merged_legacy.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2000), merged_legacy.get("b").?.values.items[0].int32);
 
-    const merged_box = parsed.get("Box").?.values.items[0].group;
+    const merged_box = parsed.get("box").?.values.items[0].group;
     try std.testing.expectEqual(@as(i32, 11), merged_box.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 22), merged_box.get("b").?.values.items[0].int32);
 
