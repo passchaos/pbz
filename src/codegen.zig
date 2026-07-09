@@ -1495,6 +1495,49 @@ fn writeSingularFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     if (fieldMessageTypeName(field)) |type_name| {
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeSingularMessageFieldAccessor(ctx, field, type_name, writer, depth);
     }
+    if (field.kind == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.enumeration)) {
+        try writeSingularEnumFieldAccessor(ctx, field, field.kind.enumeration, presence, writer, depth);
+    }
+}
+
+fn writeSingularEnumFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, enum_name: []const u8, presence: bool, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getEnum", field.name, writer);
+    try writer.writeAll("(self: @This()) ?");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    if (presence) {
+        try writer.writeAll("const raw = self.");
+        try writeQuotedAccessorIdent("get", field.name, writer);
+        try writer.writeAll("() orelse return null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return ");
+        try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+        try writer.writeAll(".fromInt(raw);\n");
+    } else {
+        try writer.writeAll("return ");
+        try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+        try writer.writeAll(".fromInt(self.");
+        try writeQuotedAccessorIdent("get", field.name, writer);
+        try writer.writeAll("());\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("setEnum", field.name, writer);
+    try writer.writeAll("(self: *@This(), value: ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(") void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedAccessorIdent("set", field.name, writer);
+    try writer.writeAll("(value.toInt());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeSingularMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1680,6 +1723,50 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     if (fieldMessageTypeName(field)) |type_name| {
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeRepeatedMessageFieldAccessor(ctx, field, type_name, writer, depth);
     }
+    if (field.kind == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.enumeration)) {
+        try writeRepeatedEnumFieldAccessor(ctx, field, field.kind.enumeration, writer, depth);
+    }
+}
+
+fn writeRepeatedEnumFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, enum_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendEnum", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedAccessorIdent("append", field.name, writer);
+    try writer.writeAll("(allocator, value.toInt());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getEnums", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !");
+    try writer.writeAll("[]");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = self.");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const out = try allocator.alloc(");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(", raw.len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer allocator.free(out);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (raw, 0..) |value, i| out[i] = ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(".fromInt(value) orelse return error.InvalidEnumValue;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return out;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeRepeatedMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1847,6 +1934,41 @@ fn writeOneofFieldAccessor(ctx: *const CodegenContext, field: *const schema.Fiel
     if (fieldMessageTypeName(field)) |type_name| {
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeOneofMessageFieldAccessor(ctx, field, oneof, type_name, writer, depth);
     }
+    if (field.kind == .enumeration and codegenCanReferenceEnumWithContext(ctx, field.kind.enumeration)) {
+        try writeOneofEnumFieldAccessor(ctx, field, field.kind.enumeration, writer, depth);
+    }
+}
+
+fn writeOneofEnumFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, enum_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getEnum", field.name, writer);
+    try writer.writeAll("(self: @This()) ?");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = self.");
+    try writeQuotedAccessorIdent("get", field.name, writer);
+    try writer.writeAll("() orelse return null;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(".fromInt(raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("setEnum", field.name, writer);
+    try writer.writeAll("(self: *@This(), value: ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(") void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedAccessorIdent("set", field.name, writer);
+    try writer.writeAll("(value.toInt());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeOneofMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -3214,6 +3336,11 @@ const MessageReference = struct {
     import_path: ?[]const u8 = null,
 };
 
+const EnumReference = struct {
+    enumeration: *const schema.EnumDescriptor,
+    file: *const schema.FileDescriptor,
+};
+
 fn canReferenceMessageWithContext(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
     const type_name = switch (kind) {
         .message, .group => |name| name,
@@ -3224,6 +3351,10 @@ fn canReferenceMessageWithContext(ctx: *const CodegenContext, kind: schema.Field
 
 fn codegenCanReferenceMessageWithContext(ctx: *const CodegenContext, type_name: []const u8) bool {
     return resolveMessageReference(ctx, type_name) != null;
+}
+
+fn codegenCanReferenceEnumWithContext(ctx: *const CodegenContext, type_name: []const u8) bool {
+    return resolveEnumReference(ctx, type_name) != null;
 }
 
 fn writeMessageTypeReferenceOrVoid(ctx: *const CodegenContext, kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
@@ -3252,6 +3383,13 @@ fn writeMessageTypeReferenceWithContext(ctx: *const CodegenContext, type_name: [
     }
 }
 
+fn writeEnumTypeReferenceWithContext(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
+    const reference = resolveEnumReference(ctx, type_name) orelse {
+        return try writeMessageTypeReference(type_name, writer);
+    };
+    if (!(try writeEnumPathInFile(reference.file, reference.enumeration, writer))) try writeMessageTypeReference(type_name, writer);
+}
+
 fn resolveMessageReference(ctx: *const CodegenContext, type_name: []const u8) ?MessageReference {
     if (ctx.registry) |registry| {
         if (registry.findMessage(type_name, ctx.file.package)) |message| {
@@ -3261,6 +3399,18 @@ fn resolveMessageReference(ctx: *const CodegenContext, type_name: []const u8) ?M
         }
     }
     if (ctx.file.findMessageDeep(type_name)) |message| return .{ .message = message, .file = ctx.file };
+    return null;
+}
+
+fn resolveEnumReference(ctx: *const CodegenContext, type_name: []const u8) ?EnumReference {
+    if (ctx.file.findEnumDeep(type_name)) |enumeration| return .{ .enumeration = enumeration, .file = ctx.file };
+    if (ctx.registry) |registry| {
+        if (registry.findEnum(type_name, ctx.file.package)) |enumeration| {
+            if (findFileContainingEnum(registry, enumeration)) |owner| {
+                if (sameFileForCodegen(owner, ctx.file)) return .{ .enumeration = enumeration, .file = owner };
+            }
+        }
+    }
     return null;
 }
 
@@ -3334,6 +3484,38 @@ fn writeMessagePathInMessage(message: *const schema.MessageDescriptor, target: *
             try writeQuotedIdent(message.name, writer);
             try writer.writeByte('.');
             return try writeMessagePathInMessage(nested, target, writer);
+        }
+    }
+    return false;
+}
+
+fn writeEnumPathInFile(file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor, writer: *std.Io.Writer) Error!bool {
+    for (file.enums.items) |*enumeration| {
+        if (enumeration == target) {
+            try writeQuotedIdent(enumeration.name, writer);
+            return true;
+        }
+    }
+    for (file.messages.items) |*message| {
+        if (try writeEnumPathInMessage(message, target, writer)) return true;
+    }
+    return false;
+}
+
+fn writeEnumPathInMessage(message: *const schema.MessageDescriptor, target: *const schema.EnumDescriptor, writer: *std.Io.Writer) Error!bool {
+    for (message.enums.items) |*enumeration| {
+        if (enumeration == target) {
+            try writeQuotedIdent(message.name, writer);
+            try writer.writeByte('.');
+            try writeQuotedIdent(enumeration.name, writer);
+            return true;
+        }
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainsEnumDescriptor(nested, target)) {
+            try writeQuotedIdent(message.name, writer);
+            try writer.writeByte('.');
+            return try writeEnumPathInMessage(nested, target, writer);
         }
     }
     return false;
@@ -7873,6 +8055,37 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
 
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits typed enum field accessors" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message User {
+        \\  optional Kind role = 1;
+        \\  repeated Kind roles = 2;
+        \\  oneof pick { Kind selected = 3; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_role\"(self: @This()) ?@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return @\"Kind\".fromInt(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_role\"(self: *@This(), value: @\"Kind\") void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"setField_role\"(value.toInt());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumField_roles\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_roles\"(allocator, value.toInt());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumsField_roles\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw, 0..) |value, i| out[i] = @\"Kind\".fromInt(value) orelse return error.InvalidEnumValue;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_selected\"(self: @This()) ?@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_selected\"(self: *@This(), value: @\"Kind\") void") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
