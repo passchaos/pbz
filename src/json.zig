@@ -573,6 +573,7 @@ fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, registry: ?*const
         .enumeration => |name| {
             const number: i32 = if (field.default_value) |value| switch (value) {
                 .integer => |v| @intCast(v),
+                .unsigned_integer => |v| @intCast(v),
                 else => 0,
             } else 0;
             try writeEnum(file, registry, current, name, .{ .enumeration = number }, options, writer);
@@ -1115,7 +1116,8 @@ fn defaultInt(comptime T: type, default_value: ?schema.OptionValue) T {
     const value = default_value orelse return 0;
     return switch (value) {
         .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else 0,
-        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch 0,
+        .unsigned_integer => |v| if (v <= std.math.maxInt(T)) @intCast(v) else 0,
+        .identifier, .string => |text| parseIntegerDefault(T, text) catch 0,
         else => 0,
     };
 }
@@ -1125,9 +1127,26 @@ fn defaultFloat(default_value: ?schema.OptionValue) f64 {
     return switch (value) {
         .float => |v| v,
         .integer => |v| @floatFromInt(v),
+        .unsigned_integer => |v| @floatFromInt(v),
         .identifier, .string => |text| std.fmt.parseFloat(f64, text) catch 0,
         else => 0,
     };
+}
+
+fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
+    if (text.len == 0) return error.InvalidCharacter;
+    var body = text;
+    if (body[0] == '+' or body[0] == '-') {
+        body = body[1..];
+        if (body.len == 0) return error.InvalidCharacter;
+    }
+    if (body.len > 1 and body[0] == '0') {
+        switch (body[1]) {
+            'x', 'X', 'o', 'O', 'b', 'B' => return std.fmt.parseInt(T, text, 0),
+            else => return std.fmt.parseInt(T, text, 8),
+        }
+    }
+    return std.fmt.parseInt(T, text, 10);
 }
 
 fn writeEnum(
@@ -1821,6 +1840,7 @@ test "json stringify can always print absent primitive repeated and map fields" 
         \\  optional double pos_inf = 9 [default = inf];
         \\  optional double neg_inf = 10 [default = -inf];
         \\  optional float quiet_nan = 11 [default = nan];
+        \\  optional uint64 max_u64 = 12 [default = 0xFFFFFFFFFFFFFFFF];
         \\}
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -1831,7 +1851,7 @@ test "json stringify can always print absent primitive repeated and map fields" 
     defer msg.deinit();
     const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .always_print_primitive_fields = true });
     defer allocator.free(rendered);
-    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\",\"posInf\":\"Infinity\",\"negInf\":\"-Infinity\",\"quietNan\":\"NaN\"}", rendered);
+    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\",\"posInf\":\"Infinity\",\"negInf\":\"-Infinity\",\"quietNan\":\"NaN\",\"maxU64\":\"18446744073709551615\"}", rendered);
 }
 
 test "json parses bytes from base64 variants" {

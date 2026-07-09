@@ -1559,7 +1559,8 @@ fn optionText(value: schema.OptionValue) ?[]const u8 {
 fn optionInt(comptime T: type, value: schema.OptionValue) ?T {
     return switch (value) {
         .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
-        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch null,
+        .unsigned_integer => |v| if (v <= std.math.maxInt(T)) @intCast(v) else null,
+        .identifier, .string => |text| parseIntegerDefault(T, text) catch null,
         else => null,
     };
 }
@@ -1568,9 +1569,26 @@ fn optionFloat(comptime T: type, value: schema.OptionValue) ?T {
     return switch (value) {
         .float => |v| @floatCast(v),
         .integer => |v| @floatFromInt(v),
+        .unsigned_integer => |v| @floatFromInt(v),
         .identifier, .string => |text| std.fmt.parseFloat(T, text) catch null,
         else => null,
     };
+}
+
+fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
+    if (text.len == 0) return error.InvalidCharacter;
+    var body = text;
+    if (body[0] == '+' or body[0] == '-') {
+        body = body[1..];
+        if (body.len == 0) return error.InvalidCharacter;
+    }
+    if (body.len > 1 and body[0] == '0') {
+        switch (body[1]) {
+            'x', 'X', 'o', 'O', 'b', 'B' => return std.fmt.parseInt(T, text, 0),
+            else => return std.fmt.parseInt(T, text, 8),
+        }
+    }
+    return std.fmt.parseInt(T, text, 10);
 }
 
 test "dynamic message encodes decodes scalar and preserves unknown fields" {
@@ -2139,6 +2157,8 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
         \\  optional double pos_inf = 9 [default = inf];
         \\  optional double neg_inf = 10 [default = -inf];
         \\  optional float quiet_nan = 11 [default = nan];
+        \\  optional uint64 max_u64 = 12 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional fixed64 max_fixed = 13 [default = 18446744073709551615];
         \\}
     ;
     var file = try parser.Parser.parse(allocator, source);
@@ -2158,6 +2178,8 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expect(std.math.isPositiveInf(message.getOrDefault(desc.findField("pos_inf").?).double));
     try std.testing.expect(std.math.isNegativeInf(message.getOrDefault(desc.findField("neg_inf").?).double));
     try std.testing.expect(std.math.isNan(message.getOrDefault(desc.findField("quiet_nan").?).float));
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), message.getOrDefault(desc.findField("max_u64").?).uint64);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), message.getOrDefault(desc.findField("max_fixed").?).fixed64);
     try std.testing.expectEqualStrings("ADMIN", message.getEnumNameOrDefaultWithFile(&file, desc.findField("kind").?).?);
     try std.testing.expectEqualStrings("OK", message.getEnumNameOrDefaultWithFile(&file, desc.findField("code").?).?);
     try std.testing.expectEqualStrings("", message.getOrDefault(desc.findField("blob").?).bytes);

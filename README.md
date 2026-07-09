@@ -27,7 +27,7 @@ validated feature set.
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
-  - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message/duplicate invalid-default rejection
+  - proto2 field default validation for scalar/string/bytes/enum defaults including max uint64/fixed64 values, with proto3/repeated/message/duplicate invalid-default rejection
   - packed/lazy/unverified_lazy/jstype field option validation, with editions rejecting legacy `[packed]`, `[ctype]`, and `group` syntax in favor of features and validating implicit-presence default/closed-enum constraints
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
@@ -393,7 +393,7 @@ defer decoded_file.deinit();
 
 The current descriptor support covers core file/message/import/field/enum/service
 metadata, proto2 group descriptors and nested group messages, map-entry/proto3-optional descriptors, packed field options, enum
-default names on encode, typed scalar/enum default values on decode,
+default names on encode, typed scalar/enum default values on decode including unsigned 64-bit maxima,
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name validation, enum allow_alias misuse, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,

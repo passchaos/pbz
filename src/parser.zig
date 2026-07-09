@@ -923,6 +923,11 @@ pub const Parser = struct {
                 const signed = try signedText(&buf, negative, number_text);
                 return .{ .float = std.fmt.parseFloat(f64, signed) catch return error.InvalidNumber };
             }
+            if (!negative) {
+                if (parseU64(number_text)) |unsigned_value| {
+                    if (unsigned_value > std.math.maxInt(i64)) return .{ .unsigned_integer = unsigned_value };
+                } else |_| {}
+            }
             var value = try parseI64(number_text);
             if (negative) value = -value;
             return .{ .integer = value };
@@ -2087,7 +2092,8 @@ fn fieldKindIsSubmessage(kind: schema.FieldKind) bool {
 fn optionInt(comptime T: type, value: schema.OptionValue) ?T {
     return switch (value) {
         .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
-        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch null,
+        .unsigned_integer => |v| if (v <= std.math.maxInt(T)) @intCast(v) else null,
+        .identifier, .string => |text| parseIntegerDefault(T, text) catch null,
         else => null,
     };
 }
@@ -2096,6 +2102,7 @@ fn optionFloat(value: schema.OptionValue) ?f64 {
     return switch (value) {
         .float => |v| v,
         .integer => |v| @floatFromInt(v),
+        .unsigned_integer => |v| @floatFromInt(v),
         .identifier, .string => |text| parseSpecialFloat(text, false) catch (std.fmt.parseFloat(f64, text) catch null),
         else => null,
     };
@@ -2124,6 +2131,27 @@ fn parseI64(text: []const u8) ParseError!i64 {
 fn parseI64Clean(text: []const u8) !i64 {
     if (std.mem.startsWith(u8, text, "0x") or std.mem.startsWith(u8, text, "0X")) return std.fmt.parseInt(i64, text[2..], 16);
     return std.fmt.parseInt(i64, text, 10);
+}
+
+fn parseU64(text: []const u8) ParseError!u64 {
+    const cleaned = removeUnderscore(text);
+    return parseIntegerDefault(u64, cleaned) catch return error.InvalidNumber;
+}
+
+fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
+    if (text.len == 0) return error.InvalidCharacter;
+    var body = text;
+    if (body[0] == '+' or body[0] == '-') {
+        body = body[1..];
+        if (body.len == 0) return error.InvalidCharacter;
+    }
+    if (body.len > 1 and body[0] == '0') {
+        switch (body[1]) {
+            'x', 'X', 'o', 'O', 'b', 'B' => return std.fmt.parseInt(T, text, 0),
+            else => return std.fmt.parseInt(T, text, 8),
+        }
+    }
+    return std.fmt.parseInt(T, text, 10);
 }
 
 fn removeUnderscore(text: []const u8) []const u8 {
@@ -2438,6 +2466,28 @@ test "parser resolves enum symbolic defaults" {
     var file = try Parser.parse(allocator, source);
     defer file.deinit();
     try std.testing.expectEqual(@as(i64, 7), file.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "parser accepts max unsigned integer defaults" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Defaults {
+        \\  optional uint32 u32 = 1 [default = 0xFFFFFFFF];
+        \\  optional uint64 u64 = 2 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional fixed64 f64 = 3 [default = 18446744073709551615];
+        \\}
+    );
+    defer file.deinit();
+    const msg = file.findMessage("Defaults").?;
+    try std.testing.expectEqual(@as(i64, 4294967295), msg.findField("u32").?.default_value.?.integer);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("u64").?.default_value.?.unsigned_integer);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("f64").?.default_value.?.unsigned_integer);
+
+    try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional uint64 value = 1 [default = 0x10000000000000000]; }
+    ));
 }
 
 test "parser accepts special float defaults" {

@@ -772,6 +772,7 @@ fn writeOptionValue(value: schema.OptionValue, writer: *wire.Writer) Error!void 
     switch (value) {
         .identifier => |text| try writer.writeString(3, text),
         .integer => |v| if (v >= 0) try writer.writeUInt64(4, @intCast(v)) else try writer.writeInt64(5, v),
+        .unsigned_integer => |v| try writer.writeUInt64(4, v),
         .float => |v| try writer.writeDouble(6, v),
         .string => |text| try writer.writeBytes(7, text),
         .boolean => |v| try writer.writeString(3, if (v) "true" else "false"),
@@ -940,6 +941,7 @@ fn optionValueText(allocator: std.mem.Allocator, value: schema.OptionValue) std.
         .identifier => |text| try allocator.dupe(u8, text),
         .string => |text| try allocator.dupe(u8, text),
         .integer => |v| try std.fmt.allocPrint(allocator, "{d}", .{v}),
+        .unsigned_integer => |v| try std.fmt.allocPrint(allocator, "{d}", .{v}),
         .float => |v| try std.fmt.allocPrint(allocator, "{d}", .{v}),
         .boolean => |v| try allocator.dupe(u8, if (v) "true" else "false"),
         .aggregate => |text| try allocator.dupe(u8, text),
@@ -1488,7 +1490,7 @@ fn validateDecodedScalarDefault(scalar: schema.ScalarType, value: schema.OptionV
             else => return error.InvalidFieldType,
         },
         .int32, .int64, .sint32, .sint64, .sfixed32, .sfixed64, .uint32, .uint64, .fixed32, .fixed64 => switch (value) {
-            .integer => {},
+            .integer, .unsigned_integer => {},
             else => return error.InvalidFieldType,
         },
         .bool => switch (value) {
@@ -2092,7 +2094,7 @@ fn decodeDefaultValue(allocator: std.mem.Allocator, owned_strings: *std.ArrayLis
             .int32, .sint32, .sfixed32 => .{ .integer = try parseSignedIntegerDefault(i32, text) },
             .int64, .sint64, .sfixed64 => .{ .integer = try parseSignedIntegerDefault(i64, text) },
             .uint32, .fixed32 => .{ .integer = try parseUnsignedIntegerDefault(u32, text) },
-            .uint64, .fixed64 => .{ .integer = try parseUnsignedIntegerDefault(u64, text) },
+            .uint64, .fixed64 => unsignedDefaultOption(try parseIntegerDefault(u64, text)),
             .bool => .{ .boolean = try parseBoolDefault(text) },
             .string => .{ .string = text },
             .bytes => blk: {
@@ -2119,6 +2121,11 @@ fn parseUnsignedIntegerDefault(comptime T: type, text: []const u8) Error!i64 {
     const value = parseIntegerDefault(T, text) catch return error.InvalidFieldType;
     if (value > std.math.maxInt(i64)) return error.InvalidFieldType;
     return @intCast(value);
+}
+
+fn unsignedDefaultOption(value: u64) schema.OptionValue {
+    if (value <= std.math.maxInt(i64)) return .{ .integer = @intCast(value) };
+    return .{ .unsigned_integer = value };
 }
 
 fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
@@ -2800,8 +2807,7 @@ fn decodeUninterpretedOption(allocator: std.mem.Allocator, bytes: []const u8) Er
             3 => value = .{ .identifier = try reader.readBytes() },
             4 => {
                 const v = try reader.readUInt64();
-                if (v > std.math.maxInt(i64)) return error.InvalidFieldType;
-                value = .{ .integer = @intCast(v) };
+                value = unsignedDefaultOption(v);
             },
             5 => value = .{ .integer = try reader.readInt64() },
             6 => value = .{ .float = try reader.readDouble() },
@@ -3106,6 +3112,8 @@ test "descriptor decodes scalar default values with typed option values" {
         \\  optional double pos_inf = 6 [default = inf];
         \\  optional double neg_inf = 7 [default = -inf];
         \\  optional float quiet_nan = 8 [default = nan];
+        \\  optional uint64 max_u64 = 9 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional fixed64 max_fixed = 10 [default = 18446744073709551615];
         \\}
     );
     defer file.deinit();
@@ -3124,6 +3132,8 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expect(std.math.isNan(msg.findField("quiet_nan").?.default_value.?.float));
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("max_u64").?.default_value.?.unsigned_integer);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("max_fixed").?.default_value.?.unsigned_integer);
 }
 
 test "descriptor decodes bytes defaults from C escapes" {

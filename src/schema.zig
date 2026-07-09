@@ -220,6 +220,7 @@ pub const OptionValue = union(enum) {
     identifier: []const u8,
     string: []const u8,
     integer: i64,
+    unsigned_integer: u64,
     float: f64,
     boolean: bool,
     aggregate: []const u8,

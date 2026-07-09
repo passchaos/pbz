@@ -4985,6 +4985,7 @@ fn writeOptionValueTextLiteral(default_value: ?schema.OptionValue, writer: *std.
     switch (value) {
         .string, .identifier => |text| try writeZigStringLiteral(text, writer),
         .integer => |v| try writer.print("\"{d}\"", .{v}),
+        .unsigned_integer => |v| try writer.print("\"{d}\"", .{v}),
         .float => |v| try writer.print("\"{d}\"", .{v}),
         .boolean => |v| try writer.writeAll(if (v) "\"true\"" else "\"false\""),
         .aggregate => |text| try writeZigStringLiteral(text, writer),
@@ -5000,7 +5001,8 @@ fn optionInt(comptime T: type, default_value: ?schema.OptionValue) ?T {
     const value = default_value orelse return null;
     return switch (value) {
         .integer => |v| if (v >= std.math.minInt(T) and v <= std.math.maxInt(T)) @intCast(v) else null,
-        .identifier, .string => |text| std.fmt.parseInt(T, text, 10) catch null,
+        .unsigned_integer => |v| if (v <= std.math.maxInt(T)) @intCast(v) else null,
+        .identifier, .string => |text| parseIntegerDefault(T, text) catch null,
         else => null,
     };
 }
@@ -5010,9 +5012,26 @@ fn optionFloat(comptime T: type, default_value: ?schema.OptionValue) ?T {
     return switch (value) {
         .float => |v| @floatCast(v),
         .integer => |v| @floatFromInt(v),
+        .unsigned_integer => |v| @floatFromInt(v),
         .identifier, .string => |text| std.fmt.parseFloat(T, text) catch null,
         else => null,
     };
+}
+
+fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
+    if (text.len == 0) return error.InvalidCharacter;
+    var body = text;
+    if (body[0] == '+' or body[0] == '-') {
+        body = body[1..];
+        if (body.len == 0) return error.InvalidCharacter;
+    }
+    if (body.len > 1 and body[0] == '0') {
+        switch (body[1]) {
+            'x', 'X', 'o', 'O', 'b', 'B' => return std.fmt.parseInt(T, text, 0),
+            else => return std.fmt.parseInt(T, text, 8),
+        }
+    }
+    return std.fmt.parseInt(T, text, 10);
 }
 
 fn writeZigStringLiteral(value: []const u8, writer: *std.Io.Writer) Error!void {
@@ -9948,6 +9967,7 @@ test "codegen emits proto2 scalar and enum defaults" {
         \\  optional Code code = 7;
         \\  optional double neg_ratio = 8 [default = -inf];
         \\  optional float quiet = 9 [default = nan];
+        \\  optional uint64 max_u64 = 10 [default = 0xFFFFFFFFFFFFFFFF];
         \\}
     );
     defer file.deinit();
@@ -9962,6 +9982,7 @@ test "codegen emits proto2 scalar and enum defaults" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"code\": i32 = 5") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"neg_ratio\": f64 = -std.math.inf(f64)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"quiet\": f32 = std.math.nan(f32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"max_u64\": u64 = 18446744073709551615") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_count\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_count\" or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_kind\" or options.always_print_primitive_fields)") != null);
