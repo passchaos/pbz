@@ -959,18 +959,28 @@ pub const Parser = struct {
     }
 
     fn parseExtensionRanges(self: *Parser, ranges: *std.ArrayList(schema.ExtensionRange)) Error!void {
+        const statement_start = ranges.items.len;
+        var optioned_ranges: usize = 0;
         while (true) {
             const start = try self.parseRangeBound();
             var end: ?i64 = start + 1;
             if (self.matchIdent("to")) end = try self.parseRangeEnd();
-            var range = schema.ExtensionRange{ .start = start, .end = end };
-            errdefer range.deinit(self.allocator);
+            const range_index = ranges.items.len;
+            try ranges.append(self.allocator, .{ .start = start, .end = end });
+            var range_has_options = false;
             if (self.consumeSymbol('[')) {
+                range_has_options = true;
+                optioned_ranges += 1;
+                const range = &ranges.items[range_index];
                 try self.parseOptionList(&range.options, ']');
-                try self.applyExtensionRangeOptions(&range);
+                try self.applyExtensionRangeOptions(range);
             }
-            try ranges.append(self.allocator, range);
-            if (!self.consumeSymbol(',')) break;
+            if (!self.consumeSymbol(',')) {
+                if (range_has_options and optioned_ranges == 1 and range_index > statement_start) {
+                    try self.copyExtensionRangeOptionsToEarlierRanges(ranges, statement_start, range_index);
+                }
+                break;
+            }
         }
         try self.expectSymbol(';');
     }
@@ -994,9 +1004,16 @@ pub const Parser = struct {
             } else if (std.mem.startsWith(u8, option.name, "features.")) {
                 if (self.file.syntax != .editions) return error.InvalidSyntax;
                 var features = range.features orelse schema.FeatureSet.defaults(self.file.syntax);
-                features.applyOption(option.name, option.value);
+                try applyFeatureOptionValue(&features, option);
                 range.features = features;
             }
+        }
+    }
+
+    fn copyExtensionRangeOptionsToEarlierRanges(self: *Parser, ranges: *std.ArrayList(schema.ExtensionRange), start: usize, source_index: usize) Error!void {
+        var index = start;
+        while (index < source_index) : (index += 1) {
+            try copyExtensionRangeOptions(self.allocator, &ranges.items[source_index], &ranges.items[index]);
         }
     }
 
@@ -1609,6 +1626,24 @@ pub const Parser = struct {
         return self.previous_end;
     }
 };
+
+fn copyExtensionRangeOptions(allocator: std.mem.Allocator, source: *const schema.ExtensionRange, target: *schema.ExtensionRange) Error!void {
+    for (source.options.items) |option| {
+        try target.options.append(allocator, try cloneFieldOption(allocator, option));
+    }
+    try target.declarations.appendSlice(allocator, source.declarations.items);
+    target.verification = source.verification;
+    target.features = source.features;
+}
+
+fn cloneFieldOption(allocator: std.mem.Allocator, option: schema.FieldOption) std.mem.Allocator.Error!schema.FieldOption {
+    var cloned = option;
+    if (option.name_owned) {
+        cloned.name = try allocator.dupe(u8, option.name);
+        cloned.name_owned = true;
+    }
+    return cloned;
+}
 
 const AggregateOptionParser = struct {
     allocator: std.mem.Allocator,
@@ -3142,6 +3177,27 @@ test "parser preserves extension range declarations verification and features" {
     try std.testing.expect(range.declarations.items[0].repeated);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
     try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, range.features.?.repeated_field_encoding);
+}
+
+test "parser copies trailing extension range options across same statement" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Host {
+        \\  extensions 100 to 101, 200 to 201 [
+        \\    verification = UNVERIFIED,
+        \\    features.repeated_field_encoding = EXPANDED
+        \\  ];
+        \\}
+    );
+    defer file.deinit();
+
+    const host = file.findMessage("Host").?;
+    try std.testing.expectEqual(@as(usize, 2), host.extension_ranges.items.len);
+    for (host.extension_ranges.items) |range| {
+        try std.testing.expectEqual(schema.ExtensionRangeVerification.unverified, range.verification.?);
+        try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, range.features.?.repeated_field_encoding);
+    }
 }
 
 test "parser parses field edition_defaults and feature_support aggregates" {
