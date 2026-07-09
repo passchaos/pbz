@@ -3533,6 +3533,7 @@ fn writeMissingRequiredFieldPath(file: *const schema.FileDescriptor, message: *c
             try writeMissingRequiredPathOneof(file, message, oneof, writer, depth + 1);
         }
     }
+    if (try writeMissingRequiredPathExtensionPayloads(file, message, writer, depth + 1)) uses_allocator = true;
     if (!uses_allocator) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = self; _ = allocator;\n");
@@ -3541,6 +3542,55 @@ fn writeMissingRequiredFieldPath(file: *const schema.FileDescriptor, message: *c
     try writer.writeAll("return null;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeMissingRequiredPathExtensionPayloads(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    var wrote_any = false;
+    for (file.extensions.items) |*field| {
+        if (try writeMissingRequiredPathExtensionPayload(file, message, field, writer, depth)) wrote_any = true;
+    }
+    for (file.messages.items) |*scope| {
+        if (try writeMissingRequiredPathScopedExtensionPayloads(file, message, scope, writer, depth)) wrote_any = true;
+    }
+    return wrote_any;
+}
+
+fn writeMissingRequiredPathScopedExtensionPayloads(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    var wrote_any = false;
+    for (scope.extensions.items) |*field| {
+        if (try writeMissingRequiredPathExtensionPayload(file, target, field, writer, depth)) wrote_any = true;
+    }
+    for (scope.messages.items) |*nested| {
+        if (try writeMissingRequiredPathScopedExtensionPayloads(file, target, nested, writer, depth)) wrote_any = true;
+    }
+    return wrote_any;
+}
+
+fn writeMissingRequiredPathExtensionPayload(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    if (!extensionAppliesToMessage(file, target, field)) return false;
+    const type_name = switch (field.kind) {
+        .message => |name| name,
+        .group => |name| name,
+        else => return false,
+    };
+    if (!codegenCanReferenceMessage(file, type_name)) return false;
+
+    try indent(writer, depth);
+    try writer.writeAll("{\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payloads = try ");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".decodeAllFromUnknown(self, allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(payloads);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (payloads) |payload| {\n");
+    try writeMissingRequiredPathPayload(type_name, field.name, "payload", writer, depth + 2);
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+    return true;
 }
 
 fn writeMissingRequiredPathField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
@@ -10283,6 +10333,7 @@ test "codegen emits recursive required validation for message payloads" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.@\"child_ext\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (payloads) |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"child_ext.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"child.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"children.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"keyed.{s}\", .{suffix});") != null);
