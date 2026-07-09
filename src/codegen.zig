@@ -1363,7 +1363,7 @@ fn writeFieldDecl(file: *const schema.FileDescriptor, field: *const schema.Field
     try writer.writeAll(": ");
     try writeFieldType(field.*, writer);
     try writer.writeAll(" = ");
-    try writeFieldDefault(field.*, writer);
+    try writeFieldDefault(file, field.*, writer);
     try writer.writeAll(",\n");
     if (hasPresence(file, field.*)) {
         try indent(writer, depth);
@@ -1391,7 +1391,7 @@ fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Write
     try writer.writeAll("value: ");
     try writeFieldKindType(map_type.value.*, writer);
     try writer.writeAll(" = ");
-    try writeFieldKindDefault(map_type.value.*, null, writer);
+    try writeFieldKindDefault(null, map_type.value.*, null, writer);
     try writer.writeAll(",\n");
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
@@ -1497,7 +1497,7 @@ fn writeSingularFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = ");
-    try writeFieldDefault(field.*, writer);
+    try writeFieldDefault(file, field.*, writer);
     try writer.writeAll(";\n");
     if (presence) {
         try indent(writer, depth + 1);
@@ -4913,18 +4913,28 @@ fn scalarZigType(scalar: schema.ScalarType) []const u8 {
     };
 }
 
-fn writeFieldDefault(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+fn writeFieldDefault(file: *const schema.FileDescriptor, field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     if (field.cardinality == .repeated or field.kind == .map) return writer.writeAll("&.{}");
-    try writeFieldKindDefault(field.kind, field.default_value, writer);
+    try writeFieldKindDefault(file, field.kind, field.default_value, writer);
 }
 
-fn writeFieldKindDefault(kind: schema.FieldKind, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+fn writeFieldKindDefault(file: ?*const schema.FileDescriptor, kind: schema.FieldKind, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
     switch (kind) {
         .scalar => |scalar| try writeScalarDefault(scalar, default_value, writer),
-        .enumeration => try writeIntDefault(i32, default_value, writer),
+        .enumeration => |name| try writeEnumDefault(file, name, default_value, writer),
         .message, .group => try writer.writeAll("\"\""),
         else => try writer.writeAll("{}"),
     }
+}
+
+fn writeEnumDefault(file: ?*const schema.FileDescriptor, enum_name: []const u8, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
+    if (optionInt(i32, default_value)) |value| return try writer.print("{d}", .{value});
+    if (file) |schema_file| {
+        if (schema_file.findEnumDeep(enum_name)) |enumeration| {
+            if (enumeration.values.items.len != 0) return try writer.print("{d}", .{enumeration.values.items[0].number});
+        }
+    }
+    try writer.writeAll("0");
 }
 
 fn writeScalarDefault(scalar: schema.ScalarType, default_value: ?schema.OptionValue, writer: *std.Io.Writer) Error!void {
@@ -5932,7 +5942,7 @@ fn writeJsonClearField(file: *const schema.FileDescriptor, field: *const schema.
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = ");
-        try writeFieldDefault(field.*, writer);
+        try writeFieldDefault(file, field.*, writer);
         try writer.writeAll(";\n");
         if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
@@ -7448,7 +7458,7 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
         try writer.writeAll("pub const default_value_zig: ");
         try writer.writeAll(extensionSingleZigType(field.kind));
         try writer.writeAll(" = ");
-        try writeFieldKindDefault(field.kind, field.default_value, writer);
+        try writeFieldKindDefault(file, field.kind, field.default_value, writer);
         try writer.writeAll(";\n");
     }
     if (extensionExtendeeHasTypeRef(ctx, field)) try writeExtensionFacadeHelpers(ctx, field, writer, depth + 1);
@@ -9890,6 +9900,7 @@ test "codegen emits proto2 scalar and enum defaults" {
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+        \\enum Code { OK = 5; FAIL = 6; }
         \\message Defaults {
         \\  optional int32 count = 1 [default = 42];
         \\  optional string name = 2 [default = "hello\nworld"];
@@ -9897,6 +9908,7 @@ test "codegen emits proto2 scalar and enum defaults" {
         \\  optional Kind kind = 4 [default = ADMIN];
         \\  optional bytes raw = 5 [default = "\001\x02"];
         \\  optional float ratio = 6 [default = inf];
+        \\  optional Code code = 7;
         \\}
     );
     defer file.deinit();
@@ -9908,6 +9920,7 @@ test "codegen emits proto2 scalar and enum defaults" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"raw\": []const u8 = \"\\x01\\x02\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"ratio\": f32 = std.math.inf(f32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"code\": i32 = 5") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_count\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_count\" or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_kind\" or options.always_print_primitive_fields)") != null);
