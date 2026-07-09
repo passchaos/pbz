@@ -2710,6 +2710,9 @@ fn collapseMapEntriesInMessage(allocator: std.mem.Allocator, message: *schema.Me
             for (message.fields.items) |*field| {
                 if (field.kind == .message and typeNameMatches(field.kind.message, entry.name)) {
                     if (field.cardinality != .repeated) return error.InvalidFieldType;
+                    const expected_entry_name = try mapEntryName(allocator, field.name);
+                    defer allocator.free(expected_entry_name);
+                    if (!std.mem.eql(u8, entry.name, expected_entry_name)) return error.InvalidFieldType;
                     const value_kind = try allocator.create(schema.FieldKind);
                     value_kind.* = value_field.kind;
                     field.kind = .{ .map = .{ .key = key_scalar, .value = value_kind } };
@@ -3230,6 +3233,22 @@ test "descriptor rejects invalid synthetic map entry key type" {
         try file.messages.append(allocator, msg);
 
         const bytes = try encodeFileDescriptorProto(allocator, &file, "bad-map-extra.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto3);
+        var msg = schema.MessageDescriptor{ .name = "Bad" };
+        try msg.fields.append(allocator, .{ .name = "wrong_name", .number = 1, .cardinality = .repeated, .kind = .{ .message = "Bad.BadEntry" } });
+        var entry = schema.MessageDescriptor{ .name = "BadEntry", .map_entry = true };
+        try entry.fields.append(allocator, .{ .name = "key", .number = 1, .kind = .{ .scalar = .string } });
+        try entry.fields.append(allocator, .{ .name = "value", .number = 2, .kind = .{ .scalar = .int32 } });
+        try msg.messages.append(allocator, entry);
+        try file.messages.append(allocator, msg);
+
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "bad-map-entry-name.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
