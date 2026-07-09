@@ -45,7 +45,7 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     for (active_ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (active_ctx.file.messages.items) |*message| try writeMessage(&active_ctx, message, &out.writer, 0);
     try writeExtensionMetadata(&active_ctx, &out.writer, 0);
-    try writeServiceMetadata(active_ctx.file, &out.writer, 0);
+    try writeServiceMetadata(&active_ctx, &out.writer, 0);
     return try out.toOwnedSlice();
 }
 
@@ -7322,16 +7322,17 @@ fn indent(writer: *std.Io.Writer, depth: usize) Error!void {
     while (i < depth) : (i += 1) try writer.writeAll("    ");
 }
 
-fn writeServiceMetadata(file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeServiceMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     if (file.services.items.len == 0) return;
     try indent(writer, depth);
     try writer.writeAll("pub const services = struct {\n");
-    for (file.services.items) |*service| try writeServiceDecl(service, writer, depth + 1);
+    for (file.services.items) |*service| try writeServiceDecl(ctx, service, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
 }
 
-fn writeServiceDecl(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeServiceDecl(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdent(service.name, writer);
@@ -7340,14 +7341,14 @@ fn writeServiceDecl(service: *const schema.ServiceDescriptor, writer: *std.Io.Wr
     try writer.writeAll("pub const name = ");
     try writeZigStringLiteral(service.name, writer);
     try writer.writeAll(";\n");
-    for (service.methods.items) |*method| try writeMethodDecl(method, writer, depth + 1);
+    for (service.methods.items) |*method| try writeMethodDecl(ctx, method, writer, depth + 1);
     try writeServiceHandler(service, writer, depth + 1);
-    try writeServiceClient(service, writer, depth + 1);
+    try writeServiceClient(ctx, service, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n");
 }
 
-fn writeMethodDecl(method: *const schema.MethodDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMethodDecl(ctx: *const CodegenContext, method: *const schema.MethodDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdent(method.name, writer);
@@ -7365,6 +7366,22 @@ fn writeMethodDecl(method: *const schema.MethodDescriptor, writer: *std.Io.Write
     try writeZigStringLiteral(method.output_type, writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("pub const input_has_type_ref = ");
+    try writer.writeAll(if (codegenCanReferenceMessageWithContext(ctx, method.input_type)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const input_type_ref = ");
+    try writeRpcMessageTypeReferenceOrVoid(ctx, method.input_type, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const output_has_type_ref = ");
+    try writer.writeAll(if (codegenCanReferenceMessageWithContext(ctx, method.output_type)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const output_type_ref = ");
+    try writeRpcMessageTypeReferenceOrVoid(ctx, method.output_type, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("pub const client_streaming = ");
     try writer.writeAll(if (method.client_streaming) "true" else "false");
     try writer.writeAll(";\n");
@@ -7374,6 +7391,14 @@ fn writeMethodDecl(method: *const schema.MethodDescriptor, writer: *std.Io.Write
     try writer.writeAll(";\n");
     try indent(writer, depth);
     try writer.writeAll("};\n");
+}
+
+fn writeRpcMessageTypeReferenceOrVoid(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
+    if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    } else {
+        try writer.writeAll("void");
+    }
 }
 
 fn writeServiceHandler(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -7395,7 +7420,7 @@ fn writeServiceHandler(service: *const schema.ServiceDescriptor, writer: *std.Io
     try writer.writeAll("};\n");
 }
 
-fn writeServiceClient(service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeServiceClient(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const Client = struct {\n");
     try indent(writer, depth + 1);
@@ -7415,9 +7440,51 @@ fn writeServiceClient(service: *const schema.ServiceDescriptor, writer: *std.Io.
         try writer.writeAll(", request, allocator);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("}\n");
+        try writeTypedServiceClientMethod(ctx, service, method, writer, depth + 1);
     }
     try indent(writer, depth);
     try writer.writeAll("};\n");
+}
+
+fn writeTypedServiceClientMethod(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (method.client_streaming or method.server_streaming) return;
+    if (!codegenCanReferenceMessageWithContext(ctx, method.input_type)) return;
+    if (!codegenCanReferenceMessageWithContext(ctx, method.output_type)) return;
+    if (serviceHasMethodWithSuffix(service, method.name, "Typed")) return;
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithSuffix(method.name, "Typed", writer);
+    try writer.writeAll("(self: @This(), request: ");
+    try writeMessageTypeReferenceWithContext(ctx, method.input_type, writer);
+    try writer.writeAll(", allocator: std.mem.Allocator) !");
+    try writeMessageTypeReferenceWithContext(ctx, method.output_type, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const request_payload = try request.encode(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(request_payload);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const response_payload = try self.");
+    try writeQuotedIdent(method.name, writer);
+    try writer.writeAll("(request_payload, allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(response_payload);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try ");
+    try writeMessageTypeReferenceWithContext(ctx, method.output_type, writer);
+    try writer.writeAll(".decodeOwned(allocator, response_payload);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn serviceHasMethodWithSuffix(service: *const schema.ServiceDescriptor, name: []const u8, suffix: []const u8) bool {
+    for (service.methods.items) |method| {
+        if (method.name.len != name.len + suffix.len) continue;
+        if (!std.mem.startsWith(u8, method.name, name)) continue;
+        if (std.mem.eql(u8, method.name[name.len..], suffix)) return true;
+    }
+    return false;
 }
 
 fn outputName(allocator: std.mem.Allocator, input: []const u8) std.mem.Allocator.Error![]u8 {
@@ -9106,12 +9173,61 @@ test "codegen emits service metadata and stubs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Get\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type = \"Req\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type = \"Res\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_has_type_ref = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type_ref = @\"Req\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_has_type_ref = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = @\"Res\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const client_streaming = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const server_streaming = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const Handler = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return error.Unimplemented;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const Client = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try self.call(self.context, \"Directory\", \"Get\", request, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"GetTyped\"(self: @This(), request: @\"Req\", allocator: std.mem.Allocator) !@\"Res\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const request_payload = try request.encode(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const response_payload = try self.@\"Get\"(request_payload, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"Res\".decodeOwned(allocator, response_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"StreamTyped\"") == null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits registry-aware service RPC type references" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Req { optional string q = 1; }
+        \\message Res { optional string value = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\service Directory {
+        \\  rpc Get (common.Req) returns (common.Res);
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var reg = registry_mod.Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&common);
+    try reg.addFile(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &reg);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type = \"common.Req\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_has_type_ref = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type_ref = imports.@\"common.proto\".@\"Req\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = imports.@\"common.proto\".@\"Res\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"GetTyped\"(self: @This(), request: imports.@\"common.proto\".@\"Req\", allocator: std.mem.Allocator) !imports.@\"common.proto\".@\"Res\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"Res\".decodeOwned(allocator, response_payload);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);

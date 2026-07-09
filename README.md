@@ -49,7 +49,7 @@ validated feature set.
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for direct imported message type references and imported enum field resolution
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
-  - generated service metadata plus basic Handler/Client stub types for RPC payload dispatch
+  - generated service metadata with registry-aware RPC request/response type references plus basic Handler/Client stub types for raw payload dispatch and typed non-streaming client helpers when request/response message types are resolvable
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
   - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
@@ -238,9 +238,13 @@ encode/decode the underlying payload bytes through same-file or direct-imported 
 through a `Registry`: direct-imported message fields get module type refs/accessors,
 direct-imported message fields participate in generated JSON and TextFormat stringify/parse for singular, repeated, map, and oneof payloads; and direct-imported enum fields are treated as enum scalars for generated wire, JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
 For `service` declarations, generated files include a `services` namespace with
-service/method metadata, an unimplemented `Handler` stub, and a `Client` wrapper
-that dispatches serialized request/response payloads through a caller-provided
-function pointer.
+service/method metadata, registry-aware `input_type_ref` / `output_type_ref`
+aliases where request/response messages can be resolved, an unimplemented
+`Handler` stub, and a `Client` wrapper that dispatches serialized
+request/response payloads through a caller-provided function pointer. For
+non-streaming methods with resolvable generated message types, the client also
+emits `*Typed` helpers that encode the typed request, call the raw payload
+method, and return an owned decoded response message.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)
