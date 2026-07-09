@@ -4760,7 +4760,7 @@ fn writeJsonMessageField(file: *const schema.FileDescriptor, field: *const schem
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0) {\n");
+        try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
         try writeJsonPrefix(field, writer, depth + 1);
         try indent(writer, depth + 1);
         try writer.writeAll("try writer.writeAll(\"[\");\n");
@@ -5793,6 +5793,7 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"children\".len != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |payload, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".jsonParseWithOptions(arena_allocator") != null);
