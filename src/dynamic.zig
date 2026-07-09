@@ -1926,6 +1926,36 @@ test "dynamic honors message_encoding delimited for message fields" {
     }
 }
 
+test "dynamic tracks proto3 optional message presence" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Child { int32 id = 1; }
+        \\message Parent { optional Child child = 1; }
+    );
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+    const child_desc = file.findMessage("Child").?;
+    const child_field = parent_desc.findField("child").?;
+    try std.testing.expect(child_field.proto3_optional);
+
+    var parent = DynamicMessage.init(allocator, parent_desc);
+    defer parent.deinit();
+    try std.testing.expect(!parent.has(child_field));
+
+    const child = try allocator.create(DynamicMessage);
+    child.* = DynamicMessage.init(allocator, child_desc);
+    try parent.add(child_field, .{ .message = child });
+    try std.testing.expect(parent.has(child_field));
+
+    const encoded = try parent.encoded(&file);
+    defer allocator.free(encoded);
+    var decoded = DynamicMessage.init(allocator, parent_desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, encoded);
+    try std.testing.expect(decoded.has(child_field));
+}
+
 test "dynamic validates string utf8 according to syntax and features" {
     const allocator = std.testing.allocator;
 

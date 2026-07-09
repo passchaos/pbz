@@ -1622,6 +1622,40 @@ test "json parser treats alternate spellings as duplicate fields with last value
     try std.testing.expectEqualSlices(u8, "json", parsed.get("explicit_name").?.values.items[0].string);
 }
 
+test "json round-trips proto3 optional message fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Child { int32 id = 1; }
+        \\message Parent { optional Child child = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+    const child_desc = file.findMessage("Child").?;
+    const child_field = parent_desc.findField("child").?;
+
+    var absent = dynamic.DynamicMessage.init(allocator, parent_desc);
+    defer absent.deinit();
+    const absent_json = try stringifyAlloc(allocator, &file, &absent, .{});
+    defer allocator.free(absent_json);
+    try std.testing.expectEqualSlices(u8, "{}", absent_json);
+
+    var present = dynamic.DynamicMessage.init(allocator, parent_desc);
+    defer present.deinit();
+    const child = try allocator.create(dynamic.DynamicMessage);
+    child.* = dynamic.DynamicMessage.init(allocator, child_desc);
+    try child.add(child_desc.findField("id").?, .{ .int32 = 7 });
+    try present.add(child_field, .{ .message = child });
+    const present_json = try stringifyAlloc(allocator, &file, &present, .{});
+    defer allocator.free(present_json);
+    try std.testing.expectEqualSlices(u8, "{\"child\":{\"id\":7}}", present_json);
+
+    var parsed = try parseAlloc(allocator, &file, parent_desc, "{\"child\":{}}", .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.has(child_field));
+}
+
 test "json stringify can always print absent primitive repeated and map fields" {
     const allocator = std.testing.allocator;
     const source =
