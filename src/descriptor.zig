@@ -2266,11 +2266,24 @@ fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
 }
 
 fn parseFloatDefault(comptime T: type, text: []const u8) Error!f64 {
-    if (std.mem.eql(u8, text, "inf")) return std.math.inf(f64);
-    if (std.mem.eql(u8, text, "-inf")) return -std.math.inf(f64);
-    if (std.mem.eql(u8, text, "nan")) return std.math.nan(f64);
+    if (parseSpecialFloatDefault(text)) |value| return value;
     const value = std.fmt.parseFloat(T, text) catch return error.InvalidFieldType;
     return @floatCast(value);
+}
+
+fn parseSpecialFloatDefault(text: []const u8) ?f64 {
+    var body = text;
+    var negative = false;
+    if (body.len != 0 and (body[0] == '-' or body[0] == '+')) {
+        negative = body[0] == '-';
+        body = body[1..];
+    }
+    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
+        const value = std.math.inf(f64);
+        return if (negative) -value else value;
+    }
+    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(f64);
+    return null;
 }
 
 fn parseBoolDefault(text: []const u8) Error!bool {
@@ -3235,8 +3248,11 @@ test "descriptor decodes scalar default values with typed option values" {
         \\  optional double pos_inf = 6 [default = inf];
         \\  optional double neg_inf = 7 [default = -inf];
         \\  optional float quiet_nan = 8 [default = nan];
-        \\  optional uint64 max_u64 = 9 [default = 0xFFFFFFFFFFFFFFFF];
-        \\  optional fixed64 max_fixed = 10 [default = 18446744073709551615];
+        \\  optional float neg_nan = 9 [default = -nan];
+        \\  optional double pos_infinity = 10 [default = Infinity];
+        \\  optional double neg_infinity = 11 [default = -INFINITY];
+        \\  optional uint64 max_u64 = 12 [default = 0xFFFFFFFFFFFFFFFF];
+        \\  optional fixed64 max_fixed = 13 [default = 18446744073709551615];
         \\}
     );
     defer file.deinit();
@@ -3253,6 +3269,9 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expect(std.math.isPositiveInf(msg.findField("pos_inf").?.default_value.?.float));
     try std.testing.expect(std.math.isNegativeInf(msg.findField("neg_inf").?.default_value.?.float));
     try std.testing.expect(std.math.isNan(msg.findField("quiet_nan").?.default_value.?.float));
+    try std.testing.expect(std.math.isNan(msg.findField("neg_nan").?.default_value.?.float));
+    try std.testing.expect(std.math.isPositiveInf(msg.findField("pos_infinity").?.default_value.?.float));
+    try std.testing.expect(std.math.isNegativeInf(msg.findField("neg_infinity").?.default_value.?.float));
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
     try std.testing.expectEqual(@as(u64, 18446744073709551615), msg.findField("max_u64").?.default_value.?.unsigned_integer);
