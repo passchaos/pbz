@@ -829,6 +829,27 @@ test "conformance dynamic runner formats proto2 extensions as text" {
     try std.testing.expectEqualSlices(u8, "[demo.tag]: 7\n", try reader.readBytes());
 }
 
+test "conformance dynamic runner preserves text unknown fields as protobuf" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { optional int32 id = 1; }");
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .text_payload = "100: 7" },
+        .requested_output_format = .protobuf,
+        .message_type = "demo.Msg",
+        .test_category = .text_format_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 3), tag.number);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa0, 0x06, 0x07 }, try reader.readBytes());
+}
+
 test "conformance dynamic runner formats unknown protobuf groups as text" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { optional int32 id = 1; }");
