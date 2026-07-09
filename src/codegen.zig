@@ -37,7 +37,7 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     try writeFileMetadata(ctx.allocator, active_ctx.file, &out.writer, 0);
     for (active_ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (active_ctx.file.messages.items) |*message| try writeMessage(&active_ctx, message, &out.writer, 0);
-    try writeExtensionMetadata(active_ctx.file, &out.writer, 0);
+    try writeExtensionMetadata(&active_ctx, &out.writer, 0);
     try writeServiceMetadata(active_ctx.file, &out.writer, 0);
     return try out.toOwnedSlice();
 }
@@ -6162,23 +6162,25 @@ fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, 
     try writer.writeAll("};\n\n");
 }
 
-fn writeExtensionMetadata(file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeExtensionMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     const count = countExtensions(file);
     if (count == 0) return;
     try indent(writer, depth);
     try writer.writeAll("pub const extensions = struct {\n");
-    for (file.extensions.items) |*field| try writeExtensionDecl(file, field, writer, depth + 1);
-    for (file.messages.items) |*message| try writeMessageExtensions(file, message, writer, depth + 1);
+    for (file.extensions.items) |*field| try writeExtensionDecl(ctx, field, writer, depth + 1);
+    for (file.messages.items) |*message| try writeMessageExtensions(ctx, message, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
 }
 
-fn writeMessageExtensions(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    for (message.extensions.items) |*field| try writeExtensionDecl(file, field, writer, depth);
-    for (message.messages.items) |*nested| try writeMessageExtensions(file, nested, writer, depth);
+fn writeMessageExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (message.extensions.items) |*field| try writeExtensionDecl(ctx, field, writer, depth);
+    for (message.messages.items) |*nested| try writeMessageExtensions(ctx, nested, writer, depth);
 }
 
-fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdent(field.name, writer);
@@ -6190,12 +6192,28 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writeZigStringLiteral(field.extendee orelse "", writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("pub const extendee_has_type_ref = ");
+    try writer.writeAll(if (extensionExtendeeHasTypeRef(ctx, field)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const extendee_type_ref = ");
+    try writeExtensionExtendeeTypeRef(ctx, field, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("pub const cardinality = ");
     try writeZigStringLiteral(@tagName(field.cardinality), writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
     try writer.writeAll("pub const value_type = ");
     try writeZigStringLiteral(extensionValueTypeName(file, field), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const value_has_type_ref = ");
+    try writer.writeAll(if (canReferenceMessageWithContext(ctx, field.kind)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const value_type_ref = ");
+    try writeMessageTypeReferenceOrVoid(ctx, field.kind, writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
     try writer.writeAll("pub const zig_type = ");
@@ -6221,6 +6239,19 @@ fn writeExtensionDecl(file: *const schema.FileDescriptor, field: *const schema.F
     try writeExtensionDecodeHelpers(file, field, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n");
+}
+
+fn extensionExtendeeHasTypeRef(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
+    return codegenCanReferenceMessageWithContext(ctx, field.extendee orelse return false);
+}
+
+fn writeExtensionExtendeeTypeRef(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    const extendee = field.extendee orelse return try writer.writeAll("void");
+    if (codegenCanReferenceMessageWithContext(ctx, extendee)) {
+        try writeMessageTypeReferenceWithContext(ctx, extendee, writer);
+    } else {
+        try writer.writeAll("void");
+    }
 }
 
 fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -7012,6 +7043,48 @@ test "codegen with registry resolves imported enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1}))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "&.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_role\"") == null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen with registry emits extension type refs" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\message Host { extensions 100 to max; }
+        \\message Note { optional int32 id = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\extend .demo.common.Host {
+        \\  optional .demo.common.Note note = 100;
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \".demo.common.Host\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_has_type_ref = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".@\"Host\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \".demo.common.Note\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_has_type_ref = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.@\"common.proto\".@\"Note\";") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

@@ -57,7 +57,7 @@ validated feature set.
   - generated message structs expose unknown field count/list/filter, raw unknown append, clear helpers, and merge unknown fields through `mergeFrom`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated message structs expose field accessors for presence-aware singular fields, repeated/map append/replace/clear, oneof union arms, and same-file typed message payload encode/decode helpers
-  - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, same-file proto2 extension, and oneof fields; generated JSON helpers accept/emit bracketed same-file proto2 extension keys backed by unknown/raw storage and generated JSON/TextFormat helpers use registry-aware direct-imported message types when available; generated wire/TextFormat UTF-8 validation for string/map-string fields; and generated wire/TextFormat closed-enum validation for singular/repeated/map/oneof enum fields
+  - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, same-file proto2 extension, and oneof fields; generated JSON helpers accept/emit bracketed same-file proto2 extension keys backed by unknown/raw storage and generated JSON/TextFormat helpers use registry-aware direct-imported message types when available for singular, repeated, map, and oneof payloads; generated wire/TextFormat UTF-8 validation for string/map-string fields; and generated wire/TextFormat closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps, enums including editions open/closed enum numeric validation plus registry-aware imported message/enum parsing and imported enum-name formatting, initialized parse helpers with recursive required validation, protobuf merge semantics for duplicate singular message/group fields, string UTF-8 validation via `features.utf8_validation`, nested messages, proto2 extension fields using `[ext.name]` including MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
 
@@ -241,9 +241,10 @@ function pointer.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)
-plus typed `default_value_zig`, `write`/`writeAll`, and `decodeValue` /
-`decodeAppend` helpers so applications can encode/decode extension values or
-wire them into dynamic registries and custom typed wrappers. Extension metadata
+plus registry-aware `extendee_type_ref` / `value_type_ref` aliases, typed
+`default_value_zig`, `write`/`writeAll`, and `decodeValue` / `decodeAppend`
+helpers so applications can encode/decode extension values or wire them into
+dynamic registries and custom typed wrappers. Extension metadata
 also emits `encodeRaw`, `appendToUnknown`, `decodeRaw`,
 `decodeAllRaw`, `decodeFromUnknownFieldsAlloc` / `decodeAllFromUnknown`, and
 `decodeFirstFromUnknown` helpers so typed message wrappers can shuttle proto2
