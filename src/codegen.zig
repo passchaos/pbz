@@ -831,7 +831,7 @@ fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const 
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
     try writeEncodeFieldsByNumber(file, message, writer, depth + 1);
-    try writeEncodeUnknownFields(writer, depth + 1);
+    try writeEncodeUnknownFieldsDeterministic(writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -850,6 +850,49 @@ fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const 
 fn writeEncodeUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);\n");
+}
+
+fn writeEncodeUnknownFieldsDeterministic(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const indexes = try allocator.alloc(usize, self.@\"_unknown_fields\".len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(indexes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (indexes, 0..) |*index, i| index.* = i;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("std.mem.sort(usize, indexes, self.@\"_unknown_fields\", struct {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("fn firstTag(raw: []const u8) ?pbz.wire.Tag {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("return (r.nextTag() catch null) orelse null;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("fn lessThan(raws: []const []const u8, a: usize, b: usize) bool {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("const tag_a = firstTag(raws[a]);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("const tag_b = firstTag(raws[b]);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, raws[a], raws[b]);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("return std.mem.lessThan(u8, raws[a], raws[b]);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}.lessThan);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (indexes) |index| try w.appendSlice(self.@\"_unknown_fields\"[index]);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5188,6 +5231,12 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else => { try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"_unknown_fields\".len != 0)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const indexes = try allocator.alloc(usize, self.@\"_unknown_fields\".len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn firstTag(raw: []const u8) ?pbz.wire.Tag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (indexes) |index| try w.appendSlice(self.@\"_unknown_fields\"[index]);") != null);
 }
 
 test "codegen decodes repeated scalar enum and message payload fields" {

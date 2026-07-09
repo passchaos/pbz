@@ -240,7 +240,9 @@ callers that want direct or nested missing required field diagnostics before
 handling `error.MissingRequiredField`.
 Packable repeated scalar and enum fields emit packed wire format when resolved
 as packed, generated decoders accept both packed and expanded input, and generated
-`encodeDeterministic` emits fields by number and sorts map entries by key.
+`encodeDeterministic` emits fields by number, sorts map entries by key, and
+orders preserved unknown fields by field number/wire type/raw bytes for stable
+deterministic output.
 Generated message structs include a `mergeFrom` helper and generated decoders
 merge duplicate singular message/group payload fields while preserving repeated
 append, oneof replacement semantics, and unknown fields. They also expose
