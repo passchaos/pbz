@@ -1278,6 +1278,20 @@ pub const Parser = struct {
                 if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
             }
         }
+        for (file.extensions.items, 0..) |extension, i| {
+            for (file.messages.items) |message| {
+                if (std.mem.eql(u8, extension.name, message.name)) return error.DuplicateSymbol;
+            }
+            for (file.enums.items) |enumeration| {
+                if (std.mem.eql(u8, extension.name, enumeration.name)) return error.DuplicateSymbol;
+            }
+            for (file.services.items) |service| {
+                if (std.mem.eql(u8, extension.name, service.name)) return error.DuplicateSymbol;
+            }
+            for (file.extensions.items[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, extension.name, other.name)) return error.DuplicateSymbol;
+            }
+        }
         try validateFileEnumValueSymbols(file);
     }
 
@@ -1292,6 +1306,9 @@ pub const Parser = struct {
                 }
                 for (file.services.items) |service| {
                     if (std.mem.eql(u8, value.name, service.name)) return error.DuplicateSymbol;
+                }
+                for (file.extensions.items) |extension| {
+                    if (std.mem.eql(u8, value.name, extension.name)) return error.DuplicateSymbol;
                 }
                 for (file.enums.items[enum_index + 1 ..]) |other_enum| {
                     for (other_enum.values.items) |other_value| {
@@ -1315,6 +1332,23 @@ pub const Parser = struct {
         for (message.enums.items, 0..) |enumeration, i| {
             for (message.enums.items[i + 1 ..]) |other| {
                 if (std.mem.eql(u8, enumeration.name, other.name)) return error.DuplicateSymbol;
+            }
+        }
+        for (message.extensions.items, 0..) |extension, i| {
+            for (message.fields.items) |field| {
+                if (std.mem.eql(u8, extension.name, field.name)) return error.DuplicateSymbol;
+            }
+            for (message.oneofs.items) |oneof| {
+                if (std.mem.eql(u8, extension.name, oneof.name)) return error.DuplicateSymbol;
+            }
+            for (message.messages.items) |nested| {
+                if (std.mem.eql(u8, extension.name, nested.name)) return error.DuplicateSymbol;
+            }
+            for (message.enums.items) |enumeration| {
+                if (std.mem.eql(u8, extension.name, enumeration.name)) return error.DuplicateSymbol;
+            }
+            for (message.extensions.items[i + 1 ..]) |other| {
+                if (std.mem.eql(u8, extension.name, other.name)) return error.DuplicateSymbol;
             }
         }
         try validateMessageEnumValueSymbols(message);
@@ -2725,6 +2759,34 @@ test "parser rejects duplicate type symbols in the same scope" {
     try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Outer { message Item {} message Item {} }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to 200; }
+        \\enum E { ext = 0; }
+        \\extend Host { optional int32 ext = 100; }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to 200; }
+        \\message ext {}
+        \\extend Host { optional int32 ext = 100; }
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\message Scope {
+        \\  optional int32 ext = 1;
+        \\  extend Target { optional int32 ext = 100; }
+        \\}
+    ));
+    try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\message Scope {
+        \\  oneof ext { int32 value = 1; }
+        \\  extend Target { optional int32 ext = 100; }
+        \\}
     ));
 }
 

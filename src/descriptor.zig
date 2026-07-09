@@ -1388,6 +1388,21 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
             if (std.mem.eql(u8, service.name, other.name)) return error.InvalidFieldType;
         }
     }
+    for (file.extensions.items, 0..) |extension, i| {
+        if (!isIdentifier(extension.name)) return error.InvalidFieldType;
+        for (file.messages.items) |message| {
+            if (std.mem.eql(u8, extension.name, message.name)) return error.InvalidFieldType;
+        }
+        for (file.enums.items) |enumeration| {
+            if (std.mem.eql(u8, extension.name, enumeration.name)) return error.InvalidFieldType;
+        }
+        for (file.services.items) |service| {
+            if (std.mem.eql(u8, extension.name, service.name)) return error.InvalidFieldType;
+        }
+        for (file.extensions.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, extension.name, other.name)) return error.InvalidFieldType;
+        }
+    }
     try validateDecodedFileEnumValueSymbols(file);
     if (file.syntax == .proto3) {
         for (file.messages.items) |*message| try validateDecodedNoProto3ExtensionRanges(message);
@@ -1411,6 +1426,9 @@ fn validateDecodedFileEnumValueSymbols(file: *const schema.FileDescriptor) Error
             }
             for (file.services.items) |service| {
                 if (std.mem.eql(u8, value.name, service.name)) return error.InvalidFieldType;
+            }
+            for (file.extensions.items) |extension| {
+                if (std.mem.eql(u8, value.name, extension.name)) return error.InvalidFieldType;
             }
             for (file.enums.items[enum_index + 1 ..]) |other_enum| {
                 for (other_enum.values.items) |other_value| {
@@ -1976,6 +1994,24 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
     for (message.enums.items, 0..) |enumeration, i| {
         for (message.enums.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
+        }
+    }
+    for (message.extensions.items, 0..) |extension, i| {
+        if (!isIdentifier(extension.name)) return error.InvalidFieldType;
+        for (message.fields.items) |field| {
+            if (std.mem.eql(u8, extension.name, field.name)) return error.InvalidFieldType;
+        }
+        for (message.oneofs.items) |oneof| {
+            if (std.mem.eql(u8, extension.name, oneof.name)) return error.InvalidFieldType;
+        }
+        for (message.messages.items) |nested| {
+            if (std.mem.eql(u8, extension.name, nested.name)) return error.InvalidFieldType;
+        }
+        for (message.enums.items) |enumeration| {
+            if (std.mem.eql(u8, extension.name, enumeration.name)) return error.InvalidFieldType;
+        }
+        for (message.extensions.items[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, extension.name, other.name)) return error.InvalidFieldType;
         }
     }
     try validateDecodedMessageEnumValueSymbols(message);
@@ -6312,6 +6348,48 @@ test "descriptor rejects duplicate decoded extensions" {
         try file.extensions.append(allocator, .{ .name = "first", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
         try file.extensions.append(allocator, .{ .name = "second", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
         const bytes = try encodeFileDescriptorProto(allocator, &file, "dup-ext-number.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "Host", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "ext-type-name-conflict.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        var enumeration = schema.EnumDescriptor{ .name = "E" };
+        try enumeration.values.append(allocator, .{ .name = "tag", .number = 0 });
+        try file.messages.append(allocator, host);
+        try file.enums.append(allocator, enumeration);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "ext-enum-value-name-conflict.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        try host.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+        var scope = schema.MessageDescriptor{ .name = "Scope" };
+        try scope.fields.append(allocator, .{ .name = "tag", .number = 1, .cardinality = .optional, .kind = .{ .scalar = .int32 } });
+        try scope.extensions.append(allocator, .{ .name = "tag", .number = 101, .cardinality = .optional, .kind = .{ .scalar = .string }, .extendee = "Host" });
+        try file.messages.append(allocator, host);
+        try file.messages.append(allocator, scope);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "nested-ext-field-name-conflict.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
