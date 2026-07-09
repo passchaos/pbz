@@ -77,7 +77,12 @@ fn loadOne(
     var file = try parser.Parser.parse(allocator, source);
     errdefer file.deinit();
     file.name = path;
-    for (file.imports.items) |import| try loadOne(allocator, tree, import.path, result, loading, loaded);
+    for (file.imports.items) |import| {
+        loadOne(allocator, tree, import.path, result, loading, loaded) catch |err| switch (err) {
+            error.FileNotFound => if (import.kind == .weak) continue else return err,
+            else => return err,
+        };
+    }
     try result.files.append(allocator, file);
     try loaded.put(path, {});
 }
@@ -123,6 +128,23 @@ test "memory loader rejects missing imports and cycles" {
     try std.testing.expectError(error.ImportCycle, loadMemory(allocator, &cycle, "a.proto"));
 }
 
+test "memory loader allows missing weak imports" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("root.proto",
+        \\syntax = "proto2";
+        \\import weak "missing.proto";
+        \\message Root { optional int32 id = 1; }
+    );
+
+    var loaded = try loadMemory(allocator, &tree, "root.proto");
+    defer loaded.deinit();
+    try std.testing.expectEqual(@as(usize, 1), loaded.files.items.len);
+    try std.testing.expectEqual(schema.Import.Kind.weak, loaded.files.items[0].imports.items[0].kind);
+    try std.testing.expect(loaded.registry.findMessage("Root", null) != null);
+}
+
 pub fn loadPath(allocator: std.mem.Allocator, root_dir_path: []const u8, root_path: []const u8) Error!LoadResult {
     const io = std.Io.Threaded.global_single_threaded.io();
     const root_dir = std.fs.openDirAbsolute(io, root_dir_path, .{}) catch return error.FileNotFound;
@@ -166,7 +188,12 @@ fn loadDirOne(
     file.name = path;
     try result.owned_sources.append(allocator, source);
     source_owned = true;
-    for (file.imports.items) |import| try loadDirOne(allocator, root_dir, import.path, result, loading, loaded);
+    for (file.imports.items) |import| {
+        loadDirOne(allocator, root_dir, import.path, result, loading, loaded) catch |err| switch (err) {
+            error.FileNotFound => if (import.kind == .weak) continue else return err,
+            else => return err,
+        };
+    }
     try result.files.append(allocator, file);
     try loaded.put(path, {});
 }
@@ -192,4 +219,22 @@ test "filesystem loader recursively loads imports" {
     try std.testing.expectEqual(@as(usize, 2), loaded.files.items.len);
     try std.testing.expect(loaded.registry.findMessage(".fs.common.User", null) != null);
     try std.testing.expect(loaded.registry.findMessage(".fs.app.Request", null) != null);
+}
+
+test "filesystem loader allows missing weak imports" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    try tmp.dir.writeFile(io, .{ .sub_path = "root.proto", .data =
+        \\syntax = "proto2";
+        \\import weak "missing.proto";
+        \\message Root { optional int32 id = 1; }
+    });
+
+    var loaded = try loadDir(allocator, tmp.dir, "root.proto");
+    defer loaded.deinit();
+    try std.testing.expectEqual(@as(usize, 1), loaded.files.items.len);
+    try std.testing.expectEqual(schema.Import.Kind.weak, loaded.files.items[0].imports.items[0].kind);
+    try std.testing.expect(loaded.registry.findMessage("Root", null) != null);
 }

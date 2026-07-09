@@ -17,10 +17,10 @@ validated feature set.
   - proto2 required/optional/repeated cardinality plus proto3/editions required rejection in parser and descriptor decode paths, enum defaults, packed override handling, structured FeatureSet options, and FieldOptions edition default / feature support metadata
 - Multi-file registry and loader
   - package/import-aware lookup for messages/enums/extensions across FileDescriptor values, including scoped/nested proto2 extension full-name lookup, direct/public import visibility helpers and import-chain discovery, with duplicate type/extension conflict detection and cross-file extension declaration validation
-  - in-memory and filesystem source tree loaders that recursively parse imports
+  - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
-  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import and edition-value restrictions, and enum validation including allow_alias plus enum-value sibling-scope and prefix/case conflicts
+  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including allow_alias plus enum-value sibling-scope and prefix/case conflicts
   - JSON field-name validation for default lowerCamelCase collisions, explicit `json_name` collisions, extension-looking names, embedded NULs, extension-field `json_name` misuse, and explicit `map_entry` misuse
   - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape in parser and descriptor decode paths
   - extension range options for `declaration`, `verification`, and range-local `features.*`; declaration-scope `features.*` across file/message/field/oneof/enum/enum-value/service/method with strict feature-name/value validation; nested/scoped proto2 extension full-name tracking; plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation

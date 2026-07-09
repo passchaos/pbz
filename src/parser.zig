@@ -430,9 +430,15 @@ pub const Parser = struct {
     }
 
     fn validateImports(self: *Parser) ParseError!void {
-        if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2024)) return;
+        var saw_option_import = false;
         for (self.file.imports.items) |import| {
-            if (import.kind == .weak) return error.InvalidSyntax;
+            if (import.kind == .option) {
+                if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2024)) return error.InvalidSyntax;
+                saw_option_import = true;
+                continue;
+            }
+            if (saw_option_import) return error.InvalidSyntax;
+            if (@intFromEnum(self.file.edition) >= @intFromEnum(schema.Edition.edition_2024) and import.kind == .weak) return error.InvalidSyntax;
         }
     }
 
@@ -2151,6 +2157,42 @@ test "parser rejects weak imports under edition 2024 and beyond" {
         \\import weak "dep.proto";
         \\message Bad {}
     ));
+}
+
+test "parser validates option import edition and ordering" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\import option "options.proto";
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\import option "options.proto";
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2024";
+        \\import option "options.proto";
+        \\import "data.proto";
+        \\message Bad {}
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2024";
+        \\import option "options.proto";
+        \\import public "data.proto";
+        \\message Bad {}
+    ));
+
+    var file = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\import "data.proto";
+        \\import option "options.proto";
+        \\message Ok { int32 id = 1; }
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(schema.Import.Kind.normal, file.imports.items[0].kind);
+    try std.testing.expectEqual(schema.Import.Kind.option, file.imports.items[1].kind);
 }
 
 test "parser records basic source code info locations" {

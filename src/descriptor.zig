@@ -1306,9 +1306,12 @@ fn validateImportList(imports: []const schema.Import) Error!void {
 }
 
 fn validateDecodedImportSemantics(file: *const schema.FileDescriptor) Error!void {
-    if (@intFromEnum(file.edition) < @intFromEnum(schema.Edition.edition_2024)) return;
     for (file.imports.items) |import| {
-        if (import.kind == .weak) return error.InvalidFieldType;
+        if (import.kind == .option) {
+            if (@intFromEnum(file.edition) < @intFromEnum(schema.Edition.edition_2024)) return error.InvalidFieldType;
+            continue;
+        }
+        if (@intFromEnum(file.edition) >= @intFromEnum(schema.Edition.edition_2024) and import.kind == .weak) return error.InvalidFieldType;
     }
 }
 
@@ -3930,21 +3933,33 @@ test "descriptor round-trips uninterpreted option value kinds" {
 
 test "descriptor preserves import dependency kinds" {
     const allocator = std.testing.allocator;
-    var file = try @import("parser.zig").Parser.parse(allocator,
+    var proto2_file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\import public "public.proto";
         \\import weak "weak.proto";
-        \\import option "options.proto";
         \\message M {}
     );
-    defer file.deinit();
-    const bytes = try encodeFileDescriptorProto(allocator, &file, "imports.proto");
-    defer allocator.free(bytes);
-    var decoded = try decodeFileDescriptorProto(allocator, bytes);
-    defer decoded.deinit();
-    try std.testing.expectEqual(schema.Import.Kind.public, decoded.imports.items[0].kind);
-    try std.testing.expectEqual(schema.Import.Kind.weak, decoded.imports.items[1].kind);
-    try std.testing.expectEqual(schema.Import.Kind.option, decoded.imports.items[2].kind);
+    defer proto2_file.deinit();
+    const proto2_bytes = try encodeFileDescriptorProto(allocator, &proto2_file, "imports.proto");
+    defer allocator.free(proto2_bytes);
+    var decoded_proto2 = try decodeFileDescriptorProto(allocator, proto2_bytes);
+    defer decoded_proto2.deinit();
+    try std.testing.expectEqual(schema.Import.Kind.public, decoded_proto2.imports.items[0].kind);
+    try std.testing.expectEqual(schema.Import.Kind.weak, decoded_proto2.imports.items[1].kind);
+
+    var editions_file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2024";
+        \\import "data.proto";
+        \\import option "options.proto";
+        \\message M { int32 id = 1; }
+    );
+    defer editions_file.deinit();
+    const editions_bytes = try encodeFileDescriptorProto(allocator, &editions_file, "edition-imports.proto");
+    defer allocator.free(editions_bytes);
+    var decoded_editions = try decodeFileDescriptorProto(allocator, editions_bytes);
+    defer decoded_editions.deinit();
+    try std.testing.expectEqual(schema.Import.Kind.normal, decoded_editions.imports.items[0].kind);
+    try std.testing.expectEqual(schema.Import.Kind.option, decoded_editions.imports.items[1].kind);
 }
 
 test "descriptor encodes proto3 optional synthetic oneof" {
@@ -4756,6 +4771,23 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeInt32(11, 0);
         try file.writeString(12, "editions");
         try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2024));
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto2-option-import.proto");
+        try file.writeString(15, "options.proto");
+        try file.writeString(12, "proto2");
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "edition-2023-option-import.proto");
+        try file.writeString(15, "options.proto");
+        try file.writeString(12, "editions");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2023));
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
     {
