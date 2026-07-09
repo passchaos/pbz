@@ -1236,6 +1236,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             else => try reader.skipValue(tag),
         }
     }
+    try validateDecodedFileEdition(&file);
     try validateImportList(file.imports.items);
     try validateDependencyIndexes(public_deps.items, weak_deps.items, file.imports.items.len);
     for (public_deps.items) |idx| {
@@ -1257,6 +1258,14 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try validateDecodedMessageSets(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
+}
+
+fn validateDecodedFileEdition(file: *const schema.FileDescriptor) Error!void {
+    if (file.syntax != .editions) return;
+    switch (file.edition) {
+        .unknown, .max => return error.InvalidFieldType,
+        else => {},
+    }
 }
 
 fn validateImportList(imports: []const schema.Import) Error!void {
@@ -4452,6 +4461,20 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         defer file.deinit();
         try file.writeString(1, "bad-edition.proto");
         try file.writeInt32(14, 123456);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "unknown-edition.proto");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.unknown));
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "max-edition.proto");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.max));
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
     {
