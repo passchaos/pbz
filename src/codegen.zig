@@ -10440,6 +10440,7 @@ test "codegen emits proto2 extension metadata" {
     );
     defer file.deinit();
     try file.extensions.append(allocator, .{ .name = "legacy", .number = 107, .cardinality = .optional, .kind = .{ .group = "Note" }, .extendee = "Host" });
+    try file.extensions.append(allocator, .{ .name = "legacies", .number = 108, .cardinality = .repeated, .kind = .{ .group = "Note" }, .extendee = "Host" });
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extensions = struct") != null);
@@ -10596,6 +10597,13 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"legacy\".replaceInUnknown(self, allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessage_legacy\"(self: @This(), allocator: std.mem.Allocator) !?@\"Note\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = (try extensions.@\"legacy\".decodeFirstFromUnknown(self, allocator)) orelse return null;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"legacies\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(108, .start_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"addExtensionMessage_legacies\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"legacies\".appendToUnknown(self, allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtensionMessages_legacies\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessages_legacies\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (payloads) |payload| try list.append(allocator, try @\"Note\".decode(allocator, payload));") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
