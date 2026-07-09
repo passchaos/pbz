@@ -1455,6 +1455,12 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
         }
+        for (message.reserved_ranges.items) |range| {
+            if (rangeContains(range, field.number)) return error.InvalidFieldType;
+        }
+        for (message.reserved_names.items) |name| {
+            if (std.mem.eql(u8, name, field.name)) return error.InvalidFieldType;
+        }
     }
     for (message.oneofs.items, 0..) |oneof, i| {
         if (oneof.name.len == 0) return error.InvalidFieldType;
@@ -1478,6 +1484,7 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
         }
     }
+    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items);
 }
 
 fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FieldDescriptor {
@@ -1666,7 +1673,41 @@ fn validateEnumDescriptor(enumeration: *const schema.EnumDescriptor) Error!void 
             if (std.mem.eql(u8, value.name, other.name)) return error.InvalidFieldType;
             if (!allow_alias and value.number == other.number) return error.InvalidFieldType;
         }
+        for (enumeration.reserved_ranges.items) |range| {
+            if (rangeContains(range, value.number)) return error.InvalidFieldType;
+        }
+        for (enumeration.reserved_names.items) |name| {
+            if (std.mem.eql(u8, name, value.name)) return error.InvalidFieldType;
+        }
     }
+    try validateDecodedReservedRanges(enumeration.reserved_ranges.items, enumeration.reserved_names.items);
+}
+
+fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []const []const u8) Error!void {
+    for (ranges, 0..) |range, i| {
+        const end = range.end orelse std.math.maxInt(i64);
+        if (end <= range.start) return error.InvalidFieldType;
+        for (ranges[i + 1 ..]) |other| {
+            if (rangesOverlap(range, other)) return error.InvalidFieldType;
+        }
+    }
+    for (names, 0..) |name, i| {
+        if (name.len == 0) return error.InvalidFieldType;
+        for (names[i + 1 ..]) |other| {
+            if (std.mem.eql(u8, name, other)) return error.InvalidFieldType;
+        }
+    }
+}
+
+fn rangeContains(range: schema.ReservedRange, number: i64) bool {
+    const end = range.end orelse std.math.maxInt(i64);
+    return number >= range.start and number < end;
+}
+
+fn rangesOverlap(a: schema.ReservedRange, b: schema.ReservedRange) bool {
+    const a_end = a.end orelse std.math.maxInt(i64);
+    const b_end = b.end orelse std.math.maxInt(i64);
+    return a.start < b_end and b.start < a_end;
 }
 
 fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.OneofDescriptor {
@@ -2928,6 +2969,58 @@ test "descriptor rejects invalid reserved ranges" {
         try file.writeString(1, "bad-enum-reserved.proto");
         try file.writeMessage(5, enumeration.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects declarations that use reserved fields or enum values" {
+    const allocator = std.testing.allocator;
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.reserved_ranges.append(allocator, .{ .start = 1, .end = 3 });
+        try message.fields.append(allocator, .{ .name = "hit", .number = 2, .cardinality = .optional, .kind = .{ .scalar = .int32 } });
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "reserved-field.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var message = schema.MessageDescriptor{ .name = "Bad" };
+        try message.reserved_names.append(allocator, "old");
+        try message.reserved_names.append(allocator, "old");
+        try file.messages.append(allocator, message);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "reserved-name.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var enumeration = schema.EnumDescriptor{ .name = "Bad" };
+        try enumeration.reserved_ranges.append(allocator, .{ .start = 1, .end = 3 });
+        try enumeration.values.append(allocator, .{ .name = "HIT", .number = 2 });
+        try file.enums.append(allocator, enumeration);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "reserved-enum.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var enumeration = schema.EnumDescriptor{ .name = "Bad" };
+        try enumeration.reserved_names.append(allocator, "OLD");
+        try enumeration.values.append(allocator, .{ .name = "OLD", .number = 1 });
+        try file.enums.append(allocator, enumeration);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "reserved-enum-name.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
 }
 
