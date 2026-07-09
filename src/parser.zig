@@ -721,7 +721,12 @@ pub const Parser = struct {
         for (field.options.items) |option| {
             const leaf = optionLeaf(option.name);
             if (std.mem.eql(u8, leaf, "default")) field.default_value = option.value;
-            if (std.mem.eql(u8, leaf, "json_name") and option.value == .string) field.json_name = option.value.string;
+            if (std.mem.eql(u8, leaf, "json_name")) {
+                field.json_name = switch (option.value) {
+                    .string => |text| text,
+                    else => return error.InvalidFieldType,
+                };
+            }
             if (std.mem.eql(u8, leaf, "packed")) {
                 if (self.file.syntax == .editions) return error.InvalidSyntax;
                 field.packed_override = schema.optionAsBool(option.value);
@@ -1204,6 +1209,7 @@ pub const Parser = struct {
 
     fn validateExtensionField(self: *Parser, field: *const schema.FieldDescriptor) ParseError!void {
         if (field.kind == .map) return error.InvalidFieldType;
+        if (field.json_name != null) return error.InvalidFieldType;
         const extendee_name = field.extendee orelse return;
         if (self.file.findMessageDeep(extendee_name) == null and self.file.findEnumDeep(extendee_name) != null) return error.InvalidFieldType;
         const extendee = self.file.findMessageDeep(extendee_name) orelse return;
@@ -1661,6 +1667,7 @@ fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!vo
     try validateReserved(message);
     try validateExtensionRanges(message);
     try validateOneofs(message);
+    try validateJsonNames(message);
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
@@ -1677,6 +1684,71 @@ fn validateMessageFields(message: *const schema.MessageDescriptor) ParseError!vo
             if (std.mem.eql(u8, field.name, name)) return error.ReservedField;
         }
     }
+}
+
+fn validateJsonNames(message: *const schema.MessageDescriptor) ParseError!void {
+    for (message.fields.items, 0..) |field, i| {
+        if (field.json_name) |json_name| {
+            if (std.mem.indexOfScalar(u8, json_name, 0) != null) return error.InvalidFieldType;
+            if (jsonNameLooksLikeExtension(json_name)) return error.InvalidFieldType;
+        }
+        for (message.fields.items[i + 1 ..]) |other| {
+            if (defaultJsonNamesEqual(field.name, other.name)) return error.DuplicateField;
+            if (effectiveJsonNamesEqual(&field, &other)) return error.DuplicateField;
+        }
+    }
+}
+
+fn effectiveJsonNamesEqual(a: *const schema.FieldDescriptor, b: *const schema.FieldDescriptor) bool {
+    if (a.json_name) |a_json| {
+        if (b.json_name) |b_json| return std.mem.eql(u8, a_json, b_json);
+        return eqlDefaultJsonName(b.name, a_json);
+    }
+    if (b.json_name) |b_json| return eqlDefaultJsonName(a.name, b_json);
+    return defaultJsonNamesEqual(a.name, b.name);
+}
+
+fn jsonNameLooksLikeExtension(json_name: []const u8) bool {
+    return json_name.len >= 2 and json_name[0] == '[' and json_name[json_name.len - 1] == ']';
+}
+
+fn eqlDefaultJsonName(field_name: []const u8, candidate: []const u8) bool {
+    var field_index: usize = 0;
+    var upper_next = false;
+    var candidate_index: usize = 0;
+    while (nextDefaultJsonNameChar(field_name, &field_index, &upper_next)) |c| {
+        if (candidate_index >= candidate.len or candidate[candidate_index] != c) return false;
+        candidate_index += 1;
+    }
+    return candidate_index == candidate.len;
+}
+
+fn defaultJsonNamesEqual(a: []const u8, b: []const u8) bool {
+    var a_index: usize = 0;
+    var b_index: usize = 0;
+    var a_upper = false;
+    var b_upper = false;
+    while (true) {
+        const a_char = nextDefaultJsonNameChar(a, &a_index, &a_upper);
+        const b_char = nextDefaultJsonNameChar(b, &b_index, &b_upper);
+        if (a_char == null or b_char == null) return a_char == null and b_char == null;
+        if (a_char.? != b_char.?) return false;
+    }
+}
+
+fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?u8 {
+    while (index.* < name.len) {
+        const c = name[index.*];
+        index.* += 1;
+        if (c == '_') {
+            upper_next.* = true;
+            continue;
+        }
+        const out = if (upper_next.*) std.ascii.toUpper(c) else c;
+        upper_next.* = false;
+        return out;
+    }
+    return null;
 }
 
 fn validateOneofs(message: *const schema.MessageDescriptor) ParseError!void {
@@ -2198,6 +2270,45 @@ test "parser rejects duplicate field names and numbers" {
     try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { optional int32 a = 1; optional int32 a = 2; }
+    ));
+}
+
+test "parser rejects invalid json_name options" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 foo_bar = 1; optional int32 fooBar = 2; }
+    ));
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 foo = 1 [json_name = "sameName"];
+        \\  optional int32 bar = 2 [json_name = "sameName"];
+        \\}
+    ));
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 foo = 1 [json_name = "barBaz"];
+        \\  optional int32 bar_baz = 2;
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 foo = 1 [json_name = "[demo.ext]"]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 foo = 1 [json_name = "has\000nul"]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 foo = 1 [json_name = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Target { extensions 100 to 200; }
+        \\extend Target { optional int32 ext = 150 [json_name = "customExt"]; }
     ));
 }
 
