@@ -237,7 +237,7 @@ merge duplicate singular message/group payload fields while preserving repeated
 append and oneof replacement semantics.
 Generated message structs also include basic `jsonStringify`, `jsonStringifyAlloc`,
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
-scalar/enum map fields, encoded message payload fields when their generated types
+scalar/enum/message map fields, encoded message payload fields when their generated types
 are available, lowerCamelCase/json_name field names, presence-aware
 optional fields, bytes/base64, proto2 group payload fields, and scalar/enum/message oneof arms. Generated enum JSON
 stringify emits enum names when known and falls back to numbers for unknown values.

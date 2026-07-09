@@ -1933,7 +1933,7 @@ fn fieldJsonStringifySupported(file: *const schema.FileDescriptor, field: schema
     return switch (field.kind) {
         .scalar, .enumeration => true,
         .message, .group => |name| codegenCanReferenceMessage(file, name),
-        .map => |map_type| jsonMapValueSupported(map_type.value.*),
+        .map => |map_type| jsonMapValueSupported(file, map_type.value.*),
     };
 }
 
@@ -2074,7 +2074,7 @@ fn writeJsonParseMapField(file: *const schema.FileDescriptor, field: *const sche
         .map => |map| map,
         else => return,
     };
-    if (!jsonMapValueSupported(map_type.value.*)) return;
+    if (!jsonMapValueSupported(file, map_type.value.*)) return;
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
@@ -2095,7 +2095,7 @@ fn writeJsonParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try writer.writeAll("try list.append(allocator, .{ .key = ");
     try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
     try writer.writeAll(", .value = ");
-    try writeJsonParseValueExpr(file, map_type.value.*, "map_entry.value_ptr.*", "arena_allocator", writer);
+    try writeJsonParseMapValueExpr(file, map_type.value.*, "map_entry.value_ptr.*", "arena_allocator", writer);
     try writer.writeAll(" });\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
@@ -2198,6 +2198,27 @@ fn writeJsonParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
             try writer.writeAll(")");
         },
         else => try writer.writeAll("@compileError(\"unsupported JSON parse field kind\")"),
+    }
+}
+
+fn writeJsonParseMapValueExpr(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, arena_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .message => |name| if (codegenCanReferenceMessage(file, name)) {
+            try writer.writeAll("blk: { var nested = try ");
+            try writeMessageTypeReference(name, writer);
+            try writer.writeAll(".jsonParse(");
+            try writer.writeAll(arena_expr);
+            try writer.writeAll(", try std.json.Stringify.valueAlloc(");
+            try writer.writeAll(arena_expr);
+            try writer.writeAll(", ");
+            try writer.writeAll(value_expr);
+            try writer.writeAll(", .{})); defer nested.deinit(");
+            try writer.writeAll(arena_expr);
+            try writer.writeAll("); break :blk try nested.encode(");
+            try writer.writeAll(arena_expr);
+            try writer.writeAll("); }");
+        } else try writer.writeAll("@compileError(\"unsupported JSON parse field kind\")"),
+        else => try writeJsonParseValueExpr(file, kind, value_expr, arena_expr, writer),
     }
 }
 
@@ -2433,7 +2454,7 @@ fn writeJsonMapField(file: *const schema.FileDescriptor, field: *const schema.Fi
         .map => |map| map,
         else => return,
     };
-    if (!jsonMapValueSupported(map_type.value.*)) return;
+    if (!jsonMapValueSupported(file, map_type.value.*)) return;
     try indent(writer, depth);
     try writer.writeAll("if (self.");
     try writeQuotedIdent(field.name, writer);
@@ -2520,8 +2541,12 @@ fn writeDecodeAndStringifyPayload(type_name: []const u8, payload_expr: []const u
     try writer.writeAll("try nested.jsonStringifyWithAllocator(allocator, writer);\n");
 }
 
-fn jsonMapValueSupported(kind: schema.FieldKind) bool {
-    return kind == .scalar or kind == .enumeration;
+fn jsonMapValueSupported(file: *const schema.FileDescriptor, kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .scalar, .enumeration => true,
+        .message => |name| codegenCanReferenceMessage(file, name),
+        else => false,
+    };
 }
 
 fn writeJsonMapKeyValue(scalar: schema.ScalarType, key_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -2537,6 +2562,13 @@ fn writeJsonMapEntryValue(file: *const schema.FileDescriptor, kind: schema.Field
     switch (kind) {
         .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
+        .message => |name| if (codegenCanReferenceMessage(file, name)) {
+            try writer.writeAll("var nested = try ");
+            try writeMessageTypeReference(name, writer);
+            try writer.writeAll(".decode(allocator, ");
+            try writer.writeAll(value_expr);
+            try writer.writeAll("); defer nested.deinit(allocator); try nested.jsonStringifyWithAllocator(allocator, writer)");
+        } else try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
     }
 }
@@ -3237,10 +3269,12 @@ test "codegen emits map JSON stringify and parse helpers" {
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
         \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Child { int32 id = 1; }
         \\message M {
         \\  map<string, int32> counts = 1;
         \\  map<int32, string> names = 2;
         \\  map<bool, Kind> flags = 3;
+        \\  map<string, Child> kids = 4;
         \\}
     );
     defer file.deinit();
@@ -3254,12 +3288,15 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(entry.value, .{}, writer)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (entry.key) \"\\\"true\\\"\" else \"\\\"false\\\"\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1})") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithAllocator(allocator, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = blk: { const old = self.@\"counts\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try @\"Child\".jsonParse(arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kids\" = blk: { const old = self.@\"kids\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
