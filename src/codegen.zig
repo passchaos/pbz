@@ -130,11 +130,38 @@ fn normalizedTypeName(type_name: []const u8) []const u8 {
     return if (std.mem.startsWith(u8, type_name, ".")) type_name[1..] else type_name;
 }
 
+pub fn generatePluginResponseFromRequest(allocator: std.mem.Allocator, request: *const plugin.CodeGeneratorRequest) Error![]u8 {
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    for (request.proto_files.items) |*file| try registry.addFile(file);
+
+    var selected: std.ArrayList(*const schema.FileDescriptor) = .empty;
+    defer selected.deinit(allocator);
+    if (request.files_to_generate.items.len == 0) {
+        for (request.proto_files.items) |*file| try selected.append(allocator, file);
+    } else {
+        for (request.files_to_generate.items) |name| {
+            const file = findRequestFile(request, name) orelse {
+                const message = try std.fmt.allocPrint(allocator, "file_to_generate not found: {s}", .{name});
+                defer allocator.free(message);
+                return try encodePluginErrorResponse(allocator, message);
+            };
+            try selected.append(allocator, file);
+        }
+    }
+
+    return try generatePluginResponseForSelected(allocator, selected.items, &registry);
+}
+
 pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor) Error![]u8 {
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
     for (files) |file| try registry.addFile(file);
 
+    return try generatePluginResponseForSelected(allocator, files, &registry);
+}
+
+fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: *const registry_mod.Registry) Error![]u8 {
     var response_files = try allocator.alloc(plugin.CodeGeneratorResponse.File, files.len);
     @memset(response_files, .{});
     defer {
@@ -145,17 +172,37 @@ pub fn generatePluginResponse(allocator: std.mem.Allocator, files: []const *cons
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
-        const content = try generateZigFileWithRegistry(allocator, file, &registry);
+        const content = try generateZigFileWithRegistry(allocator, file, registry);
         errdefer allocator.free(content);
         const name = try outputName(allocator, file.name);
         response_files[i] = .{ .name = name, .content = content };
     }
     return try (plugin.CodeGeneratorResponse{
-        .supported_features = plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions }),
+        .supported_features = generatedResponseFeatureMask(),
         .minimum_edition = .proto2,
         .maximum_edition = .edition_2026,
         .files = response_files,
     }).encode(allocator);
+}
+
+fn findRequestFile(request: *const plugin.CodeGeneratorRequest, name: []const u8) ?*const schema.FileDescriptor {
+    for (request.proto_files.items) |*file| {
+        if (std.mem.eql(u8, file.name, name)) return file;
+    }
+    return null;
+}
+
+fn encodePluginErrorResponse(allocator: std.mem.Allocator, message: []const u8) Error![]u8 {
+    return try (plugin.CodeGeneratorResponse{
+        .error_message = message,
+        .supported_features = generatedResponseFeatureMask(),
+        .minimum_edition = .proto2,
+        .maximum_edition = .edition_2026,
+    }).encode(allocator);
+}
+
+fn generatedResponseFeatureMask() u64 {
+    return plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions });
 }
 
 fn writeFileMetadata(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -6924,7 +6971,7 @@ test "codegen emits protoc response" {
     var saw_registry_import_ref = false;
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            2 => saw_supported_features = (try reader.readUInt64()) == plugin.CodeGeneratorResponse.featureMask(&[_]plugin.CodeGeneratorResponse.Feature{ .proto3_optional, .supports_editions }),
+            2 => saw_supported_features = (try reader.readUInt64()) == generatedResponseFeatureMask(),
             3 => saw_minimum_edition = (try reader.readInt32()) == @intFromEnum(schema.Edition.proto2),
             4 => saw_maximum_edition = (try reader.readInt32()) == @intFromEnum(schema.Edition.edition_2026),
             15 => {
@@ -6948,6 +6995,80 @@ test "codegen emits protoc response" {
     try std.testing.expect(saw_maximum_edition);
     try std.testing.expect(saw_file_name);
     try std.testing.expect(saw_registry_import_ref);
+}
+
+test "codegen emits protoc response from request file_to_generate" {
+    const allocator = std.testing.allocator;
+    var request = plugin.CodeGeneratorRequest.init(allocator);
+    defer request.deinit();
+    try request.files_to_generate.append(allocator, "app.proto");
+    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\message User { optional int32 id = 1; }
+    ));
+    request.proto_files.items[0].name = "common.proto";
+    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message App { optional .demo.common.User user = 1; }
+    ));
+    request.proto_files.items[1].name = "app.proto";
+
+    const response = try generatePluginResponseFromRequest(allocator, &request);
+    defer allocator.free(response);
+
+    var reader = wire.Reader.init(response);
+    var response_file_count: usize = 0;
+    var saw_app_name = false;
+    var saw_common_name = false;
+    var saw_import_type_ref = false;
+    while (try reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                response_file_count += 1;
+                var file_reader = wire.Reader.init(try reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        1 => {
+                            const name = try file_reader.readBytes();
+                            saw_app_name = saw_app_name or std.mem.eql(u8, name, "app.pb.zig");
+                            saw_common_name = saw_common_name or std.mem.eql(u8, name, "common.pb.zig");
+                        },
+                        15 => {
+                            const content = try file_reader.readBytes();
+                            saw_import_type_ref = saw_import_type_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null;
+                        },
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try reader.skipValue(tag),
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 1), response_file_count);
+    try std.testing.expect(saw_app_name);
+    try std.testing.expect(!saw_common_name);
+    try std.testing.expect(saw_import_type_ref);
+
+    var missing_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer missing_request.deinit();
+    try missing_request.files_to_generate.append(allocator, "missing.proto");
+    try missing_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message A {}"));
+    missing_request.proto_files.items[0].name = "a.proto";
+
+    const missing_response = try generatePluginResponseFromRequest(allocator, &missing_request);
+    defer allocator.free(missing_response);
+    var missing_reader = wire.Reader.init(missing_response);
+    var saw_error = false;
+    while (try missing_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            1 => saw_error = std.mem.indexOf(u8, try missing_reader.readBytes(), "missing.proto") != null,
+            else => try missing_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_error);
 }
 
 test "codegen quotes zig identifiers" {

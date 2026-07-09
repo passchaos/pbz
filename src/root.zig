@@ -85,6 +85,7 @@ pub const CodeGeneratorResponse = plugin.CodeGeneratorResponse;
 pub const generateZigFile = codegen.generateZigFile;
 pub const generateZigFileWithRegistry = codegen.generateZigFileWithRegistry;
 pub const generatePluginResponse = codegen.generatePluginResponse;
+pub const generatePluginResponseFromRequest = codegen.generatePluginResponseFromRequest;
 pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;
@@ -130,6 +131,22 @@ test "root exports registry-aware codegen" {
     const generated = try generateZigFileWithRegistry(allocator, &app, &reg);
     defer allocator.free(generated);
     try std.testing.expect(std.mem.indexOf(u8, generated, "imports.@\"common.proto\".@\"User\"") != null);
+}
+
+test "root exports request-based plugin codegen" {
+    const std = @import("std");
+    const allocator = std.testing.allocator;
+    var request = CodeGeneratorRequest.init(allocator);
+    defer request.deinit();
+    try request.files_to_generate.append(allocator, "app.proto");
+    try request.proto_files.append(allocator, try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message App { optional int32 id = 1; }
+    ));
+    request.proto_files.items[0].name = "app.proto";
+    const response = try generatePluginResponseFromRequest(allocator, &request);
+    defer allocator.free(response);
+    try std.testing.expect(response.len != 0);
 }
 
 test "root exports registry-aware text formatting" {
