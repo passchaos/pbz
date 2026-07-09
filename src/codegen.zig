@@ -120,6 +120,8 @@ fn writeMessage(file: *const schema.FileDescriptor, message: *const schema.Messa
     try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
     try writer.writeAll("\n");
+    try writeMessageExtensionAccessors(file, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeMergeFrom(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeEncode(file, message, writer, depth + 1);
@@ -1085,6 +1087,135 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("self.@\"_unknown_fields\" = &.{};\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeMessageExtensionAccessors(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    var wrote_any = false;
+    for (file.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, message, field)) {
+            try writeMessageExtensionAccessor(field, writer, depth);
+            wrote_any = true;
+        }
+    }
+    for (file.messages.items) |*scope| {
+        if (try writeScopedMessageExtensionAccessors(file, message, scope, writer, depth)) wrote_any = true;
+    }
+    if (!wrote_any) {
+        try indent(writer, depth);
+        try writer.writeAll("// no same-file extension accessors\n");
+    }
+}
+
+fn writeScopedMessageExtensionAccessors(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    var wrote_any = false;
+    for (scope.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, target, field)) {
+            try writeMessageExtensionAccessor(field, writer, depth);
+            wrote_any = true;
+        }
+    }
+    for (scope.messages.items) |*nested| {
+        if (try writeScopedMessageExtensionAccessors(file, target, nested, writer, depth)) wrote_any = true;
+    }
+    return wrote_any;
+}
+
+fn writeMessageExtensionAccessor(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const helper_name = extensionAccessorSuffix(field.name);
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "hasExtension_", writer);
+    try writer.writeAll("(self: @This()) !bool {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try ");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".hasInUnknown(self);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "countExtension_", writer);
+    try writer.writeAll("(self: @This()) !usize {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try ");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".countInUnknown(self);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "getExtension_", writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !");
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("[]");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+    } else {
+        try writer.writeAll("?");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+    }
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try ");
+    try writeExtensionHelperReference(field, writer);
+    if (field.cardinality == .repeated) {
+        try writer.writeAll(".decodeAllFromUnknown(self, allocator);\n");
+    } else {
+        try writer.writeAll(".decodeFirstFromUnknown(self, allocator);\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, if (field.cardinality == .repeated) "appendExtension_" else "setExtension_", writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, ");
+    if (field.cardinality == .repeated) {
+        try writer.writeAll("values: ");
+        try writer.writeAll(fieldType(field.*));
+    } else {
+        try writer.writeAll("value: ");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+    }
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try ");
+    try writeExtensionHelperReference(field, writer);
+    if (field.cardinality == .repeated) {
+        try writer.writeAll(".appendAllToUnknown(self, allocator, values);\n");
+    } else {
+        try writer.writeAll(".replaceInUnknown(self, allocator, value);\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithPrefix(helper_name, "replaceExtension_", writer);
+        try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: ");
+        try writer.writeAll(fieldType(field.*));
+        try writer.writeAll(") !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
+        try writeExtensionHelperReference(field, writer);
+        try writer.writeAll(".replaceAllInUnknown(self, allocator, values);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    }
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithPrefix(helper_name, "clearExtension_", writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try ");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".clearFromUnknown(self, allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeMergeFrom(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -4782,6 +4913,20 @@ fn writeQuotedIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std
     try writer.writeAll("\"");
 }
 
+fn writeQuotedIdentWithPrefix(name: []const u8, prefix: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("@\"");
+    try writer.writeAll(prefix);
+    for (name) |c| {
+        if (c == '\\' or c == '"') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeAll("\"");
+}
+
+fn extensionAccessorSuffix(name: []const u8) []const u8 {
+    return leafTypeName(name);
+}
+
 fn hasPresence(file: *const schema.FileDescriptor, field: schema.FieldDescriptor) bool {
     if (field.cardinality == .required or field.proto3_optional or field.oneof_name != null or field.kind == .message or field.kind == .group) return true;
     if (field.cardinality == .repeated or field.kind == .map) return false;
@@ -5775,6 +5920,21 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"note\".decodeRaw(raw) catch null) |payload| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.note] {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasExtension_tag\"(self: @This()) !bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"tag\".hasInUnknown(self);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"countExtension_tag\"(self: @This()) !usize") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtension_tag\"(self: @This(), allocator: std.mem.Allocator) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"tag\".decodeFirstFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtension_tag\"(self: *@This(), allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".replaceInUnknown(self, allocator, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearExtension_tag\"(self: *@This(), allocator: std.mem.Allocator) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".clearFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtension_nums\"(self: @This(), allocator: std.mem.Allocator) ![]i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".appendAllToUnknown(self, allocator, values);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".replaceAllInUnknown(self, allocator, values);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
