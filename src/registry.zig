@@ -74,14 +74,12 @@ pub const Registry = struct {
     }
 
     fn validateExtensionConflict(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
-        const extendee = field.extendee orelse return;
-        if (self.findExtension(extendee, field.number) != null) return error.DuplicateSymbol;
         for (self.files.items) |existing_file| {
             for (existing_file.extensions.items) |*existing| {
-                if (extensionsConflictByName(file.package, field, existing_file.package, existing)) return error.DuplicateSymbol;
+                if (extensionsConflictResolved(self, file, field, existing_file, existing)) return error.DuplicateSymbol;
             }
             for (existing_file.messages.items) |*message| {
-                if (extensionConflictsByNameInMessage(file.package, field, existing_file.package, message)) return error.DuplicateSymbol;
+                if (extensionConflictsInMessageResolved(self, file, field, existing_file, message)) return error.DuplicateSymbol;
             }
         }
     }
@@ -125,6 +123,7 @@ pub const Registry = struct {
     }
 
     pub fn findExtensionByName(self: *const Registry, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
+        if (self.findMessage(extendee, null)) |message| return self.findExtensionByNameForMessage(message, name);
         const normalized = normalizeName(extendee);
         const normalized_name = normalizeName(name);
         for (self.files.items) |file| {
@@ -186,6 +185,7 @@ pub const Registry = struct {
     }
 
     pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+        if (self.findMessage(extendee, null)) |message| return self.findExtensionForMessage(message, number);
         const normalized = normalizeName(extendee);
         for (self.files.items) |file| {
             for (file.extensions.items) |*field| {
@@ -610,20 +610,39 @@ fn findExtensionInMessage(message: *const schema.MessageDescriptor, extendee: []
     return null;
 }
 
-fn extensionsConflictByName(a_package: []const u8, a: *const schema.FieldDescriptor, b_package: []const u8, b: *const schema.FieldDescriptor) bool {
-    const a_extendee = a.extendee orelse return false;
-    const b_extendee = b.extendee orelse return false;
-    return namesMatch(a_extendee, b_extendee) and schema.extensionSymbolsEqualWithPackages(a_package, a, b_package, b);
+fn extensionsConflictResolved(registry: *const Registry, a_file: *const schema.FileDescriptor, a: *const schema.FieldDescriptor, b_file: *const schema.FileDescriptor, b: *const schema.FieldDescriptor) bool {
+    if (!extensionsTargetSameMessage(registry, a_file, a, b_file, b)) return false;
+    if (a.number == b.number) return true;
+    return schema.extensionSymbolsEqualWithPackages(a_file.package, a, b_file.package, b);
 }
 
-fn extensionConflictsByNameInMessage(field_package: []const u8, field: *const schema.FieldDescriptor, message_package: []const u8, message: *const schema.MessageDescriptor) bool {
+fn extensionConflictsInMessageResolved(registry: *const Registry, field_file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, message_file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
     for (message.extensions.items) |*other| {
-        if (extensionsConflictByName(field_package, field, message_package, other)) return true;
+        if (extensionsConflictResolved(registry, field_file, field, message_file, other)) return true;
     }
     for (message.messages.items) |*nested| {
-        if (extensionConflictsByNameInMessage(field_package, field, message_package, nested)) return true;
+        if (extensionConflictsInMessageResolved(registry, field_file, field, message_file, nested)) return true;
     }
     return false;
+}
+
+fn extensionsTargetSameMessage(registry: *const Registry, a_file: *const schema.FileDescriptor, a: *const schema.FieldDescriptor, b_file: *const schema.FileDescriptor, b: *const schema.FieldDescriptor) bool {
+    const a_extendee = a.extendee orelse return false;
+    const b_extendee = b.extendee orelse return false;
+    const a_message = resolveExtensionExtendee(registry, a_file, a);
+    const b_message = resolveExtensionExtendee(registry, b_file, b);
+    if (a_message) |am| {
+        if (b_message) |bm| return am == bm;
+        return false;
+    }
+    if (b_message != null) return false;
+    return namesMatch(a_extendee, b_extendee);
+}
+
+fn resolveExtensionExtendee(registry: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+    const extendee = field.extendee orelse return null;
+    if (file.findMessageDeep(extendee)) |message| return message;
+    return registry.findMessageVisible(file, extendee, null);
 }
 
 fn normalizeName(name: []const u8) []const u8 {
@@ -862,15 +881,18 @@ test "registry rejects duplicate extension symbols across files" {
         \\extend Host { optional string note = 100; }
     );
     defer first.deinit();
+    first.name = "host.proto";
     var duplicate_number = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo;
+        \\import "host.proto";
         \\extend Host { optional int32 other = 100; }
     );
     defer duplicate_number.deinit();
     var duplicate_name = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo;
+        \\import "host.proto";
         \\extend Host { optional int32 note = 101; }
     );
     defer duplicate_name.deinit();
@@ -880,6 +902,37 @@ test "registry rejects duplicate extension symbols across files" {
     try registry.addFile(&first);
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_number));
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_name));
+}
+
+test "registry allows same extension numbers on different package extendees" {
+    const allocator = std.testing.allocator;
+    var a_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package a;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer a_file.deinit();
+    a_file.name = "a.proto";
+    var b_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package b;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional int32 note = 100; }
+    );
+    defer b_file.deinit();
+    b_file.name = "b.proto";
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&a_file);
+    try registry.addFile(&b_file);
+
+    try std.testing.expectEqualStrings("note", registry.findExtension(".a.Host", 100).?.name);
+    try std.testing.expectEqual(schema.ScalarType.string, registry.findExtension(".a.Host", 100).?.kind.scalar);
+    try std.testing.expectEqual(schema.ScalarType.int32, registry.findExtension(".b.Host", 100).?.kind.scalar);
+    try std.testing.expectEqual(schema.ScalarType.string, registry.findExtensionByName(".a.Host", "a.note").?.kind.scalar);
+    try std.testing.expectEqual(schema.ScalarType.int32, registry.findExtensionByName(".b.Host", "b.note").?.kind.scalar);
 }
 
 test "registry validates extension extendee visibility" {
