@@ -1874,9 +1874,31 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Arr
         if (item.oneof_index >= message.oneofs.items.len) return error.InvalidFieldType;
         message.fields.items[item.field_index].oneof_name = message.oneofs.items[item.oneof_index].name;
     }
+    try validateDecodedOneofFieldContiguity(&message);
     for (message.fields.items) |field| try validateDecodedOneofFieldShape(&field);
     try validateDecodedProto3OptionalFields(&message);
     return message;
+}
+
+fn validateDecodedOneofFieldContiguity(message: *const schema.MessageDescriptor) Error!void {
+    for (message.oneofs.items) |oneof| {
+        var first: ?usize = null;
+        var last: ?usize = null;
+        for (message.fields.items, 0..) |field, index| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name)) {
+                    if (first == null) first = index;
+                    last = index;
+                }
+            }
+        }
+        const start = first orelse continue;
+        const end = last orelse continue;
+        for (message.fields.items[start .. end + 1]) |field| {
+            const field_oneof = field.oneof_name orelse return error.InvalidFieldType;
+            if (!std.mem.eql(u8, field_oneof, oneof.name)) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn validateDecodedProto3OptionalFields(message: *const schema.MessageDescriptor) Error!void {
@@ -4203,6 +4225,85 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, "bad-oneof-index.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var first = wire.Writer.init(allocator);
+        defer first.deinit();
+        try first.writeString(1, "first");
+        try first.writeInt32(3, 1);
+        try first.writeInt32(4, 1);
+        try first.writeInt32(5, 5);
+        try first.writeInt32(9, 0);
+        var middle = wire.Writer.init(allocator);
+        defer middle.deinit();
+        try middle.writeString(1, "middle");
+        try middle.writeInt32(3, 2);
+        try middle.writeInt32(4, 1);
+        try middle.writeInt32(5, 5);
+        var second = wire.Writer.init(allocator);
+        defer second.deinit();
+        try second.writeString(1, "second");
+        try second.writeInt32(3, 3);
+        try second.writeInt32(4, 1);
+        try second.writeInt32(5, 5);
+        try second.writeInt32(9, 0);
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "pick");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, first.slice());
+        try message.writeMessage(2, middle.slice());
+        try message.writeMessage(2, second.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "non-contiguous-oneof.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var foo1 = wire.Writer.init(allocator);
+        defer foo1.deinit();
+        try foo1.writeString(1, "foo1");
+        try foo1.writeInt32(3, 1);
+        try foo1.writeInt32(4, 1);
+        try foo1.writeInt32(5, 5);
+        try foo1.writeInt32(9, 0);
+        var bar1 = wire.Writer.init(allocator);
+        defer bar1.deinit();
+        try bar1.writeString(1, "bar1");
+        try bar1.writeInt32(3, 2);
+        try bar1.writeInt32(4, 1);
+        try bar1.writeInt32(5, 5);
+        try bar1.writeInt32(9, 1);
+        var foo2 = wire.Writer.init(allocator);
+        defer foo2.deinit();
+        try foo2.writeString(1, "foo2");
+        try foo2.writeInt32(3, 3);
+        try foo2.writeInt32(4, 1);
+        try foo2.writeInt32(5, 5);
+        try foo2.writeInt32(9, 0);
+        var foos = wire.Writer.init(allocator);
+        defer foos.deinit();
+        try foos.writeString(1, "foos");
+        var bars = wire.Writer.init(allocator);
+        defer bars.deinit();
+        try bars.writeString(1, "bars");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, foo1.slice());
+        try message.writeMessage(2, bar1.slice());
+        try message.writeMessage(2, foo2.slice());
+        try message.writeMessage(8, foos.slice());
+        try message.writeMessage(8, bars.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "interleaved-oneof.proto");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }

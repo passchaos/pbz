@@ -395,7 +395,7 @@ The current descriptor support covers core file/message/import/field/enum/servic
 metadata, proto2 group descriptors and nested group messages, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode including unsigned 64-bit maxima,
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
-oneof index/name validation, enum allow_alias misuse, enum descriptor validation,
+oneof index/name/field-contiguity validation, enum allow_alias misuse, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,
 structured SourceCodeInfo location path/span/comments including parser-generated basic declaration/field/oneof/extension-range/reserved/enum-value/method locations plus leading/trailing/detached line and block comments, ExtensionRangeOptions
 declarations/verification/features with parser-side consistency checks,
