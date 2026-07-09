@@ -1250,6 +1250,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     resolveDecodedEnumDefaults(&file);
     try validateDecodedFileDescriptor(&file);
     try validateDecodedDefaults(&file);
+    try validateDecodedFieldSyntax(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
 }
@@ -1434,6 +1435,22 @@ fn validateDecodedEnumDefault(file: *const schema.FileDescriptor, enum_name: []c
         },
         else => return error.InvalidFieldType,
     }
+}
+
+fn validateDecodedFieldSyntax(file: *const schema.FileDescriptor) Error!void {
+    for (file.extensions.items) |*field| try validateDecodedFieldSyntaxOne(file, field, true);
+    for (file.messages.items) |*message| try validateDecodedMessageFieldSyntax(file, message);
+}
+
+fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+    for (message.fields.items) |*field| try validateDecodedFieldSyntaxOne(file, field, false);
+    for (message.extensions.items) |*field| try validateDecodedFieldSyntaxOne(file, field, true);
+    for (message.messages.items) |*nested| try validateDecodedMessageFieldSyntax(file, nested);
+}
+
+fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
+    if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
+    if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
 }
 
 fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
@@ -4035,6 +4052,70 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         defer file.deinit();
         try file.writeString(1, "bad-package.proto");
         try file.writeString(2, bad_package);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects required labels outside proto2 and on extensions" {
+    const allocator = std.testing.allocator;
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 2);
+        try field.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-required.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 2);
+        try field.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "editions-required.proto");
+        try file.writeString(12, "editions");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2023));
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var host = wire.Writer.init(allocator);
+        defer host.deinit();
+        try host.writeString(1, "Host");
+        var range = wire.Writer.init(allocator);
+        defer range.deinit();
+        try range.writeInt32(1, 100);
+        try range.writeInt32(2, 200);
+        try host.writeMessage(5, range.slice());
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad_ext");
+        try field.writeString(2, ".Host");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 2);
+        try field.writeInt32(5, 5);
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "required-extension.proto");
+        try file.writeMessage(4, host.slice());
+        try file.writeMessage(7, field.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
