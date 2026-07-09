@@ -1377,6 +1377,7 @@ fn validateDecodedMessageExtensionDeclarations(file: *const schema.FileDescripto
 fn validateDecodedExtensionFieldDescriptor(field: *const schema.FieldDescriptor) Error!void {
     const extendee = field.extendee orelse return error.InvalidFieldType;
     if (!isTypeNameReference(extendee)) return error.InvalidFieldType;
+    try validateDecodedFieldJsonName(field, true);
 }
 
 fn validateDecodedDefaults(file: *const schema.FileDescriptor) Error!void {
@@ -1641,6 +1642,7 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
     if (!isIdentifier(message.name)) return error.InvalidFieldType;
     for (message.fields.items, 0..) |field, i| {
         if (!isIdentifier(field.name) or field.number == 0) return error.InvalidFieldType;
+        try validateDecodedFieldJsonName(&field, false);
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
         }
@@ -1676,9 +1678,90 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
         }
     }
+    try validateDecodedFieldJsonNameUniqueness(message.fields.items);
     for (message.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
     try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items);
     try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items);
+}
+
+fn validateDecodedFieldJsonName(field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
+    const json_name = field.json_name orelse return;
+    if (std.mem.indexOfScalar(u8, json_name, 0) != null) return error.InvalidFieldType;
+    const is_custom = !eqlDefaultJsonName(field.name, json_name);
+    if (is_extension and is_custom) return error.InvalidFieldType;
+    if (is_custom and jsonNameLooksLikeExtension(json_name)) return error.InvalidFieldType;
+}
+
+fn validateDecodedFieldJsonNameUniqueness(fields: []const schema.FieldDescriptor) Error!void {
+    for (fields, 0..) |field, i| {
+        for (fields[i + 1 ..]) |other| {
+            if (defaultJsonNamesEqual(field.name, other.name)) return error.InvalidFieldType;
+        }
+    }
+    for (fields, 0..) |field, i| {
+        for (fields[i + 1 ..]) |other| {
+            if (effectiveJsonNamesEqual(&field, &other)) return error.InvalidFieldType;
+        }
+    }
+}
+
+fn effectiveJsonNamesEqual(a: *const schema.FieldDescriptor, b: *const schema.FieldDescriptor) bool {
+    const a_custom = customJsonName(a);
+    const b_custom = customJsonName(b);
+    if (a_custom) |a_json| {
+        if (b_custom) |b_json| return std.mem.eql(u8, a_json, b_json);
+        return eqlDefaultJsonName(b.name, a_json);
+    }
+    if (b_custom) |b_json| return eqlDefaultJsonName(a.name, b_json);
+    return defaultJsonNamesEqual(a.name, b.name);
+}
+
+fn customJsonName(field: *const schema.FieldDescriptor) ?[]const u8 {
+    const json_name = field.json_name orelse return null;
+    return if (eqlDefaultJsonName(field.name, json_name)) null else json_name;
+}
+
+fn jsonNameLooksLikeExtension(json_name: []const u8) bool {
+    return json_name.len >= 2 and json_name[0] == '[' and json_name[json_name.len - 1] == ']';
+}
+
+fn eqlDefaultJsonName(field_name: []const u8, candidate: []const u8) bool {
+    var field_index: usize = 0;
+    var upper_next = false;
+    var candidate_index: usize = 0;
+    while (nextDefaultJsonNameChar(field_name, &field_index, &upper_next)) |c| {
+        if (candidate_index >= candidate.len or candidate[candidate_index] != c) return false;
+        candidate_index += 1;
+    }
+    return candidate_index == candidate.len;
+}
+
+fn defaultJsonNamesEqual(a: []const u8, b: []const u8) bool {
+    var a_index: usize = 0;
+    var b_index: usize = 0;
+    var a_upper = false;
+    var b_upper = false;
+    while (true) {
+        const a_char = nextDefaultJsonNameChar(a, &a_index, &a_upper);
+        const b_char = nextDefaultJsonNameChar(b, &b_index, &b_upper);
+        if (a_char == null or b_char == null) return a_char == null and b_char == null;
+        if (a_char.? != b_char.?) return false;
+    }
+}
+
+fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?u8 {
+    while (index.* < name.len) {
+        const c = name[index.*];
+        index.* += 1;
+        if (c == '_') {
+            upper_next.* = true;
+            continue;
+        }
+        const out = if (upper_next.*) std.ascii.toUpper(c) else c;
+        upper_next.* = false;
+        return out;
+    }
+    return null;
 }
 
 fn validateDecodedExtensionRanges(extension_ranges: []const schema.ExtensionRange, reserved_ranges: []const schema.ReservedRange) Error!void {
@@ -3560,6 +3643,136 @@ test "descriptor rejects invalid message descriptors" {
         defer file.deinit();
         try file.writeString(1, "dup-nested.proto");
         try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects invalid decoded json names" {
+    const allocator = std.testing.allocator;
+    {
+        var first = wire.Writer.init(allocator);
+        defer first.deinit();
+        try first.writeString(1, "foo_bar");
+        try first.writeInt32(3, 1);
+        try first.writeInt32(4, 1);
+        try first.writeInt32(5, 5);
+        var second = wire.Writer.init(allocator);
+        defer second.deinit();
+        try second.writeString(1, "fooBar");
+        try second.writeInt32(3, 2);
+        try second.writeInt32(4, 1);
+        try second.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, first.slice());
+        try message.writeMessage(2, second.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "default-json-name-conflict.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var first = wire.Writer.init(allocator);
+        defer first.deinit();
+        try first.writeString(1, "foo");
+        try first.writeInt32(3, 1);
+        try first.writeInt32(4, 1);
+        try first.writeInt32(5, 5);
+        try first.writeString(10, "sameName");
+        var second = wire.Writer.init(allocator);
+        defer second.deinit();
+        try second.writeString(1, "bar");
+        try second.writeInt32(3, 2);
+        try second.writeInt32(4, 1);
+        try second.writeInt32(5, 5);
+        try second.writeString(10, "sameName");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, first.slice());
+        try message.writeMessage(2, second.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "custom-json-name-conflict.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var first = wire.Writer.init(allocator);
+        defer first.deinit();
+        try first.writeString(1, "foo");
+        try first.writeInt32(3, 1);
+        try first.writeInt32(4, 1);
+        try first.writeInt32(5, 5);
+        try first.writeString(10, "barBaz");
+        var second = wire.Writer.init(allocator);
+        defer second.deinit();
+        try second.writeString(1, "bar_baz");
+        try second.writeInt32(3, 2);
+        try second.writeInt32(4, 1);
+        try second.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, first.slice());
+        try message.writeMessage(2, second.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "custom-default-json-name-conflict.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "foo");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeString(10, "[demo.ext]");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "extension-looking-json-name.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "foo");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeString(10, "has\x00nul");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "nul-json-name.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "ext");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeString(2, ".Host");
+        try field.writeString(10, "customExt");
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "extension-json-name.proto");
+        try file.writeMessage(7, field.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
