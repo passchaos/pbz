@@ -1589,6 +1589,9 @@ fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message
 }
 
 fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
+    if (is_extension) {
+        if (field.extendee == null or field.oneof_name != null) return error.InvalidFieldType;
+    } else if (field.extendee != null) return error.InvalidFieldType;
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (file.syntax == .proto3 and is_extension and !isCustomOptionExtendee(field.extendee orelse "")) return error.InvalidFieldType;
@@ -5259,6 +5262,56 @@ test "descriptor rejects required labels outside proto2 and on extensions" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, "required-extension.proto");
+        try file.writeMessage(4, host.slice());
+        try file.writeMessage(7, field.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects invalid field ownership markers" {
+    const allocator = std.testing.allocator;
+    {
+        var host = wire.Writer.init(allocator);
+        defer host.deinit();
+        try host.writeString(1, "Host");
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad");
+        try field.writeString(2, ".Host");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "normal-field-with-extendee.proto");
+        try file.writeMessage(4, host.slice());
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var host = wire.Writer.init(allocator);
+        defer host.deinit();
+        try host.writeString(1, "Host");
+        var range = wire.Writer.init(allocator);
+        defer range.deinit();
+        try range.writeInt32(1, 100);
+        try range.writeInt32(2, 200);
+        try host.writeMessage(5, range.slice());
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad_ext");
+        try field.writeString(2, ".Host");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeInt32(9, 0);
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "extension-with-oneof-index.proto");
         try file.writeMessage(4, host.slice());
         try file.writeMessage(7, field.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
