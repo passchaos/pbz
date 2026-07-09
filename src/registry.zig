@@ -117,6 +117,7 @@ pub const Registry = struct {
             const end = range.end orelse std.math.maxInt(i64);
             if (field.number >= range.start and field.number < end) {
                 try validateExtensionFieldDeclaration(field, range);
+                try validateMessageSetExtensionShape(field, extendee);
                 return;
             }
         }
@@ -514,6 +515,15 @@ fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range
     if (declaration.type_name.len != 0 and !extensionTypeMatches(field, declaration.type_name)) return error.InvalidExtensionDeclaration;
 }
 
+fn validateMessageSetExtensionShape(field: *const schema.FieldDescriptor, extendee: *const schema.MessageDescriptor) Error!void {
+    if (!extendee.messageSetWireFormat()) return;
+    if (field.cardinality == .repeated or field.cardinality == .required) return error.InvalidExtensionDeclaration;
+    switch (field.kind) {
+        .message => {},
+        else => return error.InvalidExtensionDeclaration,
+    }
+}
+
 fn qualifiedTypeName(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
     if (prefix.len == 0) return try allocator.dupe(u8, name);
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
@@ -862,6 +872,53 @@ test "registry validates extension extendee visibility" {
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&enum_extendee));
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&option_only));
     try registry.addFile(&custom_option);
+}
+
+test "registry validates cross-file MessageSet extension shapes" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  option message_set_wire_format = true;
+        \\  extensions 4 to max;
+        \\}
+    );
+    defer host.deinit();
+    host.name = "host.proto";
+    var valid = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "host.proto";
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer valid.deinit();
+    valid.name = "valid.proto";
+    var scalar = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "host.proto";
+        \\extend Host { optional int32 bad = 101; }
+    );
+    defer scalar.deinit();
+    scalar.name = "scalar.proto";
+    var repeated = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "host.proto";
+        \\message ExtRepeated {}
+        \\extend Host { repeated ExtRepeated bad = 102; }
+    );
+    defer repeated.deinit();
+    repeated.name = "repeated.proto";
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&host);
+    try registry.addFile(&valid);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&scalar));
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&repeated));
 }
 
 test "registry validates cross-file extension declarations" {
