@@ -688,6 +688,7 @@ pub const Parser = struct {
 
     fn parseGroupField(self: *Parser, cardinality: schema.Cardinality, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
         const name = try self.expectIdentifier();
+        if (name.len == 0 or !std.ascii.isUpper(name[0])) return error.InvalidFieldType;
         const field_name = try self.lowercaseOwned(name);
         errdefer self.allocator.free(field_name);
         try self.expectSymbol('=');
@@ -2503,6 +2504,14 @@ test "parser rejects invalid field option applicability" {
     defer file.deinit();
     try std.testing.expectEqual(@as(usize, 2), file.findMessage("Ok").?.findField("child").?.options.items.len);
     try std.testing.expectEqual(@as(usize, 1), file.findMessage("Ok").?.findField("big").?.options.items.len);
+}
+
+test "parser rejects group names not starting with capital letter" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional group legacy = 1 { optional int32 id = 2; } }
+    ));
 }
 
 test "parser rejects legacy groups under editions" {

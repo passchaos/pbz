@@ -1525,7 +1525,13 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
     if (file.syntax == .editions and field.kind == .group) return error.InvalidFieldType;
+    if (field.kind == .group and !groupTypeNameStartsWithCapital(field.kind.group)) return error.InvalidFieldType;
     try validateDecodedFieldOptionApplicability(file, field, is_extension);
+}
+
+fn groupTypeNameStartsWithCapital(type_name: []const u8) bool {
+    const leaf = leafTypeName(type_name);
+    return leaf.len != 0 and leaf[0] >= 'A' and leaf[0] <= 'Z';
 }
 
 fn validateDecodedFieldOptionApplicability(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
@@ -3289,6 +3295,31 @@ test "descriptor preserves proto2 group fields and nested group messages" {
     const items_msg = parent.findMessage("Items").?;
     try std.testing.expect(items_msg.findField("name").?.kind == .scalar);
     try std.testing.expectEqual(schema.ScalarType.string, items_msg.findField("name").?.kind.scalar);
+}
+
+test "descriptor rejects group names not starting with capital letter" {
+    const allocator = std.testing.allocator;
+    var field = wire.Writer.init(allocator);
+    defer field.deinit();
+    try field.writeString(1, "legacy");
+    try field.writeInt32(3, 1);
+    try field.writeInt32(4, 1);
+    try field.writeInt32(5, 10);
+    try field.writeString(6, ".Bad.legacy");
+    var nested = wire.Writer.init(allocator);
+    defer nested.deinit();
+    try nested.writeString(1, "legacy");
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "Bad");
+    try message.writeMessage(2, field.slice());
+    try message.writeMessage(3, nested.slice());
+    var file = wire.Writer.init(allocator);
+    defer file.deinit();
+    try file.writeString(1, "bad-group-name.proto");
+    try file.writeString(12, "proto2");
+    try file.writeMessage(4, message.slice());
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
 }
 
 test "descriptor rejects legacy group fields under editions" {
