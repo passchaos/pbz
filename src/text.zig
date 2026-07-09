@@ -662,11 +662,11 @@ const TextParser = struct {
 
     fn findExtension(self: *TextParser, descriptor: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
         const registry = self.registry orelse return null;
-        if (registry.findExtensionByName(descriptor.name, name)) |field| return field;
+        if (registry.findExtensionByNameForMessage(descriptor, name)) |field| return field;
         const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
         const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
         if (!std.mem.eql(u8, leaf, name)) {
-            if (registry.findExtensionByName(descriptor.name, leaf)) |field| return field;
+            if (registry.findExtensionByNameForMessage(descriptor, leaf)) |field| return field;
         }
         return null;
     }
@@ -1435,6 +1435,35 @@ test "text format formats and parses scoped proto2 extensions" {
     var parsed = try parseAllocWithRegistry(allocator, &file, &registry, host, "[demo.Scope.tag]: \"parsed\"");
     defer parsed.deinit();
     try std.testing.expectEqualSlices(u8, "parsed", parsed.getByNumber(tag.number).?.values.items[0].string);
+}
+
+test "text registry extension lookup distinguishes same leaf message names" {
+    const allocator = std.testing.allocator;
+    var a_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package a;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer a_file.deinit();
+    a_file.name = "a.proto";
+    var b_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package b;
+        \\message Host { optional int32 id = 1; }
+    );
+    defer b_file.deinit();
+    b_file.name = "b.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&a_file);
+    try registry.addFile(&b_file);
+
+    try std.testing.expectError(error.UnknownField, parseAllocWithRegistry(allocator, &b_file, &registry, b_file.findMessage("Host").?, "[a.note]: \"wrong-host\""));
+
+    var a_msg = try parseAllocWithRegistry(allocator, &a_file, &registry, a_file.findMessage("Host").?, "[a.note]: \"right-host\"");
+    defer a_msg.deinit();
+    try std.testing.expectEqualStrings("right-host", a_msg.get("note").?.values.items[0].string);
 }
 
 test "text format formats and parses numeric unknown fields" {

@@ -477,9 +477,9 @@ fn findJsonField(file: *const schema.FileDescriptor, registry: ?*const registry_
     }
     if (jsonExtensionName(key)) |extension_name| {
         if (registry) |reg| {
-            if (reg.findExtensionByName(message.name, extension_name)) |field| return field;
+            if (reg.findExtensionByNameForMessage(message, extension_name)) |field| return field;
             const leaf = leafName(extension_name);
-            if (reg.findExtensionByName(message.name, leaf)) |field| return field;
+            if (reg.findExtensionByNameForMessage(message, leaf)) |field| return field;
         } else {
             for (file.extensions.items) |*field| {
                 if (field.extendee != null and extensionExtendsMessage(field.extendee.?, message) and (std.mem.eql(u8, field.name, extension_name) or std.mem.eql(u8, field.name, leafName(extension_name)))) return field;
@@ -1683,6 +1683,35 @@ test "json parses and stringifies proto2 extension fields" {
     var leaf = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[tag]\":8}", .{});
     defer leaf.deinit();
     try std.testing.expectEqual(@as(i32, 8), leaf.getByNumber(ext.number).?.values.items[0].int32);
+}
+
+test "json registry extension lookup distinguishes same leaf message names" {
+    const allocator = std.testing.allocator;
+    var a_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package a;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+    );
+    defer a_file.deinit();
+    a_file.name = "a.proto";
+    var b_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package b;
+        \\message Host { optional int32 id = 1; }
+    );
+    defer b_file.deinit();
+    b_file.name = "b.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&a_file);
+    try registry.addFile(&b_file);
+
+    try std.testing.expectError(error.UnknownField, parseAllocWithRegistry(allocator, &b_file, &registry, b_file.findMessage("Host").?, "{\"[a.note]\":\"wrong-host\"}", .{}));
+
+    var a_msg = try parseAllocWithRegistry(allocator, &a_file, &registry, a_file.findMessage("Host").?, "{\"[a.note]\":\"right-host\"}", .{});
+    defer a_msg.deinit();
+    try std.testing.expectEqualStrings("right-host", a_msg.get("note").?.values.items[0].string);
 }
 
 test "json parses and stringifies scoped proto2 extensions" {

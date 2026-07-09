@@ -138,6 +138,37 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findExtensionByNameForMessage(self: *const Registry, message: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
+        const normalized_name = normalizeName(name);
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (self.extensionNameTargetsMessage(file, field, message, normalized_name)) return field;
+            }
+            for (file.messages.items) |*scope| {
+                if (self.findExtensionByNameForMessageInScope(file, scope, message, normalized_name)) |field| return field;
+            }
+        }
+        return null;
+    }
+
+    fn findExtensionByNameForMessageInScope(self: *const Registry, file: *const schema.FileDescriptor, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
+        for (scope.extensions.items) |*field| {
+            if (self.extensionNameTargetsMessage(file, field, message, name)) return field;
+        }
+        for (scope.messages.items) |*nested| {
+            if (self.findExtensionByNameForMessageInScope(file, nested, message, name)) |field| return field;
+        }
+        return null;
+    }
+
+    fn extensionNameTargetsMessage(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, name: []const u8) bool {
+        if (!schema.extensionNameMatches(file.package, field, name)) return false;
+        const extendee = field.extendee orelse return false;
+        const owner = self.fileContainingExtension(field) orelse return false;
+        const resolved = self.findMessageVisible(owner, extendee, null) orelse return false;
+        return resolved == message;
+    }
+
     pub fn findMessage(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.MessageDescriptor {
         if (self.findType(name, scope)) |type_ref| switch (type_ref) {
             .message => |message| return message,
