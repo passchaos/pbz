@@ -3342,9 +3342,34 @@ fn messageDecodeUsesAllocator(message: *const schema.MessageDescriptor) bool {
 
 fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var decoded = try @This().decode(allocator, bytes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer decoded.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try decoded.cloneOwned(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = try @This().decode(allocator, bytes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try writer.writeAll("\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var self = try @This().decodeOwned(allocator, bytes);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     try indent(writer, depth + 1);
@@ -7500,6 +7525,9 @@ test "codegen emits owned clone helper" {
     defer allocator.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try decoded.cloneOwned(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"name\" = try owned_allocator.dupe(u8, self.@\"name\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"raw\" = try owned_allocator.dupe(u8, self.@\"raw\");") != null);
