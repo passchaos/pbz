@@ -758,8 +758,12 @@ pub const Parser = struct {
         try self.parseOptionList(&field.options, ']');
         for (field.options.items) |option| {
             const leaf = optionLeaf(option.name);
-            if (std.mem.eql(u8, leaf, "default")) field.default_value = option.value;
+            if (std.mem.eql(u8, leaf, "default")) {
+                if (field.default_value != null) return error.InvalidFieldType;
+                field.default_value = option.value;
+            }
             if (std.mem.eql(u8, leaf, "json_name")) {
+                if (field.json_name != null) return error.InvalidFieldType;
                 field.json_name = switch (option.value) {
                     .string => |text| text,
                     else => return error.InvalidFieldType,
@@ -1756,13 +1760,19 @@ const AggregateOptionParser = struct {
 fn validateEnum(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) (ParseError || std.mem.Allocator.Error)!void {
     if (syntax == .proto3 and (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0)) return error.InvalidEnum;
     try validateEnumReserved(enumeration);
-    const allow_alias = enumAllowsAlias(enumeration);
+    const alias_state = enumAliasState(enumeration);
+    if (alias_state.has_allow_alias and !alias_state.allow_alias) return error.InvalidEnum;
+    var has_duplicate_numbers = false;
     for (enumeration.values.items, 0..) |value, i| {
         for (enumeration.values.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, value.name, other.name)) return error.DuplicateEnumValue;
-            if (!allow_alias and value.number == other.number) return error.DuplicateEnumValue;
+            if (value.number == other.number) {
+                has_duplicate_numbers = true;
+                if (!alias_state.allow_alias) return error.DuplicateEnumValue;
+            }
         }
     }
+    if (alias_state.allow_alias and !has_duplicate_numbers) return error.InvalidEnum;
     try validateEnumValueCanonicalNames(allocator, enumeration);
 }
 
@@ -1804,11 +1814,22 @@ fn validateEnumReserved(enumeration: *const schema.EnumDescriptor) ParseError!vo
     }
 }
 
-fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
+const EnumAliasState = struct {
+    has_allow_alias: bool = false,
+    allow_alias: bool = false,
+};
+
+fn enumAliasState(enumeration: *const schema.EnumDescriptor) EnumAliasState {
     for (enumeration.options.items) |option| {
-        if (std.mem.eql(u8, option.name, "allow_alias")) return schema.optionAsBool(option.value) orelse false;
+        if (std.mem.eql(u8, option.name, "allow_alias")) {
+            return .{ .has_allow_alias = true, .allow_alias = schema.optionAsBool(option.value) orelse false };
+        }
     }
-    return false;
+    return .{};
+}
+
+fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
+    return enumAliasState(enumeration).allow_alias;
 }
 
 fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
@@ -2485,6 +2506,10 @@ test "parser rejects invalid field defaults" {
         \\enum Kind { UNKNOWN = 0; }
         \\message Bad { optional Kind kind = 1 [default = MISSING]; }
     ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [default = 1, default = 2]; }
+    ));
 }
 
 test "parser rejects duplicate type symbols in the same scope" {
@@ -2671,6 +2696,10 @@ test "parser rejects invalid json_name options" {
     ));
     try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
         \\syntax = "proto2";
+        \\message Bad { optional int32 foo = 1 [json_name = "first", json_name = "second"]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
         \\message Target { extensions 100 to 200; }
         \\extend Target { optional int32 ext = 150 [json_name = "customExt"]; }
     ));
@@ -2693,6 +2722,14 @@ test "parser validates enum values" {
     try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum MyEnum { MY_ENUM_FOO = 1; FOO = 2; }
+    ));
+    try std.testing.expectError(error.InvalidEnum, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { option allow_alias = false; A = 1; B = 2; }
+    ));
+    try std.testing.expectError(error.InvalidEnum, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Bad { option allow_alias = true; A = 1; B = 2; }
     ));
     var aliases = try Parser.parse(allocator,
         \\syntax = "proto2";

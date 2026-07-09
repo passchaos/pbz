@@ -20,14 +20,14 @@ validated feature set.
   - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
-  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including allow_alias plus enum-value sibling-scope and prefix/case conflicts
-  - JSON field-name validation for default lowerCamelCase collisions, explicit `json_name` collisions, extension-looking names, embedded NULs, extension-field `json_name` misuse, and explicit `map_entry` misuse
+  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including allow_alias misuse plus enum-value sibling-scope and prefix/case conflicts
+  - JSON field-name validation for default lowerCamelCase collisions, explicit `json_name` duplicates/collisions, extension-looking names, embedded NULs, extension-field `json_name` misuse, and explicit `map_entry` misuse
   - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape in parser and descriptor decode paths
   - extension range options for `declaration`, `verification`, and range-local `features.*`; declaration-scope `features.*` across file/message/field/oneof/enum/enum-value/service/method with strict feature-name/value validation; nested/scoped proto2 extension full-name tracking; plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
-  - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message invalid-default rejection
+  - proto2 field default validation for scalar/string/bytes/enum defaults, with proto3/repeated/message/duplicate invalid-default rejection
   - packed/lazy/unverified_lazy/jstype field option validation, with editions rejecting legacy `[packed]`, `[ctype]`, and `group` syntax in favor of features and validating implicit-presence default/closed-enum constraints
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
@@ -395,7 +395,7 @@ The current descriptor support covers core file/message/import/field/enum/servic
 metadata, proto2 group descriptors and nested group messages, map-entry/proto3-optional descriptors, packed field options, enum
 default names on encode, typed scalar/enum default values on decode,
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
-oneof index/name validation, enum allow_alias, enum descriptor validation,
+oneof index/name validation, enum allow_alias misuse, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,
 structured SourceCodeInfo location path/span/comments including parser-generated basic declaration/field/oneof/extension-range/reserved/enum-value/method locations plus leading/trailing/detached line and block comments, ExtensionRangeOptions
 declarations/verification/features with parser-side consistency checks,
