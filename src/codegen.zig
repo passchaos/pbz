@@ -643,7 +643,7 @@ fn writeValidateRequired(file: *const schema.FileDescriptor, message: *const sch
     try writer.writeAll("try self.validateRequired();\n");
     var uses_allocator = false;
     for (message.fields.items) |*field| {
-        if (field.kind == .message or field.kind == .group) {
+        if (field.kind == .message or field.kind == .group or fieldHasMessageMapValue(field)) {
             uses_allocator = true;
             try writeValidateMessagePayloadField(file, field, writer, depth + 1);
         }
@@ -663,6 +663,7 @@ fn writeValidateRequired(file: *const schema.FileDescriptor, message: *const sch
 }
 
 fn writeValidateMessagePayloadField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind == .map) return try writeValidateMapMessagePayloadField(file, field, writer, depth);
     const type_name = switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
@@ -696,6 +697,33 @@ fn writeValidateMessagePayloadField(file: *const schema.FileDescriptor, field: *
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
+}
+
+fn writeValidateMapMessagePayloadField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map_type| map_type,
+        else => return,
+    };
+    const type_name = switch (map_type.value.*) {
+        .message => |name| name,
+        else => return,
+    };
+    if (!codegenCanReferenceMessage(file, type_name)) return;
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try writeDecodeAndValidatePayload(type_name, "entry.value", writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn fieldHasMessageMapValue(field: *const schema.FieldDescriptor) bool {
+    const map_type = switch (field.kind) {
+        .map => |map_type| map_type,
+        else => return false,
+    };
+    return map_type.value.* == .message;
 }
 
 fn writeValidateMessagePayloadOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -3475,7 +3503,12 @@ test "codegen emits recursive required validation for message payloads" {
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Child { required int32 id = 1; }
-        \\message Parent { optional Child child = 1; repeated Child children = 2; oneof pick { Child picked = 3; } }
+        \\message Parent {
+        \\  optional Child child = 1;
+        \\  repeated Child children = 2;
+        \\  oneof pick { Child picked = 3; }
+        \\  map<string, Child> keyed = 4;
+        \\}
     );
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
@@ -3484,6 +3517,8 @@ test "codegen emits recursive required validation for message payloads" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |payload|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"keyed\") |entry|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
     const json_initialized_start = std.mem.indexOf(u8, content, "pub fn jsonParseInitialized").?;

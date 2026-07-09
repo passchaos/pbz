@@ -226,7 +226,7 @@ from their generated `write` helper and expose a `decodeMessageSetItem` helper
 for extracting matching item payloads.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
-including generated message payload fields when their types are available.
+including generated message payload fields and map message values when their types are available.
 They also expose `missingRequiredFieldName` for callers that want the first
 missing direct required field name before handling `error.MissingRequiredField`.
 Packable repeated scalar and enum fields emit packed wire format when resolved
