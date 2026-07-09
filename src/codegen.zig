@@ -500,6 +500,8 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeDeinit(message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeCloneOwned(file, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeOwnedAllocator(writer, depth + 1);
     try writer.writeAll("\n");
     try writeFieldAccessors(ctx, message, writer, depth + 1);
@@ -2664,6 +2666,176 @@ fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer,
     try writer.writeAll("self.* = undefined;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeCloneOwned(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var out = @This().init();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer out.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeCloneField(file, field, writer, depth + 1);
+    }
+    for (message.oneofs.items) |oneof| try writeCloneOneof(message, oneof, writer, depth + 1);
+    try writeCloneUnknownFields(writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("return out;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeCloneField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind == .map) return try writeCloneMapField(field, writer, depth);
+    if (field.cardinality == .repeated) return try writeCloneRepeatedField(field, writer, depth);
+    try indent(writer, depth);
+    try writer.writeAll("out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = ");
+    try writeCloneFieldValueExpr(field.kind, field.name, writer);
+    try writer.writeAll(";\n");
+    if (hasPresence(file, field.*)) {
+        try indent(writer, depth);
+        try writer.writeAll("out.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(" = self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(";\n");
+    }
+}
+
+fn writeCloneRepeatedField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = try allocator.alloc(");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(", self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(", 0..) |item, i| out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll("[i] = ");
+    try writeCloneValueExpr(field.kind, "item", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeCloneMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = try allocator.alloc(");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(", 0..) |entry, i| out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll("[i] = .{ .key = ");
+    try writeCloneValueExpr(.{ .scalar = map_type.key }, "entry.key", writer);
+    try writer.writeAll(", .value = ");
+    try writeCloneValueExpr(map_type.value.*, "entry.value", writer);
+    try writer.writeAll(" };\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeCloneOneof(message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("out.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(" = switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".none => .none,\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            if (!std.mem.eql(u8, name, oneof.name)) continue;
+            try indent(writer, depth + 1);
+            try writer.writeAll(".");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" => |value| .{ .");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" = ");
+            try writeCloneValueExpr(field.kind, "value", writer);
+            try writer.writeAll(" },\n");
+        }
+    }
+    try indent(writer, depth);
+    try writer.writeAll("};\n");
+}
+
+fn writeCloneUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("out.@\"_unknown_fields\" = try allocator.alloc([]const u8, self.@\"_unknown_fields\".len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\", 0..) |raw, i| out.@\"_unknown_fields\"[i] = try allocator.dupe(u8, raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeCloneFieldValueExpr(kind: schema.FieldKind, field_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .string, .bytes => {
+                try writer.writeAll("try owned_allocator.dupe(u8, self.");
+                try writeQuotedIdent(field_name, writer);
+                try writer.writeAll(")");
+            },
+            else => {
+                try writer.writeAll("self.");
+                try writeQuotedIdent(field_name, writer);
+            },
+        },
+        .message, .group => {
+            try writer.writeAll("try owned_allocator.dupe(u8, self.");
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(")");
+        },
+        .enumeration => {
+            try writer.writeAll("self.");
+            try writeQuotedIdent(field_name, writer);
+        },
+        .map => unreachable,
+    }
+}
+
+fn writeCloneValueExpr(kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| switch (scalar) {
+            .string, .bytes => try writer.print("try owned_allocator.dupe(u8, {s})", .{value_expr}),
+            else => try writer.writeAll(value_expr),
+        },
+        .message, .group => try writer.print("try owned_allocator.dupe(u8, {s})", .{value_expr}),
+        .enumeration => try writer.writeAll(value_expr),
+        .map => try writer.writeAll(value_expr),
+    }
 }
 
 fn writeMissingRequiredFieldName(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -7300,6 +7472,45 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_alias\"(self: *@This()) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits owned clone helper" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child { optional int32 id = 1; }
+        \\message Parent {
+        \\  optional string name = 1;
+        \\  optional bytes raw = 2;
+        \\  repeated string tags = 3;
+        \\  optional Child child = 4;
+        \\  repeated Child children = 5;
+        \\  map<string, bytes> blobs = 6;
+        \\  oneof pick { string alias = 7; Child picked = 8; int32 id = 9; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"name\" = try owned_allocator.dupe(u8, self.@\"name\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"raw\" = try owned_allocator.dupe(u8, self.@\"raw\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\", 0..) |item, i| out.@\"tags\"[i] = try owned_allocator.dupe(u8, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"child\" = try owned_allocator.dupe(u8, self.@\"child\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |item, i| out.@\"children\"[i] = try owned_allocator.dupe(u8, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"blobs\", 0..) |entry, i| out.@\"blobs\"[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try owned_allocator.dupe(u8, entry.value) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"alias\" => |value| .{ .@\"alias\" = try owned_allocator.dupe(u8, value) },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| .{ .@\"picked\" = try owned_allocator.dupe(u8, value) },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"id\" => |value| .{ .@\"id\" = value },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\", 0..) |raw, i| out.@\"_unknown_fields\"[i] = try allocator.dupe(u8, raw);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
