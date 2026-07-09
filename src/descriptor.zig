@@ -1681,7 +1681,7 @@ fn validateDecodedProto3OptionalFields(message: *const schema.MessageDescriptor)
     for (message.fields.items) |field| {
         if (!field.proto3_optional) continue;
         const oneof_name = field.oneof_name orelse return error.InvalidFieldType;
-        if (field.cardinality != .optional or field.kind == .map or field.kind == .message or field.kind == .group) return error.InvalidFieldType;
+        if (field.cardinality != .optional or field.kind == .map or field.kind == .group) return error.InvalidFieldType;
         var count: usize = 0;
         for (message.fields.items) |candidate| {
             if (candidate.oneof_name) |candidate_oneof| {
@@ -3470,7 +3470,8 @@ test "descriptor encodes proto3 optional synthetic oneof" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
-        \\message M { optional int32 value = 1; }
+        \\message Child {}
+        \\message M { optional int32 value = 1; optional Child child = 2; }
     );
     defer file.deinit();
     const bytes = try encodeFileDescriptorProto(allocator, &file, "optional.proto");
@@ -3478,10 +3479,14 @@ test "descriptor encodes proto3 optional synthetic oneof" {
     var decoded = try decodeFileDescriptorProto(allocator, bytes);
     defer decoded.deinit();
     const msg = decoded.findMessage("M").?;
-    try std.testing.expectEqual(@as(usize, 1), msg.oneofs.items.len);
+    try std.testing.expectEqual(@as(usize, 2), msg.oneofs.items.len);
     try std.testing.expectEqualStrings("_value", msg.oneofs.items[0].name);
     try std.testing.expectEqualStrings("_value", msg.findField("value").?.oneof_name.?);
     try std.testing.expect(msg.findField("value").?.proto3_optional);
+    try std.testing.expectEqualStrings("_child", msg.oneofs.items[1].name);
+    try std.testing.expectEqualStrings("_child", msg.findField("child").?.oneof_name.?);
+    try std.testing.expect(msg.findField("child").?.proto3_optional);
+    try std.testing.expect(msg.findField("child").?.kind == .message);
 }
 
 test "descriptor rejects invalid oneof descriptors and indexes" {
@@ -3642,7 +3647,8 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         try message.writeMessage(8, oneof.slice());
         var file = wire.Writer.init(allocator);
         defer file.deinit();
-        try file.writeString(1, "bad-proto3-optional-message.proto");
+        try file.writeString(1, "bad-proto2-proto3-optional-message.proto");
+        try file.writeString(12, "proto2");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
