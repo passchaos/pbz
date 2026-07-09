@@ -533,7 +533,7 @@ pub const Parser = struct {
                 try self.addSourceLocation(path, value_start, self.previousEnd());
             }
         }
-        try validateEnum(&enumeration, self.file.syntax);
+        try validateEnum(self.allocator, &enumeration, self.file.syntax);
         try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return enumeration;
     }
@@ -1716,7 +1716,7 @@ const AggregateOptionParser = struct {
     }
 };
 
-fn validateEnum(enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) ParseError!void {
+fn validateEnum(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) (ParseError || std.mem.Allocator.Error)!void {
     if (syntax == .proto3 and (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0)) return error.InvalidEnum;
     try validateEnumReserved(enumeration);
     const allow_alias = enumAllowsAlias(enumeration);
@@ -1724,6 +1724,19 @@ fn validateEnum(enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax
         for (enumeration.values.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, value.name, other.name)) return error.DuplicateEnumValue;
             if (!allow_alias and value.number == other.number) return error.DuplicateEnumValue;
+        }
+    }
+    try validateEnumValueCanonicalNames(allocator, enumeration);
+}
+
+fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor) (ParseError || std.mem.Allocator.Error)!void {
+    for (enumeration.values.items, 0..) |value, i| {
+        const key = try schema.enumValueCanonicalKey(allocator, enumeration.name, value.name);
+        defer allocator.free(key);
+        for (enumeration.values.items[i + 1 ..]) |other| {
+            const other_key = try schema.enumValueCanonicalKey(allocator, enumeration.name, other.name);
+            defer allocator.free(other_key);
+            if (std.mem.eql(u8, key, other_key) and !std.mem.eql(u8, value.name, other.name) and value.number != other.number) return error.DuplicateEnumValue;
         }
     }
 }
@@ -2511,6 +2524,20 @@ test "parser validates enum values" {
         \\syntax = "proto2";
         \\enum Bad { A = 1; A = 2; }
     ));
+    try std.testing.expectError(error.DuplicateEnumValue, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum MyEnum { MY_ENUM_FOO = 1; FOO = 2; }
+    ));
+    var aliases = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Alias {
+        \\  option allow_alias = true;
+        \\  ALIAS_FOO = 1;
+        \\  FOO = 1;
+        \\}
+    );
+    defer aliases.deinit();
+    try std.testing.expectEqual(@as(usize, 1), aliases.enums.items.len);
     try std.testing.expectError(error.DuplicateSymbol, Parser.parse(allocator,
         \\syntax = "proto2";
         \\enum First { SHARED = 0; }

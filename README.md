@@ -20,7 +20,7 @@ validated feature set.
   - in-memory and filesystem source tree loaders that recursively parse imports
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
-  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import and edition-value restrictions, and enum validation including allow_alias plus enum-value sibling-scope conflicts
+  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges, field-number, reserved/extension/enum range conflicts, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, weak-import and edition-value restrictions, and enum validation including allow_alias plus enum-value sibling-scope and prefix/case conflicts
   - JSON field-name validation for default lowerCamelCase collisions, explicit `json_name` collisions, extension-looking names, embedded NULs, extension-field `json_name` misuse, and explicit `map_entry` misuse
   - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape in parser and descriptor decode paths
   - extension range options for `declaration`, `verification`, and range-local `features.*`; declaration-scope `features.*` across file/message/field/oneof/enum/enum-value/service/method with strict feature-name/value validation; plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation

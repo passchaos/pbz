@@ -833,6 +833,46 @@ pub fn writeDefaultJsonName(field_name: []const u8, writer: *std.Io.Writer) std.
     while (nextDefaultJsonNameChar(field_name, &index, &upper_next)) |c| try writer.writeByte(c);
 }
 
+pub fn enumValueCanonicalKey(allocator: std.mem.Allocator, enum_name: []const u8, value_name: []const u8) std.mem.Allocator.Error![]u8 {
+    const stripped = enumValueWithoutPrefix(allocator, enum_name, value_name);
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var next_upper = true;
+    for (stripped) |c| {
+        if (c == '_') {
+            next_upper = true;
+            continue;
+        }
+        try out.append(allocator, if (next_upper) std.ascii.toUpper(c) else std.ascii.toLower(c));
+        next_upper = false;
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn enumValueWithoutPrefix(allocator: std.mem.Allocator, enum_name: []const u8, value_name: []const u8) []const u8 {
+    _ = allocator;
+    var prefix_buf: [256]u8 = undefined;
+    var prefix_len: usize = 0;
+    for (enum_name) |c| {
+        if (c == '_') continue;
+        if (prefix_len >= prefix_buf.len) return value_name;
+        prefix_buf[prefix_len] = std.ascii.toLower(c);
+        prefix_len += 1;
+    }
+
+    var i: usize = 0;
+    var j: usize = 0;
+    while (i < value_name.len and j < prefix_len) : (i += 1) {
+        if (value_name[i] == '_') continue;
+        if (std.ascii.toLower(value_name[i]) != prefix_buf[j]) return value_name;
+        j += 1;
+    }
+    if (j < prefix_len) return value_name;
+    while (i < value_name.len and value_name[i] == '_') : (i += 1) {}
+    if (i == value_name.len) return value_name;
+    return value_name[i..];
+}
+
 fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?u8 {
     while (index.* < name.len) {
         const c = name[index.*];

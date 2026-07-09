@@ -2245,7 +2245,7 @@ fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!s
             else => try reader.skipValue(tag),
         }
     }
-    try validateEnumDescriptor(&enumeration);
+    try validateEnumDescriptor(allocator, &enumeration);
     return enumeration;
 }
 
@@ -2292,7 +2292,7 @@ fn decodeEnumValueOptions(allocator: std.mem.Allocator, value: *schema.EnumValue
     }
 }
 
-fn validateEnumDescriptor(enumeration: *const schema.EnumDescriptor) Error!void {
+fn validateEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor) Error!void {
     if (!isIdentifier(enumeration.name) or enumeration.values.items.len == 0) return error.InvalidFieldType;
     const allow_alias = enumAllowsAlias(enumeration);
     for (enumeration.values.items, 0..) |value, i| {
@@ -2308,7 +2308,20 @@ fn validateEnumDescriptor(enumeration: *const schema.EnumDescriptor) Error!void 
             if (std.mem.eql(u8, name, value.name)) return error.InvalidFieldType;
         }
     }
+    try validateEnumValueCanonicalNames(allocator, enumeration);
     try validateDecodedReservedRanges(enumeration.reserved_ranges.items, enumeration.reserved_names.items);
+}
+
+fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor) Error!void {
+    for (enumeration.values.items, 0..) |value, i| {
+        const key = try schema.enumValueCanonicalKey(allocator, enumeration.name, value.name);
+        defer allocator.free(key);
+        for (enumeration.values.items[i + 1 ..]) |other| {
+            const other_key = try schema.enumValueCanonicalKey(allocator, enumeration.name, other.name);
+            defer allocator.free(other_key);
+            if (std.mem.eql(u8, key, other_key) and !std.mem.eql(u8, value.name, other.name) and value.number != other.number) return error.InvalidFieldType;
+        }
+    }
 }
 
 fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []const []const u8) Error!void {
@@ -5692,6 +5705,41 @@ test "descriptor rejects invalid enum descriptors" {
         try file.writeString(1, "dup-number.proto");
         try file.writeMessage(5, enum_writer.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var first = wire.Writer.init(allocator);
+        defer first.deinit();
+        try first.writeString(1, "MY_ENUM_FOO");
+        try first.writeInt32(2, 1);
+        var second = wire.Writer.init(allocator);
+        defer second.deinit();
+        try second.writeString(1, "FOO");
+        try second.writeInt32(2, 2);
+        var enum_writer = wire.Writer.init(allocator);
+        defer enum_writer.deinit();
+        try enum_writer.writeString(1, "MyEnum");
+        try enum_writer.writeMessage(2, first.slice());
+        try enum_writer.writeMessage(2, second.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "enum-prefix-conflict.proto");
+        try file.writeMessage(5, enum_writer.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var enumeration = schema.EnumDescriptor{ .name = "Alias" };
+        try enumeration.options.append(allocator, .{ .name = "allow_alias", .value = .{ .boolean = true } });
+        try enumeration.values.append(allocator, .{ .name = "ALIAS_FOO", .number = 1 });
+        try enumeration.values.append(allocator, .{ .name = "FOO", .number = 1 });
+        try file.enums.append(allocator, enumeration);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "enum-prefix-alias.proto");
+        defer allocator.free(bytes);
+        var decoded = try decodeFileDescriptorProto(allocator, bytes);
+        defer decoded.deinit();
+        try std.testing.expect(decoded.findEnum("Alias") != null);
     }
     {
         var value = wire.Writer.init(allocator);
