@@ -443,6 +443,35 @@ test "conformance dynamic runner uses registry for imported protobuf output" {
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x12, 0x02, 0x01, 0x02 }, try reader.readBytes());
 }
 
+test "conformance dynamic runner formats proto2 extensions as text" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\extend Host { optional int32 tag = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    var payload = wire.Writer.init(allocator);
+    defer payload.deinit();
+    try payload.writeInt32(100, 7);
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .protobuf_payload = payload.slice() },
+        .requested_output_format = .text_format,
+        .message_type = "demo.Host",
+        .test_category = .binary_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 8), tag.number);
+    try std.testing.expectEqualSlices(u8, "[demo.tag]: 7\n", try reader.readBytes());
+}
+
 test "conformance dynamic runner reports missing required fields" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { required int32 id = 1; }");
