@@ -3056,6 +3056,9 @@ test "descriptor decodes scalar default values with typed option values" {
         \\  optional float ratio = 3 [default = 1.5];
         \\  optional string name = 4 [default = "anon"];
         \\  optional bytes raw = 5 [default = "\001\x02"];
+        \\  optional double pos_inf = 6 [default = inf];
+        \\  optional double neg_inf = 7 [default = -inf];
+        \\  optional float quiet_nan = 8 [default = nan];
         \\}
     );
     defer file.deinit();
@@ -3069,6 +3072,9 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expectEqual(@as(i64, 42), msg.findField("count").?.default_value.?.integer);
     try std.testing.expect(msg.findField("enabled").?.default_value.?.boolean);
     try std.testing.expectEqual(@as(f64, 1.5), msg.findField("ratio").?.default_value.?.float);
+    try std.testing.expect(std.math.isPositiveInf(msg.findField("pos_inf").?.default_value.?.float));
+    try std.testing.expect(std.math.isNegativeInf(msg.findField("neg_inf").?.default_value.?.float));
+    try std.testing.expect(std.math.isNan(msg.findField("quiet_nan").?.default_value.?.float));
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
 }

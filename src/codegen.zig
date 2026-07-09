@@ -9916,6 +9916,8 @@ test "codegen emits proto2 scalar and enum defaults" {
         \\  optional bytes raw = 5 [default = "\001\x02"];
         \\  optional float ratio = 6 [default = inf];
         \\  optional Code code = 7;
+        \\  optional double neg_ratio = 8 [default = -inf];
+        \\  optional float quiet = 9 [default = nan];
         \\}
     );
     defer file.deinit();
@@ -9928,6 +9930,8 @@ test "codegen emits proto2 scalar and enum defaults" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"raw\": []const u8 = \"\\x01\\x02\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"ratio\": f32 = std.math.inf(f32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"code\": i32 = 5") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"neg_ratio\": f64 = -std.math.inf(f64)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"quiet\": f32 = std.math.nan(f32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_count\": bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_count\" or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_kind\" or options.always_print_primitive_fields)") != null);

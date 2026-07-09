@@ -889,6 +889,11 @@ pub const Parser = struct {
         if (self.current.tag == .number or (self.current.tag == .symbol and (self.current.symbol == '-' or self.current.symbol == '+'))) {
             const negative = self.consumeSymbol('-');
             _ = if (!negative) self.consumeSymbol('+') else false;
+            if (self.current.tag == .identifier) {
+                const ident = self.current.text;
+                try self.advanceVoid();
+                return .{ .float = try parseSpecialFloat(ident, negative) };
+            }
             const number_text = try self.expectNumber();
             if (std.mem.indexOfAny(u8, number_text, ".eE") != null) {
                 var buf: [128]u8 = undefined;
@@ -2017,9 +2022,21 @@ fn optionFloat(value: schema.OptionValue) ?f64 {
     return switch (value) {
         .float => |v| v,
         .integer => |v| @floatFromInt(v),
-        .identifier, .string => |text| std.fmt.parseFloat(f64, text) catch null,
+        .identifier, .string => |text| parseSpecialFloat(text, false) catch (std.fmt.parseFloat(f64, text) catch null),
         else => null,
     };
+}
+
+fn parseSpecialFloat(text: []const u8, negative: bool) ParseError!f64 {
+    if (std.ascii.eqlIgnoreCase(text, "inf") or std.ascii.eqlIgnoreCase(text, "infinity")) {
+        const value = std.math.inf(f64);
+        return if (negative) -value else value;
+    }
+    if (std.ascii.eqlIgnoreCase(text, "nan")) {
+        if (negative) return error.InvalidNumber;
+        return std.math.nan(f64);
+    }
+    return error.InvalidNumber;
 }
 
 fn parseI64(text: []const u8) ParseError!i64 {
@@ -2311,6 +2328,30 @@ test "parser resolves enum symbolic defaults" {
     var file = try Parser.parse(allocator, source);
     defer file.deinit();
     try std.testing.expectEqual(@as(i64, 7), file.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "parser accepts special float defaults" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Defaults {
+        \\  optional double pos = 1 [default = inf];
+        \\  optional double neg = 2 [default = -inf];
+        \\  optional float quiet = 3 [default = nan];
+        \\  optional float plus = 4 [default = +inf];
+        \\}
+    ;
+    var file = try Parser.parse(allocator, source);
+    defer file.deinit();
+    const msg = file.findMessage("Defaults").?;
+    try std.testing.expectEqualStrings("inf", msg.findField("pos").?.default_value.?.identifier);
+    try std.testing.expect(std.math.isNegativeInf(msg.findField("neg").?.default_value.?.float));
+    try std.testing.expectEqualStrings("nan", msg.findField("quiet").?.default_value.?.identifier);
+    try std.testing.expect(std.math.isPositiveInf(msg.findField("plus").?.default_value.?.float));
+    try std.testing.expectError(error.InvalidNumber, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional float value = 1 [default = -nan]; }
+    ));
 }
 
 test "parser rejects invalid field defaults" {

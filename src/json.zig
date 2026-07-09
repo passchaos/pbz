@@ -1818,6 +1818,9 @@ test "json stringify can always print absent primitive repeated and map fields" 
         \\  map<string, int32> counts = 6;
         \\  optional bytes raw = 7 [default = "hi"];
         \\  optional int64 big = 8 [default = 9007199254740993];
+        \\  optional double pos_inf = 9 [default = inf];
+        \\  optional double neg_inf = 10 [default = -inf];
+        \\  optional float quiet_nan = 11 [default = nan];
         \\}
     ;
     var file = try @import("parser.zig").Parser.parse(allocator, source);
@@ -1828,7 +1831,7 @@ test "json stringify can always print absent primitive repeated and map fields" 
     defer msg.deinit();
     const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .always_print_primitive_fields = true });
     defer allocator.free(rendered);
-    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\"}", rendered);
+    try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\",\"posInf\":\"Infinity\",\"negInf\":\"-Infinity\",\"quietNan\":\"NaN\"}", rendered);
 }
 
 test "json parses bytes from base64 variants" {

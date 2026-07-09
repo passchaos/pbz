@@ -2136,6 +2136,9 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
         \\  optional Code code = 6;
         \\  repeated Code codes = 7;
         \\  map<string, Code> code_by_name = 8;
+        \\  optional double pos_inf = 9 [default = inf];
+        \\  optional double neg_inf = 10 [default = -inf];
+        \\  optional float quiet_nan = 11 [default = nan];
         \\}
     ;
     var file = try parser.Parser.parse(allocator, source);
@@ -2152,6 +2155,9 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expectEqual(@as(i32, 1), message.getOrDefault(desc.findField("kind").?).enumeration);
     try std.testing.expectEqual(@as(i32, 0), message.getOrDefault(desc.findField("code").?).enumeration);
     try std.testing.expectEqual(@as(i32, 5), message.getOrDefaultWithFile(&file, desc.findField("code").?).enumeration);
+    try std.testing.expect(std.math.isPositiveInf(message.getOrDefault(desc.findField("pos_inf").?).double));
+    try std.testing.expect(std.math.isNegativeInf(message.getOrDefault(desc.findField("neg_inf").?).double));
+    try std.testing.expect(std.math.isNan(message.getOrDefault(desc.findField("quiet_nan").?).float));
     try std.testing.expectEqualStrings("ADMIN", message.getEnumNameOrDefaultWithFile(&file, desc.findField("kind").?).?);
     try std.testing.expectEqualStrings("OK", message.getEnumNameOrDefaultWithFile(&file, desc.findField("code").?).?);
     try std.testing.expectEqualStrings("", message.getOrDefault(desc.findField("blob").?).bytes);
