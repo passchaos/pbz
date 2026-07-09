@@ -6492,7 +6492,15 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return switch (value) {
         \\        .integer => |v| @as(T, @floatFromInt(v)),
         \\        .float => |v| @floatCast(v),
-        \\        .number_string, .string => |text| try std.fmt.parseFloat(T, text),
+        \\        .number_string => |text| try std.fmt.parseFloat(T, text),
+        \\        .string => |text| if (std.mem.eql(u8, text, "NaN"))
+        \\            std.math.nan(T)
+        \\        else if (std.mem.eql(u8, text, "Infinity"))
+        \\            std.math.inf(T)
+        \\        else if (std.mem.eql(u8, text, "-Infinity"))
+        \\            -std.math.inf(T)
+        \\        else
+        \\            try std.fmt.parseFloat(T, text),
         \\        else => error.TypeMismatch,
         \\    };
         \\}
@@ -10135,6 +10143,10 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: JsonParseOptions) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFloat(comptime T: type, value: std.json.Value) !T") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, text, \"NaN\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else if (std.mem.eql(u8, text, \"Infinity\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else if (std.mem.eql(u8, text, \"-Infinity\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (value == .null)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"id\" = try @This().jsonInt(i32, value);") != null);
