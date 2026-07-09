@@ -1453,7 +1453,7 @@ fn validateDecodedProto3OptionalFields(message: *const schema.MessageDescriptor)
     for (message.fields.items) |field| {
         if (!field.proto3_optional) continue;
         const oneof_name = field.oneof_name orelse return error.InvalidFieldType;
-        if (field.cardinality == .repeated or field.kind == .map) return error.InvalidFieldType;
+        if (field.cardinality != .optional or field.kind == .map or field.kind == .message or field.kind == .group) return error.InvalidFieldType;
         var count: usize = 0;
         for (message.fields.items) |candidate| {
             if (candidate.oneof_name) |candidate_oneof| {
@@ -2918,6 +2918,53 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, "bad-proto3-optional-oneof.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "value");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 2);
+        try field.writeInt32(5, 5);
+        try field.writeInt32(9, 0);
+        try field.writeBool(17, true);
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "_value");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-proto3-optional-required.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "child");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 11);
+        try field.writeString(6, ".Child");
+        try field.writeInt32(9, 0);
+        try field.writeBool(17, true);
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "_child");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-proto3-optional-message.proto");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
