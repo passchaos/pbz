@@ -140,6 +140,7 @@ pub const Parser = struct {
     current: Token,
     file: schema.FileDescriptor,
     previous_end: usize = 0,
+    saw_syntax_or_edition: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Error!Parser {
         var lexer = Lexer{ .input = input };
@@ -151,6 +152,7 @@ pub const Parser = struct {
             .current = first,
             .file = schema.FileDescriptor.init(allocator),
             .previous_end = 0,
+            .saw_syntax_or_edition = false,
         };
     }
 
@@ -175,12 +177,16 @@ pub const Parser = struct {
         while (self.current.tag != .eof) {
             const decl_start = self.current.start;
             if (self.matchIdent("syntax")) {
+                if (self.saw_syntax_or_edition) return error.InvalidSyntax;
+                self.saw_syntax_or_edition = true;
                 try self.expectSymbol('=');
                 const syntax = try self.expectString();
                 if (std.mem.eql(u8, syntax, "proto2")) self.file.setSyntax(.proto2) else if (std.mem.eql(u8, syntax, "proto3")) self.file.setSyntax(.proto3) else return error.InvalidSyntax;
                 try self.expectSymbol(';');
                 try self.addSourceLocation(&.{12}, decl_start, self.previousEnd());
             } else if (self.matchIdent("edition")) {
+                if (self.saw_syntax_or_edition) return error.InvalidSyntax;
+                self.saw_syntax_or_edition = true;
                 try self.expectSymbol('=');
                 const edition_text = try self.expectString();
                 const edition = schema.Edition.fromYear(edition_text) orelse return error.InvalidEdition;
@@ -2248,6 +2254,30 @@ test "parser accepts unstable and test-only edition declarations" {
     ));
     try std.testing.expectError(error.InvalidEdition, Parser.parse(allocator,
         \\edition = "UNKNOWN";
+        \\message Bad { int32 id = 1; }
+    ));
+}
+
+test "parser rejects duplicate or mixed syntax and edition declarations" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\edition = "2023";
+        \\message Bad { optional int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\syntax = "proto2";
+        \\message Bad { int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\syntax = "proto3";
+        \\message Bad { optional int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\edition = "2024";
         \\message Bad { int32 id = 1; }
     ));
 }

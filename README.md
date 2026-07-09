@@ -13,7 +13,7 @@ validated feature set.
   - tag parsing, unknown-field skipping, recursion guard for groups
 - Schema model
   - files, messages, fields, oneofs, enums, services, imports, options
-  - proto2/proto3/editions syntax flags including unstable/test-only edition literals and expanded FeatureSet defaults
+  - exclusive proto2/proto3/editions syntax flags including unstable/test-only edition literals and expanded FeatureSet defaults
   - proto2 required/optional/repeated cardinality plus proto3/editions required rejection in parser and descriptor decode paths, enum defaults, packed override handling, structured FeatureSet options, and FieldOptions edition default / feature support metadata
 - Multi-file registry and loader
   - package/import-aware lookup for messages/enums/extensions across FileDescriptor values, including scoped/nested proto2 extension full-name lookup, direct/public import visibility helpers and import-chain discovery, with duplicate type/extension conflict detection, unresolved/invisible type-reference and extension-extendee rejection, and cross-file extension declaration validation
