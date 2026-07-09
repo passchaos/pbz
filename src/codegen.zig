@@ -218,7 +218,7 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_line| {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("const line = std.mem.trim(u8, raw_line, \" \\t\\r\");\n");
+    try writer.writeAll("const line = @This().textCleanLine(raw_line);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (line.len == 0) continue;\n");
     for (message.fields.items) |*field| {
@@ -401,7 +401,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_entry_line| {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("const entry_line = std.mem.trim(u8, raw_entry_line, \" \\t\\r\");\n");
+    try writer.writeAll("const entry_line = @This().textCleanLine(raw_entry_line);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (std.mem.eql(u8, entry_line, \"}\")) break;\n");
     try indent(writer, depth + 2);
@@ -3138,6 +3138,15 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return std.mem.trim(u8, rest[1..], " \t\r");
         \\}
         \\
+        \\fn textCleanLine(raw_line: []const u8) []const u8 {
+        \\    var line = std.mem.trim(u8, raw_line, " \t\r");
+        \\    if (std.mem.indexOfScalar(u8, line, '#')) |idx| line = std.mem.trim(u8, line[0..idx], " \t\r");
+        \\    while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
+        \\        line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
+        \\    }
+        \\    return line;
+        \\}
+        \\
         \\fn textBool(value: []const u8) !bool {
         \\    if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "t") or std.mem.eql(u8, value, "1")) return true;
         \\    if (std.mem.eql(u8, value, "false") or std.mem.eql(u8, value, "f") or std.mem.eql(u8, value, "0")) return false;
@@ -4138,6 +4147,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
@@ -4146,6 +4156,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textInt(comptime T: type, value: []const u8) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
