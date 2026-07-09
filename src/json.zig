@@ -1,4 +1,5 @@
 const std = @import("std");
+const wire = @import("wire.zig");
 const schema = @import("schema.zig");
 const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
@@ -139,6 +140,8 @@ fn fillMessageObject(
     options: Options,
     skip_type_field: bool,
 ) anyerror!void {
+    var seen_fields: std.ArrayList(wire.FieldNumber) = .empty;
+    defer seen_fields.deinit(allocator);
     var it = object.iterator();
     while (it.next()) |entry| {
         if (skip_type_field and std.mem.eql(u8, entry.key_ptr.*, "@type")) continue;
@@ -146,6 +149,9 @@ fn fillMessageObject(
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
+        const duplicate = seenJsonField(seen_fields.items, field.number);
+        if (duplicate) clearJsonField(allocator, message, field);
+        try seen_fields.append(allocator, field.number);
         if (entry.value_ptr.* == .null) continue;
         if (field.kind == .map) {
             try parseMapField(allocator, file, registry, message, field, entry.value_ptr.*, options);
@@ -173,6 +179,24 @@ fn fillMessageObject(
                 dynamic.deinitValue(&value, allocator);
                 return err;
             };
+        }
+    }
+}
+
+fn seenJsonField(seen_fields: []const wire.FieldNumber, number: wire.FieldNumber) bool {
+    for (seen_fields) |seen| {
+        if (seen == number) return true;
+    }
+    return false;
+}
+
+fn clearJsonField(allocator: std.mem.Allocator, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor) void {
+    var index: usize = 0;
+    while (index < message.fields.items.len) : (index += 1) {
+        if (message.fields.items[index].descriptor.number == field.number) {
+            message.fields.items[index].deinit(allocator);
+            _ = message.fields.swapRemove(index);
+            return;
         }
     }
 }
@@ -1550,6 +1574,56 @@ test "json uses default lowerCamelCase field names" {
     defer parsed.deinit();
     try std.testing.expectEqual(@as(i32, 8), parsed.get("user_id").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "Trae", parsed.get("display_name").?.values.items[0].string);
+}
+
+test "json parser treats alternate spellings as duplicate fields with last value winning" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Child { int32 id = 1; string name = 2; }
+        \\message Names {
+        \\  int32 user_id = 1;
+        \\  repeated string tag_list = 2;
+        \\  map<string, int32> count_map = 3;
+        \\  Child child_msg = 4;
+        \\  oneof choice { int32 choice_id = 5; }
+        \\  string explicit_name = 6 [json_name = "shownName"];
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Names").?;
+
+    var parsed = try parseAlloc(allocator, &file, desc,
+        \\{
+        \\  "user_id": 1,
+        \\  "userId": 2,
+        \\  "tag_list": ["a"],
+        \\  "tagList": ["b"],
+        \\  "count_map": {"a": 1},
+        \\  "countMap": {"b": 2},
+        \\  "child_msg": {"id": 1},
+        \\  "childMsg": {"name": "two"},
+        \\  "choice_id": 7,
+        \\  "choiceId": 8,
+        \\  "explicit_name": "proto",
+        \\  "shownName": "json"
+        \\}
+    , .{});
+    defer parsed.deinit();
+
+    try std.testing.expectEqual(@as(i32, 2), parsed.get("user_id").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 1), parsed.get("tag_list").?.values.items.len);
+    try std.testing.expectEqualSlices(u8, "b", parsed.get("tag_list").?.values.items[0].string);
+    try std.testing.expectEqual(@as(usize, 1), parsed.get("count_map").?.values.items.len);
+    const count = parsed.get("count_map").?.values.items[0].map_entry;
+    try std.testing.expectEqualSlices(u8, "b", count.key.string);
+    try std.testing.expectEqual(@as(i32, 2), count.value.int32);
+    const child = parsed.get("child_msg").?.values.items[0].message;
+    try std.testing.expect(child.get("id") == null);
+    try std.testing.expectEqualSlices(u8, "two", child.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 8), parsed.get("choice_id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "json", parsed.get("explicit_name").?.values.items[0].string);
 }
 
 test "json stringify can always print absent primitive repeated and map fields" {

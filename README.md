@@ -146,7 +146,9 @@ The current JSON support handles present fields from dynamic messages, optional
 always-print primitive/repeated/map defaults, quoted 64-bit integers, bytes as
 standard/URL-safe base64, repeated fields as arrays, maps as JSON objects, enum
 names/numbers including unknown numeric enum values, default lowerCamelCase field names, null-as-absent parsing, and
-nested messages recursively; `parseJsonAllocWithRegistry` resolves imported
+nested messages recursively. Duplicate field appearances, including proto field
+name plus lowerCamelCase/`json_name` alternate spellings, use protobuf JSON's
+last-value-wins parsing behavior; `parseJsonAllocWithRegistry` resolves imported
 message and enum field types through a `Registry`, `stringifyJsonAllocWithRegistry`
 uses the same registry to print imported enum names, and ignore-unknown parsing
 also skips unknown enum names for local and imported enum fields.
