@@ -1531,6 +1531,7 @@ fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message
 fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
+    if (file.syntax == .proto3 and is_extension and !isCustomOptionExtendee(field.extendee orelse "")) return error.InvalidFieldType;
     if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
     if (file.syntax == .editions and field.kind == .group) return error.InvalidFieldType;
     if (field.kind == .group and !groupTypeNameStartsWithCapital(field.kind.group)) return error.InvalidFieldType;
@@ -1540,6 +1541,24 @@ fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *con
 fn groupTypeNameStartsWithCapital(type_name: []const u8) bool {
     const leaf = leafTypeName(type_name);
     return leaf.len != 0 and leaf[0] >= 'A' and leaf[0] <= 'Z';
+}
+
+fn isCustomOptionExtendee(name: []const u8) bool {
+    const normalized = descriptorNormalizeName(name);
+    inline for (.{
+        "google.protobuf.FileOptions",
+        "google.protobuf.MessageOptions",
+        "google.protobuf.FieldOptions",
+        "google.protobuf.OneofOptions",
+        "google.protobuf.EnumOptions",
+        "google.protobuf.EnumValueOptions",
+        "google.protobuf.ServiceOptions",
+        "google.protobuf.MethodOptions",
+        "google.protobuf.ExtensionRangeOptions",
+    }) |option_name| {
+        if (std.mem.eql(u8, normalized, option_name)) return true;
+    }
+    return false;
 }
 
 fn validateDecodedFieldOptionApplicability(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
@@ -4768,6 +4787,42 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeString(1, "bad-package.proto");
         try file.writeString(2, bad_package);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects non-option extensions in proto3" {
+    const allocator = std.testing.allocator;
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "ext");
+        try field.writeString(2, ".Host");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-extension.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(7, field.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "note");
+        try field.writeString(2, ".google.protobuf.MessageOptions");
+        try field.writeInt32(3, 1000);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 9);
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-option-extension.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(7, field.slice());
+        var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+        defer decoded.deinit();
+        try std.testing.expectEqual(@as(usize, 1), decoded.extensions.items.len);
     }
 }
 

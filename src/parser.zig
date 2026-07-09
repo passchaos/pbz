@@ -1368,6 +1368,7 @@ pub const Parser = struct {
         if (field.kind == .map) return error.InvalidFieldType;
         if (field.json_name != null) return error.InvalidFieldType;
         const extendee_name = field.extendee orelse return;
+        if (self.file.syntax == .proto3 and !isCustomOptionExtendee(extendee_name)) return error.InvalidFieldType;
         if (self.file.findMessageDeep(extendee_name) == null and self.file.findEnumDeep(extendee_name) != null) return error.InvalidFieldType;
         const extendee = self.file.findMessageDeep(extendee_name) orelse return;
         for (extendee.extension_ranges.items) |range| {
@@ -1899,6 +1900,24 @@ fn validateOneofs(message: *const schema.MessageDescriptor) ParseError!void {
             if (std.mem.eql(u8, oneof.name, field.name)) return error.DuplicateOneof;
         }
     }
+}
+
+fn isCustomOptionExtendee(name: []const u8) bool {
+    const normalized = stripLeadingDot(name);
+    inline for (.{
+        "google.protobuf.FileOptions",
+        "google.protobuf.MessageOptions",
+        "google.protobuf.FieldOptions",
+        "google.protobuf.OneofOptions",
+        "google.protobuf.EnumOptions",
+        "google.protobuf.EnumValueOptions",
+        "google.protobuf.ServiceOptions",
+        "google.protobuf.MethodOptions",
+        "google.protobuf.ExtensionRangeOptions",
+    }) |option_name| {
+        if (std.mem.eql(u8, normalized, option_name)) return true;
+    }
+    return false;
 }
 
 fn validateExtensionDeclarationNames(ranges: []const schema.ExtensionRange) ParseError!void {
@@ -3095,6 +3114,21 @@ test "parser validates proto2 MessageSet declarations and extensions" {
         \\message Ext {}
         \\extend Host { repeated Ext bad = 100; }
     ));
+}
+
+test "parser rejects non-option extensions in proto3" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Host {}
+        \\extend Host { optional int32 ext = 100; }
+    ));
+    var options_extension = try Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\extend google.protobuf.MessageOptions { optional string note = 1000; }
+    );
+    defer options_extension.deinit();
+    try std.testing.expectEqual(@as(usize, 1), options_extension.extensions.items.len);
 }
 
 test "parser rejects required extension fields" {
