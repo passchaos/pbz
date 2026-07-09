@@ -154,10 +154,26 @@ pub const DynamicMessage = struct {
             .enumeration => |value| value,
             else => return null,
         };
-        for (enumeration.values.items) |*value| {
-            if (value.number == number) return value.name;
+        return enumNameForNumber(enumeration, number);
+    }
+
+    pub fn getEnumNamesWithFile(self: *const DynamicMessage, allocator: std.mem.Allocator, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ![]const []const u8 {
+        return try self.getEnumNamesWithRegistry(allocator, file, null, field);
+    }
+
+    pub fn getEnumNamesWithRegistry(self: *const DynamicMessage, allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) ![]const []const u8 {
+        const enumeration = registryEnumDescriptor(file, registry, self.descriptor, field.kind) orelse return error.TypeMismatch;
+        const values = if (self.getByNumber(field.number)) |field_value| field_value.values.items else &.{};
+        const names = try allocator.alloc([]const u8, values.len);
+        errdefer allocator.free(names);
+        for (values, 0..) |value, index| {
+            const number = switch (value) {
+                .enumeration => |v| v,
+                else => return error.TypeMismatch,
+            };
+            names[index] = enumNameForNumber(enumeration, number) orelse return error.InvalidEnumValue;
         }
-        return null;
+        return names;
     }
 
     pub fn unknownCount(self: *const DynamicMessage) usize {
@@ -1171,6 +1187,13 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
     return false;
 }
 
+fn enumNameForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?[]const u8 {
+    for (enumeration.values.items) |*value| {
+        if (value.number == number) return value.name;
+    }
+    return null;
+}
+
 fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
     return file.features.enum_type == .closed;
@@ -2037,6 +2060,7 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
         \\  optional Kind kind = 4 [default = ADMIN];
         \\  optional bytes blob = 5;
         \\  optional Code code = 6;
+        \\  repeated Code codes = 7;
         \\}
     ;
     var file = try parser.Parser.parse(allocator, source);
@@ -2062,6 +2086,15 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     try std.testing.expectEqual(@as(i32, 7), message.getOrDefault(desc.findField("count").?).int32);
     try message.add(desc.findField("code").?, .{ .enumeration = 6 });
     try std.testing.expectEqualStrings("FAIL", message.getEnumNameOrDefaultWithFile(&file, desc.findField("code").?).?);
+    try message.add(desc.findField("codes").?, .{ .enumeration = 5 });
+    try message.add(desc.findField("codes").?, .{ .enumeration = 6 });
+    const names = try message.getEnumNamesWithFile(allocator, &file, desc.findField("codes").?);
+    defer allocator.free(names);
+    try std.testing.expectEqualStrings("OK", names[0]);
+    try std.testing.expectEqualStrings("FAIL", names[1]);
+
+    try message.add(desc.findField("codes").?, .{ .enumeration = 123 });
+    try std.testing.expectError(error.InvalidEnumValue, message.getEnumNamesWithFile(allocator, &file, desc.findField("codes").?));
 }
 
 test "dynamic decodeInitialized enforces proto2 required fields" {

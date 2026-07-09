@@ -30,7 +30,7 @@ validated feature set.
   - packed field option validation for repeated packable scalar/enum fields, with editions rejecting legacy `[packed]` and `group` syntax in favor of features and validating implicit-presence default/closed-enum constraints
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
-  - proto2 strings/bytes, required-field validation, missing required field path reporting, schema-aware enum default number/name lookup, encode/decodeInitialized helpers, repeated packed fields
+  - proto2 strings/bytes, required-field validation, missing required field path reporting, schema-aware enum default number/name lookup plus repeated enum name lists, encode/decodeInitialized helpers, repeated packed fields
   - proto2 MessageSet wire-format encode/decode for known registry extensions plus unknown item preservation
   - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries, including imported enums resolved through Registry
   - proto3 optional fields, default-packed repeated numeric fields, and map fields
