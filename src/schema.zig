@@ -291,6 +291,28 @@ pub const FeatureSupport = struct {
     removal_error: []const u8 = "",
 };
 
+pub fn validateFeatureSupport(feature_support: FeatureSupport) !void {
+    if (feature_support.edition_introduced) |introduced| {
+        if (introduced == .unknown) return error.InvalidFieldType;
+    }
+    if (feature_support.edition_deprecated) |deprecated| {
+        if (deprecated == .unknown) return error.InvalidFieldType;
+        if (feature_support.deprecation_warning.len == 0) return error.InvalidFieldType;
+        if (feature_support.edition_introduced) |introduced| {
+            if (@intFromEnum(deprecated) < @intFromEnum(introduced)) return error.InvalidFieldType;
+        }
+        if (feature_support.edition_removed) |removed| {
+            if (@intFromEnum(deprecated) >= @intFromEnum(removed)) return error.InvalidFieldType;
+        }
+    } else if (feature_support.deprecation_warning.len != 0) return error.InvalidFieldType;
+    if (feature_support.edition_removed) |removed| {
+        if (removed == .unknown) return error.InvalidFieldType;
+        if (feature_support.edition_introduced) |introduced| {
+            if (@intFromEnum(removed) < @intFromEnum(introduced)) return error.InvalidFieldType;
+        }
+    } else if (feature_support.removal_error.len != 0) return error.InvalidFieldType;
+}
+
 pub const OneofDescriptor = struct {
     name: []const u8,
     features: ?FeatureSet = null,

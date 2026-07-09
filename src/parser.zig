@@ -1693,6 +1693,7 @@ const AggregateOptionParser = struct {
             }
             _ = self.consumeSymbol(',') or self.consumeSymbol(';');
         }
+        try schema.validateFeatureSupport(feature_support);
         return feature_support;
     }
 
@@ -3299,6 +3300,30 @@ test "parser rejects invalid field edition_defaults and feature_support aggregat
         \\syntax = "proto2";
         \\message Bad {
         \\  optional int32 field_presence = 1 [feature_support = EDITION_2023];
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 missing_warning = 1 [
+        \\    feature_support = { edition_introduced: EDITION_2023 edition_deprecated: EDITION_2024 }
+        \\  ];
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 deprecated_before_introduced = 1 [
+        \\    feature_support = { edition_introduced: EDITION_2024 edition_deprecated: EDITION_2023 deprecation_warning: "bad" }
+        \\  ];
+        \\}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad {
+        \\  optional int32 removed_before_introduced = 1 [
+        \\    feature_support = { edition_introduced: EDITION_2024 edition_removed: EDITION_2023 }
+        \\  ];
         \\}
     ));
 }

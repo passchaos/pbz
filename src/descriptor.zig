@@ -2860,6 +2860,7 @@ fn decodeFeatureSupport(bytes: []const u8) Error!schema.FeatureSupport {
             else => try reader.skipValue(tag),
         }
     }
+    try schema.validateFeatureSupport(result);
     return result;
 }
 
@@ -5652,6 +5653,46 @@ test "descriptor preserves field edition defaults and feature support" {
     try std.testing.expectEqualStrings("prefer explicit presence", decoded_field.feature_support.?.deprecation_warning);
     try std.testing.expectEqual(schema.Edition.edition_2026, decoded_field.feature_support.?.edition_removed.?);
     try std.testing.expectEqualStrings("field_presence override removed", decoded_field.feature_support.?.removal_error);
+}
+
+test "descriptor rejects invalid field feature support" {
+    const allocator = std.testing.allocator;
+    inline for (.{
+        .{ @intFromEnum(schema.Edition.edition_2023), @intFromEnum(schema.Edition.edition_2024), 0, false, "missing-warning-feature-support.proto" },
+        .{ @intFromEnum(schema.Edition.edition_2024), @intFromEnum(schema.Edition.edition_2023), 0, true, "deprecated-before-introduced-feature-support.proto" },
+        .{ @intFromEnum(schema.Edition.edition_2024), 0, @intFromEnum(schema.Edition.edition_2023), false, "removed-before-introduced-feature-support.proto" },
+    }) |case| {
+        var support = wire.Writer.init(allocator);
+        defer support.deinit();
+        if (case[0] != 0) try support.writeInt32(1, case[0]);
+        if (case[1] != 0) try support.writeInt32(2, case[1]);
+        if (case[3]) try support.writeString(3, "warning");
+        if (case[2] != 0) try support.writeInt32(4, case[2]);
+
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeMessage(22, support.slice());
+
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "field");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeMessage(8, options.slice());
+
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, case[4]);
+        try file.writeString(12, "proto2");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor preserves FeatureSet options across declaration scopes" {
