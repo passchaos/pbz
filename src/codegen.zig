@@ -7237,6 +7237,14 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
     try writeMessageTypeReferenceOrVoid(ctx, field.kind, writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("pub const value_has_enum_ref = ");
+    try writer.writeAll(if (canReferenceEnumWithContext(ctx, field.kind)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const value_enum_ref = ");
+    try writeEnumTypeReferenceOrVoid(ctx, field.kind, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("pub const zig_type = ");
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
@@ -9952,6 +9960,8 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceExtension_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".replaceAllInUnknown(self, allocator, values);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"role\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_has_enum_ref = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_enum_ref = @\"Kind\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value_zig: i32 = 7;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.@\"getExtension_role\"(allocator)) orelse extensions.@\"role\".default_value_zig;") != null);

@@ -274,8 +274,9 @@ method, and return an owned decoded response message.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)
-plus registry-aware `extendee_type_ref` / `value_type_ref` aliases, typed
-`default_value_zig`, `write`/`writeAll`, `decodeValue` / `decodeAppend`, and
+plus registry-aware `extendee_type_ref` / `value_type_ref` aliases, generated
+`value_enum_ref` aliases for enum extension values, typed `default_value_zig`,
+`write`/`writeAll`, `decodeValue` / `decodeAppend`, and
 `hasOn` / `getOn` / `setOn` / `clearOn` style facades so applications can
 encode/decode extension values or wire them into dynamic registries and custom
 typed wrappers. Extension metadata
