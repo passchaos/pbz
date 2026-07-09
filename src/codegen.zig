@@ -209,7 +209,17 @@ fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.M
 
 fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try @This().parseTextWithOptions(allocator, text, .{});\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = @This().init();\n");
     try indent(writer, depth + 1);
@@ -247,6 +257,8 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try indent(writer, depth + 2);
     try writer.writeAll("if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
     try indent(writer, depth + 2);
+    try writer.writeAll("if (options.ignore_unknown_fields) continue;\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("return error.UnknownField;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
@@ -262,6 +274,19 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try writer.writeAll("pub fn parseTextInitialized(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = try @This().parseText(allocator, text);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.validateRequiredRecursive(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var self = try @This().parseTextWithOptions(allocator, text, options);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     try indent(writer, depth + 1);
@@ -343,7 +368,7 @@ fn writeTextParseMessageExtensionField(file: *const schema.FileDescriptor, field
     try indent(writer, depth + 1);
     try writer.writeAll("var nested = try ");
     try writeMessageTypeReference(type_name, writer);
-    try writer.writeAll(".parseText(allocator, block);\n");
+    try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth + 1);
@@ -421,7 +446,7 @@ fn writeTextParseMessagePayloadAssign(field: *const schema.FieldDescriptor, type
     try indent(writer, depth);
     try writer.writeAll("var nested = try ");
     try writeMessageTypeReference(type_name, writer);
-    try writer.writeAll(".parseText(allocator, block);\n");
+    try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
@@ -517,7 +542,7 @@ fn writeTextParseMapField(file: *const schema.FileDescriptor, field: *const sche
         try indent(writer, depth + 3);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReference(map_type.value.message, writer);
-        try writer.writeAll(".parseText(allocator, block);\n");
+        try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
         try indent(writer, depth + 3);
         try writer.writeAll("defer nested.deinit(allocator);\n");
         try indent(writer, depth + 3);
@@ -5938,6 +5963,10 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const normalized_text = try @This().textNormalizeSeparators(allocator, text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var lines = std.mem.splitScalar(u8, normalized_text, '\\n');") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
@@ -5985,7 +6014,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseText(allocator, block);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseTextWithOptions(allocator, block, options);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
@@ -6532,7 +6561,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"tag\".encodeRaw(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"nums\".encodeRaw(allocator, try @This().textInt(i32, raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.note]\") or @This().textBlockField(line, \"[note]\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".parseText(allocator, block);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".parseTextWithOptions(allocator, block, options);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"note\".encodeRaw(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, key, \"[demo.tag]\") or std.mem.eql(u8, key, \"[tag]\")) {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.clearUnknownFieldsByNumber(allocator, extensions.@\"tag\".number); continue;") != null);
