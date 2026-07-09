@@ -850,6 +850,33 @@ test "conformance dynamic runner preserves text unknown fields as protobuf" {
     try std.testing.expectEqualSlices(u8, &.{ 0xa0, 0x06, 0x07 }, try reader.readBytes());
 }
 
+test "conformance dynamic runner omits unknown protobuf fields from json" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { optional int32 id = 1; }");
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    var payload = wire.Writer.init(allocator);
+    defer payload.deinit();
+    try payload.writeInt32(100, 7);
+    try payload.writeTag(101, .start_group);
+    try payload.writeInt32(102, 8);
+    try payload.writeTag(101, .end_group);
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .protobuf_payload = payload.slice() },
+        .requested_output_format = .json,
+        .message_type = "demo.Msg",
+        .test_category = .binary_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 4), tag.number);
+    try std.testing.expectEqualSlices(u8, "{}", try reader.readBytes());
+}
+
 test "conformance dynamic runner formats unknown protobuf groups as text" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { optional int32 id = 1; }");
