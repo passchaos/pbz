@@ -214,7 +214,7 @@ from stdin and writes a `CodeGeneratorResponse` to stdout.
 `pbz.generatePluginResponseFromRequest`, `pbz.generatePluginResponseFromRequestBytes`,
 `pbz.runPluginRequest`, and `pbz.runPluginRequestBytes` honor `file_to_generate`, emit only
 requested files by default, parse `paths=source_relative`,
-`include_imports`/`emit_imports`, `generated_info`/`annotate_code`, `pbz_import`/`runtime_import`, and `json`/`text_format` parameters, report encoded plugin errors for
+`include_imports`/`emit_imports`, `generated_info`/`annotate_code`, `pbz_import`/`runtime_import`, `output_suffix`/`strip_proto_ext`, and `json`/`text_format` parameters, report encoded plugin errors for
 missing requested names or invalid parameters, emit structured
 `GeneratedCodeInfo` annotations for generated files, top-level symbols, nested messages/enums, fields, and enum values, and still build a registry
 from every `proto_file` descriptor so generated imports can resolve cross-file

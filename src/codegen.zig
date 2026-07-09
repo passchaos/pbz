@@ -13,6 +13,8 @@ const CodegenContext = struct {
     pbz_import: []const u8 = "pbz",
     emit_json: bool = true,
     emit_text: bool = true,
+    output_suffix: []const u8 = ".pb.zig",
+    strip_proto_ext: bool = true,
 };
 
 pub fn generateZigFile(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) Error![]u8 {
@@ -39,7 +41,7 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     try out.writer.writeAll("const std = @import(\"std\");\nconst pbz = @import(");
     try writeZigStringLiteral(active_ctx.pbz_import, &out.writer);
     try out.writer.writeAll(");\n\n");
-    try writeFileMetadata(ctx.allocator, active_ctx.file, &out.writer, 0);
+    try writeFileMetadata(&active_ctx, &out.writer, 0);
     for (active_ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
     for (active_ctx.file.messages.items) |*message| try writeMessage(&active_ctx, message, &out.writer, 0);
     try writeExtensionMetadata(&active_ctx, &out.writer, 0);
@@ -141,6 +143,8 @@ const PluginParameterOptions = struct {
     pbz_import: []const u8 = "pbz",
     emit_json: bool = true,
     emit_text: bool = true,
+    output_suffix: []const u8 = ".pb.zig",
+    strip_proto_ext: bool = true,
 };
 
 pub fn generatePluginResponseFromRequestBytes(allocator: std.mem.Allocator, bytes: []const u8) Error![]u8 {
@@ -206,6 +210,11 @@ fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!Pl
             options.emit_json = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "text") or std.mem.eql(u8, key, "text_format") or std.mem.eql(u8, key, "emit_text")) {
             options.emit_text = try parseParameterBool(maybe_value orelse "true");
+        } else if (std.mem.eql(u8, key, "output_suffix")) {
+            options.output_suffix = maybe_value orelse return error.InvalidPluginParameter;
+            if (options.output_suffix.len == 0) return error.InvalidPluginParameter;
+        } else if (std.mem.eql(u8, key, "strip_proto_ext")) {
+            options.strip_proto_ext = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "paths")) {
             const value = maybe_value orelse return error.InvalidPluginParameter;
             if (!std.mem.eql(u8, value, "source_relative")) return error.InvalidPluginParameter;
@@ -252,9 +261,9 @@ fn generatePluginResponseForSelected(allocator: std.mem.Allocator, files: []cons
         allocator.free(response_files);
     }
     for (files, 0..) |file, i| {
-        const content = try generateZigFileWithContext(.{ .allocator = allocator, .file = file, .registry = registry, .pbz_import = options.pbz_import, .emit_json = options.emit_json, .emit_text = options.emit_text });
+        const content = try generateZigFileWithContext(.{ .allocator = allocator, .file = file, .registry = registry, .pbz_import = options.pbz_import, .emit_json = options.emit_json, .emit_text = options.emit_text, .output_suffix = options.output_suffix, .strip_proto_ext = options.strip_proto_ext });
         errdefer allocator.free(content);
-        const name = try outputName(allocator, file.name);
+        const name = try outputNameWithOptions(allocator, file.name, options.output_suffix, options.strip_proto_ext);
         if (options.generated_info) {
             try populateGeneratedCodeInfo(allocator, file, content, &generated_infos[i]);
             response_files[i] = .{ .name = name, .content = content, .generated_code_info_value = &generated_infos[i] };
@@ -422,7 +431,8 @@ fn appendGeneratedAnnotation(allocator: std.mem.Allocator, info: *schema.Generat
     try info.annotations.append(allocator, annotation);
 }
 
-fn writeFileMetadata(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const proto_package = ");
     try writeZigStringLiteral(file.package, writer);
@@ -438,15 +448,16 @@ fn writeFileMetadata(allocator: std.mem.Allocator, file: *const schema.FileDescr
     if (file.imports.items.len != 0) {
         try indent(writer, depth);
         try writer.writeAll("pub const imports = struct {\n");
-        for (file.imports.items) |import| try writeImportDecl(allocator, import, writer, depth + 1);
+        for (file.imports.items) |import| try writeImportDecl(ctx, import, writer, depth + 1);
         try indent(writer, depth);
         try writer.writeAll("};\n");
     }
     try writer.writeAll("\n");
 }
 
-fn writeImportDecl(allocator: std.mem.Allocator, import: schema.Import, writer: *std.Io.Writer, depth: usize) Error!void {
-    const module_path = try outputName(allocator, import.path);
+fn writeImportDecl(ctx: *const CodegenContext, import: schema.Import, writer: *std.Io.Writer, depth: usize) Error!void {
+    const allocator = ctx.allocator;
+    const module_path = try outputNameWithOptions(allocator, import.path, ctx.output_suffix, ctx.strip_proto_ext);
     defer allocator.free(module_path);
     try indent(writer, depth);
     try writer.writeAll("pub const ");
@@ -7371,9 +7382,13 @@ fn writeServiceClient(service: *const schema.ServiceDescriptor, writer: *std.Io.
 }
 
 fn outputName(allocator: std.mem.Allocator, input: []const u8) std.mem.Allocator.Error![]u8 {
+    return try outputNameWithOptions(allocator, input, ".pb.zig", true);
+}
+
+fn outputNameWithOptions(allocator: std.mem.Allocator, input: []const u8, suffix: []const u8, strip_proto_ext: bool) std.mem.Allocator.Error![]u8 {
     const base = if (input.len == 0) "schema.proto" else input;
-    const stem = if (std.mem.endsWith(u8, base, ".proto")) base[0 .. base.len - 6] else base;
-    return try std.fmt.allocPrint(allocator, "{s}.pb.zig", .{stem});
+    const stem = if (strip_proto_ext and std.mem.endsWith(u8, base, ".proto")) base[0 .. base.len - 6] else base;
+    return try std.fmt.allocPrint(allocator, "{s}{s}", .{ stem, suffix });
 }
 
 test "codegen emits zig message and enum skeletons" {
@@ -7964,6 +7979,72 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
         }
     }
     try std.testing.expect(saw_custom_runtime);
+
+    var output_name_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer output_name_request.deinit();
+    output_name_request.parameter = "output_suffix=.pbz.zig";
+    try output_name_request.files_to_generate.append(allocator, "app.proto");
+    try output_name_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.common;
+        \\message User {}
+    ));
+    output_name_request.proto_files.items[0].name = "common.proto";
+    try output_name_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message App { optional .demo.common.User user = 1; }
+    ));
+    output_name_request.proto_files.items[1].name = "app.proto";
+    const output_name_response = try generatePluginResponseFromRequest(allocator, &output_name_request);
+    defer allocator.free(output_name_response);
+    var output_name_reader = wire.Reader.init(output_name_response);
+    var saw_custom_output_name = false;
+    var saw_custom_import_name = false;
+    while (try output_name_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                var file_reader = wire.Reader.init(try output_name_reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        1 => saw_custom_output_name = saw_custom_output_name or std.mem.eql(u8, try file_reader.readBytes(), "app.pbz.zig"),
+                        15 => saw_custom_import_name = saw_custom_import_name or std.mem.indexOf(u8, try file_reader.readBytes(), "@import(\"common.pbz.zig\")") != null,
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try output_name_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_custom_output_name);
+    try std.testing.expect(saw_custom_import_name);
+
+    var keep_ext_request = plugin.CodeGeneratorRequest.init(allocator);
+    defer keep_ext_request.deinit();
+    keep_ext_request.parameter = "strip_proto_ext=false";
+    try keep_ext_request.files_to_generate.append(allocator, "app.proto");
+    try keep_ext_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
+    keep_ext_request.proto_files.items[0].name = "app.proto";
+    const keep_ext_response = try generatePluginResponseFromRequest(allocator, &keep_ext_request);
+    defer allocator.free(keep_ext_response);
+    var keep_ext_reader = wire.Reader.init(keep_ext_response);
+    var saw_kept_ext_name = false;
+    while (try keep_ext_reader.nextTag()) |tag| {
+        switch (tag.number) {
+            15 => {
+                var file_reader = wire.Reader.init(try keep_ext_reader.readBytes());
+                while (try file_reader.nextTag()) |file_tag| {
+                    switch (file_tag.number) {
+                        1 => saw_kept_ext_name = saw_kept_ext_name or std.mem.eql(u8, try file_reader.readBytes(), "app.proto.pb.zig"),
+                        else => try file_reader.skipValue(file_tag),
+                    }
+                }
+            },
+            else => try keep_ext_reader.skipValue(tag),
+        }
+    }
+    try std.testing.expect(saw_kept_ext_name);
 
     var no_helpers_request = plugin.CodeGeneratorRequest.init(allocator);
     defer no_helpers_request.deinit();
