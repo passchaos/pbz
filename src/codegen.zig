@@ -3985,6 +3985,35 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeRaw(allocator: std.mem.Allocator, value: ");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(") ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer w.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try write(&w, value);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try w.toOwnedSlice();\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: ");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = try encodeRaw(allocator, value);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try message.appendUnknownRaw(allocator, raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn writeAll(w: *pbz.Writer, values: ");
@@ -3992,6 +4021,21 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("for (values) |value| try write(w, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn encodeAllRaw(allocator: std.mem.Allocator, values: ");
+        try writer.writeAll(fieldType(field.*));
+        try writer.writeAll(") ![]u8 {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer w.deinit();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try writeAll(&w, values);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try w.toOwnedSlice();\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -4015,6 +4059,57 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try writer.writeAll(";\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeRaw(raw: []const u8) !?");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const tag = (try r.nextTag()) orelse return null;\n");
+    if (extensionUsesMessageSet(file, field)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);\n");
+        try indent(writer, depth + 1);
+        try writer.print("if (tag.number == {d} and tag.wire_type == .length_delimited) return try r.readBytes();\n", .{field.number});
+        try indent(writer, depth + 1);
+        try writer.writeAll("return null;\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (tag.number != number) return null;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try decodeValue(&r);\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![]");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var list: std.ArrayList(");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(") = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer list.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (raw_fields) |raw| if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeFromUnknownFieldsAlloc(message: anytype, allocator: std.mem.Allocator) ![]");
+    try writer.writeAll(extensionSingleZigType(field.kind));
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try decodeAllRaw(allocator, message.unknownFields());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(");
@@ -4022,6 +4117,15 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
         try writer.writeAll("), r: *pbz.Reader) !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try list.append(allocator, try decodeValue(r));\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+
+        try indent(writer, depth);
+        try writer.writeAll("pub fn decodeAppendRaw(allocator: std.mem.Allocator, list: *std.ArrayList(");
+        try writer.writeAll(extensionSingleZigType(field.kind));
+        try writer.writeAll("), raw: []const u8) !void {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -5023,14 +5127,27 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const u8\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn write(w: *pbz.Writer, value: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeString(100, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try write(&w, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeValue(r: *pbz.Reader) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeRaw(raw: []const u8) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number != number) return null;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeValue(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![][]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |raw| if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFromUnknownFieldsAlloc(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeAllRaw(allocator, message.unknownFields());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"nums\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"repeated\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeAll(w: *pbz.Writer, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try write(w, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeAllRaw(allocator: std.mem.Allocator, values: []const i32) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, try decodeValue(r));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppendRaw(allocator: std.mem.Allocator, list: *std.ArrayList(i32), raw: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -5054,6 +5171,10 @@ test "codegen emits MessageSet extension write helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeUInt32(2, 100);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(3, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .end_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 100 and tag.wire_type == .length_delimited) return try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) payload else null;") != null);
     const source = try allocator.dupeZ(u8, content);

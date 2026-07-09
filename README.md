@@ -222,7 +222,12 @@ For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, and `zig_type`) plus typed `write`/`writeAll` and
 `decodeValue`/`decodeAppend` helpers so applications can encode/decode extension
-values or wire them into dynamic registries and custom typed wrappers.
+values or wire them into dynamic registries and custom typed wrappers. Extension
+metadata also emits `encodeRaw`, `appendToUnknown`, `decodeRaw`,
+`decodeAllRaw`, and `decodeFromUnknownFieldsAlloc` helpers so typed message
+wrappers can shuttle proto2 extension payloads through their preserved unknown
+field storage; repeated extensions additionally expose `encodeAllRaw` and
+`decodeAppendRaw`.
 Extensions of `message_set_wire_format` messages emit MessageSet item groups
 from their generated `write` helper and expose a `decodeMessageSetItem` helper
 for extracting matching item payloads.
