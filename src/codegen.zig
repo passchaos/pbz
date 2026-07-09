@@ -1528,6 +1528,23 @@ fn writeSingularEnumFieldAccessor(ctx: *const CodegenContext, field: *const sche
 
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("getEnumOrDefault", field.name, writer);
+    try writer.writeAll("(self: @This()) ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self.");
+    try writeQuotedAccessorIdent("getEnum", field.name, writer);
+    try writer.writeAll("() orelse ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(".fromInt(self.");
+    try writeQuotedAccessorIdent("getOrDefault", field.name, writer);
+    try writer.writeAll("()) orelse unreachable;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("setEnum", field.name, writer);
     try writer.writeAll("(self: *@This(), value: ");
     try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
@@ -1739,6 +1756,46 @@ fn writeRepeatedEnumFieldAccessor(ctx: *const CodegenContext, field: *const sche
     try writer.writeAll("try self.");
     try writeQuotedAccessorIdent("append", field.name, writer);
     try writer.writeAll("(allocator, value.toInt());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("appendAllEnums", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (values.len == 0) return;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedAccessorIdent("appendAll", field.name, writer);
+    try writer.writeAll("(allocator, raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("replaceEnums", field.name, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
+    try writeEnumTypeReferenceWithContext(ctx, enum_name, writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedAccessorIdent("replace", field.name, writer);
+    try writer.writeAll("(allocator, raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -8078,10 +8135,17 @@ test "codegen emits typed enum field accessors" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_role\"(self: @This()) ?@\"Kind\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return @\"Kind\".fromInt(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumOrDefaultField_role\"(self: @This()) @\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return self.@\"getEnumField_role\"() orelse @\"Kind\".fromInt(self.@\"getOrDefaultField_role\"()) orelse unreachable;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_role\"(self: *@This(), value: @\"Kind\") void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"setField_role\"(value.toInt());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumField_roles\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Kind\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_roles\"(allocator, value.toInt());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendAllEnumsField_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values, 0..) |value, i| raw[i] = value.toInt();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendAllField_roles\"(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceEnumsField_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"replaceField_roles\"(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumsField_roles\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Kind\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (raw, 0..) |value, i| out[i] = @\"Kind\".fromInt(value) orelse return error.InvalidEnumValue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_selected\"(self: @This()) ?@\"Kind\"") != null);
