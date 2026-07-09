@@ -3812,10 +3812,23 @@ fn writeJsonParseField(file: *const schema.FileDescriptor, field: *const schema.
         try writer.writeAll(") = .empty;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("errdefer list.deinit(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (array.items) |item| try list.append(allocator, ");
-        try writeJsonParseValueExpr(file, field.kind, "item", "arena_allocator", writer);
-        try writer.writeAll(");\n");
+        if (field.kind == .enumeration) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (array.items) |item| {\n");
+            try indent(writer, depth + 2);
+            try writer.writeAll("const parsed_enum = ");
+            try writeJsonParseEnumExpr(file, field.kind.enumeration, "item", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
+            try indent(writer, depth + 2);
+            try writer.writeAll("try list.append(allocator, parsed_enum);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("}\n");
+        } else {
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (array.items) |item| try list.append(allocator, ");
+            try writeJsonParseValueExpr(file, field.kind, "item", "arena_allocator", writer);
+            try writer.writeAll(");\n");
+        }
         try indent(writer, depth + 1);
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
@@ -3827,7 +3840,12 @@ fn writeJsonParseField(file: *const schema.FileDescriptor, field: *const schema.
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = ");
-        try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
+        if (field.kind == .enumeration) {
+            try writeJsonParseEnumExpr(file, field.kind.enumeration, "value", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; }");
+        } else {
+            try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
+        }
         try writer.writeAll(";\n");
         if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
@@ -3932,17 +3950,36 @@ fn writeJsonParseScalarExtensionField(file: *const schema.FileDescriptor, field:
         try indent(writer, depth + 1);
         try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("for (array.items) |item| try ");
-        try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".appendToUnknown(self, allocator, ");
-        try writeJsonParseValueExpr(file, field.kind, "item", "arena_allocator", writer);
-        try writer.writeAll(");\n");
+        try writer.writeAll("for (array.items) |item| {\n");
+        try indent(writer, depth + 2);
+        if (field.kind == .enumeration) {
+            try writer.writeAll("const parsed_enum = ");
+            try writeJsonParseEnumExpr(file, field.kind.enumeration, "item", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
+            try indent(writer, depth + 2);
+            try writer.writeAll("try ");
+            try writeExtensionHelperReference(field, writer);
+            try writer.writeAll(".appendToUnknown(self, allocator, parsed_enum);\n");
+        } else {
+            try writer.writeAll("try ");
+            try writeExtensionHelperReference(field, writer);
+            try writer.writeAll(".appendToUnknown(self, allocator, ");
+            try writeJsonParseValueExpr(file, field.kind, "item", "arena_allocator", writer);
+            try writer.writeAll(");\n");
+        }
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
     } else {
         try indent(writer, depth + 1);
         try writer.writeAll("try ");
         try writeExtensionHelperReference(field, writer);
         try writer.writeAll(".replaceInUnknown(self, allocator, ");
-        try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
+        if (field.kind == .enumeration) {
+            try writeJsonParseEnumExpr(file, field.kind.enumeration, "value", writer);
+            try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; }");
+        } else {
+            try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
+        }
         try writer.writeAll(");\n");
     }
     try indent(writer, depth + 1);
@@ -4077,6 +4114,9 @@ fn writeJsonParseOneofField(file: *const schema.FileDescriptor, oneof: schema.On
         } else {
             try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
         }
+    } else if (field.kind == .enumeration) {
+        try writeJsonParseEnumExpr(file, field.kind.enumeration, "value", writer);
+        try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; }");
     } else {
         try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
     }
@@ -4137,6 +4177,16 @@ fn writeJsonParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
         },
         else => try writer.writeAll("@compileError(\"unsupported JSON parse field kind\")"),
     }
+}
+
+fn writeJsonParseEnumExpr(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("@This().jsonEnum({s}, ", .{value_expr});
+    try writeEnumNameArray(file, enum_name, writer);
+    try writer.writeAll(", ");
+    try writeEnumNumberArray(file, enum_name, writer);
+    try writer.writeAll(", ");
+    try writer.writeAll(if (enumIsClosed(file, enum_name)) "true" else "false");
+    try writer.writeAll(")");
 }
 
 fn writeJsonParseMapValueExpr(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, arena_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -6168,14 +6218,14 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"display_name\") or std.mem.eql(u8, key, \"shownName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"raw\" = try @This().jsonBytes(arena_allocator, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (array.items) |item| try list.append(allocator, try @This().jsonString(item));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"tags\" = blk: { const old = self.@\"tags\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"tags\" = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"alias\" = try @This().jsonString(value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .none; continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"alt_name\") or std.mem.eql(u8, key, \"altName\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"pick_kind\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"choice\" = .{ .@\"pick_kind\" = @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
@@ -6392,7 +6442,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, key, \"[demo.tag]\") or std.mem.eql(u8, key, \"[tag]\")) {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.clearUnknownFieldsByNumber(allocator, extensions.@\"tag\".number); continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"tag\".replaceInUnknown(self, allocator, try @This().jsonString(value));") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (array.items) |item| try extensions.@\"nums\".appendToUnknown(self, allocator, try @This().jsonInt(i32, item));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"nums\".appendToUnknown(self, allocator, try @This().jsonInt(i32, item));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"note\".replaceInUnknown(self, allocator, try nested.encode(arena_allocator));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.@\"tag\".decodeAllFromUnknown(self, allocator);") != null);
@@ -6637,8 +6687,8 @@ test "codegen honors editions enum type features in JSON parse" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"closed\" = try @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"open\" = try @This().jsonEnum(value, &.{\"NONE\", \"USER\"}, &.{0, 1}, false);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"closed\" = @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"open\" = @This().jsonEnum(value, &.{\"NONE\", \"USER\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
 }
 
 test "codegen validates closed enum values in wire decode" {

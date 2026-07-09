@@ -282,7 +282,9 @@ as qualified bracketed JSON keys. Generated messages expose
 numeric enum output, proto field-name preservation, and always-printing
 primitive/repeated/map defaults, plus `JsonParseOptions` /
 `jsonParseWithOptions` / `jsonParseInitializedWithOptions`, with JSON
-stringify/parse options propagated into nested generated message handling.
+stringify/parse options propagated into nested generated message handling;
+`ignore_unknown_fields` also skips unknown enum JSON values for scalar,
+repeated, oneof, and same-file extension enum fields.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
 TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
 same-file proto2 extension values recovered from preserved unknown/raw fields,
