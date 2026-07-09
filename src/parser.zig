@@ -1777,6 +1777,7 @@ const AggregateOptionParser = struct {
 };
 
 fn validateEnum(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor, syntax: schema.Syntax) (ParseError || std.mem.Allocator.Error)!void {
+    if (enumeration.values.items.len == 0) return error.InvalidEnum;
     if (syntax == .proto3 and (enumeration.values.items.len == 0 or enumeration.values.items[0].number != 0)) return error.InvalidEnum;
     try validateEnumReserved(enumeration);
     const alias_state = enumAliasState(enumeration);
@@ -2775,6 +2776,10 @@ test "parser rejects invalid json_name options" {
 
 test "parser validates enum values" {
     const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidEnum, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Empty {}
+    ));
     try std.testing.expectError(error.InvalidEnum, Parser.parse(allocator,
         \\syntax = "proto3";
         \\enum Bad { ONE = 1; }
