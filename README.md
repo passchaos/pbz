@@ -182,6 +182,10 @@ defer owned_object.deinit(allocator);
 const object_wire = try object.encode(allocator);
 defer allocator.free(object_wire);
 
+var packed = try pbz.Any.packBytes(allocator, "demo.Payload", object_wire);
+defer packed.deinit(allocator);
+if (!packed.isType("demo.Payload")) return error.TypeMismatch;
+
 var string_wrapper = try pbz.StringValue.jsonParseOwned(allocator, "\"zig\"");
 defer string_wrapper.deinit(allocator);
 ```

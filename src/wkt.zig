@@ -516,6 +516,8 @@ pub const Any = struct {
     type_url: []const u8 = "",
     value: []const u8 = "",
 
+    pub const default_type_url_prefix = "type.googleapis.com";
+
     pub fn encode(self: Any, allocator: std.mem.Allocator) ![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
@@ -555,6 +557,42 @@ pub const Any = struct {
             .type_url = type_url,
             .value = try allocator.dupe(u8, self.value),
         };
+    }
+
+    pub fn packBytes(allocator: std.mem.Allocator, full_name: []const u8, payload: []const u8) !Any {
+        return try packBytesWithPrefix(allocator, default_type_url_prefix, full_name, payload);
+    }
+
+    pub fn packBytesWithPrefix(allocator: std.mem.Allocator, prefix: []const u8, full_name: []const u8, payload: []const u8) !Any {
+        const type_url = try makeTypeUrl(allocator, prefix, full_name);
+        errdefer allocator.free(type_url);
+        return .{
+            .type_url = type_url,
+            .value = try allocator.dupe(u8, payload),
+        };
+    }
+
+    pub fn packEncoded(allocator: std.mem.Allocator, full_name: []const u8, message: anytype) !Any {
+        return try packEncodedWithPrefix(allocator, default_type_url_prefix, full_name, message);
+    }
+
+    pub fn packEncodedWithPrefix(allocator: std.mem.Allocator, prefix: []const u8, full_name: []const u8, message: anytype) !Any {
+        const payload = try message.encode(allocator);
+        defer allocator.free(payload);
+        return try packBytesWithPrefix(allocator, prefix, full_name, payload);
+    }
+
+    pub fn typeName(self: Any) []const u8 {
+        return anyTypeName(self.type_url);
+    }
+
+    pub fn isType(self: Any, full_name: []const u8) bool {
+        return anyTypeMatches(self.type_url, full_name);
+    }
+
+    pub fn unpackBytes(self: Any, expected_full_name: []const u8) ![]const u8 {
+        if (!self.isType(expected_full_name)) return error.TypeMismatch;
+        return self.value;
     }
 
     pub fn deinit(self: *Any, allocator: std.mem.Allocator) void {
@@ -604,6 +642,22 @@ pub const Any = struct {
     }
 };
 
+fn makeTypeUrl(allocator: std.mem.Allocator, prefix: []const u8, full_name: []const u8) ![]u8 {
+    if (full_name.len == 0) return error.TypeMismatch;
+    const normalized = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
+    if (prefix.len == 0) return try allocator.dupe(u8, normalized);
+    return try std.fmt.allocPrint(allocator, "{s}/{s}", .{ std.mem.trimEnd(u8, prefix, "/"), normalized });
+}
+
+fn anyTypeName(type_url: []const u8) []const u8 {
+    return if (std.mem.lastIndexOfScalar(u8, type_url, '/')) |idx| type_url[idx + 1 ..] else type_url;
+}
+
+fn anyTypeMatches(type_url: []const u8, full_name: []const u8) bool {
+    const expected = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
+    return std.mem.eql(u8, anyTypeName(type_url), expected);
+}
+
 test "any wire and json helpers" {
     const allocator = std.testing.allocator;
     const any = Any{ .type_url = "type.googleapis.com/demo.Msg", .value = "abc" };
@@ -649,6 +703,31 @@ test "any clone and duplicate field decode helpers" {
     defer decoded.deinit(allocator);
     try std.testing.expectEqualSlices(u8, "type.googleapis.com/new.Msg", decoded.type_url);
     try std.testing.expectEqualSlices(u8, "new", decoded.value);
+}
+
+test "any pack and type matching helpers" {
+    const allocator = std.testing.allocator;
+    var any = try Any.packBytes(allocator, ".demo.Msg", "payload");
+    defer any.deinit(allocator);
+    try std.testing.expectEqualStrings("type.googleapis.com/demo.Msg", any.type_url);
+    try std.testing.expectEqualStrings("demo.Msg", any.typeName());
+    try std.testing.expect(any.isType("demo.Msg"));
+    try std.testing.expect(any.isType(".demo.Msg"));
+    try std.testing.expect(!any.isType("demo.Other"));
+    try std.testing.expectEqualSlices(u8, "payload", try any.unpackBytes("demo.Msg"));
+    try std.testing.expectError(error.TypeMismatch, any.unpackBytes("demo.Other"));
+
+    var custom = try Any.packBytesWithPrefix(allocator, "example.test/prefix/", "demo.Msg", "abc");
+    defer custom.deinit(allocator);
+    try std.testing.expectEqualStrings("example.test/prefix/demo.Msg", custom.type_url);
+    try std.testing.expect(custom.isType("demo.Msg"));
+
+    const message = StringValue{ .value = "zig" };
+    var packed_message = try Any.packEncoded(allocator, "google.protobuf.StringValue", message);
+    defer packed_message.deinit(allocator);
+    try std.testing.expect(packed_message.isType("google.protobuf.StringValue"));
+    const decoded = try StringValue.decode(packed_message.value);
+    try std.testing.expectEqualSlices(u8, "zig", decoded.value);
 }
 
 pub const NullValue = enum(i32) {
