@@ -2574,6 +2574,34 @@ test "descriptor decodes uninterpreted options" {
     try std.testing.expectEqual(@as(i64, 123), field.options.items[0].value.integer);
 }
 
+test "descriptor round-trips uninterpreted option value kinds" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.setSyntax(.proto2);
+    try file.options.append(allocator, .{ .name = "(demo.bool_opt)", .value = .{ .boolean = true } });
+    try file.options.append(allocator, .{ .name = "(demo.neg_opt)", .value = .{ .integer = -7 } });
+    try file.options.append(allocator, .{ .name = "(demo.float_opt)", .value = .{ .float = 1.5 } });
+    try file.options.append(allocator, .{ .name = "(demo.aggregate_opt)", .value = .{ .aggregate = "{ enabled: true count: 2 }" } });
+    var message = schema.MessageDescriptor{ .name = "M" };
+    try message.fields.append(allocator, .{ .name = "id", .number = 1, .cardinality = .optional, .kind = .{ .scalar = .int32 } });
+    try file.messages.append(allocator, message);
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "option-values.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(usize, 4), decoded.options.items.len);
+    try std.testing.expectEqualStrings("(demo.bool_opt)", decoded.options.items[0].name);
+    try std.testing.expectEqualStrings("true", decoded.options.items[0].value.identifier);
+    try std.testing.expectEqualStrings("(demo.neg_opt)", decoded.options.items[1].name);
+    try std.testing.expectEqual(@as(i64, -7), decoded.options.items[1].value.integer);
+    try std.testing.expectEqualStrings("(demo.float_opt)", decoded.options.items[2].name);
+    try std.testing.expectEqual(@as(f64, 1.5), decoded.options.items[2].value.float);
+    try std.testing.expectEqualStrings("(demo.aggregate_opt)", decoded.options.items[3].name);
+    try std.testing.expectEqualStrings("{ enabled: true count: 2 }", decoded.options.items[3].value.aggregate);
+}
+
 test "descriptor preserves import dependency kinds" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
