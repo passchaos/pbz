@@ -1274,6 +1274,7 @@ fn validateDependencyIndexes(public_deps: []const i32, weak_deps: []const i32, d
 }
 
 fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void {
+    if (file.package.len != 0 and !isFullIdentifier(file.package)) return error.InvalidFieldType;
     for (file.messages.items, 0..) |message, i| {
         for (file.messages.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, message.name, other.name)) return error.InvalidFieldType;
@@ -1298,6 +1299,32 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
             if (std.mem.eql(u8, service.name, other.name)) return error.InvalidFieldType;
         }
     }
+}
+
+fn isFullIdentifier(value: []const u8) bool {
+    var index: usize = 0;
+    var expect_start = true;
+    while (index < value.len) : (index += 1) {
+        const c = value[index];
+        if (c == '.') {
+            if (expect_start) return false;
+            expect_start = true;
+            continue;
+        }
+        if (expect_start) {
+            if (!isIdentifierStart(c)) return false;
+            expect_start = false;
+        } else if (!isIdentifierContinue(c)) return false;
+    }
+    return !expect_start;
+}
+
+fn isIdentifierStart(c: u8) bool {
+    return std.ascii.isAlphabetic(c) or c == '_';
+}
+
+fn isIdentifierContinue(c: u8) bool {
+    return isIdentifierStart(c) or std.ascii.isDigit(c);
 }
 
 fn validateDecodedExtensionDeclarations(file: *const schema.FileDescriptor) Error!void {
@@ -3401,6 +3428,13 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeString(1, "dup-option-import.proto");
         try file.writeString(3, "dep.proto");
         try file.writeString(15, "dep.proto");
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    inline for (.{ "1bad", "bad..pkg", "bad.", "bad-pkg" }) |bad_package| {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-package.proto");
+        try file.writeString(2, bad_package);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
