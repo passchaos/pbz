@@ -2677,6 +2677,14 @@ fn defaultSkipCondition(scalar: schema.ScalarType) []const u8 {
     };
 }
 
+fn defaultSkipConditionWithOptions(scalar: schema.ScalarType) []const u8 {
+    return switch (scalar) {
+        .string, .bytes => ".len != 0 or options.always_print_primitive_fields) ",
+        .bool => " or options.always_print_primitive_fields) ",
+        else => " != 0 or options.always_print_primitive_fields) ",
+    };
+}
+
 fn scalarWriterName(scalar: schema.ScalarType) []const u8 {
     return switch (scalar) {
         .double => "writeDouble",
@@ -3393,7 +3401,7 @@ fn writeTextMapValue(file: *const schema.FileDescriptor, kind: schema.FieldKind,
 
 fn writeJsonMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false };\n\n");
+    try writer.writeAll("pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
@@ -4569,7 +4577,7 @@ fn writeJsonScalarField(file: *const schema.FileDescriptor, field: *const schema
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0) {\n");
+        try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
         try writeJsonPrefix(field, writer, depth + 1);
         try indent(writer, depth + 1);
         try writer.writeAll("try writer.writeAll(\"[\");\n");
@@ -4592,7 +4600,7 @@ fn writeJsonScalarField(file: *const schema.FileDescriptor, field: *const schema
         } else {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(defaultSkipCondition(scalar));
+            try writer.writeAll(defaultSkipConditionWithOptions(scalar));
             try writer.writeAll("{\n");
         }
         try writeJsonPrefix(field, writer, depth + 1);
@@ -4613,7 +4621,7 @@ fn writeJsonEnumField(file: *const schema.FileDescriptor, field: *const schema.F
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0) {\n");
+        try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
         try writeJsonPrefix(field, writer, depth + 1);
         try indent(writer, depth + 1);
         try writer.writeAll("try writer.writeAll(\"[\");\n");
@@ -4636,7 +4644,7 @@ fn writeJsonEnumField(file: *const schema.FileDescriptor, field: *const schema.F
         } else {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" != 0) {\n");
+            try writer.writeAll(" != 0 or options.always_print_primitive_fields) {\n");
         }
         try writeJsonPrefix(field, writer, depth + 1);
         try indent(writer, depth + 1);
@@ -4660,7 +4668,7 @@ fn writeJsonMapField(file: *const schema.FileDescriptor, field: *const schema.Fi
     try indent(writer, depth);
     try writer.writeAll("if (self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".len != 0) {\n");
+    try writer.writeAll(".len != 0 or options.always_print_primitive_fields) {\n");
     try writeJsonPrefix(field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("try writer.writeAll(\"{\");\n");
@@ -6128,10 +6136,13 @@ test "codegen emits typed json stringify and parse methods" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"id\\\":\" else \"\\\"id\\\":\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"user_id\\\":\" else \"\\\"userId\\\":\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"display_name\\\":\" else \"\\\"shownName\\\":\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"id\" != 0 or options.always_print_primitive_fields)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"kind\" != 0 or options.always_print_primitive_fields)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"tags\".len != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{value});") != null);

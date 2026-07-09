@@ -279,7 +279,8 @@ storing parsed scalar, enum, message, and repeated extension values in preserved
 unknown/raw extension storage and emitting known same-file extension values back
 as qualified bracketed JSON keys. Generated messages expose
 `JsonStringifyOptions` / `jsonStringify*WithOptions` for enum-name versus
-numeric enum output and proto field-name preservation, plus `JsonParseOptions` /
+numeric enum output, proto field-name preservation, and always-printing
+primitive/repeated/map defaults, plus `JsonParseOptions` /
 `jsonParseWithOptions` / `jsonParseInitializedWithOptions`, with JSON
 stringify/parse options propagated into nested generated message handling.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
