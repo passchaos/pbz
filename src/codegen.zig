@@ -856,7 +856,7 @@ fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const
 fn writeTextParseExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
         .scalar, .enumeration => {},
-        .message => |type_name| {
+        .message, .group => |type_name| {
             if (!codegenCanReferenceMessage(file, type_name)) return;
             return try writeTextParseMessageExtensionField(file, field, type_name, writer, depth);
         },
@@ -5215,7 +5215,7 @@ fn messageScopeHasTextMessageExtension(file: *const schema.FileDescriptor, targe
 
 fn extensionTextUsesAllocator(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
     return switch (field.kind) {
-        .message => |name| codegenCanReferenceMessage(file, name),
+        .message, .group => |name| codegenCanReferenceMessage(file, name),
         else => false,
     };
 }
@@ -5475,7 +5475,7 @@ fn writeTextUnknownMessageExtensions(file: *const schema.FileDescriptor, target:
 fn writeTextUnknownExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
         .scalar, .enumeration => {},
-        .message => |type_name| {
+        .message, .group => |type_name| {
             if (!codegenCanReferenceMessage(file, type_name)) return;
             return try writeTextUnknownMessageExtensionField(file, field, type_name, writer, depth);
         },
@@ -5939,7 +5939,7 @@ fn messageScopeHasJsonMessageExtension(file: *const schema.FileDescriptor, targe
 fn jsonExtensionSupported(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
     return switch (field.kind) {
         .scalar, .enumeration => true,
-        .message => |name| codegenCanReferenceMessage(file, name),
+        .message, .group => |name| codegenCanReferenceMessage(file, name),
         else => false,
     };
 }
@@ -5947,7 +5947,7 @@ fn jsonExtensionSupported(file: *const schema.FileDescriptor, field: *const sche
 fn jsonExtensionUsesArena(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
     return switch (field.kind) {
         .scalar => |scalar| scalar == .bytes,
-        .message => |name| codegenCanReferenceMessage(file, name),
+        .message, .group => |name| codegenCanReferenceMessage(file, name),
         else => false,
     };
 }
@@ -6157,7 +6157,7 @@ fn writeJsonParseScopedExtensions(file: *const schema.FileDescriptor, target: *c
 fn writeJsonParseExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     switch (field.kind) {
         .scalar, .enumeration => return try writeJsonParseScalarExtensionField(file, field, writer, depth),
-        .message => |type_name| return try writeJsonParseMessageExtensionField(file, field, type_name, writer, depth),
+        .message, .group => |type_name| return try writeJsonParseMessageExtensionField(file, field, type_name, writer, depth),
         else => return,
     }
 }
@@ -7247,7 +7247,7 @@ fn writeJsonExtensionValue(file: *const schema.FileDescriptor, kind: schema.Fiel
     switch (kind) {
         .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
-        .message => |type_name| {
+        .message, .group => |type_name| {
             try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: JsonStringifyOptions, payload_: []const u8) !void { var nested = try ");
             try writeMessageTypeReference(type_name, writer);
             try writer.writeAll(".decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, options_); } }.write(allocator, writer, options, ");
@@ -7845,8 +7845,16 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
         try writer.writeAll("try w.writeTag(1, .end_group);\n");
     } else {
         try indent(writer, depth + 1);
-        try writeKindWriteCall(field.number, field.kind, "value", "w", writer);
-        try writer.writeAll(");\n");
+        if (field.kind == .group) {
+            try writer.print("try w.writeTag({d}, .start_group);\n", .{field.number});
+            try indent(writer, depth + 1);
+            try writer.writeAll("try w.appendSlice(value);\n");
+            try indent(writer, depth + 1);
+            try writer.print("try w.writeTag({d}, .end_group);\n", .{field.number});
+        } else {
+            try writeKindWriteCall(field.number, field.kind, "value", "w", writer);
+            try writer.writeAll(");\n");
+        }
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
@@ -7990,9 +7998,13 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return ");
-    try writeEntryReadExpr(field.kind, "r", writer);
-    try writer.writeAll(";\n");
+    if (field.kind == .group) {
+        try writer.writeAll("return try r.readGroupBytes(number);\n");
+    } else {
+        try writer.writeAll("return ");
+        try writeEntryReadExpr(field.kind, "r", writer);
+        try writer.writeAll(";\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -8169,7 +8181,7 @@ fn extensionSingleZigType(kind: schema.FieldKind) []const u8 {
     return switch (kind) {
         .scalar => |scalar| scalarZigType(scalar),
         .enumeration => "i32",
-        .message => "[]const u8",
+        .message, .group => "[]const u8",
         else => "void",
     };
 }
@@ -10310,6 +10322,7 @@ test "codegen emits proto2 extension metadata" {
         \\}
     );
     defer file.deinit();
+    try file.extensions.append(allocator, .{ .name = "legacy", .number = 107, .cardinality = .optional, .kind = .{ .group = "Note" }, .extendee = "Host" });
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extensions = struct") != null);
@@ -10449,6 +10462,19 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendExtension_roles\"(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceEnumExtensions_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"replaceExtension_roles\"(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"legacy\" = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn write(w: *pbz.Writer, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(107, .start_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.appendSlice(value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(107, .end_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readGroupBytes(number);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.legacy]\") or @This().textBlockField(line, \"[legacy]\"))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"legacy\".encodeRaw(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, key, \"[demo.legacy]\") or std.mem.eql(u8, key, \"[legacy]\")) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"legacy\".replaceInUnknown(self, allocator, try nested.encode(arena_allocator));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"legacy\".decodeRaw(raw) catch null) |payload| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.legacy] {\\n\");") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
