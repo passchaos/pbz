@@ -464,10 +464,10 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, kind: schema.Fiel
         .scalar => |scalar| switch (scalar) {
             .double => try writer.print("try std.fmt.parseFloat(f64, {s})", .{value_expr}),
             .float => try writer.print("try std.fmt.parseFloat(f32, {s})", .{value_expr}),
-            .int32, .sint32, .sfixed32 => try writer.print("try std.fmt.parseInt(i32, {s}, 10)", .{value_expr}),
-            .int64, .sint64, .sfixed64 => try writer.print("try std.fmt.parseInt(i64, {s}, 10)", .{value_expr}),
-            .uint32, .fixed32 => try writer.print("try std.fmt.parseInt(u32, {s}, 10)", .{value_expr}),
-            .uint64, .fixed64 => try writer.print("try std.fmt.parseInt(u64, {s}, 10)", .{value_expr}),
+            .int32, .sint32, .sfixed32 => try writer.print("try @This().textInt(i32, {s})", .{value_expr}),
+            .int64, .sint64, .sfixed64 => try writer.print("try @This().textInt(i64, {s})", .{value_expr}),
+            .uint32, .fixed32 => try writer.print("try @This().textInt(u32, {s})", .{value_expr}),
+            .uint64, .fixed64 => try writer.print("try @This().textInt(u64, {s})", .{value_expr}),
             .bool => try writer.print("try @This().textBool({s})", .{value_expr}),
             .string, .bytes => try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr}),
         },
@@ -3144,6 +3144,10 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return error.TypeMismatch;
         \\}
         \\
+        \\fn textInt(comptime T: type, value: []const u8) !T {
+        \\    return try std.fmt.parseInt(T, value, 0);
+        \\}
+        \\
         \\fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
         \\    const body = if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) value[1 .. value.len - 1] else value;
         \\    var out: std.ArrayList(u8) = .empty;
@@ -4138,10 +4142,11 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"tags_list\".append(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kind\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, line, \"counts {\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try std.fmt.parseInt(i32, raw_value, 10); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textInt(comptime T: type, value: []const u8) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, body[i + 1 .. i + 3], 16)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32) !i32") != null);
