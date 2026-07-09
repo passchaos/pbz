@@ -1276,6 +1276,7 @@ fn validateDependencyIndexes(public_deps: []const i32, weak_deps: []const i32, d
 fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void {
     if (file.package.len != 0 and !isFullIdentifier(file.package)) return error.InvalidFieldType;
     for (file.messages.items, 0..) |message, i| {
+        if (!isIdentifier(message.name)) return error.InvalidFieldType;
         for (file.messages.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, message.name, other.name)) return error.InvalidFieldType;
         }
@@ -1287,6 +1288,7 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
         }
     }
     for (file.enums.items, 0..) |enumeration, i| {
+        if (!isIdentifier(enumeration.name)) return error.InvalidFieldType;
         for (file.enums.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, enumeration.name, other.name)) return error.InvalidFieldType;
         }
@@ -1295,10 +1297,20 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
         }
     }
     for (file.services.items, 0..) |service, i| {
+        if (!isIdentifier(service.name)) return error.InvalidFieldType;
         for (file.services.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, service.name, other.name)) return error.InvalidFieldType;
         }
     }
+}
+
+fn isIdentifier(value: []const u8) bool {
+    if (value.len == 0) return false;
+    if (!isIdentifierStart(value[0])) return false;
+    for (value[1..]) |c| {
+        if (!isIdentifierContinue(c)) return false;
+    }
+    return true;
 }
 
 fn isFullIdentifier(value: []const u8) bool {
@@ -1546,9 +1558,9 @@ fn validateDecodedProto3OptionalFields(message: *const schema.MessageDescriptor)
 }
 
 fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Error!void {
-    if (message.name.len == 0) return error.InvalidFieldType;
+    if (!isIdentifier(message.name)) return error.InvalidFieldType;
     for (message.fields.items, 0..) |field, i| {
-        if (field.name.len == 0 or field.number == 0) return error.InvalidFieldType;
+        if (!isIdentifier(field.name) or field.number == 0) return error.InvalidFieldType;
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
         }
@@ -1563,7 +1575,7 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
         }
     }
     for (message.oneofs.items, 0..) |oneof, i| {
-        if (oneof.name.len == 0) return error.InvalidFieldType;
+        if (!isIdentifier(oneof.name)) return error.InvalidFieldType;
         for (message.oneofs.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, oneof.name, other.name)) return error.InvalidFieldType;
         }
@@ -1666,7 +1678,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
         .feature_support = feature_support,
         .options = field_options,
     };
-    if (field.name.len == 0 or field.number == 0) return error.InvalidFieldType;
+    if (!isIdentifier(field.name) or field.number == 0) return error.InvalidFieldType;
     field_options = .empty;
     edition_defaults = .empty;
     return field;
@@ -1778,10 +1790,10 @@ fn decodeEnumValueOptions(allocator: std.mem.Allocator, value: *schema.EnumValue
 }
 
 fn validateEnumDescriptor(enumeration: *const schema.EnumDescriptor) Error!void {
-    if (enumeration.name.len == 0 or enumeration.values.items.len == 0) return error.InvalidFieldType;
+    if (!isIdentifier(enumeration.name) or enumeration.values.items.len == 0) return error.InvalidFieldType;
     const allow_alias = enumAllowsAlias(enumeration);
     for (enumeration.values.items, 0..) |value, i| {
-        if (value.name.len == 0) return error.InvalidFieldType;
+        if (!isIdentifier(value.name)) return error.InvalidFieldType;
         for (enumeration.values.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, value.name, other.name)) return error.InvalidFieldType;
             if (!allow_alias and value.number == other.number) return error.InvalidFieldType;
@@ -1834,7 +1846,7 @@ fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
             else => try reader.skipValue(tag),
         }
     }
-    if (oneof.name.len == 0) return error.InvalidFieldType;
+    if (!isIdentifier(oneof.name)) return error.InvalidFieldType;
     return oneof;
 }
 
@@ -1984,7 +1996,7 @@ fn decodeServiceDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
             else => try reader.skipValue(tag),
         }
     }
-    if (service.name.len == 0) return error.InvalidFieldType;
+    if (!isIdentifier(service.name)) return error.InvalidFieldType;
     for (service.methods.items, 0..) |method, i| {
         for (service.methods.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, method.name, other.name)) return error.InvalidFieldType;
@@ -2008,7 +2020,7 @@ fn decodeMethodDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error
             else => try reader.skipValue(tag),
         }
     }
-    if (method.name.len == 0 or method.input_type.len == 0 or method.output_type.len == 0) return error.InvalidFieldType;
+    if (!isIdentifier(method.name) or method.input_type.len == 0 or method.output_type.len == 0) return error.InvalidFieldType;
     return method;
 }
 
@@ -3435,6 +3447,121 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         defer file.deinit();
         try file.writeString(1, "bad-package.proto");
         try file.writeString(2, bad_package);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects invalid decoded symbol identifiers" {
+    const allocator = std.testing.allocator;
+    {
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "1Bad");
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-message-name.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad-name");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-field-name.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad.member");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeString(2, ".pkg.Host");
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-extension-name.proto");
+        try file.writeMessage(7, field.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "bad.oneof");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-oneof-name.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "OK");
+        try value.writeInt32(2, 0);
+        var enumeration = wire.Writer.init(allocator);
+        defer enumeration.deinit();
+        try enumeration.writeString(1, "-Bad");
+        try enumeration.writeMessage(2, value.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-enum-name.proto");
+        try file.writeMessage(5, enumeration.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "0_VALUE");
+        try value.writeInt32(2, 0);
+        var enumeration = wire.Writer.init(allocator);
+        defer enumeration.deinit();
+        try enumeration.writeString(1, "Bad");
+        try enumeration.writeMessage(2, value.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-enum-value-name.proto");
+        try file.writeMessage(5, enumeration.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        try service.writeString(1, "bad.service");
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-service-name.proto");
+        try file.writeMessage(6, service.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var method = wire.Writer.init(allocator);
+        defer method.deinit();
+        try method.writeString(1, "bad-method");
+        try method.writeString(2, ".demo.Req");
+        try method.writeString(3, ".demo.Res");
+        var service = wire.Writer.init(allocator);
+        defer service.deinit();
+        try service.writeString(1, "Svc");
+        try service.writeMessage(2, method.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-method-name.proto");
+        try file.writeMessage(6, service.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
