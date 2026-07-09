@@ -1591,6 +1591,37 @@ test "json ignore unknown fields skips imported enum names" {
     try std.testing.expectEqualStrings("ok", parsed.get("keyed").?.values.items[0].map_entry.key.string);
 }
 
+test "json parses and stringifies repeated and enum proto2 extensions" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\extend Host {
+        \\  repeated int32 scores = 100;
+        \\  optional Kind role = 101;
+        \\}
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const desc = file.findMessage("Host").?;
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[demo.scores]\":[1,2],\"[demo.role]\":\"ADMIN\"}", .{});
+    defer parsed.deinit();
+    const scores = registry.findExtension("demo.Host", 100).?;
+    const role = registry.findExtension("demo.Host", 101).?;
+    try std.testing.expectEqual(@as(i32, 1), parsed.getByNumber(scores.number).?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), parsed.getByNumber(scores.number).?.values.items[1].int32);
+    try std.testing.expectEqual(@as(i32, 1), parsed.getByNumber(role.number).?.values.items[0].enumeration);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &file, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"[demo.scores]\":[1,2],\"[demo.role]\":\"ADMIN\"}", rendered);
+}
+
 test "json parses and stringifies proto2 extension fields" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
