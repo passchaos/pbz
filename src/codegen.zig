@@ -7340,6 +7340,22 @@ fn writeEnumHelpers(enumeration: *const schema.EnumDescriptor, writer: *std.Io.W
     try writer.writeAll("}\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn textParse(value: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (fromName(value)) |known| return known;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return fromInt(try std.fmt.parseInt(i32, value, 10)) orelse error.InvalidEnumValue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn textFormat(self: @This(), writer: *std.Io.Writer) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try writer.writeAll(self.protoName());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("try std.json.Stringify.value(self.protoName(), .{}, writer);\n");
@@ -8556,6 +8572,9 @@ test "codegen emits zig message and enum skeletons" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, name, \"ADMIN\")) return .@\"ADMIN\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParse(value: std.json.Value) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".string => |name| fromName(name) orelse error.InvalidEnumValue,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn textParse(value: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (fromName(value)) |known| return known;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn textFormat(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"User\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"name_number\" = 1") != null);
