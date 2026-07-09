@@ -6592,8 +6592,61 @@ fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, 
         try writeQuotedIdent(first.name, writer);
         try writer.writeAll(";\n");
     }
+    try writeEnumHelpers(enumeration, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
+}
+
+fn writeEnumHelpers(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn fromInt(value: i32) ?@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return switch (value) {\n");
+    for (enumeration.values.items, 0..) |value, index| {
+        if (enumFirstValueIndexForNumber(enumeration, value.number) != index) continue;
+        try indent(writer, depth + 2);
+        try writer.print("{d} => .", .{value.number});
+        try writeQuotedIdent(value.name, writer);
+        try writer.writeAll(",\n");
+    }
+    try indent(writer, depth + 2);
+    try writer.writeAll("else => null,\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("};\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn toInt(self: @This()) i32 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return @intFromEnum(self);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn protoName(self: @This()) []const u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return switch (self) {\n");
+    for (enumeration.values.items, 0..) |value, index| {
+        if (enumFirstValueIndexForNumber(enumeration, value.number) != index) continue;
+        try indent(writer, depth + 2);
+        try writer.writeByte('.');
+        try writeQuotedIdent(value.name, writer);
+        try writer.writeAll(" => ");
+        try writeZigStringLiteral(value.name, writer);
+        try writer.writeAll(",\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("};\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try std.json.Stringify.value(self.protoName(), .{}, writer);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn enumFirstValueIndexForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?usize {
@@ -7671,6 +7724,12 @@ test "codegen emits zig message and enum skeletons" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Kind\" = enum(i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn fromInt(value: i32) ?@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "0 => .@\"UNKNOWN\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn toInt(self: @This()) i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn protoName(self: @This()) []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"ADMIN\" => \"ADMIN\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"User\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"name_number\" = 1") != null);
 }
@@ -7694,6 +7753,9 @@ test "codegen emits Zig enum aliases for proto allow_alias" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"STARTED\" = 1,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"RUNNING\" = @This().@\"STARTED\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"ACTIVE\" = @This().@\"STARTED\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => .@\"STARTED\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"STARTED\" => \"STARTED\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"RUNNING\" =>") == null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
