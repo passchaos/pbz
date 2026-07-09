@@ -319,6 +319,38 @@ test "conformance dynamic runner converts text to json" {
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"name\":\"Ada\"}", try reader.readBytes());
 }
 
+test "conformance dynamic runner converts json to text" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer common.deinit();
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\message Event { common.Kind kind = 1; }
+    );
+    defer app.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"kind\":\"ADMIN\"}" },
+        .requested_output_format = .text_format,
+        .message_type = "app.Event",
+        .test_category = .json_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 8), tag.number);
+    try std.testing.expectEqualSlices(u8, "kind: ADMIN\n", try reader.readBytes());
+}
+
 test "conformance dynamic runner uses registry for imported text output" {
     const allocator = std.testing.allocator;
     var common = try @import("parser.zig").Parser.parse(allocator,
