@@ -3,11 +3,22 @@ const schema = @import("schema.zig");
 
 pub const TypeKind = enum { message, enumeration };
 
-pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, InvalidExtensionDeclaration };
+pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, InvalidExtensionDeclaration, InvalidFieldType };
+
+pub const max_import_chain_depth = 32;
 
 pub const TypeRef = union(TypeKind) {
     message: *const schema.MessageDescriptor,
     enumeration: *const schema.EnumDescriptor,
+};
+
+pub const ImportChain = struct {
+    paths: [max_import_chain_depth][]const u8 = undefined,
+    len: usize = 0,
+
+    pub fn slice(self: *const ImportChain) []const []const u8 {
+        return self.paths[0..self.len];
+    }
 };
 
 pub const Registry = struct {
@@ -151,6 +162,119 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findMessageVisible(self: *const Registry, from_file: *const schema.FileDescriptor, name: []const u8, scope: ?[]const u8) ?*const schema.MessageDescriptor {
+        if (self.findTypeVisible(from_file, name, scope)) |type_ref| switch (type_ref) {
+            .message => |message| return message,
+            .enumeration => return null,
+        };
+        return null;
+    }
+
+    pub fn findEnumVisible(self: *const Registry, from_file: *const schema.FileDescriptor, name: []const u8, scope: ?[]const u8) ?*const schema.EnumDescriptor {
+        if (self.findTypeVisible(from_file, name, scope)) |type_ref| switch (type_ref) {
+            .message => return null,
+            .enumeration => |enumeration| return enumeration,
+        };
+        return null;
+    }
+
+    pub fn fileCanSee(self: *const Registry, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
+        return sameFile(from, to) or self.importChain(from, to) != null;
+    }
+
+    pub fn fileContainingMessage(self: *const Registry, target: *const schema.MessageDescriptor) ?*const schema.FileDescriptor {
+        for (self.files.items) |file| {
+            if (fileContainsMessage(file, target)) return file;
+        }
+        return null;
+    }
+
+    pub fn fileContainingEnum(self: *const Registry, target: *const schema.EnumDescriptor) ?*const schema.FileDescriptor {
+        for (self.files.items) |file| {
+            if (fileContainsEnum(file, target)) return file;
+        }
+        return null;
+    }
+
+    pub fn validateAllFileReferences(self: *const Registry) Error!void {
+        for (self.files.items) |file| try self.validateFileReferences(file);
+    }
+
+    pub fn validateFileReferences(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
+        for (file.messages.items) |*message| {
+            const scope = try qualifiedTypeName(self.allocator, file.package, message.name);
+            defer self.allocator.free(scope);
+            try self.validateMessageReferences(file, message, scope);
+        }
+        for (file.extensions.items) |*field| try self.validateFieldTypeReference(file, field, file.package);
+    }
+
+    fn validateMessageReferences(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, scope: []const u8) Error!void {
+        for (message.fields.items) |*field| try self.validateFieldTypeReference(file, field, scope);
+        for (message.extensions.items) |*field| try self.validateFieldTypeReference(file, field, scope);
+        for (message.messages.items) |*nested| {
+            const nested_scope = try qualifiedTypeName(self.allocator, scope, nested.name);
+            defer self.allocator.free(nested_scope);
+            try self.validateMessageReferences(file, nested, nested_scope);
+        }
+    }
+
+    fn validateFieldTypeReference(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scope: []const u8) Error!void {
+        try self.validateKindTypeReference(file, field.kind, scope);
+    }
+
+    fn validateKindTypeReference(self: *const Registry, file: *const schema.FileDescriptor, kind: schema.FieldKind, scope: []const u8) Error!void {
+        switch (kind) {
+            .scalar => {},
+            .message => |name| {
+                if (self.findType(name, scope) == null) return;
+                if (self.findMessageVisible(file, name, scope) == null and self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;
+            },
+            .enumeration => |name| {
+                const global = self.findType(name, scope) orelse return;
+                if (global != .enumeration or self.findEnumVisible(file, name, scope) == null) return error.InvalidFieldType;
+            },
+            .group => |name| {
+                const global = self.findType(name, scope) orelse return;
+                if (global != .message or self.findMessageVisible(file, name, scope) == null) return error.InvalidFieldType;
+            },
+            .map => |map_type| try self.validateKindTypeReference(file, map_type.value.*, scope),
+        }
+    }
+
+    pub fn findFile(self: *const Registry, path: []const u8) ?*const schema.FileDescriptor {
+        for (self.files.items) |file| {
+            if (std.mem.eql(u8, file.name, path)) return file;
+        }
+        return null;
+    }
+
+    pub fn importChain(self: *const Registry, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) ?ImportChain {
+        if (sameFile(from, to)) return .{};
+        for (from.imports.items) |import| {
+            if (import.kind == .option) continue;
+            const imported = self.findFile(import.path) orelse continue;
+            if (sameFile(imported, to)) return oneStepImportChain(import.path);
+            if (self.publicImportChainFrom(imported, to, 1)) |tail| {
+                return prependImportPath(import.path, tail);
+            }
+        }
+        return null;
+    }
+
+    fn publicImportChainFrom(self: *const Registry, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor, depth: usize) ?ImportChain {
+        if (depth >= max_import_chain_depth) return null;
+        for (from.imports.items) |import| {
+            if (import.kind != .public) continue;
+            const imported = self.findFile(import.path) orelse continue;
+            if (sameFile(imported, to)) return oneStepImportChain(import.path);
+            if (self.publicImportChainFrom(imported, to, depth + 1)) |tail| {
+                return prependImportPath(import.path, tail);
+            }
+        }
+        return null;
+    }
+
     pub fn findType(self: *const Registry, name: []const u8, scope: ?[]const u8) ?TypeRef {
         if (std.mem.startsWith(u8, name, ".")) return self.findAbsolute(name[1..]);
         if (scope) |scope_name| {
@@ -169,9 +293,42 @@ pub const Registry = struct {
         return self.findAbsolute(name) orelse self.findByLeaf(name);
     }
 
+    pub fn findTypeVisible(self: *const Registry, from_file: *const schema.FileDescriptor, name: []const u8, scope: ?[]const u8) ?TypeRef {
+        if (std.mem.startsWith(u8, name, ".")) return self.findAbsoluteVisible(from_file, name[1..]);
+        if (scope) |scope_name| {
+            var current = scope_name;
+            while (true) {
+                var buf: [512]u8 = undefined;
+                if (current.len + 1 + name.len <= buf.len) {
+                    const candidate = std.fmt.bufPrint(&buf, "{s}.{s}", .{ current, name }) catch unreachable;
+                    if (self.findAbsoluteVisible(from_file, candidate)) |found| return found;
+                }
+                if (std.mem.lastIndexOfScalar(u8, current, '.')) |idx| {
+                    current = current[0..idx];
+                } else break;
+            }
+        }
+        return self.findAbsoluteVisible(from_file, name) orelse self.findByLeafVisible(from_file, name);
+    }
+
     fn findAbsolute(self: *const Registry, full_name: []const u8) ?TypeRef {
         const normalized = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
         for (self.files.items) |file| {
+            if (file.package.len != 0) {
+                if (std.mem.startsWith(u8, normalized, file.package) and normalized.len > file.package.len and normalized[file.package.len] == '.') {
+                    const rest = normalized[file.package.len + 1 ..];
+                    if (findInFile(file, rest)) |found| return found;
+                }
+            }
+            if (findInFile(file, normalized)) |found| return found;
+        }
+        return null;
+    }
+
+    fn findAbsoluteVisible(self: *const Registry, from_file: *const schema.FileDescriptor, full_name: []const u8) ?TypeRef {
+        const normalized = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
+        for (self.files.items) |file| {
+            if (!self.fileCanSee(from_file, file)) continue;
             if (file.package.len != 0) {
                 if (std.mem.startsWith(u8, normalized, file.package) and normalized.len > file.package.len and normalized[file.package.len] == '.') {
                     const rest = normalized[file.package.len + 1 ..];
@@ -194,7 +351,76 @@ pub const Registry = struct {
         }
         return null;
     }
+
+    fn findByLeafVisible(self: *const Registry, from_file: *const schema.FileDescriptor, leaf: []const u8) ?TypeRef {
+        for (self.files.items) |file| {
+            if (!self.fileCanSee(from_file, file)) continue;
+            for (file.messages.items) |*message| {
+                if (findInMessageByLeaf(message, leaf)) |found| return found;
+            }
+            for (file.enums.items) |*enumeration| {
+                if (std.mem.eql(u8, enumeration.name, leaf)) return .{ .enumeration = enumeration };
+            }
+        }
+        return null;
+    }
 };
+
+fn sameFile(a: *const schema.FileDescriptor, b: *const schema.FileDescriptor) bool {
+    if (a == b) return true;
+    if (a.name.len != 0 and b.name.len != 0 and std.mem.eql(u8, a.name, b.name)) return true;
+    return false;
+}
+
+fn fileContainsMessage(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor) bool {
+    for (file.messages.items) |*message| {
+        if (message == target or messageContainsMessage(message, target)) return true;
+    }
+    return false;
+}
+
+fn messageContainsMessage(message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) bool {
+    for (message.messages.items) |*nested| {
+        if (nested == target or messageContainsMessage(nested, target)) return true;
+    }
+    return false;
+}
+
+fn fileContainsEnum(file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) bool {
+    for (file.enums.items) |*enumeration| {
+        if (enumeration == target) return true;
+    }
+    for (file.messages.items) |*message| {
+        if (messageContainsEnum(message, target)) return true;
+    }
+    return false;
+}
+
+fn messageContainsEnum(message: *const schema.MessageDescriptor, target: *const schema.EnumDescriptor) bool {
+    for (message.enums.items) |*enumeration| {
+        if (enumeration == target) return true;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainsEnum(nested, target)) return true;
+    }
+    return false;
+}
+
+fn oneStepImportChain(path: []const u8) ImportChain {
+    var chain = ImportChain{};
+    chain.paths[0] = path;
+    chain.len = 1;
+    return chain;
+}
+
+fn prependImportPath(path: []const u8, tail: ImportChain) ?ImportChain {
+    if (tail.len + 1 > max_import_chain_depth) return null;
+    var chain = ImportChain{};
+    chain.paths[0] = path;
+    @memcpy(chain.paths[1..][0..tail.len], tail.paths[0..tail.len]);
+    chain.len = tail.len + 1;
+    return chain;
+}
 
 fn validateExtensionRangeDeclarationSet(range: schema.ExtensionRange) Error!void {
     if (range.declarations.items.len != 0 and range.verification == .unverified) return error.InvalidExtensionDeclaration;
@@ -375,6 +601,80 @@ test "registry resolves absolute relative nested and imported types" {
     try std.testing.expect(registry.findEnum("Role", "demo.common.User") != null);
     try std.testing.expect(registry.findMessage("Request", "demo.app") != null);
     try std.testing.expect(registry.findMessage("demo.common.User", "demo.app.Request") != null);
+}
+
+test "registry computes direct and public import chains" {
+    const allocator = std.testing.allocator;
+    var leaf = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.leaf;
+        \\message User { optional string name = 1; }
+    );
+    defer leaf.deinit();
+    leaf.name = "leaf.proto";
+    var leaf2 = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.leaf2;
+        \\message PrivateUser { optional string name = 1; }
+    );
+    defer leaf2.deinit();
+    leaf2.name = "leaf2.proto";
+    var bridge = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.bridge;
+        \\import public "leaf.proto";
+        \\message Bridge {}
+    );
+    defer bridge.deinit();
+    bridge.name = "bridge.proto";
+    var private_bridge = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.private_bridge;
+        \\import "leaf2.proto";
+        \\message PrivateBridge {}
+    );
+    defer private_bridge.deinit();
+    private_bridge.name = "private.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.app;
+        \\import "bridge.proto";
+        \\import "private.proto";
+        \\message App { optional demo.leaf.User user = 1; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&leaf);
+    try registry.addFile(&leaf2);
+    try registry.addFile(&bridge);
+    try registry.addFile(&private_bridge);
+    try registry.addFile(&app);
+
+    const direct = registry.importChain(&app, &bridge).?;
+    try std.testing.expectEqual(@as(usize, 1), direct.len);
+    try std.testing.expectEqualStrings("bridge.proto", direct.paths[0]);
+
+    const public_chain = registry.importChain(&app, &leaf).?;
+    try std.testing.expectEqual(@as(usize, 2), public_chain.len);
+    try std.testing.expectEqualStrings("bridge.proto", public_chain.paths[0]);
+    try std.testing.expectEqualStrings("leaf.proto", public_chain.paths[1]);
+
+    try std.testing.expect(registry.importChain(&app, &leaf2) == null);
+    try registry.validateAllFileReferences();
+
+    var bad = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.bad;
+        \\import "private.proto";
+        \\message Bad { optional demo.leaf2.PrivateUser user = 1; }
+    );
+    defer bad.deinit();
+    bad.name = "bad.proto";
+    try registry.addFile(&bad);
+    try std.testing.expectError(error.InvalidFieldType, registry.validateFileReferences(&bad));
 }
 
 test "registry finds extension fields" {

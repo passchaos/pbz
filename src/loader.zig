@@ -56,6 +56,7 @@ pub fn loadMemory(allocator: std.mem.Allocator, tree: *const MemorySourceTree, r
     defer loaded.deinit();
     try loadOne(allocator, tree, root_path, &result, &loading, &loaded);
     for (result.files.items) |*file| try result.registry.addFile(file);
+    try result.registry.validateAllFileReferences();
     return result;
 }
 
@@ -138,6 +139,7 @@ pub fn loadDir(allocator: std.mem.Allocator, root_dir: std.Io.Dir, root_path: []
     defer loaded.deinit();
     try loadDirOne(allocator, root_dir, root_path, &result, &loading, &loaded);
     for (result.files.items) |*file| try result.registry.addFile(file);
+    try result.registry.validateAllFileReferences();
     return result;
 }
 
