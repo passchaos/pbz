@@ -2579,17 +2579,13 @@ fn writeTextMethods(file: *const schema.FileDescriptor, message: *const schema.M
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
     }
-    if (!messageTextHasFields(file, message)) {
-        try indent(writer, depth + 1);
-        try writer.writeAll("_ = self; _ = writer;\n");
-    } else {
-        for (message.fields.items) |*field| {
-            if (field.oneof_name == null) try writeTextField(file, field, writer, depth + 1);
-        }
-        for (message.oneofs.items) |oneof| {
-            if (oneofHasTextField(file, message, oneof.name)) try writeTextOneof(file, message, oneof, writer, depth + 1);
-        }
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeTextField(file, field, writer, depth + 1);
     }
+    for (message.oneofs.items) |oneof| {
+        if (oneofHasTextField(file, message, oneof.name)) try writeTextOneof(file, message, oneof, writer, depth + 1);
+    }
+    try writeTextUnknownFields(file, message, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -2612,7 +2608,35 @@ fn messageTextUsesAllocator(file: *const schema.FileDescriptor, message: *const 
         if (field.kind == .message or field.kind == .group) return true;
         if (field.kind == .map and textMapValueUsesAllocator(file, field.kind.map.value.*)) return true;
     }
+    if (messageHasTextMessageExtension(file, message)) return true;
     return false;
+}
+
+fn messageHasTextMessageExtension(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
+    for (file.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, message, field) and extensionTextUsesAllocator(file, field)) return true;
+    }
+    for (file.messages.items) |*scope| {
+        if (messageScopeHasTextMessageExtension(file, message, scope)) return true;
+    }
+    return false;
+}
+
+fn messageScopeHasTextMessageExtension(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) bool {
+    for (scope.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, target, field) and extensionTextUsesAllocator(file, field)) return true;
+    }
+    for (scope.messages.items) |*nested| {
+        if (messageScopeHasTextMessageExtension(file, target, nested)) return true;
+    }
+    return false;
+}
+
+fn extensionTextUsesAllocator(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
+    return switch (field.kind) {
+        .message => |name| codegenCanReferenceMessage(file, name),
+        else => false,
+    };
 }
 
 fn textMapValueUsesAllocator(file: *const schema.FileDescriptor, kind: schema.FieldKind) bool {
@@ -2841,10 +2865,112 @@ fn writeTextOneof(file: *const schema.FileDescriptor, message: *const schema.Mes
     try writer.writeAll("}\n");
 }
 
+fn writeTextUnknownFields(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try writeTextUnknownExtensionFields(file, message, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("try @This().textWriteUnknownRaw(raw, writer);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeTextUnknownExtensionFields(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (file.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, message, field)) try writeTextUnknownExtensionField(file, field, writer, depth);
+    }
+    for (file.messages.items) |*scope| try writeTextUnknownMessageExtensions(file, message, scope, writer, depth);
+}
+
+fn writeTextUnknownMessageExtensions(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (scope.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, target, field)) try writeTextUnknownExtensionField(file, field, writer, depth);
+    }
+    for (scope.messages.items) |*nested| try writeTextUnknownMessageExtensions(file, target, nested, writer, depth);
+}
+
+fn writeTextUnknownExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    switch (field.kind) {
+        .scalar, .enumeration => {},
+        .message => |type_name| {
+            if (!codegenCanReferenceMessage(file, type_name)) return;
+            return try writeTextUnknownMessageExtensionField(file, field, type_name, writer, depth);
+        },
+        else => return,
+    }
+    try indent(writer, depth);
+    try writer.writeAll("if (");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".decodeRaw(raw) catch null) |value| {\n");
+    try indent(writer, depth + 2);
+    try writeTextExtensionFieldPrefix(file, field, writer);
+    switch (field.kind) {
+        .scalar => |scalar| try writeTextScalarValue(scalar, "value", writer),
+        .enumeration => |name| try writeTextEnumValue(file, name, "value", writer),
+        else => unreachable,
+    }
+    try writer.writeAll("; try writer.writeByte('\\n');\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeTextUnknownMessageExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".decodeRaw(raw) catch null) |payload| {\n");
+    try indent(writer, depth + 2);
+    try writeTextExtensionBlockPrefix(file, field, writer);
+    try indent(writer, depth + 2);
+    try writer.writeAll("var nested = try ");
+    try writeMessageTypeReference(type_name, writer);
+    try writer.writeAll(".decode(allocator, payload);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("try nested.formatTextWithAllocator(allocator, writer);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeTextFieldPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("try writer.writeAll(\"");
     try writeEscapedStringContents(field.name, writer);
     try writer.writeAll(": \"); ");
+}
+
+fn writeTextExtensionFieldPrefix(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("try writer.writeAll(\"[");
+    try writeExtensionTextNameContents(file, field, true, writer);
+    try writer.writeAll("]: \"); ");
+}
+
+fn writeTextExtensionBlockPrefix(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("try writer.writeAll(\"[");
+    try writeExtensionTextNameContents(file, field, true, writer);
+    try writer.writeAll("] {\\n\");\n");
+}
+
+fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, qualified: bool, writer: *std.Io.Writer) Error!void {
+    if (qualified) {
+        if (std.mem.startsWith(u8, field.name, ".")) {
+            try writeEscapedStringContents(field.name[1..], writer);
+        } else if (std.mem.indexOfScalar(u8, field.name, '.') != null or file.package.len == 0) {
+            try writeEscapedStringContents(field.name, writer);
+        } else {
+            try writeEscapedStringContents(file.package, writer);
+            try writer.writeByte('.');
+            try writeEscapedStringContents(field.name, writer);
+        }
+    } else {
+        try writeEscapedStringContents(leafTypeName(field.name), writer);
+    }
 }
 
 fn writeTextScalarValue(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -3715,6 +3841,37 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return error.UnexpectedEof;
         \\}
         \\
+        \\fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
+        \\    var r = pbz.Reader.init(raw);
+        \\    while (try r.nextTag()) |tag| try textWriteUnknownField(tag, &r, writer);
+        \\}
+        \\
+        \\fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void {
+        \\    switch (tag.wire_type) {
+        \\        .varint => try writer.print("{d}: {d}\n", .{ tag.number, try r.readVarint() }),
+        \\        .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
+        \\        .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
+        \\        .length_delimited => {
+        \\            try writer.print("{d}: ", .{tag.number});
+        \\            try std.json.Stringify.value(try r.readBytes(), .{}, writer);
+        \\            try writer.writeByte('\n');
+        \\        },
+        \\        .start_group => {
+        \\            try writer.print("{d} {{\n", .{tag.number});
+        \\            while (try r.nextTag()) |inner| {
+        \\                if (inner.wire_type == .end_group) {
+        \\                    if (inner.number != tag.number) return error.InvalidFieldNumber;
+        \\                    try writer.writeAll("}\n");
+        \\                    return;
+        \\                }
+        \\                try textWriteUnknownField(inner, r, writer);
+        \\            }
+        \\            return error.TruncatedInput;
+        \\        },
+        \\        .end_group => return error.InvalidWireType,
+        \\    }
+        \\}
+        \\
         \\fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
         \\    var out: std.Io.Writer.Allocating = .init(allocator);
         \\    errdefer out.deinit();
@@ -4227,7 +4384,7 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
         try writer.writeAll("return null;\n");
     } else {
         try indent(writer, depth + 1);
-        try writer.writeAll("if (tag.number != number) return null;\n");
+        try writer.print("if (tag.number != number or tag.wire_type != .{s}) return null;\n", .{@tagName(field.kind.wireType())});
         try indent(writer, depth + 1);
         try writer.writeAll("return try decodeValue(&r);\n");
     }
@@ -4778,6 +4935,12 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteUnknownRaw(raw, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(try r.readBytes(), .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"{d} {{\\n\", .{tag.number});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeTag(number, .start_group);") != null);
@@ -5284,7 +5447,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeValue(r: *pbz.Reader) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeRaw(raw: []const u8) !?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number != number) return null;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number != number or tag.wire_type != .length_delimited) return null;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeValue(&r);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |raw| if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
@@ -5305,6 +5468,11 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.note]\") or @This().textBlockField(line, \"[note]\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".parseText(allocator, block);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"note\".encodeRaw(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"tag\".decodeRaw(raw) catch null) |value| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"note\".decodeRaw(raw) catch null) |payload| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.note] {\\n\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".decode(allocator, payload);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);

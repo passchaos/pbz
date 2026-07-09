@@ -257,18 +257,20 @@ fields or alternate spellings, treat `null` as clearing the previous value, and
 replace previous repeated/map slices safely.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
 TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
-and oneof fields; generated `parseText` / `parseTextInitialized` cover basic
-line-oriented scalar, enum, repeated, scalar/enum/message map, scalar/enum oneof
-input, plus same-file proto2 extension references such as `[demo.ext]` or
-`[ext]` stored as preserved unknown/raw extension fields, message/group block
-payloads with duplicate singular message/group merge semantics when their
-generated types are available, `{}` or `<>` block delimiters with optional colon,
-proto/lowerCamel/`json_name` field spellings, adjacent quoted string literal
-concatenation, common quoted string escapes including C-style control, hex/octal
-bytes, decimal/hex/octal integer input, closed-enum validation, numeric unknown
-varint/string/group preservation, float `nan`/`inf` spellings, `#` line comments
-outside quoted strings including nested blocks, common semicolon/comma separators,
-and `features.utf8_validation` enforcement for string/map-string values.
+same-file proto2 extension values recovered from preserved unknown/raw fields,
+numeric unknown varint/string/group/fixed fields, and oneof fields; generated
+`parseText` / `parseTextInitialized` cover basic line-oriented scalar, enum,
+repeated, scalar/enum/message map, scalar/enum oneof input, plus same-file proto2
+extension references such as `[demo.ext]` or `[ext]` stored as preserved
+unknown/raw extension fields, message/group block payloads with duplicate
+singular message/group merge semantics when their generated types are available,
+`{}` or `<>` block delimiters with optional colon, proto/lowerCamel/`json_name`
+field spellings, adjacent quoted string literal concatenation, common quoted
+string escapes including C-style control, hex/octal bytes, decimal/hex/octal
+integer input, closed-enum validation, numeric unknown varint/string/group
+preservation, float `nan`/`inf` spellings, `#` line comments outside quoted
+strings including nested blocks, common semicolon/comma separators, and
+`features.utf8_validation` enforcement for string/map-string values.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
