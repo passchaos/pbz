@@ -148,7 +148,7 @@ fn fillMessageObject(
     var it = object.iterator();
     while (it.next()) |entry| {
         if (skip_type_field and std.mem.eql(u8, entry.key_ptr.*, "@type")) continue;
-        const field = findJsonField(message.descriptor, entry.key_ptr.*, options) orelse {
+        const field = findJsonField(file, registry, message.descriptor, entry.key_ptr.*, options) orelse {
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
@@ -467,7 +467,7 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
     return false;
 }
 
-fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, options: Options) ?*const schema.FieldDescriptor {
+fn findJsonField(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, message: *const schema.MessageDescriptor, key: []const u8, options: Options) ?*const schema.FieldDescriptor {
     _ = options;
     for (message.fields.items) |*field| {
         if (std.mem.eql(u8, field.name, key)) return field;
@@ -475,7 +475,34 @@ fn findJsonField(message: *const schema.MessageDescriptor, key: []const u8, opti
             if (std.mem.eql(u8, json_name, key)) return field;
         } else if (schema.eqlDefaultJsonName(field.name, key)) return field;
     }
+    if (jsonExtensionName(key)) |extension_name| {
+        if (registry) |reg| {
+            if (reg.findExtensionByName(message.name, extension_name)) |field| return field;
+            const leaf = leafName(extension_name);
+            if (reg.findExtensionByName(message.name, leaf)) |field| return field;
+        } else {
+            for (file.extensions.items) |*field| {
+                if (field.extendee != null and extensionExtendsMessage(field.extendee.?, message) and (std.mem.eql(u8, field.name, extension_name) or std.mem.eql(u8, field.name, leafName(extension_name)))) return field;
+            }
+        }
+    }
     return null;
+}
+
+fn jsonExtensionName(key: []const u8) ?[]const u8 {
+    if (key.len < 2 or key[0] != '[' or key[key.len - 1] != ']') return null;
+    return key[1 .. key.len - 1];
+}
+
+fn leafName(name: []const u8) []const u8 {
+    const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    return if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+}
+
+fn extensionExtendsMessage(extendee: []const u8, message: *const schema.MessageDescriptor) bool {
+    const trimmed = if (std.mem.startsWith(u8, extendee, ".")) extendee[1..] else extendee;
+    const leaf = leafName(trimmed);
+    return std.mem.eql(u8, message.name, trimmed) or std.mem.eql(u8, message.name, leaf);
 }
 
 fn writeMessage(
@@ -503,7 +530,7 @@ fn writeMessageContents(
         if (entry.values.items.len == 0) continue;
         if (!first.*) try writer.writeAll(",");
         first.* = false;
-        try writeFieldName(entry.descriptor, options, writer);
+        try writeFieldName(file, registry, entry.descriptor, options, writer);
         try writer.writeAll(":");
         if (entry.descriptor.kind == .map) {
             try writeMap(file, registry, message.descriptor, entry.descriptor, entry.values.items, options, writer);
@@ -524,7 +551,7 @@ fn writeMessageContents(
             if (!shouldPrintAbsentField(field)) continue;
             if (!first.*) try writer.writeAll(",");
             first.* = false;
-            try writeFieldName(field, options, writer);
+            try writeFieldName(file, registry, field, options, writer);
             try writer.writeAll(":");
             try writeAbsentFieldDefault(file, registry, message.descriptor, field, options, writer);
         }
@@ -1200,18 +1227,55 @@ fn writeJsonString(value: []const u8, writer: *std.Io.Writer) Error!void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
+fn writeJsonStringContents(value: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll(value);
+}
+
 fn writeJsonStringFmt(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) Error!void {
     try writer.writeAll("\"");
     try writer.print(fmt, args);
     try writer.writeAll("\"");
 }
 
-fn writeFieldName(field: *const schema.FieldDescriptor, options: Options, writer: *std.Io.Writer) Error!void {
+fn writeFieldName(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor, options: Options, writer: *std.Io.Writer) Error!void {
+    if (field.extendee != null) return writeJsonStringExtensionName(file, registry, field, writer);
     if (options.preserve_proto_field_names) return writeJsonString(field.name, writer);
     if (field.json_name) |json_name| return writeJsonString(json_name, writer);
     try writer.writeAll("\"");
     try schema.writeDefaultJsonName(field.name, writer);
     try writer.writeAll("\"");
+}
+
+fn writeJsonStringExtensionName(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("\"[");
+    if (std.mem.startsWith(u8, field.name, ".")) {
+        try writeJsonStringContents(field.name[1..], writer);
+    } else if (std.mem.indexOfScalar(u8, field.name, '.') != null) {
+        try writeJsonStringContents(field.name, writer);
+    } else {
+        const package = extensionDefiningPackage(registry, field) orelse file.package;
+        if (package.len != 0) {
+            try writeJsonStringContents(package, writer);
+            try writer.writeByte('.');
+        }
+        try writeJsonStringContents(field.name, writer);
+    }
+    try writer.writeAll("]\"");
+}
+
+fn extensionDefiningPackage(registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) ?[]const u8 {
+    const reg = registry orelse return null;
+    for (reg.files.items) |file| {
+        for (file.extensions.items) |*candidate| if (candidate == field) return file.package;
+        for (file.messages.items) |*message| if (extensionPackageInMessage(file, message, field)) |package| return package;
+    }
+    return null;
+}
+
+fn extensionPackageInMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+    for (message.extensions.items) |*candidate| if (candidate == field) return file.package;
+    for (message.messages.items) |*nested| if (extensionPackageInMessage(file, nested, field)) |package| return package;
+    return null;
 }
 
 fn writeLowerCamel(name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -1525,6 +1589,34 @@ test "json ignore unknown fields skips imported enum names" {
     try std.testing.expectEqual(@as(i32, 1), parsed.get("roles").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(usize, 1), parsed.get("keyed").?.values.items.len);
     try std.testing.expectEqualStrings("ok", parsed.get("keyed").?.values.items[0].map_entry.key.string);
+}
+
+test "json parses and stringifies proto2 extension fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\extend Host { optional int32 tag = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const desc = file.findMessage("Host").?;
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[demo.tag]\":7}", .{});
+    defer parsed.deinit();
+    const ext = registry.findExtension("demo.Host", 100).?;
+    try std.testing.expectEqual(@as(i32, 7), parsed.getByNumber(ext.number).?.values.items[0].int32);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &file, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"[demo.tag]\":7}", rendered);
+
+    var leaf = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[tag]\":8}", .{});
+    defer leaf.deinit();
+    try std.testing.expectEqual(@as(i32, 8), leaf.getByNumber(ext.number).?.values.items[0].int32);
 }
 
 test "json parse ignores null fields" {

@@ -443,6 +443,32 @@ test "conformance dynamic runner uses registry for imported protobuf output" {
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x12, 0x02, 0x01, 0x02 }, try reader.readBytes());
 }
 
+test "conformance dynamic runner parses proto2 extension json input" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to 200; }
+        \\extend Host { optional int32 tag = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    const response_bytes = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"[demo.tag]\":7}" },
+        .requested_output_format = .protobuf,
+        .message_type = "demo.Host",
+        .test_category = .json_test,
+    });
+    defer allocator.free(response_bytes);
+    var reader = wire.Reader.init(response_bytes);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 3), tag.number);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa0, 0x06, 0x07 }, try reader.readBytes());
+}
+
 test "conformance dynamic runner parses proto2 extension text input" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
