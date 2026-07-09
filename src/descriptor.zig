@@ -1242,6 +1242,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try collapseMapEntryMessages(allocator, &file);
     resolveDecodedEnumDefaults(&file);
     try validateDecodedFileDescriptor(&file);
+    try validateDecodedDefaults(&file);
     try validateDecodedExtensionDeclarations(&file);
     return file;
 }
@@ -1369,6 +1370,62 @@ fn validateDecodedMessageExtensionDeclarations(file: *const schema.FileDescripto
 fn validateDecodedExtensionFieldDescriptor(field: *const schema.FieldDescriptor) Error!void {
     const extendee = field.extendee orelse return error.InvalidFieldType;
     if (!isTypeNameReference(extendee)) return error.InvalidFieldType;
+}
+
+fn validateDecodedDefaults(file: *const schema.FileDescriptor) Error!void {
+    for (file.extensions.items) |*field| try validateDecodedFieldDefault(file, field);
+    for (file.messages.items) |*message| try validateDecodedMessageDefaults(file, message);
+}
+
+fn validateDecodedMessageDefaults(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+    for (message.fields.items) |*field| try validateDecodedFieldDefault(file, field);
+    for (message.extensions.items) |*field| try validateDecodedFieldDefault(file, field);
+    for (message.messages.items) |*nested| try validateDecodedMessageDefaults(file, nested);
+}
+
+fn validateDecodedFieldDefault(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
+    const value = field.default_value orelse return;
+    if (file.syntax == .proto3) return error.InvalidFieldType;
+    if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null or field.proto3_optional) return error.InvalidFieldType;
+    switch (field.kind) {
+        .scalar => |scalar| try validateDecodedScalarDefault(scalar, value),
+        .enumeration => |name| try validateDecodedEnumDefault(file, name, value),
+        .message, .group => return error.InvalidFieldType,
+        .map => return error.InvalidFieldType,
+    }
+}
+
+fn validateDecodedScalarDefault(scalar: schema.ScalarType, value: schema.OptionValue) Error!void {
+    switch (scalar) {
+        .double, .float => switch (value) {
+            .float => {},
+            else => return error.InvalidFieldType,
+        },
+        .int32, .int64, .sint32, .sint64, .sfixed32, .sfixed64, .uint32, .uint64, .fixed32, .fixed64 => switch (value) {
+            .integer => {},
+            else => return error.InvalidFieldType,
+        },
+        .bool => switch (value) {
+            .boolean => {},
+            else => return error.InvalidFieldType,
+        },
+        .string, .bytes => switch (value) {
+            .string => {},
+            else => return error.InvalidFieldType,
+        },
+    }
+}
+
+fn validateDecodedEnumDefault(file: *const schema.FileDescriptor, enum_name: []const u8, value: schema.OptionValue) Error!void {
+    switch (value) {
+        .integer => return,
+        .identifier => |default_name| {
+            if (!isIdentifier(default_name)) return error.InvalidFieldType;
+            const enumeration = file.findEnumDeep(enum_name) orelse return;
+            if (enumeration.findValue(default_name) == null) return error.InvalidFieldType;
+        },
+        else => return error.InvalidFieldType,
+    }
 }
 
 fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
@@ -1682,13 +1739,14 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!
     }
 
     const kind = try kindFromType(allocator, field_type, type_name);
+    if (default_value_text != null and (cardinality == .repeated or oneof_index_text != null)) return error.InvalidFieldType;
     const field = schema.FieldDescriptor{
         .name = name,
         .number = number,
         .cardinality = cardinality,
         .kind = kind,
         .extendee = extendee,
-        .default_value = if (default_value_text) |text| decodeDefaultValue(kind, text) else null,
+        .default_value = if (default_value_text) |text| try decodeDefaultValue(kind, text) else null,
         .oneof_name = oneof_index_text,
         .json_name = json_name,
         .proto3_optional = proto3_optional,
@@ -1710,18 +1768,65 @@ fn fieldNumberFromDescriptor(value: i32) wire.Error!wire.FieldNumber {
     return @intCast(value);
 }
 
-fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) schema.OptionValue {
+fn decodeDefaultValue(kind: schema.FieldKind, text: []const u8) Error!schema.OptionValue {
     return switch (kind) {
         .scalar => |scalar| switch (scalar) {
-            .double, .float => .{ .float = std.fmt.parseFloat(f64, text) catch 0 },
-            .int32, .int64, .sint32, .sint64, .sfixed32, .sfixed64 => .{ .integer = std.fmt.parseInt(i64, text, 10) catch 0 },
-            .uint32, .uint64, .fixed32, .fixed64 => .{ .integer = @intCast(std.fmt.parseInt(u64, text, 10) catch 0) },
-            .bool => .{ .boolean = std.ascii.eqlIgnoreCase(text, "true") },
+            .double => .{ .float = try parseFloatDefault(f64, text) },
+            .float => .{ .float = try parseFloatDefault(f32, text) },
+            .int32, .sint32, .sfixed32 => .{ .integer = try parseSignedIntegerDefault(i32, text) },
+            .int64, .sint64, .sfixed64 => .{ .integer = try parseSignedIntegerDefault(i64, text) },
+            .uint32, .fixed32 => .{ .integer = try parseUnsignedIntegerDefault(u32, text) },
+            .uint64, .fixed64 => .{ .integer = try parseUnsignedIntegerDefault(u64, text) },
+            .bool => .{ .boolean = try parseBoolDefault(text) },
             .string, .bytes => .{ .string = text },
         },
-        .enumeration => .{ .identifier = text },
-        else => .{ .string = text },
+        .enumeration => blk: {
+            if (!isIdentifier(text)) return error.InvalidFieldType;
+            break :blk .{ .identifier = text };
+        },
+        .message, .group, .map => error.InvalidFieldType,
     };
+}
+
+fn parseSignedIntegerDefault(comptime T: type, text: []const u8) Error!i64 {
+    const value = parseIntegerDefault(T, text) catch return error.InvalidFieldType;
+    return @intCast(value);
+}
+
+fn parseUnsignedIntegerDefault(comptime T: type, text: []const u8) Error!i64 {
+    const value = parseIntegerDefault(T, text) catch return error.InvalidFieldType;
+    if (value > std.math.maxInt(i64)) return error.InvalidFieldType;
+    return @intCast(value);
+}
+
+fn parseIntegerDefault(comptime T: type, text: []const u8) !T {
+    if (text.len == 0) return error.InvalidCharacter;
+    var body = text;
+    if (body[0] == '+' or body[0] == '-') {
+        body = body[1..];
+        if (body.len == 0) return error.InvalidCharacter;
+    }
+    if (body.len > 1 and body[0] == '0') {
+        switch (body[1]) {
+            'x', 'X', 'o', 'O', 'b', 'B' => return std.fmt.parseInt(T, text, 0),
+            else => return std.fmt.parseInt(T, text, 8),
+        }
+    }
+    return std.fmt.parseInt(T, text, 0);
+}
+
+fn parseFloatDefault(comptime T: type, text: []const u8) Error!f64 {
+    if (std.mem.eql(u8, text, "inf")) return std.math.inf(f64);
+    if (std.mem.eql(u8, text, "-inf")) return -std.math.inf(f64);
+    if (std.mem.eql(u8, text, "nan")) return std.math.nan(f64);
+    const value = std.fmt.parseFloat(T, text) catch return error.InvalidFieldType;
+    return @floatCast(value);
+}
+
+fn parseBoolDefault(text: []const u8) Error!bool {
+    if (std.mem.eql(u8, text, "true")) return true;
+    if (std.mem.eql(u8, text, "false")) return false;
+    return error.InvalidFieldType;
 }
 
 fn resolveDecodedEnumDefaults(file: *schema.FileDescriptor) void {
@@ -2527,6 +2632,148 @@ test "descriptor decodes scalar default values with typed option values" {
     try std.testing.expectEqual(@as(f64, 1.5), msg.findField("ratio").?.default_value.?.float);
     try std.testing.expectEqualSlices(u8, "anon", msg.findField("name").?.default_value.?.string);
     try std.testing.expectEqualSlices(u8, &.{ 0x01, 0x02 }, msg.findField("raw").?.default_value.?.string);
+}
+
+test "descriptor rejects invalid decoded field defaults" {
+    const allocator = std.testing.allocator;
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeString(7, "not-int");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-int-default.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 13);
+        try field.writeString(7, "-1");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-uint-default.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "enabled");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 8);
+        try field.writeString(7, "TRUE");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-bool-default.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "ids");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 3);
+        try field.writeInt32(5, 5);
+        try field.writeString(7, "1");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-repeated-default.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "child");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 11);
+        try field.writeString(6, ".Child");
+        try field.writeString(7, "x");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-message-default.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "id");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeString(7, "1");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-proto3-default.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var value = wire.Writer.init(allocator);
+        defer value.deinit();
+        try value.writeString(1, "ZERO");
+        try value.writeInt32(2, 0);
+        var enumeration = wire.Writer.init(allocator);
+        defer enumeration.deinit();
+        try enumeration.writeString(1, "Kind");
+        try enumeration.writeMessage(2, value.slice());
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "kind");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 14);
+        try field.writeString(6, ".Kind");
+        try field.writeString(7, "MISSING");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-enum-default.proto");
+        try file.writeMessage(5, enumeration.slice());
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
 }
 
 test "descriptor preserves proto2 group fields and nested group messages" {
