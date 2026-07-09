@@ -2836,7 +2836,11 @@ fn writeMessageExtensionAccessor(ctx: *const CodegenContext, field: *const schem
         try writer.writeAll("}\n\n");
     }
 
-    if (field.kind == .message and codegenCanReferenceMessage(file, field.kind.message)) {
+    if ((field.kind == .message or field.kind == .group) and codegenCanReferenceMessage(file, switch (field.kind) {
+        .message => |name| name,
+        .group => |name| name,
+        else => unreachable,
+    })) {
         try writeMessageExtensionTypedAccessor(field, helper_name, writer, depth);
     }
 
@@ -2983,7 +2987,11 @@ fn writeMessageEnumExtensionAccessor(ctx: *const CodegenContext, field: *const s
 }
 
 fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, helper_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
-    const type_name = field.kind.message;
+    const type_name = switch (field.kind) {
+        .message => |name| name,
+        .group => |name| name,
+        else => return,
+    };
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
@@ -7735,7 +7743,7 @@ fn writeExtensionFacadeHelpers(ctx: *const CodegenContext, field: *const schema.
     if (field.kind == .enumeration and canReferenceEnumWithContext(ctx, field.kind)) {
         try writeExtensionEnumFacadeHelpers(ctx, field, writer, depth);
     }
-    if (field.kind == .message and canReferenceMessageWithContext(ctx, field.kind)) {
+    if ((field.kind == .message or field.kind == .group) and canReferenceMessageWithContext(ctx, field.kind)) {
         try writeExtensionMessageFacadeHelpers(ctx, field, writer, depth);
     }
 }
@@ -7855,7 +7863,11 @@ fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const sch
 }
 
 fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const type_name = field.kind.message;
+    const type_name = switch (field.kind) {
+        .message => |name| name,
+        .group => |name| name,
+        else => return,
+    };
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("pub fn addMessageOn(message: *");
@@ -10580,6 +10592,10 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"legacy\".replaceInUnknown(self, allocator, try nested.encode(arena_allocator));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"legacy\".decodeRaw(raw) catch null) |payload| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.legacy] {\\n\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtensionMessage_legacy\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.@\"legacy\".replaceInUnknown(self, allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessage_legacy\"(self: @This(), allocator: std.mem.Allocator) !?@\"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const payload = (try extensions.@\"legacy\".decodeFirstFromUnknown(self, allocator)) orelse return null;") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
