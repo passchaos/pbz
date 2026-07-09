@@ -4398,6 +4398,13 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\            try out.append(allocator, c);
         \\        } else if (c == ';' or c == ',') {
         \\            try out.append(allocator, '\n');
+        \\        } else if (c == '{' or c == '<') {
+        \\            try out.append(allocator, c);
+        \\            try out.append(allocator, '\n');
+        \\        } else if (c == '}' or c == '>') {
+        \\            try out.append(allocator, '\n');
+        \\            try out.append(allocator, c);
+        \\            try out.append(allocator, '\n');
         \\        } else {
         \\            try out.append(allocator, c);
         \\        }
@@ -5961,6 +5968,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == ';' or c == ',')") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == '{' or c == '<')") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == '}' or c == '>')") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlockField(line: []const u8, comptime name: []const u8) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
