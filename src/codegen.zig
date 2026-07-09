@@ -1529,6 +1529,19 @@ fn writeSingularMessageFieldAccessor(ctx: *const CodegenContext, field: *const s
     try writer.writeAll(".decode(allocator, payload);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("decodeMessage", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.");
+    try writeQuotedAccessorIdent("getMessage", field.name, writer);
+    try writer.writeAll("(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1759,6 +1772,19 @@ fn writeRepeatedMessageFieldAccessor(ctx: *const CodegenContext, field: *const s
     try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("decodeMessages", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.");
+    try writeQuotedAccessorIdent("getMessages", field.name, writer);
+    try writer.writeAll("(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeOneofFieldAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1855,6 +1881,19 @@ fn writeOneofMessageFieldAccessor(ctx: *const CodegenContext, field: *const sche
     try writer.writeAll("return try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, payload);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedAccessorIdent("decodeMessage", field.name, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !?");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try self.");
+    try writeQuotedAccessorIdent("getMessage", field.name, writer);
+    try writer.writeAll("(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 }
@@ -7502,9 +7541,11 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_keyed\"(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_child\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageField_children\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceMessagesField_children\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Child\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessagesField_children\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessagesField_children\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Child\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasField_alias\"(self: @This()) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return switch (self.@\"pick\") { .@\"alias\" => true, else => false };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getField_alias\"(self: @This()) ?[]const u8") != null);
@@ -7512,6 +7553,7 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_alias\"(self: *@This()) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
