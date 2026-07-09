@@ -239,7 +239,7 @@ Generated message structs also include basic `jsonStringify`, `jsonStringifyAllo
 and `jsonParse` methods for scalar/enum fields, repeated scalar/enum fields,
 scalar/enum map fields, encoded message payload fields when their generated types
 are available, lowerCamelCase/json_name field names, presence-aware
-optional fields, bytes/base64, and scalar/enum/message oneof arms. Generated enum JSON
+optional fields, bytes/base64, proto2 group payload fields, and scalar/enum/message oneof arms. Generated enum JSON
 stringify emits enum names when known and falls back to numbers for unknown values.
 Generated JSON parsers use protobuf JSON last-value-wins behavior for duplicate
 fields or alternate spellings and replace previous repeated/map slices safely.
