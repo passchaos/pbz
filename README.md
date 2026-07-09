@@ -45,7 +45,7 @@ validated feature set.
 - Conformance helpers
   - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic registry-aware protobuf output, registry-aware imported JSON/Text types, and missing-required path parse errors
 - Protoc plugin and codegen helpers
-  - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; request-based generated plugin responses honor file_to_generate, parse basic generator parameters, accept raw CodeGeneratorRequest bytes, emit file and top-level symbol GeneratedCodeInfo annotations, use all proto_file descriptors as a registry for imports, and advertise proto3 optional plus editions support
+  - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; request-based generated plugin responses honor file_to_generate, parse basic generator parameters, accept raw CodeGeneratorRequest bytes, emit file, top-level, nested message/enum, field, and enum-value GeneratedCodeInfo annotations, use all proto_file descriptors as a registry for imports, and advertise proto3 optional plus editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation
   - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for direct imported message type references and imported enum field resolution
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
@@ -214,7 +214,7 @@ or structured `GeneratedCodeInfo` annotations. `pbz.generatePluginResponseFromRe
 requested files by default, parse `paths=source_relative` plus
 `include_imports`/`emit_imports` parameters, report encoded plugin errors for
 missing requested names or invalid parameters, emit structured
-`GeneratedCodeInfo` annotations for generated files and top-level symbols, and still build a registry
+`GeneratedCodeInfo` annotations for generated files, top-level symbols, nested messages/enums, fields, and enum values, and still build a registry
 from every `proto_file` descriptor so generated imports can resolve cross-file
 message/enum references.
 `pbz.generateZigFile` emits

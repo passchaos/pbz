@@ -259,10 +259,10 @@ fn generatedResponseFeatureMask() u64 {
 fn populateGeneratedCodeInfo(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, content: []const u8, info: *schema.GeneratedCodeInfo) Error!void {
     try appendGeneratedAnnotation(allocator, info, file.name, &.{}, 0, content.len, .set);
     for (file.messages.items, 0..) |message, i| {
-        try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 4, @intCast(i) }, message.name, .set);
+        try appendGeneratedMessageAnnotations(allocator, info, file.name, content, &.{ 4, @intCast(i) }, &message);
     }
     for (file.enums.items, 0..) |enumeration, i| {
-        try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 5, @intCast(i) }, enumeration.name, .set);
+        try appendGeneratedEnumAnnotations(allocator, info, file.name, content, &.{ 5, @intCast(i) }, &enumeration);
     }
     for (file.services.items, 0..) |service, i| {
         try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 6, @intCast(i) }, service.name, .set);
@@ -270,6 +270,42 @@ fn populateGeneratedCodeInfo(allocator: std.mem.Allocator, file: *const schema.F
     for (file.extensions.items, 0..) |field, i| {
         try appendGeneratedExtensionAnnotation(allocator, info, file.name, content, &.{ 7, @intCast(i) }, field.name);
     }
+}
+
+fn appendGeneratedMessageAnnotations(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, message: *const schema.MessageDescriptor) Error!void {
+    try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, path, message.name, .set);
+    for (message.fields.items, 0..) |field, i| {
+        const field_path = try appendPathPair(allocator, path, 2, @intCast(i));
+        defer allocator.free(field_path);
+        try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, field_path, field.name, .set);
+    }
+    for (message.messages.items, 0..) |nested, i| {
+        const nested_path = try appendPathPair(allocator, path, 3, @intCast(i));
+        defer allocator.free(nested_path);
+        try appendGeneratedMessageAnnotations(allocator, info, source_file, content, nested_path, &nested);
+    }
+    for (message.enums.items, 0..) |enumeration, i| {
+        const enum_path = try appendPathPair(allocator, path, 4, @intCast(i));
+        defer allocator.free(enum_path);
+        try appendGeneratedEnumAnnotations(allocator, info, source_file, content, enum_path, &enumeration);
+    }
+}
+
+fn appendGeneratedEnumAnnotations(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, enumeration: *const schema.EnumDescriptor) Error!void {
+    try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, path, enumeration.name, .set);
+    for (enumeration.values.items, 0..) |value, i| {
+        const value_path = try appendPathPair(allocator, path, 2, @intCast(i));
+        defer allocator.free(value_path);
+        try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, value_path, value.name, .set);
+    }
+}
+
+fn appendPathPair(allocator: std.mem.Allocator, base: []const i32, field_number: i32, index: i32) std.mem.Allocator.Error![]i32 {
+    const out = try allocator.alloc(i32, base.len + 2);
+    @memcpy(out[0..base.len], base);
+    out[base.len] = field_number;
+    out[base.len + 1] = index;
+    return out;
 }
 
 fn appendGeneratedSymbolAnnotation(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, symbol: []const u8, semantic: schema.GeneratedCodeInfo.Semantic) Error!void {
@@ -297,7 +333,10 @@ fn findGeneratedSymbolRangeFrom(allocator: std.mem.Allocator, content: []const u
     try needle_writer.writer.writeAll("pub const ");
     try writeQuotedIdent(symbol, &needle_writer.writer);
     const needle = try needle_writer.toOwnedSlice();
-    const begin = std.mem.indexOfPos(u8, content, start_index, needle) orelse return error.OutOfMemory;
+    const begin = std.mem.indexOfPos(u8, content, start_index, needle) orelse {
+        allocator.free(needle);
+        return error.OutOfMemory;
+    };
     const next = std.mem.indexOfPos(u8, content, begin + needle.len, "\npub const ") orelse content.len;
     return .{ .begin = begin, .end = next, .needle = needle };
 }
