@@ -1246,6 +1246,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
         if (idx < 0 or idx >= file.imports.items.len) return error.InvalidFieldType;
         file.imports.items[@intCast(idx)].kind = .weak;
     }
+    try validateDecodedImportSemantics(&file);
     try collapseMapEntryMessages(allocator, &file);
     resolveDecodedEnumDefaults(&file);
     try validateDecodedFileDescriptor(&file);
@@ -1264,6 +1265,13 @@ fn validateImportList(imports: []const schema.Import) Error!void {
         for (imports[i + 1 ..]) |other| {
             if (std.mem.eql(u8, import.path, other.path)) return error.InvalidFieldType;
         }
+    }
+}
+
+fn validateDecodedImportSemantics(file: *const schema.FileDescriptor) Error!void {
+    if (@intFromEnum(file.edition) < @intFromEnum(schema.Edition.edition_2024)) return;
+    for (file.imports.items) |import| {
+        if (import.kind == .weak) return error.InvalidFieldType;
     }
 }
 
@@ -4478,6 +4486,16 @@ test "descriptor rejects invalid file syntax edition and dependency indexes" {
         try file.writeString(3, "dep.proto");
         try file.writeInt32(10, 0);
         try file.writeInt32(11, 0);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "edition-weak-import.proto");
+        try file.writeString(3, "dep.proto");
+        try file.writeInt32(11, 0);
+        try file.writeString(12, "editions");
+        try file.writeInt32(14, @intFromEnum(schema.Edition.edition_2024));
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
     {

@@ -158,6 +158,7 @@ pub const Parser = struct {
         var self = try Parser.init(allocator, input);
         errdefer self.file.deinit();
         try self.parseFile();
+        try self.validateImports();
         try self.validateTypeSymbols();
         try self.validateServices();
         try self.resolveFieldKinds();
@@ -425,6 +426,13 @@ pub const Parser = struct {
         const path = try self.expectString();
         try self.expectSymbol(';');
         try self.file.imports.append(self.allocator, .{ .path = path, .kind = kind });
+    }
+
+    fn validateImports(self: *Parser) ParseError!void {
+        if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2024)) return;
+        for (self.file.imports.items) |import| {
+            if (import.kind == .weak) return error.InvalidSyntax;
+        }
     }
 
     fn parseMessageAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize) Error!schema.MessageDescriptor {
@@ -1884,6 +1892,15 @@ test "parser handles proto2 proto3 and editions declarations" {
     try std.testing.expect(person.findField("scores").?.packed_override.?);
     try std.testing.expect(person.findField("kind").?.kind == .enumeration);
     try std.testing.expectEqual(@as(usize, 1), file.services.items.len);
+}
+
+test "parser rejects weak imports under edition 2024 and beyond" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2024";
+        \\import weak "dep.proto";
+        \\message Bad {}
+    ));
 }
 
 test "parser records basic source code info locations" {
