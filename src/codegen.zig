@@ -3669,12 +3669,62 @@ fn writeValidateRequired(file: *const schema.FileDescriptor, message: *const sch
             try writeValidateMessagePayloadOneof(file, message, oneof, writer, depth + 1);
         }
     }
+    if (try writeValidateMessageExtensionPayloads(file, message, writer, depth + 1)) uses_allocator = true;
     if (!uses_allocator) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeValidateMessageExtensionPayloads(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    var wrote_any = false;
+    for (file.extensions.items) |*field| {
+        if (try writeValidateMessageExtensionPayload(file, message, field, writer, depth)) wrote_any = true;
+    }
+    for (file.messages.items) |*scope| {
+        if (try writeValidateScopedMessageExtensionPayloads(file, message, scope, writer, depth)) wrote_any = true;
+    }
+    return wrote_any;
+}
+
+fn writeValidateScopedMessageExtensionPayloads(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    var wrote_any = false;
+    for (scope.extensions.items) |*field| {
+        if (try writeValidateMessageExtensionPayload(file, target, field, writer, depth)) wrote_any = true;
+    }
+    for (scope.messages.items) |*nested| {
+        if (try writeValidateScopedMessageExtensionPayloads(file, target, nested, writer, depth)) wrote_any = true;
+    }
+    return wrote_any;
+}
+
+fn writeValidateMessageExtensionPayload(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    if (!extensionAppliesToMessage(file, target, field)) return false;
+    const type_name = switch (field.kind) {
+        .message => |name| name,
+        .group => |name| name,
+        else => return false,
+    };
+    if (!codegenCanReferenceMessage(file, type_name)) return false;
+
+    try indent(writer, depth);
+    try writer.writeAll("{\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payloads = try ");
+    try writeExtensionHelperReference(field, writer);
+    try writer.writeAll(".decodeAllFromUnknown(self, allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(payloads);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (payloads) |payload| {\n");
+    try writeDecodeAndValidatePayload(type_name, "payload", writer, depth + 2);
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+    return true;
 }
 
 fn writeValidateMessagePayloadField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -10216,7 +10266,9 @@ test "codegen emits recursive required validation for message payloads" {
         \\  repeated Child children = 2;
         \\  oneof pick { Child picked = 3; }
         \\  map<string, Child> keyed = 4;
+        \\  extensions 100 to max;
         \\}
+        \\extend Parent { optional Child child_ext = 100; }
     );
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
@@ -10228,6 +10280,8 @@ test "codegen emits recursive required validation for message payloads" {
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"keyed\") |entry|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.@\"child_ext\".decodeAllFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (payloads) |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"child.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"children.{s}\", .{suffix});") != null);
