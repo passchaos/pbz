@@ -1679,6 +1679,19 @@ fn decodeSourceCodeInfoLocation(allocator: std.mem.Allocator, bytes: []const u8)
         }
     }
     if (location.span.items.len != 0 and location.span.items.len != 3 and location.span.items.len != 4) return error.InvalidFieldType;
+    for (location.path.items) |part| {
+        if (part < 0) return error.InvalidFieldType;
+    }
+    for (location.span.items) |part| {
+        if (part < 0) return error.InvalidFieldType;
+    }
+    if (location.span.items.len == 4) {
+        const start_line = location.span.items[0];
+        const start_col = location.span.items[1];
+        const end_line = location.span.items[2];
+        const end_col = location.span.items[3];
+        if (end_line < start_line or (end_line == start_line and end_col < start_col)) return error.InvalidFieldType;
+    }
     return location;
 }
 
@@ -3235,6 +3248,42 @@ test "descriptor round-trips parser source code info comments and nested paths" 
     try std.testing.expectEqualStrings("child field trailing\n", field_location.trailing_comments.?);
     const nested_field_location = findSourceLocation(&decoded, &.{ 4, 0, 3, 0, 2, 0 }).?;
     try std.testing.expectEqual(@as(usize, 4), nested_field_location.span.items.len);
+}
+
+test "descriptor rejects invalid source code info locations" {
+    const allocator = std.testing.allocator;
+    {
+        const bytes = try testFileWithSourceLocation(allocator, &.{-1}, &.{ 0, 0, 0, 1 });
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        const bytes = try testFileWithSourceLocation(allocator, &.{}, &.{ -1, 0, 0, 1 });
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        const bytes = try testFileWithSourceLocation(allocator, &.{}, &.{ 2, 5, 1, 0 });
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+}
+
+fn testFileWithSourceLocation(allocator: std.mem.Allocator, path: []const i32, span: []const i32) ![]u8 {
+    var location = wire.Writer.init(allocator);
+    defer location.deinit();
+    try writePackedInt32List(allocator, 1, path, &location);
+    try writePackedInt32List(allocator, 2, span, &location);
+
+    var source = wire.Writer.init(allocator);
+    defer source.deinit();
+    try source.writeMessage(1, location.slice());
+
+    var file = wire.Writer.init(allocator);
+    errdefer file.deinit();
+    try file.writeString(12, "proto2");
+    try file.writeMessage(9, source.slice());
+    return try file.toOwnedSlice();
 }
 
 fn findSourceLocation(file: *const schema.FileDescriptor, path: []const i32) ?*const schema.SourceCodeInfo.Location {
