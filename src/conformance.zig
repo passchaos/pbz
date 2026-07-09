@@ -261,6 +261,44 @@ test "conformance dynamic runner converts json to deterministic protobuf" {
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02 }, try reader.readBytes());
 }
 
+test "conformance dynamic runner handles json unknown enum names by category" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Msg { Kind kind = 1; int32 id = 2; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    const strict_response = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"kind\":\"MISSING\",\"id\":7}" },
+        .requested_output_format = .protobuf,
+        .message_type = "demo.Msg",
+        .test_category = .json_test,
+    });
+    defer allocator.free(strict_response);
+    var strict_reader = wire.Reader.init(strict_response);
+    const strict_tag = (try strict_reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 1), strict_tag.number);
+    try std.testing.expect(std.mem.indexOf(u8, try strict_reader.readBytes(), "InvalidEnumValue") != null);
+
+    const ignored_response = try runDynamic(allocator, &registry, .{
+        .payload = .{ .json_payload = "{\"kind\":\"MISSING\",\"id\":7}" },
+        .requested_output_format = .protobuf,
+        .message_type = "demo.Msg",
+        .test_category = .json_ignore_unknown_parsing_test,
+    });
+    defer allocator.free(ignored_response);
+    var ignored_reader = wire.Reader.init(ignored_response);
+    const ignored_tag = (try ignored_reader.nextTag()).?;
+    try std.testing.expectEqual(@as(wire.FieldNumber, 3), ignored_tag.number);
+    try std.testing.expectEqualSlices(u8, &.{ 0x10, 0x07 }, try ignored_reader.readBytes());
+}
+
 test "conformance dynamic runner handles json unknown fields by category" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto3\"; package demo; message Msg { int32 id = 1; }");
