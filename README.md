@@ -249,8 +249,9 @@ aliases while preserving import kind/path metadata.
 Generated message structs also expose per-field metadata structs (`*_field`)
 with protobuf field number, name/json_name, cardinality, kind, raw type_name
 including imported message/enum names, Zig storage type, presence, default text,
-packed status, map key/value metadata, and generated `type_ref` aliases for same-file
-or direct-imported message fields when `generateZigFileWithRegistry` is used. They include generated field accessors (`hasField_*`,
+packed status, map key/value metadata, generated `type_ref` aliases for same-file
+or direct-imported message fields, and generated `enum_ref` aliases for enum
+fields/map enum values when `generateZigFileWithRegistry` is used. They include generated field accessors (`hasField_*`,
 `getField_*`, `getOrDefaultField_*`, `setField_*`, `clearField_*`, repeated/map
 `appendField_*` / `appendAllField_*` / `replaceField_*` helpers, oneof-arm accessors, and `cloneOwned` / `decodeOwned` / `decodeOwnedInitialized` for deep-copying strings/bytes/message payloads/maps/unknowns into owned storage) while keeping oneof storage as a
 Zig `union(enum)`. Same-file message/group payload fields additionally expose

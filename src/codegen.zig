@@ -632,6 +632,14 @@ fn writeFieldMetadataDecl(ctx: *const CodegenContext, field: *const schema.Field
     try writeMessageTypeReferenceOrVoid(ctx, field.kind, writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("pub const has_enum_ref = ");
+    try writer.writeAll(if (canReferenceEnumWithContext(ctx, field.kind)) "true" else "false");
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const enum_ref = ");
+    try writeEnumTypeReferenceOrVoid(ctx, field.kind, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("pub const has_presence = ");
     try writer.writeAll(if (hasPresence(file, field.*)) "true" else "false");
     try writer.writeAll(";\n");
@@ -663,6 +671,14 @@ fn writeFieldMetadataDecl(ctx: *const CodegenContext, field: *const schema.Field
         try indent(writer, depth + 1);
         try writer.writeAll("pub const map_value_type_ref = ");
         try writeMessageTypeReferenceOrVoid(ctx, field.kind.map.value.*, writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_value_has_enum_ref = ");
+        try writer.writeAll(if (canReferenceEnumWithContext(ctx, field.kind.map.value.*)) "true" else "false");
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub const map_value_enum_ref = ");
+        try writeEnumTypeReferenceOrVoid(ctx, field.kind.map.value.*, writer);
         try writer.writeAll(";\n");
     }
     try indent(writer, depth);
@@ -3658,6 +3674,14 @@ fn canReferenceMessageWithContext(ctx: *const CodegenContext, kind: schema.Field
     return codegenCanReferenceMessageWithContext(ctx, type_name);
 }
 
+fn canReferenceEnumWithContext(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
+    const type_name = switch (kind) {
+        .enumeration => |name| name,
+        else => return false,
+    };
+    return codegenCanReferenceEnumWithContext(ctx, type_name);
+}
+
 fn codegenCanReferenceMessageWithContext(ctx: *const CodegenContext, type_name: []const u8) bool {
     return resolveMessageReference(ctx, type_name) != null;
 }
@@ -3673,6 +3697,18 @@ fn writeMessageTypeReferenceOrVoid(ctx: *const CodegenContext, kind: schema.Fiel
     };
     if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    } else {
+        try writer.writeAll("void");
+    }
+}
+
+fn writeEnumTypeReferenceOrVoid(ctx: *const CodegenContext, kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
+    const type_name = switch (kind) {
+        .enumeration => |name| name,
+        else => return try writer.writeAll("void"),
+    };
+    if (codegenCanReferenceEnumWithContext(ctx, type_name)) {
+        try writeEnumTypeReferenceWithContext(ctx, type_name, writer);
     } else {
         try writer.writeAll("void");
     }
@@ -8394,6 +8430,10 @@ test "codegen emits typed enum field accessors" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const has_enum_ref = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Kind\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_has_enum_ref = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_enum_ref = @\"Kind\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_role\"(self: @This()) ?@\"Kind\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return @\"Kind\".fromInt(raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumOrDefaultField_role\"(self: @This()) @\"Kind\"") != null);
