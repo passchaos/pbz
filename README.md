@@ -303,8 +303,9 @@ field spellings, adjacent quoted string literal concatenation, common quoted
 string escapes including C-style control, hex/octal bytes, decimal/hex/octal
 integer input, closed-enum validation, numeric unknown varint/string/group
 preservation, float `nan`/`inf` spellings, `#` line comments outside quoted
-strings including nested blocks, common semicolon/comma separators, and
-`features.utf8_validation` enforcement for string/map-string values.
+strings including nested blocks, common semicolon/comma separators including
+multiple simple fields on one physical line, and `features.utf8_validation`
+enforcement for string/map-string values.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 

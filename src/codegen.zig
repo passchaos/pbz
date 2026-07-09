@@ -220,7 +220,11 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer { for (@\"_unknown_fields_list\".items) |raw| allocator.free(raw); @\"_unknown_fields_list\".deinit(allocator); }\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var lines = std.mem.splitScalar(u8, text, '\\n');\n");
+    try writer.writeAll("const normalized_text = try @This().textNormalizeSeparators(allocator, text);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(normalized_text);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var lines = std.mem.splitScalar(u8, normalized_text, '\\n');\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_line| {\n");
     try indent(writer, depth + 2);
@@ -4369,6 +4373,38 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return std.mem.eql(u8, rest, "{") or std.mem.eql(u8, rest, "<");
         \\}
         \\
+        \\fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+        \\    var out: std.ArrayList(u8) = .empty;
+        \\    errdefer out.deinit(allocator);
+        \\    var quote: ?u8 = null;
+        \\    var escaped = false;
+        \\    for (text) |c| {
+        \\        if (escaped) {
+        \\            escaped = false;
+        \\            try out.append(allocator, c);
+        \\            continue;
+        \\        }
+        \\        if (quote) |q| {
+        \\            if (c == '\\') {
+        \\                escaped = true;
+        \\            } else if (c == q) {
+        \\                quote = null;
+        \\            }
+        \\            try out.append(allocator, c);
+        \\            continue;
+        \\        }
+        \\        if (c == '"' or c == '\'') {
+        \\            quote = c;
+        \\            try out.append(allocator, c);
+        \\        } else if (c == ';' or c == ',') {
+        \\            try out.append(allocator, '\n');
+        \\        } else {
+        \\            try out.append(allocator, c);
+        \\        }
+        \\    }
+        \\    return try out.toOwnedSlice(allocator);
+        \\}
+        \\
         \\fn textCleanLine(raw_line: []const u8) []const u8 {
         \\    var end = raw_line.len;
         \\    var quote: ?u8 = null;
@@ -5895,6 +5931,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const normalized_text = try @This().textNormalizeSeparators(allocator, text);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var lines = std.mem.splitScalar(u8, normalized_text, '\\n');") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| {") != null);
@@ -5921,6 +5959,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"alias\" = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == ';' or c == ',')") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlockField(line: []const u8, comptime name: []const u8) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
