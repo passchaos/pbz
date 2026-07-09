@@ -236,6 +236,8 @@ fn writeTextParseMethods(file: *const schema.FileDescriptor, message: *const sch
     try indent(writer, depth + 2);
     try writer.writeAll("if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
     try indent(writer, depth + 2);
+    try writer.writeAll("if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("return error.UnknownField;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
@@ -3380,6 +3382,38 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try raw.toOwnedSlice();
         \\}
         \\
+        \\fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8 {
+        \\    var end: usize = 0;
+        \\    while (end < line.len and std.ascii.isDigit(line[end])) : (end += 1) {}
+        \\    if (end == 0) return null;
+        \\    const rest = std.mem.trim(u8, line[end..], " \t\r");
+        \\    if (!std.mem.eql(u8, rest, "{") and !std.mem.eql(u8, rest, "<")) return null;
+        \\    const number = try std.fmt.parseInt(pbz.FieldNumber, line[0..end], 10);
+        \\    var raw = pbz.Writer.init(allocator);
+        \\    defer raw.deinit();
+        \\    try raw.writeTag(number, .start_group);
+        \\    while (lines.next()) |raw_line| {
+        \\        const child = textCleanLine(raw_line);
+        \\        if (child.len == 0) continue;
+        \\        if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
+        \\            try raw.writeTag(number, .end_group);
+        \\            return try raw.toOwnedSlice();
+        \\        }
+        \\        if (try textUnknownField(allocator, child)) |field_raw| {
+        \\            defer allocator.free(field_raw);
+        \\            try raw.appendSlice(field_raw);
+        \\            continue;
+        \\        }
+        \\        if (try textUnknownGroup(allocator, child, lines)) |group_raw| {
+        \\            defer allocator.free(group_raw);
+        \\            try raw.appendSlice(group_raw);
+        \\            continue;
+        \\        }
+        \\        return error.UnknownField;
+        \\    }
+        \\    return error.UnexpectedEof;
+        \\}
+        \\
         \\fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
         \\    var out: std.Io.Writer.Allocating = .init(allocator);
         \\    errdefer out.deinit();
@@ -4337,7 +4371,11 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeTag(number, .start_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeTag(number, .end_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeBytes(number, bytes);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeUInt64(number, try std.fmt.parseInt(u64, value, 0));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
