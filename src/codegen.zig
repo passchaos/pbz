@@ -265,7 +265,7 @@ fn populateGeneratedCodeInfo(allocator: std.mem.Allocator, file: *const schema.F
         try appendGeneratedEnumAnnotations(allocator, info, file.name, content, &.{ 5, @intCast(i) }, &enumeration);
     }
     for (file.services.items, 0..) |service, i| {
-        try appendGeneratedSymbolAnnotation(allocator, info, file.name, content, &.{ 6, @intCast(i) }, service.name, .set);
+        try appendGeneratedServiceAnnotations(allocator, info, file.name, content, &.{ 6, @intCast(i) }, &service);
     }
     for (file.extensions.items, 0..) |field, i| {
         try appendGeneratedExtensionAnnotation(allocator, info, file.name, content, &.{ 7, @intCast(i) }, field.name);
@@ -279,6 +279,16 @@ fn appendGeneratedMessageAnnotations(allocator: std.mem.Allocator, info: *schema
         defer allocator.free(field_path);
         try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, field_path, field.name, .set);
     }
+    for (message.extensions.items, 0..) |field, i| {
+        const extension_path = try appendPathPair(allocator, path, 6, @intCast(i));
+        defer allocator.free(extension_path);
+        try appendGeneratedExtensionAnnotation(allocator, info, source_file, content, extension_path, field.name);
+    }
+    for (message.oneofs.items, 0..) |oneof, i| {
+        const oneof_path = try appendPathPair(allocator, path, 8, @intCast(i));
+        defer allocator.free(oneof_path);
+        try appendGeneratedOneofAnnotation(allocator, info, source_file, content, oneof_path, oneof.name);
+    }
     for (message.messages.items, 0..) |nested, i| {
         const nested_path = try appendPathPair(allocator, path, 3, @intCast(i));
         defer allocator.free(nested_path);
@@ -291,12 +301,27 @@ fn appendGeneratedMessageAnnotations(allocator: std.mem.Allocator, info: *schema
     }
 }
 
+fn appendGeneratedOneofAnnotation(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, oneof_name: []const u8) Error!void {
+    const symbol = try std.fmt.allocPrint(allocator, "{s}Oneof", .{oneof_name});
+    defer allocator.free(symbol);
+    try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, path, symbol, .set);
+}
+
 fn appendGeneratedEnumAnnotations(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, enumeration: *const schema.EnumDescriptor) Error!void {
     try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, path, enumeration.name, .set);
     for (enumeration.values.items, 0..) |value, i| {
         const value_path = try appendPathPair(allocator, path, 2, @intCast(i));
         defer allocator.free(value_path);
         try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, value_path, value.name, .set);
+    }
+}
+
+fn appendGeneratedServiceAnnotations(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, content: []const u8, path: []const i32, service: *const schema.ServiceDescriptor) Error!void {
+    try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, path, service.name, .set);
+    for (service.methods.items, 0..) |method, i| {
+        const method_path = try appendPathPair(allocator, path, 2, @intCast(i));
+        defer allocator.free(method_path);
+        try appendGeneratedSymbolAnnotation(allocator, info, source_file, content, method_path, method.name, .set);
     }
 }
 
@@ -328,17 +353,28 @@ fn findGeneratedSymbolRange(allocator: std.mem.Allocator, content: []const u8, s
 }
 
 fn findGeneratedSymbolRangeFrom(allocator: std.mem.Allocator, content: []const u8, symbol: []const u8, start_index: usize) Error!GeneratedSymbolRange {
+    const pub_const = try makeGeneratedNeedle(allocator, "pub const ", symbol);
+    if (findGeneratedNeedleRange(content, pub_const, start_index)) |range| return .{ .begin = range.begin, .end = range.end, .needle = pub_const };
+    allocator.free(pub_const);
+
+    const quoted = try makeGeneratedNeedle(allocator, "", symbol);
+    if (findGeneratedNeedleRange(content, quoted, start_index)) |range| return .{ .begin = range.begin, .end = range.end, .needle = quoted };
+    allocator.free(quoted);
+    return error.OutOfMemory;
+}
+
+fn makeGeneratedNeedle(allocator: std.mem.Allocator, prefix: []const u8, symbol: []const u8) Error![]u8 {
     var needle_writer: std.Io.Writer.Allocating = .init(allocator);
     errdefer needle_writer.deinit();
-    try needle_writer.writer.writeAll("pub const ");
+    try needle_writer.writer.writeAll(prefix);
     try writeQuotedIdent(symbol, &needle_writer.writer);
-    const needle = try needle_writer.toOwnedSlice();
-    const begin = std.mem.indexOfPos(u8, content, start_index, needle) orelse {
-        allocator.free(needle);
-        return error.OutOfMemory;
-    };
+    return try needle_writer.toOwnedSlice();
+}
+
+fn findGeneratedNeedleRange(content: []const u8, needle: []const u8, start_index: usize) ?struct { begin: usize, end: usize } {
+    const begin = std.mem.indexOfPos(u8, content, start_index, needle) orelse return null;
     const next = std.mem.indexOfPos(u8, content, begin + needle.len, "\npub const ") orelse content.len;
-    return .{ .begin = begin, .end = next, .needle = needle };
+    return .{ .begin = begin, .end = next };
 }
 
 fn appendGeneratedAnnotation(allocator: std.mem.Allocator, info: *schema.GeneratedCodeInfo, source_file: []const u8, path: []const i32, begin: usize, end: usize, semantic: schema.GeneratedCodeInfo.Semantic) std.mem.Allocator.Error!void {
@@ -7401,7 +7437,9 @@ test "codegen emits protoc response" {
         \\syntax = "proto2";
         \\package demo.app;
         \\import "common.proto";
-        \\message A { optional .demo.common.User user = 1; }
+        \\enum Kind { UNKNOWN = 0; STARTED = 1; }
+        \\message A { optional .demo.common.User user = 1; oneof pick { int32 id = 2; } }
+        \\service Api { rpc Get (A) returns (A); }
     );
     defer file.deinit();
     file.name = "a.proto";
@@ -7418,6 +7456,10 @@ test "codegen emits protoc response" {
     var saw_registry_import_ref = false;
     var saw_generated_info = false;
     var saw_message_annotation = false;
+    var saw_field_annotation = false;
+    var saw_oneof_annotation = false;
+    var saw_enum_value_annotation = false;
+    var saw_method_annotation = false;
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             2 => saw_supported_features = (try reader.readUInt64()) == generatedResponseFeatureMask(),
@@ -7445,6 +7487,18 @@ test "codegen emits protoc response" {
                                 if (std.mem.eql(i32, annotation.path.items, &.{ 4, 0 })) {
                                     saw_message_annotation = saw_message_annotation or source_matches and range_valid and semantic_matches;
                                 }
+                                if (std.mem.eql(i32, annotation.path.items, &.{ 4, 0, 2, 0 })) {
+                                    saw_field_annotation = saw_field_annotation or source_matches and range_valid and semantic_matches;
+                                }
+                                if (std.mem.eql(i32, annotation.path.items, &.{ 4, 0, 8, 0 })) {
+                                    saw_oneof_annotation = saw_oneof_annotation or source_matches and range_valid and semantic_matches;
+                                }
+                                if (std.mem.eql(i32, annotation.path.items, &.{ 5, 0, 2, 0 })) {
+                                    saw_enum_value_annotation = saw_enum_value_annotation or source_matches and range_valid and semantic_matches;
+                                }
+                                if (std.mem.eql(i32, annotation.path.items, &.{ 6, 0, 2, 0 })) {
+                                    saw_method_annotation = saw_method_annotation or source_matches and range_valid and semantic_matches;
+                                }
                             }
                         },
                         else => try file_reader.skipValue(file_tag),
@@ -7461,6 +7515,10 @@ test "codegen emits protoc response" {
     try std.testing.expect(saw_registry_import_ref);
     try std.testing.expect(saw_generated_info);
     try std.testing.expect(saw_message_annotation);
+    try std.testing.expect(saw_field_annotation);
+    try std.testing.expect(saw_oneof_annotation);
+    try std.testing.expect(saw_enum_value_annotation);
+    try std.testing.expect(saw_method_annotation);
 }
 
 test "codegen emits protoc response from request file_to_generate" {
