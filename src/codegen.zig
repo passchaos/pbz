@@ -2031,13 +2031,18 @@ fn writeTextScalarField(file: *const schema.FileDescriptor, field: *const schema
 }
 
 fn writeTextEnumField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const enum_name = switch (field.kind) {
+        .enumeration => |name| name,
+        else => return,
+    };
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(") |value| { ");
         try writeTextFieldPrefix(field, writer);
-        try writer.writeAll("try writer.print(\"{d}\", .{value}); try writer.writeByte('\\n'); }\n");
+        try writeTextEnumValue(file, enum_name, "value", writer);
+        try writer.writeAll("; try writer.writeByte('\\n'); }\n");
     } else {
         try indent(writer, depth);
         if (hasPresence(file, field.*)) {
@@ -2050,9 +2055,11 @@ fn writeTextEnumField(file: *const schema.FileDescriptor, field: *const schema.F
             try writer.writeAll(" != 0) { ");
         }
         try writeTextFieldPrefix(field, writer);
-        try writer.writeAll("try writer.print(\"{d}\", .{self.");
+        try writer.writeAll("const value = self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll("}); try writer.writeByte('\\n'); }\n");
+        try writer.writeAll("; ");
+        try writeTextEnumValue(file, enum_name, "value", writer);
+        try writer.writeAll("; try writer.writeByte('\\n'); }\n");
     }
 }
 
@@ -2161,9 +2168,11 @@ fn writeTextOneof(file: *const schema.FileDescriptor, message: *const schema.Mes
                     try writer.writeAll("; try writer.writeByte('\\n');\n");
                 },
                 .enumeration => {
+                    const enum_name = field.kind.enumeration;
                     try indent(writer, depth + 2);
                     try writeTextFieldPrefix(field, writer);
-                    try writer.writeAll("try writer.print(\"{d}\", .{value}); try writer.writeByte('\\n');\n");
+                    try writeTextEnumValue(file, enum_name, "value", writer);
+                    try writer.writeAll("; try writer.writeByte('\\n');\n");
                 },
                 .message, .group => |type_name| try writeTextMessagePayload(field.name, type_name, "value", writer, depth + 2),
                 else => {},
@@ -2190,10 +2199,19 @@ fn writeTextScalarValue(scalar: schema.ScalarType, value_expr: []const u8, write
     }
 }
 
+fn writeTextEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("try @This().textWriteEnum(writer, {s}", .{value_expr});
+    try writer.writeAll(", ");
+    try writeEnumNameArray(file, enum_name, writer);
+    try writer.writeAll(", ");
+    try writeEnumNumberArray(file, enum_name, writer);
+    try writer.writeAll(")");
+}
+
 fn writeTextMapValue(file: *const schema.FileDescriptor, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (kind) {
         .scalar => |scalar| try writeTextScalarValue(scalar, value_expr, writer),
-        .enumeration => try writer.print("try writer.print(\"{{d}}\", .{{{s}}})", .{value_expr}),
+        .enumeration => |name| try writeTextEnumValue(file, name, value_expr, writer),
         .message => |name| if (codegenCanReferenceMessage(file, name)) {
             try writer.writeAll("var nested = try ");
             try writeMessageTypeReference(name, writer);
@@ -2817,6 +2835,13 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void {
         \\    inline for (numbers, 0..) |number, i| {
         \\        if (value == number) return try std.json.Stringify.value(names[i], .{}, writer);
+        \\    }
+        \\    try writer.print("{d}", .{value});
+        \\}
+        \\
+        \\fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void {
+        \\    inline for (numbers, 0..) |number, i| {
+        \\        if (value == number) return try writer.writeAll(names[i]);
         \\    }
         \\    try writer.print("{d}", .{value});
         \\}
@@ -3747,6 +3772,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.@\"id\"; try writer.print(\"{d}\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1});") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithAllocator(allocator, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"kids {\\n\");") != null);

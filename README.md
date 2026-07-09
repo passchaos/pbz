@@ -246,8 +246,8 @@ Generated JSON parsers use protobuf JSON last-value-wins behavior for duplicate
 fields or alternate spellings, treat `null` as clearing the previous value, and
 replace previous repeated/map slices safely.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
-TextFormat for scalar, enum, repeated, map, message payload, proto2 group, and
-oneof fields.
+TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
+and oneof fields.
 For proto2 schemas, generated scalar and enum fields are initialized with explicit
 `[default = ...]` option values while retaining separate presence flags.
 
