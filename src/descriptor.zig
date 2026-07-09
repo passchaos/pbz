@@ -1717,9 +1717,13 @@ fn validateFeatureSetDefaults(defaults: *const schema.FeatureSetDefaults) Error!
         previous = entry.edition;
     }
     if (defaults.minimum_edition) |minimum| {
+        if (minimum == .unknown) return error.InvalidFieldType;
         if (defaults.maximum_edition) |maximum| {
+            if (maximum == .unknown) return error.InvalidFieldType;
             if (@intFromEnum(minimum) > @intFromEnum(maximum)) return error.InvalidFieldType;
         }
+    } else if (defaults.maximum_edition) |maximum| {
+        if (maximum == .unknown) return error.InvalidFieldType;
     }
 }
 
@@ -3310,6 +3314,18 @@ test "descriptor rejects invalid FeatureSetDefaults" {
         defer writer.deinit();
         try writer.writeInt32(4, @intFromEnum(schema.Edition.edition_2026));
         try writer.writeInt32(5, @intFromEnum(schema.Edition.edition_2023));
+        try std.testing.expectError(error.InvalidFieldType, decodeFeatureSetDefaults(allocator, writer.slice()));
+    }
+    {
+        var writer = wire.Writer.init(allocator);
+        defer writer.deinit();
+        try writer.writeInt32(4, @intFromEnum(schema.Edition.unknown));
+        try std.testing.expectError(error.InvalidFieldType, decodeFeatureSetDefaults(allocator, writer.slice()));
+    }
+    {
+        var writer = wire.Writer.init(allocator);
+        defer writer.deinit();
+        try writer.writeInt32(5, @intFromEnum(schema.Edition.unknown));
         try std.testing.expectError(error.InvalidFieldType, decodeFeatureSetDefaults(allocator, writer.slice()));
     }
 }
