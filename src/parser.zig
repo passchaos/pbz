@@ -1220,6 +1220,10 @@ pub const Parser = struct {
                     if (!fieldKindIsSubmessage(field.kind)) return error.InvalidFieldType;
                     if (std.mem.eql(u8, leaf, "unverified_lazy") and field.extendee != null) return error.InvalidFieldType;
                 }
+            } else if (std.mem.eql(u8, leaf, "weak")) {
+                if (schema.optionAsBool(option.value) orelse return error.InvalidFieldType) {
+                    if (field.kind != .message or field.extendee != null or field.oneof_name != null or field.cardinality == .repeated) return error.InvalidFieldType;
+                }
             }
         }
     }
@@ -2672,20 +2676,40 @@ test "parser rejects invalid field option applicability" {
     ));
     try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
         \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [weak = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child {}
+        \\message Bad { repeated Child children = 1 [weak = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child {}
+        \\message Bad { oneof pick { Child child = 1 [weak = true]; } }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
         \\message Host { extensions 100 to 200; }
         \\message Ext {}
         \\extend Host { optional Ext ext = 100 [unverified_lazy = true]; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to 200; }
+        \\message Ext {}
+        \\extend Host { optional Ext ext = 100 [weak = true]; }
     ));
     var file = try Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Child {}
         \\message Ok {
-        \\  optional Child child = 1 [lazy = true, unverified_lazy = true];
+        \\  optional Child child = 1 [lazy = true, weak = true, unverified_lazy = true];
         \\  optional int64 big = 2 [jstype = JS_STRING];
         \\}
     );
     defer file.deinit();
-    try std.testing.expectEqual(@as(usize, 2), file.findMessage("Ok").?.findField("child").?.options.items.len);
+    try std.testing.expectEqual(@as(usize, 3), file.findMessage("Ok").?.findField("child").?.options.items.len);
     try std.testing.expectEqual(@as(usize, 1), file.findMessage("Ok").?.findField("big").?.options.items.len);
 }
 

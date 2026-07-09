@@ -1584,10 +1584,14 @@ fn validateDecodedFieldOptionApplicability(file: *const schema.FileDescriptor, f
     }
     const lazy = exactOptionBool(field.options.items, "lazy") orelse false;
     const unverified_lazy = exactOptionBool(field.options.items, "unverified_lazy") orelse false;
+    const weak = exactOptionBool(field.options.items, "weak") orelse false;
     if (lazy or unverified_lazy) {
         if (!fieldKindIsSubmessage(field.kind)) return error.InvalidFieldType;
     }
     if (unverified_lazy and is_extension) return error.InvalidFieldType;
+    if (weak) {
+        if (field.kind != .message or is_extension or field.oneof_name != null or field.cardinality == .repeated) return error.InvalidFieldType;
+    }
 }
 
 fn fieldKindAllowsJSType(kind: schema.FieldKind) bool {
@@ -3708,11 +3712,13 @@ test "descriptor rejects invalid decoded packed options" {
 
 test "descriptor rejects invalid decoded field option applicability" {
     const allocator = std.testing.allocator;
-    inline for (.{ .{ 6, "bad-jstype.proto" }, .{ 5, "bad-lazy.proto" } }) |case| {
+    inline for (.{ .{ 6, "bad-jstype.proto" }, .{ 5, "bad-lazy.proto" }, .{ 10, "bad-weak-scalar.proto" } }) |case| {
         var options = wire.Writer.init(allocator);
         defer options.deinit();
         if (case[0] == 6) {
             try options.writeInt32(6, 1);
+        } else if (case[0] == 10) {
+            try options.writeBool(10, true);
         } else {
             try options.writeBool(5, true);
         }
@@ -3730,6 +3736,32 @@ test "descriptor rejects invalid decoded field option applicability" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, case[1]);
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeBool(10, true);
+        var child = wire.Writer.init(allocator);
+        defer child.deinit();
+        try child.writeString(1, "Child");
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "children");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 3);
+        try field.writeInt32(5, 11);
+        try field.writeString(6, ".Child");
+        try field.writeMessage(8, options.slice());
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-weak-repeated.proto");
+        try file.writeMessage(4, child.slice());
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
