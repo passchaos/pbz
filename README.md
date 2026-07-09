@@ -280,7 +280,8 @@ unknown/raw extension storage and emitting known same-file extension values back
 as qualified bracketed JSON keys. Generated messages expose
 `JsonStringifyOptions` / `jsonStringify*WithOptions` for enum-name versus
 numeric enum output, proto field-name preservation, and always-printing
-primitive/repeated-message/repeated-scalar/map defaults, plus `JsonParseOptions` /
+primitive/repeated-message/repeated-scalar/map defaults including absent
+non-required explicit-presence scalar/enum defaults, plus `JsonParseOptions` /
 `jsonParseWithOptions` / `jsonParseInitializedWithOptions`, with JSON
 stringify/parse options propagated into nested generated message handling;
 `ignore_unknown_fields` also skips unknown enum JSON values for scalar,

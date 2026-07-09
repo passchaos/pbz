@@ -4677,7 +4677,11 @@ fn writeJsonScalarField(file: *const schema.FileDescriptor, field: *const schema
         if (hasPresence(file, field.*)) {
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
-            try writer.writeAll(") {\n");
+            if (isRequired(field.*)) {
+                try writer.writeAll(") {\n");
+            } else {
+                try writer.writeAll(" or options.always_print_primitive_fields) {\n");
+            }
         } else {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
@@ -4721,7 +4725,11 @@ fn writeJsonEnumField(file: *const schema.FileDescriptor, field: *const schema.F
         if (hasPresence(file, field.*)) {
             try writer.writeAll("if (self.");
             try writePresenceIdent(field.name, writer);
-            try writer.writeAll(") {\n");
+            if (isRequired(field.*)) {
+                try writer.writeAll(") {\n");
+            } else {
+                try writer.writeAll(" or options.always_print_primitive_fields) {\n");
+            }
         } else {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
@@ -6155,6 +6163,8 @@ test "codegen emits proto2 scalar and enum defaults" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"raw\": []const u8 = \"\\x01\\x02\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"ratio\": f32 = std.math.inf(f32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_count\": bool = false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_count\" or options.always_print_primitive_fields)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_kind\" or options.always_print_primitive_fields)") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
