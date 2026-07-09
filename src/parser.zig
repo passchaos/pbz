@@ -1710,6 +1710,13 @@ fn effectiveJsonNamesEqual(a: *const schema.FieldDescriptor, b: *const schema.Fi
 
 fn validateOneofs(message: *const schema.MessageDescriptor) ParseError!void {
     for (message.oneofs.items, 0..) |oneof, i| {
+        var field_count: usize = 0;
+        for (message.fields.items) |field| {
+            if (field.oneof_name) |oneof_name| {
+                if (std.mem.eql(u8, oneof.name, oneof_name)) field_count += 1;
+            }
+        }
+        if (field_count == 0) return error.InvalidFieldType;
         for (message.oneofs.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, oneof.name, other.name)) return error.DuplicateOneof;
         }
@@ -2706,6 +2713,10 @@ test "parser rejects labelled and group fields inside oneof" {
 
 test "parser rejects duplicate oneof names" {
     const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { oneof empty {} }
+    ));
     try std.testing.expectError(error.DuplicateOneof, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad {

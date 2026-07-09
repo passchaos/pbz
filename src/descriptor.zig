@@ -1451,6 +1451,7 @@ fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message
 fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
+    if (field.proto3_optional and file.syntax != .proto3) return error.InvalidFieldType;
 }
 
 fn validateDecodedExtensionConflict(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
@@ -1641,6 +1642,25 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Arr
 }
 
 fn validateDecodedProto3OptionalFields(message: *const schema.MessageDescriptor) Error!void {
+    var saw_synthetic = false;
+    for (message.oneofs.items) |oneof| {
+        var field_count: usize = 0;
+        var oneof_is_synthetic = false;
+        for (message.fields.items) |field| {
+            if (field.oneof_name) |field_oneof| {
+                if (!std.mem.eql(u8, field_oneof, oneof.name)) continue;
+                field_count += 1;
+                oneof_is_synthetic = field.proto3_optional;
+            }
+        }
+        if (field_count == 0) return error.InvalidFieldType;
+        oneof_is_synthetic = field_count == 1 and oneof_is_synthetic;
+        if (oneof_is_synthetic) {
+            saw_synthetic = true;
+        } else if (saw_synthetic) {
+            return error.InvalidFieldType;
+        }
+    }
     for (message.fields.items) |field| {
         if (!field.proto3_optional) continue;
         const oneof_name = field.oneof_name orelse return error.InvalidFieldType;
@@ -3456,6 +3476,20 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
     {
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "empty");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "empty-oneof.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
         var field = wire.Writer.init(allocator);
         defer field.deinit();
         try field.writeString(1, "name");
@@ -3570,6 +3604,66 @@ test "descriptor rejects invalid oneof descriptors and indexes" {
         var file = wire.Writer.init(allocator);
         defer file.deinit();
         try file.writeString(1, "bad-proto3-optional-message.proto");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "value");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeInt32(9, 0);
+        try field.writeBool(17, true);
+        var oneof = wire.Writer.init(allocator);
+        defer oneof.deinit();
+        try oneof.writeString(1, "_value");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, field.slice());
+        try message.writeMessage(8, oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-proto2-proto3-optional.proto");
+        try file.writeString(12, "proto2");
+        try file.writeMessage(4, message.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var optional_field = wire.Writer.init(allocator);
+        defer optional_field.deinit();
+        try optional_field.writeString(1, "value");
+        try optional_field.writeInt32(3, 1);
+        try optional_field.writeInt32(4, 1);
+        try optional_field.writeInt32(5, 5);
+        try optional_field.writeInt32(9, 0);
+        try optional_field.writeBool(17, true);
+        var real_field = wire.Writer.init(allocator);
+        defer real_field.deinit();
+        try real_field.writeString(1, "name");
+        try real_field.writeInt32(3, 2);
+        try real_field.writeInt32(4, 1);
+        try real_field.writeInt32(5, 9);
+        try real_field.writeInt32(9, 1);
+        var synthetic = wire.Writer.init(allocator);
+        defer synthetic.deinit();
+        try synthetic.writeString(1, "_value");
+        var real_oneof = wire.Writer.init(allocator);
+        defer real_oneof.deinit();
+        try real_oneof.writeString(1, "pick");
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "Bad");
+        try message.writeMessage(2, optional_field.slice());
+        try message.writeMessage(2, real_field.slice());
+        try message.writeMessage(8, synthetic.slice());
+        try message.writeMessage(8, real_oneof.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "bad-synthetic-oneof-order.proto");
+        try file.writeString(12, "proto3");
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
