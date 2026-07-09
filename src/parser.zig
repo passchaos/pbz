@@ -821,6 +821,7 @@ pub const Parser = struct {
 
     fn addFileOption(self: *Parser, option: schema.FieldOption) Error!void {
         if (isFeatureOption(option.name)) {
+            if (self.file.syntax != .editions) return error.InvalidSyntax;
             try applyFeatureOptionValue(&self.file.features, option);
             try self.file.options.append(self.allocator, option);
         } else {
@@ -830,6 +831,7 @@ pub const Parser = struct {
 
     fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption) Error!void {
         if (!isFeatureOption(option.name)) return;
+        if (self.file.syntax != .editions) return error.InvalidSyntax;
         var features = target.* orelse schema.FeatureSet.defaults(self.file.syntax);
         try applyFeatureOptionValue(&features, option);
         target.* = features;
@@ -980,6 +982,7 @@ pub const Parser = struct {
                     range.verification = .unverified;
                 } else return error.InvalidFieldType;
             } else if (std.mem.startsWith(u8, option.name, "features.")) {
+                if (self.file.syntax != .editions) return error.InvalidSyntax;
                 var features = range.features orelse schema.FeatureSet.defaults(self.file.syntax);
                 features.applyOption(option.name, option.value);
                 range.features = features;
@@ -3037,7 +3040,7 @@ test "parser validates extension field numbers against extension ranges" {
 test "parser preserves extension range declarations verification and features" {
     const allocator = std.testing.allocator;
     var file = try Parser.parse(allocator,
-        \\syntax = "proto2";
+        \\edition = "2023";
         \\package demo;
         \\message Host {
         \\  extensions 100 to max [
@@ -3143,6 +3146,19 @@ test "parser applies feature options across declaration scopes" {
 
 test "parser rejects invalid feature option names and values" {
     const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\option features.field_presence = IMPLICIT;
+        \\message Bad { optional int32 id = 1; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { optional int32 id = 1 [features.field_presence = IMPLICIT]; }
+    ));
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Bad { extensions 100 to 200 [features.enum_type = CLOSED]; }
+    ));
     try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
         \\edition = "2023";
         \\option features.not_a_feature = ENABLED;

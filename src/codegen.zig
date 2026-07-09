@@ -10620,7 +10620,7 @@ test "codegen honors editions message encoding features" {
 test "codegen honors utf8 validation features for wire strings" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
-        \\syntax = "proto3";
+        \\edition = "2023";
         \\message M {
         \\  string strict = 1;
         \\  string relaxed = 2 [features.utf8_validation = NONE];
@@ -10634,12 +10634,12 @@ test "codegen honors utf8 validation features for wire strings" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"strict\".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@\"strict\")) return error.InvalidUtf8; try w.writeString(1, self.@\"strict\"); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"relaxed\".len != 0) try w.writeString(2, self.@\"relaxed\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_strict\") { if (!std.unicode.utf8ValidateSlice(self.@\"strict\")) return error.InvalidUtf8; try w.writeString(1, self.@\"strict\"); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_relaxed\") try w.writeString(2, self.@\"relaxed\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\") |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; try w.writeString(3, item); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"alias\" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"strict\" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@\"strict\")) return error.InvalidUtf8; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"relaxed\" = try r.readBytes(); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.@\"strict\" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@\"strict\")) return error.InvalidUtf8; self.@\"has_strict\" = true; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.@\"relaxed\" = try r.readBytes(); self.@\"has_relaxed\" = true; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @\"tags_list\".append(allocator, value); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.@\"pick\" = .{ .@\"alias\" = value }; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;") != null);

@@ -2010,7 +2010,7 @@ test "dynamic validates string utf8 according to syntax and features" {
 
     {
         var file = try parser.Parser.parse(allocator,
-            \\syntax = "proto3";
+            \\edition = "2023";
             \\message M {
             \\  string relaxed = 1 [features.utf8_validation = NONE];
             \\  string strict = 2;

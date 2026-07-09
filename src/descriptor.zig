@@ -1290,6 +1290,7 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     try validateDecodedPackedOptions(&file);
     try validateDecodedDefaults(&file);
     try validateDecodedFieldSyntax(&file);
+    try validateDecodedFeatureApplicability(&file);
     try validateDecodedEnumSyntax(&file);
     try validateDecodedMessageSets(&file);
     try validateDecodedExtensionDeclarations(&file);
@@ -1536,6 +1537,49 @@ fn validateDecodedPackedOption(file: *const schema.FileDescriptor, field: *const
 fn validateDecodedFieldSyntax(file: *const schema.FileDescriptor) Error!void {
     for (file.extensions.items) |*field| try validateDecodedFieldSyntaxOne(file, field, true);
     for (file.messages.items) |*message| try validateDecodedMessageFieldSyntax(file, message);
+}
+
+fn validateDecodedFeatureApplicability(file: *const schema.FileDescriptor) Error!void {
+    if (file.syntax == .editions) return;
+    if (!file.features.eql(schema.FeatureSet.defaults(file.syntax))) return error.InvalidFieldType;
+    for (file.messages.items) |*message| try validateDecodedMessageFeaturesAbsent(message);
+    for (file.enums.items) |*enumeration| try validateDecodedEnumFeaturesAbsent(enumeration);
+    for (file.services.items) |*service| try validateDecodedServiceFeaturesAbsent(service);
+    for (file.extensions.items) |*field| {
+        if (field.features != null) return error.InvalidFieldType;
+    }
+}
+
+fn validateDecodedMessageFeaturesAbsent(message: *const schema.MessageDescriptor) Error!void {
+    if (message.features != null) return error.InvalidFieldType;
+    for (message.fields.items) |*field| {
+        if (field.features != null) return error.InvalidFieldType;
+    }
+    for (message.oneofs.items) |*oneof| {
+        if (oneof.features != null) return error.InvalidFieldType;
+    }
+    for (message.extension_ranges.items) |*range| {
+        if (range.features != null) return error.InvalidFieldType;
+    }
+    for (message.extensions.items) |*field| {
+        if (field.features != null) return error.InvalidFieldType;
+    }
+    for (message.messages.items) |*nested| try validateDecodedMessageFeaturesAbsent(nested);
+    for (message.enums.items) |*enumeration| try validateDecodedEnumFeaturesAbsent(enumeration);
+}
+
+fn validateDecodedEnumFeaturesAbsent(enumeration: *const schema.EnumDescriptor) Error!void {
+    if (enumeration.features != null) return error.InvalidFieldType;
+    for (enumeration.values.items) |*value| {
+        if (value.features != null) return error.InvalidFieldType;
+    }
+}
+
+fn validateDecodedServiceFeaturesAbsent(service: *const schema.ServiceDescriptor) Error!void {
+    if (service.features != null) return error.InvalidFieldType;
+    for (service.methods.items) |*method| {
+        if (method.features != null) return error.InvalidFieldType;
+    }
 }
 
 fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
@@ -3548,6 +3592,49 @@ test "descriptor rejects invalid decoded FeatureSet enum values" {
         defer file.deinit();
         try file.writeString(1, case[2]);
         try file.writeMessage(8, options.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+}
+
+test "descriptor rejects FeatureSet options outside editions" {
+    const allocator = std.testing.allocator;
+    {
+        var features = wire.Writer.init(allocator);
+        defer features.deinit();
+        try features.writeInt32(1, 2);
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeMessage(50, features.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto2-file-features.proto");
+        try file.writeString(12, "proto2");
+        try file.writeMessage(8, options.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var features = wire.Writer.init(allocator);
+        defer features.deinit();
+        try features.writeInt32(4, 1);
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeMessage(21, features.slice());
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "name");
+        try field.writeInt32(3, 1);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 9);
+        try field.writeMessage(8, options.slice());
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "M");
+        try message.writeMessage(2, field.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "proto3-field-features.proto");
+        try file.writeString(12, "proto3");
+        try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
 }
@@ -5739,7 +5826,7 @@ fn findSourceLocation(file: *const schema.FileDescriptor, path: []const i32) ?*c
 test "descriptor preserves extension range options" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
-        \\syntax = "proto2";
+        \\edition = "2023";
         \\package demo;
         \\message Host {
         \\  extensions 100 to max [
