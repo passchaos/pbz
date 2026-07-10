@@ -42,6 +42,75 @@ pub const Registry = struct {
         try self.validateExtensionDeclarations();
     }
 
+    pub fn validateLoadedFiles(self: *const Registry) Error!void {
+        try self.validateLoadedTypeConflicts();
+        try self.validateLoadedExtensionConflicts();
+        try self.validateExtensionDeclarations();
+        try self.validateAllFileReferences();
+    }
+
+    fn validateLoadedTypeConflicts(self: *const Registry) Error!void {
+        var seen = std.StringHashMap(void).init(self.allocator);
+        defer seen.deinit();
+        var owned_names: std.ArrayList([]u8) = .empty;
+        defer {
+            for (owned_names.items) |name| self.allocator.free(name);
+            owned_names.deinit(self.allocator);
+        }
+        for (self.files.items) |file| {
+            for (file.messages.items) |*message| try self.validateLoadedMessageType(&seen, &owned_names, file.package, message);
+            for (file.enums.items) |*enumeration| {
+                const full_name = try qualifiedTypeName(self.allocator, file.package, enumeration.name);
+                _ = try self.putLoadedTypeName(&seen, &owned_names, full_name);
+            }
+        }
+    }
+
+    fn validateLoadedMessageType(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), prefix: []const u8, message: *const schema.MessageDescriptor) Error!void {
+        const full_name = try qualifiedTypeName(self.allocator, prefix, message.name);
+        const stored_name = try self.putLoadedTypeName(seen, owned_names, full_name);
+        for (message.messages.items) |*nested| try self.validateLoadedMessageType(seen, owned_names, stored_name, nested);
+        for (message.enums.items) |*enumeration| {
+            const enum_name = try qualifiedTypeName(self.allocator, stored_name, enumeration.name);
+            _ = try self.putLoadedTypeName(seen, owned_names, enum_name);
+        }
+    }
+
+    fn putLoadedTypeName(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), full_name: []u8) Error![]const u8 {
+        if (seen.contains(full_name)) {
+            self.allocator.free(full_name);
+            return error.DuplicateSymbol;
+        }
+        try owned_names.append(self.allocator, full_name);
+        errdefer _ = owned_names.pop();
+        try seen.put(full_name, {});
+        return full_name;
+    }
+
+    const ExtensionRef = struct {
+        file: *const schema.FileDescriptor,
+        field: *const schema.FieldDescriptor,
+    };
+
+    fn validateLoadedExtensionConflicts(self: *const Registry) Error!void {
+        var extensions: std.ArrayList(ExtensionRef) = .empty;
+        defer extensions.deinit(self.allocator);
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| try extensions.append(self.allocator, .{ .file = file, .field = field });
+            for (file.messages.items) |*message| try self.collectLoadedMessageExtensionRefs(file, message, &extensions);
+        }
+        for (extensions.items, 0..) |extension, i| {
+            for (extensions.items[i + 1 ..]) |other| {
+                if (extensionsConflictResolved(self, extension.file, extension.field, other.file, other.field)) return error.DuplicateSymbol;
+            }
+        }
+    }
+
+    fn collectLoadedMessageExtensionRefs(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, output: *std.ArrayList(ExtensionRef)) Error!void {
+        for (message.extensions.items) |*field| try output.append(self.allocator, .{ .file = file, .field = field });
+        for (message.messages.items) |*nested| try self.collectLoadedMessageExtensionRefs(file, nested, output);
+    }
+
     fn validateNoTypeConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
         for (file.messages.items) |*message| try self.validateMessageType(file.package, message);
         for (file.enums.items) |*enumeration| {

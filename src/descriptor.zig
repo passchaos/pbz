@@ -1945,7 +1945,7 @@ fn validateDecodedFileDescriptorSetReferences(allocator: std.mem.Allocator, file
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
     for (files) |*file| try registry.files.append(allocator, file);
-    try registry.validateAllFileReferences();
+    try registry.validateLoadedFiles();
     for (files) |*file| {
         for (file.extensions.items) |*field| try validateDecodedSetFieldEnumDefault(&registry, file, field, if (file.package.len == 0) null else file.package);
         for (file.messages.items) |*message| {
@@ -3750,6 +3750,58 @@ test "descriptor encodes enum defaults using enum value names" {
     var decoded = try decodeFileDescriptorProto(allocator, encoded);
     defer decoded.deinit();
     try std.testing.expectEqual(@as(i64, 7), decoded.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "descriptor set rejects duplicate symbols and extension conflicts" {
+    const allocator = std.testing.allocator;
+    var first = schema.FileDescriptor.init(allocator);
+    defer first.deinit();
+    first.setSyntax(.proto2);
+    first.name = "first.proto";
+    first.package = "dup";
+    try first.messages.append(allocator, .{ .name = "User" });
+
+    var second = schema.FileDescriptor.init(allocator);
+    defer second.deinit();
+    second.setSyntax(.proto2);
+    second.name = "second.proto";
+    second.package = "dup";
+    try second.messages.append(allocator, .{ .name = "User" });
+
+    const duplicate_files = [_]*const schema.FileDescriptor{ &first, &second };
+    const duplicate_bytes = try encodeFileDescriptorSet(allocator, &duplicate_files);
+    defer allocator.free(duplicate_bytes);
+    try std.testing.expectError(error.DuplicateSymbol, decodeFileDescriptorSet(allocator, duplicate_bytes));
+
+    var host = schema.FileDescriptor.init(allocator);
+    defer host.deinit();
+    host.setSyntax(.proto2);
+    host.name = "host.proto";
+    host.package = "demo";
+    var host_msg = schema.MessageDescriptor{ .name = "Host" };
+    try host_msg.extension_ranges.append(allocator, .{ .start = 100, .end = 200 });
+    try host.messages.append(allocator, host_msg);
+
+    var ext_a = schema.FileDescriptor.init(allocator);
+    defer ext_a.deinit();
+    ext_a.setSyntax(.proto2);
+    ext_a.name = "ext-a.proto";
+    ext_a.package = "demo";
+    try ext_a.imports.append(allocator, .{ .path = "host.proto" });
+    try ext_a.extensions.append(allocator, .{ .name = "first", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+
+    var ext_b = schema.FileDescriptor.init(allocator);
+    defer ext_b.deinit();
+    ext_b.setSyntax(.proto2);
+    ext_b.name = "ext-b.proto";
+    ext_b.package = "demo";
+    try ext_b.imports.append(allocator, .{ .path = "host.proto" });
+    try ext_b.extensions.append(allocator, .{ .name = "second", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+
+    const extension_files = [_]*const schema.FileDescriptor{ &host, &ext_a, &ext_b };
+    const extension_bytes = try encodeFileDescriptorSet(allocator, &extension_files);
+    defer allocator.free(extension_bytes);
+    try std.testing.expectError(error.DuplicateSymbol, decodeFileDescriptorSet(allocator, extension_bytes));
 }
 
 test "descriptor encodes imported enum fields and defaults with registry" {
