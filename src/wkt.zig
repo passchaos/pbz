@@ -4,6 +4,10 @@ const schema_mod = @import("schema.zig");
 const dynamic_mod = @import("dynamic.zig");
 const registry_mod = @import("registry.zig");
 
+fn ensureUtf8(value: []const u8) error{InvalidUtf8}!void {
+    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+}
+
 pub const Timestamp = struct {
     seconds: i64 = 0,
     nanos: i32 = 0,
@@ -643,7 +647,10 @@ pub const Any = struct {
     pub fn encode(self: Any, allocator: std.mem.Allocator) ![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
-        if (self.type_url.len != 0) try writer.writeString(1, self.type_url);
+        if (self.type_url.len != 0) {
+            try ensureUtf8(self.type_url);
+            try writer.writeString(1, self.type_url);
+        }
         if (self.value.len != 0) try writer.writeBytes(2, self.value);
         return try writer.toOwnedSlice();
     }
@@ -656,7 +663,9 @@ pub const Any = struct {
             switch (tag.number) {
                 1 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    const next = try allocator.dupe(u8, try reader.readBytes());
+                    const raw = try reader.readBytes();
+                    try ensureUtf8(raw);
+                    const next = try allocator.dupe(u8, raw);
                     if (out.type_url.len != 0) allocator.free(out.type_url);
                     out.type_url = next;
                 },
@@ -798,6 +807,7 @@ pub const Any = struct {
 
     pub fn jsonStringify(self: Any, writer: *std.Io.Writer) !void {
         if (self.type_url.len == 0 or anyTypeName(self.type_url).len == 0) return error.TypeMismatch;
+        try ensureUtf8(self.type_url);
         try writer.writeAll("{\"@type\":");
         try std.json.Stringify.value(self.type_url, .{}, writer);
         try writer.writeAll(",\"value\":\"");
@@ -908,6 +918,17 @@ test "any clone and duplicate field decode helpers" {
     defer decoded.deinit(allocator);
     try std.testing.expectEqualSlices(u8, "type.googleapis.com/new.Msg", decoded.type_url);
     try std.testing.expectEqualSlices(u8, "new", decoded.value);
+}
+
+test "any validates type_url utf8" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidUtf8, (Any{ .type_url = &.{0xc0}, .value = "" }).encode(allocator));
+    try std.testing.expectError(error.InvalidUtf8, (Any{ .type_url = &.{0xc0}, .value = "" }).jsonStringifyAlloc(allocator));
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(1, &.{0xc0});
+    try std.testing.expectError(error.InvalidUtf8, Any.decode(allocator, writer.slice()));
 }
 
 test "any pack and type matching helpers" {
@@ -1057,6 +1078,7 @@ pub const Struct = struct {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
         for (self.fields) |field| {
+            try ensureUtf8(field.key);
             var entry_writer = wire.Writer.init(allocator);
             defer entry_writer.deinit();
             try entry_writer.writeString(1, field.key);
@@ -1079,11 +1101,8 @@ pub const Struct = struct {
             switch (tag.number) {
                 1 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    var field = try decodeStructField(allocator, try reader.readBytes());
-                    fields.append(allocator, field) catch |err| {
-                        deinitStructField(&field, allocator);
-                        return err;
-                    };
+                    const field = try decodeStructField(allocator, try reader.readBytes());
+                    try appendOrReplaceStructField(allocator, &fields, field);
                 },
                 else => try reader.skipValue(tag),
             }
@@ -1130,6 +1149,7 @@ pub const Struct = struct {
     pub fn jsonStringify(self: Struct, writer: *std.Io.Writer) anyerror!void {
         try writer.writeAll("{");
         for (self.fields, 0..) |field, index| {
+            try ensureUtf8(field.key);
             if (index != 0) try writer.writeAll(",");
             try std.json.Stringify.value(field.key, .{}, writer);
             try writer.writeAll(":");
@@ -1247,7 +1267,10 @@ pub const Value = union(enum) {
                 if (std.math.isNan(value) or std.math.isPositiveInf(value) or std.math.isNegativeInf(value)) return error.InvalidNumber;
                 try writer.writeDouble(2, value);
             },
-            .string_value => |value| try writer.writeString(3, value),
+            .string_value => |value| {
+                try ensureUtf8(value);
+                try writer.writeString(3, value);
+            },
             .bool_value => |value| try writer.writeBool(4, value),
             .struct_value => |value| {
                 const payload = try value.encode(allocator);
@@ -1283,7 +1306,9 @@ pub const Value = union(enum) {
                 },
                 3 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
-                    const string_value = try allocator.dupe(u8, try reader.readBytes());
+                    const raw = try reader.readBytes();
+                    try ensureUtf8(raw);
+                    const string_value = try allocator.dupe(u8, raw);
                     replaceDecodedValue(&out, &has_value, allocator, .{ .string_value = string_value });
                 },
                 4 => {
@@ -1367,7 +1392,10 @@ pub const Value = union(enum) {
                 if (std.math.isNan(value) or std.math.isPositiveInf(value) or std.math.isNegativeInf(value)) return error.InvalidNumber;
                 try std.json.Stringify.value(value, .{}, writer);
             },
-            .string_value => |value| try std.json.Stringify.value(value, .{}, writer),
+            .string_value => |value| {
+                try ensureUtf8(value);
+                try std.json.Stringify.value(value, .{}, writer);
+            },
             .bool_value => |value| try writer.writeAll(if (value) "true" else "false"),
             .struct_value => |value| try value.jsonStringify(writer),
             .list_value => |value| try value.jsonStringify(writer),
@@ -1398,7 +1426,9 @@ fn decodeStructField(allocator: std.mem.Allocator, bytes: []const u8) anyerror!S
         switch (tag.number) {
             1 => {
                 try wire.Reader.expectWireType(tag, .length_delimited);
-                const new_key = try allocator.dupe(u8, try reader.readBytes());
+                const raw = try reader.readBytes();
+                try ensureUtf8(raw);
+                const new_key = try allocator.dupe(u8, raw);
                 allocator.free(key);
                 key = new_key;
             },
@@ -1410,6 +1440,21 @@ fn decodeStructField(allocator: std.mem.Allocator, bytes: []const u8) anyerror!S
         }
     }
     return .{ .key = key, .value = value };
+}
+
+fn appendOrReplaceStructField(allocator: std.mem.Allocator, fields: *std.ArrayList(Struct.Field), field: Struct.Field) !void {
+    for (fields.items) |*existing| {
+        if (std.mem.eql(u8, existing.key, field.key)) {
+            deinitStructField(existing, allocator);
+            existing.* = field;
+            return;
+        }
+    }
+    fields.append(allocator, field) catch |err| {
+        var owned = field;
+        deinitStructField(&owned, allocator);
+        return err;
+    };
 }
 
 fn deinitStructField(field: *Struct.Field, allocator: std.mem.Allocator) void {
@@ -1518,6 +1563,37 @@ test "struct value and listvalue wire and json helpers" {
     try std.testing.expectEqualSlices(u8, "{\"n\":1.5,\"child\":{\"flag\":false},\"items\":[null,\"x\"]}", parsed_json);
 }
 
+test "struct wire decode applies map last key wins" {
+    const allocator = std.testing.allocator;
+    var first_value = Value{ .string_value = "first" };
+    const first_value_bytes = try first_value.encode(allocator);
+    defer allocator.free(first_value_bytes);
+    var first_entry = wire.Writer.init(allocator);
+    defer first_entry.deinit();
+    try first_entry.writeString(1, "name");
+    try first_entry.writeMessage(2, first_value_bytes);
+
+    var second_value = Value{ .string_value = "second" };
+    const second_value_bytes = try second_value.encode(allocator);
+    defer allocator.free(second_value_bytes);
+    var second_entry = wire.Writer.init(allocator);
+    defer second_entry.deinit();
+    try second_entry.writeString(1, "name");
+    try second_entry.writeMessage(2, second_value_bytes);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeMessage(1, first_entry.slice());
+    try encoded.writeMessage(1, second_entry.slice());
+
+    var decoded = try Struct.decode(allocator, encoded.slice());
+    defer decoded.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 1), decoded.fields.len);
+    try std.testing.expectEqualStrings("name", decoded.fields[0].key);
+    try std.testing.expect(decoded.fields[0].value == .string_value);
+    try std.testing.expectEqualStrings("second", decoded.fields[0].value.string_value);
+}
+
 test "struct value and listvalue clone owned helpers" {
     const allocator = std.testing.allocator;
     var parsed = try Struct.jsonParse(allocator, "{\"name\":\"pbz\",\"items\":[\"zig\",null],\"child\":{\"ok\":true}}");
@@ -1565,6 +1641,27 @@ test "value json and wire reject invalid null enum and non-finite numbers" {
     defer nan_writer.deinit();
     try nan_writer.writeDouble(2, std.math.nan(f64));
     try std.testing.expectError(error.InvalidNumber, Value.decode(allocator, nan_writer.slice()));
+}
+
+test "struct and value validate utf8 strings" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidUtf8, (Value{ .string_value = &.{0xc0} }).encode(allocator));
+    try std.testing.expectError(error.InvalidUtf8, (Value{ .string_value = &.{0xc0} }).jsonStringifyAlloc(allocator));
+    try std.testing.expectError(error.InvalidUtf8, (Struct{ .fields = &.{.{ .key = &.{0xc0}, .value = .null_value }} }).encode(allocator));
+    try std.testing.expectError(error.InvalidUtf8, (Struct{ .fields = &.{.{ .key = &.{0xc0}, .value = .null_value }} }).jsonStringifyAlloc(allocator));
+
+    var value_writer = wire.Writer.init(allocator);
+    defer value_writer.deinit();
+    try value_writer.writeString(3, &.{0xc0});
+    try std.testing.expectError(error.InvalidUtf8, Value.decode(allocator, value_writer.slice()));
+
+    var entry_writer = wire.Writer.init(allocator);
+    defer entry_writer.deinit();
+    try entry_writer.writeString(1, &.{0xc0});
+    var struct_writer = wire.Writer.init(allocator);
+    defer struct_writer.deinit();
+    try struct_writer.writeMessage(1, entry_writer.slice());
+    try std.testing.expectError(error.InvalidUtf8, Struct.decode(allocator, struct_writer.slice()));
 }
 
 test "value decode uses last oneof arm and parser cleans up on OOM" {
@@ -1646,7 +1743,10 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
                 .int32 => try writer.writeInt32(1, self.value),
                 .uint32 => try writer.writeUInt32(1, self.value),
                 .bool => try writer.writeBool(1, self.value),
-                .string => try writer.writeString(1, self.value),
+                .string => {
+                    try ensureUtf8(self.value);
+                    try writer.writeString(1, self.value);
+                },
                 .bytes => try writer.writeBytes(1, self.value),
             }
             return try writer.toOwnedSlice();
@@ -1691,7 +1791,9 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
                     },
                     .string => blk: {
                         try wire.Reader.expectWireType(tag, .length_delimited);
-                        break :blk try reader.readBytes();
+                        const value = try reader.readBytes();
+                        try ensureUtf8(value);
+                        break :blk value;
                     },
                     .bytes => blk: {
                         try wire.Reader.expectWireType(tag, .length_delimited);
@@ -1746,6 +1848,10 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
                     try writer.writeAll("\"");
                     try std.base64.standard.Encoder.encodeWriter(writer, self.value);
                     try writer.writeAll("\"");
+                },
+                .string => {
+                    try ensureUtf8(self.value);
+                    try std.json.Stringify.value(self.value, .{}, writer);
                 },
                 else => try std.json.Stringify.value(self.value, .{}, writer),
             }
@@ -1869,6 +1975,17 @@ test "wrapper wire and json helpers" {
     const bytes_json = try bytes_value.jsonStringifyAlloc(allocator);
     defer allocator.free(bytes_json);
     try std.testing.expectEqualSlices(u8, "\"aGk=\"", bytes_json);
+}
+
+test "string wrapper validates utf8" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidUtf8, (StringValue{ .value = &.{0xc0} }).encode(allocator));
+    try std.testing.expectError(error.InvalidUtf8, (StringValue{ .value = &.{0xc0} }).jsonStringifyAlloc(allocator));
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(1, &.{0xc0});
+    try std.testing.expectError(error.InvalidUtf8, StringValue.decode(writer.slice()));
 }
 
 test "wrapper json parse helpers" {
