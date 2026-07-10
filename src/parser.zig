@@ -141,6 +141,8 @@ pub const Parser = struct {
     file: schema.FileDescriptor,
     previous_end: usize = 0,
     saw_syntax_or_edition: bool = false,
+    last_field_options_start: ?usize = null,
+    last_field_options_end: ?usize = null,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Error!Parser {
         var lexer = Lexer{ .input = input };
@@ -153,6 +155,8 @@ pub const Parser = struct {
             .file = schema.FileDescriptor.init(allocator),
             .previous_end = 0,
             .saw_syntax_or_edition = false,
+            .last_field_options_start = null,
+            .last_field_options_end = null,
         };
     }
 
@@ -411,6 +415,14 @@ pub const Parser = struct {
         return path;
     }
 
+    fn addLastFieldOptionsLocation(self: *Parser, field_path: []const i32) Error!void {
+        const start = self.last_field_options_start orelse return;
+        const end = self.last_field_options_end orelse self.previousEnd();
+        const path = try self.childFieldPath(field_path, 8);
+        defer self.allocator.free(path);
+        try self.addSourceLocation(path, start, end);
+    }
+
     fn addRepeatedLocations(self: *Parser, base: []const i32, field_number: i32, start_index: usize, end_index: usize, start: usize, end: usize) Error!void {
         var index = start_index;
         while (index < end_index) : (index += 1) {
@@ -518,6 +530,7 @@ pub const Parser = struct {
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, field_start, self.previousEnd());
+                try self.addLastFieldOptionsLocation(path);
             }
         }
         try validateMessageFields(&message, self.file.syntax);
@@ -665,6 +678,7 @@ pub const Parser = struct {
                 const path = try self.childPath(message_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, field_start, self.previousEnd());
+                try self.addLastFieldOptionsLocation(path);
             }
         }
     }
@@ -691,6 +705,7 @@ pub const Parser = struct {
                 try self.childPath(source_path, 6, index);
             defer self.allocator.free(path);
             try self.addSourceLocation(path, field_start, self.previousEnd());
+            try self.addLastFieldOptionsLocation(path);
         }
     }
 
@@ -703,6 +718,8 @@ pub const Parser = struct {
     }
 
     fn parseField(self: *Parser, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
+        self.last_field_options_start = null;
+        self.last_field_options_end = null;
         var cardinality: schema.Cardinality = .implicit;
         var proto3_optional = false;
         if (self.current.tag == .identifier) {
@@ -746,12 +763,19 @@ pub const Parser = struct {
             .proto3_optional = proto3_optional,
         };
         errdefer field.deinit(self.allocator);
-        if (self.consumeSymbol('[')) try self.parseFieldOptions(&field);
+        if (self.current.tag == .symbol and self.current.symbol == '[') {
+            self.last_field_options_start = self.current.start;
+            try self.expectSymbol('[');
+            try self.parseFieldOptions(&field);
+            self.last_field_options_end = self.previousEnd();
+        }
         try self.expectSymbol(';');
         return field;
     }
 
     fn parseGroupField(self: *Parser, cardinality: schema.Cardinality, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
+        self.last_field_options_start = null;
+        self.last_field_options_end = null;
         const name = try self.expectIdentifier();
         if (name.len == 0 or !std.ascii.isUpper(name[0])) return error.InvalidFieldType;
         const field_name = try self.lowercaseOwned(name);
@@ -766,7 +790,14 @@ pub const Parser = struct {
             .oneof_name = oneof_name,
         };
         errdefer field.deinit(self.allocator);
-        if (self.consumeSymbol('[')) try self.parseFieldOptions(&field);
+        var group_options_start: ?usize = null;
+        var group_options_end: ?usize = null;
+        if (self.current.tag == .symbol and self.current.symbol == '[') {
+            group_options_start = self.current.start;
+            try self.expectSymbol('[');
+            try self.parseFieldOptions(&field);
+            group_options_end = self.previousEnd();
+        }
         var nested = schema.MessageDescriptor{ .name = name };
         errdefer nested.deinit(self.allocator);
         try self.expectSymbol('{');
@@ -780,6 +811,8 @@ pub const Parser = struct {
         } else {
             try self.file.messages.append(self.allocator, nested);
         }
+        self.last_field_options_start = group_options_start;
+        self.last_field_options_end = group_options_end;
         return field;
     }
 
@@ -2499,8 +2532,8 @@ test "parser records basic source code info locations" {
         \\package demo;
         \\import "common.proto";
         \\option java_package = "demo";
-        \\message Person { option deprecated = true; optional string name = 1; message Child { optional int32 id = 1; } oneof pick { option (demo.oneof_opt) = true; string nick = 2; } extensions 100 to 199; reserved 50 to 60; reserved "old"; extend Person { optional int32 nested_ext = 100; } }
-        \\extend Person { optional string top_ext = 101; }
+        \\message Person { option deprecated = true; optional string name = 1 [deprecated = true]; message Child { optional int32 id = 1 [deprecated = true]; } optional group Box = 3 [deprecated = true] { optional int32 id = 4; } oneof pick { option (demo.oneof_opt) = true; string nick = 2 [deprecated = true]; } extensions 100 to 199; reserved 50 to 60; reserved "old"; extend Person { optional int32 nested_ext = 100 [deprecated = true]; } }
+        \\extend Person { optional string top_ext = 101 [deprecated = true]; }
         \\enum Kind { option allow_alias = true; A = 0; B = 0 [deprecated = true]; reserved 5 to 6; reserved "OLD"; }
         \\service Api { option deprecated = true; rpc Get (Person) returns (Person) { option deprecated = true; } }
     ;
@@ -2514,16 +2547,23 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{ 4, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 7 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 2, 0, 8 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0, 8 });
+    try expectLocationPath(&file, &.{ 4, 0, 2, 2 });
+    try expectLocationPath(&file, &.{ 4, 0, 2, 2, 8 });
     try expectLocationPath(&file, &.{ 4, 0, 8, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 8, 0, 2 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 1 });
+    try expectLocationPath(&file, &.{ 4, 0, 2, 1, 8 });
     try expectLocationPath(&file, &.{ 4, 0, 5, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 9, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 10, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 6, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 6, 0, 8 });
     try expectLocationPath(&file, &.{ 7, 0 });
+    try expectLocationPath(&file, &.{ 7, 0, 8 });
     try expectLocationPath(&file, &.{ 5, 0 });
     try expectLocationPath(&file, &.{ 5, 0, 3 });
     try expectLocationPath(&file, &.{ 5, 0, 2, 0 });
