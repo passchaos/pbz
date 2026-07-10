@@ -3752,6 +3752,57 @@ test "descriptor encodes enum defaults using enum value names" {
     try std.testing.expectEqual(@as(i64, 7), decoded.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
 }
 
+test "descriptor set rejects extension declaration and MessageSet shape violations" {
+    const allocator = std.testing.allocator;
+    var host = schema.FileDescriptor.init(allocator);
+    defer host.deinit();
+    host.setSyntax(.proto2);
+    host.name = "host.proto";
+    host.package = "demo";
+    var host_msg = schema.MessageDescriptor{ .name = "Host" };
+    var declared_range = schema.ExtensionRange{ .start = 100, .end = 200, .verification = .declaration };
+    try declared_range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.ext", .type_name = ".demo.Ext" });
+    try host_msg.extension_ranges.append(allocator, declared_range);
+    try host.messages.append(allocator, host_msg);
+    try host.messages.append(allocator, .{ .name = "Ext" });
+
+    var wrong = schema.FileDescriptor.init(allocator);
+    defer wrong.deinit();
+    wrong.setSyntax(.proto2);
+    wrong.name = "wrong.proto";
+    wrong.package = "demo";
+    try wrong.imports.append(allocator, .{ .path = "host.proto" });
+    try wrong.extensions.append(allocator, .{ .name = "wrong", .number = 100, .cardinality = .optional, .kind = .{ .message = "Ext" }, .extendee = "Host" });
+
+    const declaration_files = [_]*const schema.FileDescriptor{ &host, &wrong };
+    const declaration_bytes = try encodeFileDescriptorSet(allocator, &declaration_files);
+    defer allocator.free(declaration_bytes);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, decodeFileDescriptorSet(allocator, declaration_bytes));
+
+    var ms_host = schema.FileDescriptor.init(allocator);
+    defer ms_host.deinit();
+    ms_host.setSyntax(.proto2);
+    ms_host.name = "messageset-host.proto";
+    ms_host.package = "demo.ms";
+    var message_set = schema.MessageDescriptor{ .name = "Host" };
+    try message_set.options.append(allocator, .{ .name = "message_set_wire_format", .value = .{ .boolean = true } });
+    try message_set.extension_ranges.append(allocator, .{ .start = 4, .end = null });
+    try ms_host.messages.append(allocator, message_set);
+
+    var ms_ext = schema.FileDescriptor.init(allocator);
+    defer ms_ext.deinit();
+    ms_ext.setSyntax(.proto2);
+    ms_ext.name = "messageset-ext.proto";
+    ms_ext.package = "demo.ms";
+    try ms_ext.imports.append(allocator, .{ .path = "messageset-host.proto" });
+    try ms_ext.extensions.append(allocator, .{ .name = "bad", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+
+    const messageset_files = [_]*const schema.FileDescriptor{ &ms_host, &ms_ext };
+    const messageset_bytes = try encodeFileDescriptorSet(allocator, &messageset_files);
+    defer allocator.free(messageset_bytes);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, decodeFileDescriptorSet(allocator, messageset_bytes));
+}
+
 test "descriptor set rejects duplicate symbols and extension conflicts" {
     const allocator = std.testing.allocator;
     var first = schema.FileDescriptor.init(allocator);
