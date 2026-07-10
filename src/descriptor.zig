@@ -6640,6 +6640,29 @@ test "descriptor round-trips extension range option source info" {
     try std.testing.expectEqualSlices(i32, first_range_options.span.items, second_range_options.span.items);
 }
 
+test "descriptor round-trips enum value option source info" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind {
+        \\  UNKNOWN = 0;
+        \\  ACTIVE = 1 [deprecated = true];
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "enum-value-options-source.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const value_location = findSourceLocation(&decoded, &.{ 5, 0, 2, 1 }).?;
+    const option_location = findSourceLocation(&decoded, &.{ 5, 0, 2, 1, 3 }).?;
+    try std.testing.expectEqual(@as(usize, 4), value_location.span.items.len);
+    try std.testing.expectEqual(@as(usize, 4), option_location.span.items.len);
+    try std.testing.expect(option_location.span.items[0] >= value_location.span.items[0]);
+}
+
 test "descriptor rejects invalid source code info locations" {
     const allocator = std.testing.allocator;
     {
