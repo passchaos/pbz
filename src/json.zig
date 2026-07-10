@@ -5,7 +5,7 @@ const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
 const registry_mod = @import("registry.zig");
 
-pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch };
+pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch, InvalidFieldMask };
 
 pub const Options = struct {
     enum_as_name: bool = true,
@@ -1038,8 +1038,11 @@ fn addKnownTimeFields(message: *dynamic.DynamicMessage, seconds: i64, nanos: i32
 fn writeFieldMaskMessage(message: *const dynamic.DynamicMessage, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("\"");
     if (message.get("paths")) |field| {
+        var mask_paths: [1][]const u8 = undefined;
         for (field.values.items, 0..) |value, index| {
             if (value != .string) return error.TypeMismatch;
+            mask_paths[0] = value.string;
+            try (wkt.FieldMask{ .paths = &mask_paths }).validate();
             if (index != 0) try writer.writeAll(",");
             try writeLowerCamel(value.string, writer);
         }
@@ -2469,6 +2472,14 @@ test "json maps FieldMask message as comma-separated string" {
     const parsed_mask = parsed.get("mask").?.values.items[0].message;
     try std.testing.expectEqualSlices(u8, "foo_bar", parsed_mask.get("paths").?.values.items[0].string);
     try std.testing.expectEqualSlices(u8, "baz.qux_value", parsed_mask.get("paths").?.values.items[1].string);
+
+    const bad_mask = try allocator.create(dynamic.DynamicMessage);
+    bad_mask.* = dynamic.DynamicMessage.init(allocator, mask_desc);
+    try bad_mask.add(mask_desc.findField("paths").?, .{ .string = try allocator.dupe(u8, "foo_1") });
+    var bad_holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer bad_holder.deinit();
+    try bad_holder.add(holder_desc.findField("mask").?, .{ .message = bad_mask });
+    try std.testing.expectError(error.InvalidFieldMask, stringifyAlloc(allocator, &file, &bad_holder, .{}));
 }
 
 test "json maps Empty message as empty object" {
