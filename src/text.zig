@@ -62,7 +62,7 @@ fn writeMessageFields(
 ) Error!void {
     for (message.fields.items) |*entry| {
         if (entry.descriptor.kind == .map) {
-            for (entry.values.items) |value| try writeMapEntry(file, registry, entry.descriptor, value, options, writer, depth);
+            for (entry.values.items) |value| try writeMapEntry(file, registry, message.descriptor, entry.descriptor, value, options, writer, depth);
         } else if (entry.descriptor.cardinality == .repeated) {
             for (entry.values.items) |value| try writeField(file, registry, message.descriptor, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
         } else if (entry.values.items.len != 0) {
@@ -129,6 +129,7 @@ fn writeUnknownField(
 fn writeMapEntry(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
+    current: *const schema.MessageDescriptor,
     field: *const schema.FieldDescriptor,
     value: dynamic.Value,
     options: Options,
@@ -148,8 +149,8 @@ fn writeMapEntry(
     try writer.writeAll(" {\n");
     try validateTextFormatUtf8(file, field, .{ .scalar = map_type.key }, entry.key);
     try validateTextFormatUtf8(file, field, map_type.value.*, entry.value);
-    try writeField(file, registry, null, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
-    try writeField(file, registry, null, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
+    try writeField(file, registry, current, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
+    try writeField(file, registry, current, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
     try writeIndent(writer, options, depth);
     try writer.writeAll("}\n");
 }
@@ -499,6 +500,7 @@ test "text registry keeps local enum priority over imported enum" {
         \\message Event {
         \\  enum Kind { LOCAL = 7; }
         \\  optional Kind kind = 1 [default = LOCAL];
+        \\  map<string, Kind> keyed = 2;
         \\}
     );
     defer app.deinit();
@@ -509,13 +511,18 @@ test "text registry keeps local enum priority over imported enum" {
     try registry.addFile(&app);
     try registry.validateFileReferences(&app);
 
-    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, app.findMessage("Event").?, "kind: LOCAL");
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, app.findMessage("Event").?,
+        \\kind: LOCAL
+        \\keyed { key: "one" value: LOCAL }
+    );
     defer parsed.deinit();
     try std.testing.expectEqual(@as(i32, 7), parsed.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 7), parsed.get("keyed").?.values.items[0].map_entry.value.enumeration);
 
     const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &parsed, .{});
     defer allocator.free(rendered);
-    try std.testing.expectEqualStrings("kind: LOCAL\n", rendered);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "kind: LOCAL\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "value: LOCAL\n") != null);
 }
 
 test "text registry resolves same-package imported unqualified fields" {
