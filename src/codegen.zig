@@ -2675,6 +2675,14 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const tag = (try r.nextTag()) orelse return error.InvalidWireType;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try r.skipValue(tag);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("const old = self.@\"_unknown_fields\";\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const next = try allocator.alloc([]const u8, old.len + 1);\n");
@@ -9922,6 +9930,9 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == number) { allocator.free(raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_unknown_fields\" = try kept.toOwnedSlice(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const tag = (try r.nextTag()) orelse return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try r.skipValue(tag);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!r.eof()) return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned = try allocator.dupe(u8, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());") != null);
