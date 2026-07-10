@@ -440,18 +440,27 @@ fn freeStringList(allocator: std.mem.Allocator, values: []const []const u8) void
 fn validateFieldMaskPath(path: []const u8) !void {
     if (path.len == 0) return error.InvalidFieldMask;
     var last_was_dot = true;
+    var last_was_underscore = false;
     for (path) |c| {
         if (c == '.') {
-            if (last_was_dot) return error.InvalidFieldMask;
+            if (last_was_dot or last_was_underscore) return error.InvalidFieldMask;
             last_was_dot = true;
+            last_was_underscore = false;
+            continue;
+        }
+        if (c == '_') {
+            if (last_was_dot or last_was_underscore) return error.InvalidFieldMask;
+            last_was_underscore = true;
             continue;
         }
         if (std.ascii.isUpper(c)) return error.InvalidFieldMask;
         if (last_was_dot and !std.ascii.isLower(c)) return error.InvalidFieldMask;
-        if (!(std.ascii.isLower(c) or std.ascii.isDigit(c) or c == '_')) return error.InvalidFieldMask;
+        if (last_was_underscore and !std.ascii.isLower(c)) return error.InvalidFieldMask;
+        if (!(std.ascii.isLower(c) or std.ascii.isDigit(c))) return error.InvalidFieldMask;
         last_was_dot = false;
+        last_was_underscore = false;
     }
-    if (last_was_dot) return error.InvalidFieldMask;
+    if (last_was_dot or last_was_underscore) return error.InvalidFieldMask;
 }
 
 fn writeLowerCamelPath(path: []const u8, writer: *std.Io.Writer) !void {
@@ -544,6 +553,9 @@ test "field mask validates proto path strings before writing" {
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo."} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"Foo"} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo-bar"} }).validate());
+    try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo_1"} }).jsonStringifyAlloc(allocator));
+    try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo_"} }).validate());
+    try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo__bar"} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"1foo"} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"foo._bar"} }).validate());
     try std.testing.expectError(error.InvalidFieldMask, (FieldMask{ .paths = &.{"Foo"} }).encode(allocator));
