@@ -767,6 +767,10 @@ pub const Any = struct {
             .object => |object| object,
             else => return error.TypeMismatch,
         };
+        var it = object.iterator();
+        while (it.next()) |entry| {
+            if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
+        }
         const type_url_json = object.get("@type") orelse return error.TypeMismatch;
         const type_url = switch (type_url_json) {
             .string => |value| value,
@@ -830,6 +834,7 @@ test "any wire and json helpers" {
     defer parsed_url_safe.deinit(allocator);
     try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xff }, parsed_url_safe.value);
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"value\":\"YWJj\"}"));
+    try std.testing.expectError(error.UnknownField, Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\",\"extra\":1}"));
 }
 
 test "any clone and duplicate field decode helpers" {
