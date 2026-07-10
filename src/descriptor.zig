@@ -209,7 +209,7 @@ fn writeFieldDescriptor(
     defer tmp.deinit();
 
     try tmp.writeString(1, field.name);
-    if (field.extendee) |extendee| try writeQualifiedName(allocator, file, extendee, 2, &tmp);
+    if (field.extendee != null) try writeQualifiedExtendeeName(allocator, file, registry, containing_scope, field, 2, &tmp);
     try tmp.writeInt32(3, @intCast(field.number));
     try tmp.writeInt32(4, labelNumber(field.cardinality));
     const descriptor_kind = descriptorFieldKind(file, registry, containing_scope, field.kind);
@@ -1024,6 +1024,21 @@ fn writeQualifiedName(allocator: std.mem.Allocator, file: *const schema.FileDesc
     try writer.writeString(field_number, qualified);
 }
 
+fn writeQualifiedExtendeeName(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    containing_scope: []const u8,
+    field: *const schema.FieldDescriptor,
+    field_number: wire.FieldNumber,
+    writer: *wire.Writer,
+) Error!void {
+    const extendee = field.extendee orelse return error.InvalidFieldType;
+    const resolved = try resolveDescriptorExtendeeName(allocator, file, registry, containing_scope, field, extendee);
+    defer allocator.free(resolved);
+    try writer.writeString(field_number, resolved);
+}
+
 const DescriptorTypeKind = enum { message, enumeration };
 
 fn writeQualifiedTypeName(
@@ -1046,6 +1061,62 @@ fn qualifiedName(allocator: std.mem.Allocator, file: *const schema.FileDescripto
     if (file.package.len == 0) return try std.fmt.allocPrint(allocator, ".{s}", .{name});
     if (std.mem.startsWith(u8, name, file.package)) return try std.fmt.allocPrint(allocator, ".{s}", .{name});
     return try std.fmt.allocPrint(allocator, ".{s}.{s}", .{ file.package, name });
+}
+
+fn resolveDescriptorExtendeeName(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    containing_scope: []const u8,
+    field: *const schema.FieldDescriptor,
+    extendee: []const u8,
+) Error![]u8 {
+    if (std.mem.startsWith(u8, extendee, ".")) return try allocator.dupe(u8, extendee);
+    if (isCustomOptionExtendee(extendee)) return try std.fmt.allocPrint(allocator, ".{s}", .{descriptorNormalizeName(extendee)});
+    if (registry) |reg| {
+        var owned_scope: ?[]u8 = null;
+        defer if (owned_scope) |scope| allocator.free(scope);
+        const scope = try descriptorExtensionScope(allocator, file, containing_scope, field, &owned_scope);
+        if (reg.findMessageVisible(file, extendee, scope)) |message| {
+            if (reg.fileContainingMessage(message)) |owner| {
+                if (try descriptorMessageFullName(allocator, owner, message)) |full_name| return full_name;
+            }
+        }
+    }
+    if (typeNameExistsInFile(file, extendee, .message)) return try qualifiedName(allocator, file, extendee);
+    var scope = containing_scope;
+    while (scope.len != 0) {
+        const candidate = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ scope, extendee });
+        defer allocator.free(candidate);
+        if (typeNameExistsInFile(file, candidate, .message)) return try qualifiedName(allocator, file, candidate);
+        if (std.mem.lastIndexOfScalar(u8, scope, '.')) |idx| {
+            scope = scope[0..idx];
+        } else {
+            break;
+        }
+    }
+    return try qualifiedName(allocator, file, extendee);
+}
+
+fn descriptorExtensionScope(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    containing_scope: []const u8,
+    field: *const schema.FieldDescriptor,
+    owned_scope: *?[]u8,
+) std.mem.Allocator.Error!?[]const u8 {
+    if (field.full_name) |full_name| {
+        const normalized = descriptorNormalizeName(full_name);
+        if (std.mem.lastIndexOfScalar(u8, normalized, '.')) |idx| return normalized[0..idx];
+        return null;
+    }
+    if (containing_scope.len != 0) {
+        if (file.package.len == 0) return containing_scope;
+        const scope = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ file.package, containing_scope });
+        owned_scope.* = scope;
+        return scope;
+    }
+    return if (file.package.len == 0) null else file.package;
 }
 
 fn resolveDescriptorTypeName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, containing_scope: []const u8, type_name: []const u8, comptime kind: DescriptorTypeKind) Error![]u8 {
@@ -3864,6 +3935,40 @@ test "descriptor set rejects extension declaration and MessageSet shape violatio
     const messageset_bytes = try encodeFileDescriptorSet(allocator, &messageset_files);
     defer allocator.free(messageset_bytes);
     try std.testing.expectError(error.InvalidExtensionDeclaration, decodeFileDescriptorSet(allocator, messageset_bytes));
+}
+
+test "descriptor set encodes imported extension extendees with resolved package" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+    );
+    defer host.deinit();
+    host.name = "host.proto";
+
+    var extension = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package other;
+        \\import "host.proto";
+        \\extend demo.Host { optional string note = 100; }
+    );
+    defer extension.deinit();
+    extension.name = "extension.proto";
+
+    const files = [_]*const schema.FileDescriptor{ &host, &extension };
+    const bytes = try encodeFileDescriptorSet(allocator, &files);
+    defer allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, ".demo.Host") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, ".other.demo.Host") == null);
+
+    const decoded_files = try decodeFileDescriptorSet(allocator, bytes);
+    defer {
+        for (decoded_files) |*file| file.deinit();
+        allocator.free(decoded_files);
+    }
+    try std.testing.expectEqual(@as(usize, 2), decoded_files.len);
+    try std.testing.expectEqualStrings(".demo.Host", decoded_files[1].extensions.items[0].extendee.?);
 }
 
 test "descriptor set rejects duplicate file names" {
