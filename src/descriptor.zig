@@ -236,7 +236,7 @@ fn writeFieldDescriptor(
         },
         else => {},
     }
-    if (field.default_value) |value| try writeDefaultValue(allocator, file, descriptor_kind, value, 7, &tmp);
+    if (field.default_value) |value| try writeDefaultValue(allocator, file, registry, containing_scope, descriptor_kind, value, 7, &tmp);
     if (hasFieldOptions(field)) try writeFieldOptions(allocator, field, 8, &tmp);
     if (containing_message) |message| {
         if (field.oneof_name) |oneof_name| {
@@ -964,15 +964,35 @@ fn oneofIndex(message: *const schema.MessageDescriptor, name: []const u8) ?usize
     return null;
 }
 
-fn writeDefaultValue(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, kind: schema.FieldKind, value: schema.OptionValue, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
-    const text = try defaultValueText(allocator, file, kind, value);
+fn writeDefaultValue(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    containing_scope: []const u8,
+    kind: schema.FieldKind,
+    value: schema.OptionValue,
+    field_number: wire.FieldNumber,
+    writer: *wire.Writer,
+) Error!void {
+    const text = try defaultValueTextWithRegistry(allocator, file, registry, containing_scope, kind, value);
     defer allocator.free(text);
     try writer.writeString(field_number, text);
 }
 
 fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, kind: schema.FieldKind, value: schema.OptionValue) Error![]u8 {
+    return defaultValueTextWithRegistry(allocator, file, null, "", kind, value);
+}
+
+fn defaultValueTextWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    containing_scope: []const u8,
+    kind: schema.FieldKind,
+    value: schema.OptionValue,
+) Error![]u8 {
     if (kind == .enumeration) {
-        if (enumDefaultName(file, kind.enumeration, value)) |name| return try allocator.dupe(u8, name);
+        if (enumDefaultName(file, registry, containing_scope, kind.enumeration, value)) |name| return try allocator.dupe(u8, name);
     }
     if (kind == .scalar and kind.scalar == .bytes) {
         const bytes = switch (value) {
@@ -987,21 +1007,30 @@ fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescri
     };
 }
 
-fn enumDefaultName(file: *const schema.FileDescriptor, enum_name: []const u8, value: schema.OptionValue) ?[]const u8 {
+fn enumDefaultName(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, containing_scope: []const u8, enum_name: []const u8, value: schema.OptionValue) ?[]const u8 {
+    if (registry) |reg| {
+        if (reg.findEnumVisible(file, enum_name, descriptorScopeName(file, containing_scope))) |enumeration| {
+            if (enumDefaultNameInDescriptor(enumeration, value)) |name| return name;
+        }
+    }
+    if (file.findEnumDeep(enum_name)) |enumeration| {
+        if (enumDefaultNameInDescriptor(enumeration, value)) |name| return name;
+    }
+    return null;
+}
+
+fn enumDefaultNameInDescriptor(enumeration: *const schema.EnumDescriptor, value: schema.OptionValue) ?[]const u8 {
     const number: i32 = switch (value) {
         .integer => |v| if (v >= std.math.minInt(i32) and v <= std.math.maxInt(i32)) @intCast(v) else return null,
+        .unsigned_integer => |v| if (v <= std.math.maxInt(i32)) @intCast(v) else return null,
         .identifier, .string => |text| {
-            if (file.findEnumDeep(enum_name)) |enumeration| {
-                if (enumeration.findValue(text)) |enum_value| return enum_value.name;
-            }
+            if (enumeration.findValue(text)) |enum_value| return enum_value.name;
             return null;
         },
         else => return null,
     };
-    if (file.findEnumDeep(enum_name)) |enumeration| {
-        for (enumeration.values.items) |enum_value| {
-            if (enum_value.number == number) return enum_value.name;
-        }
+    for (enumeration.values.items) |enum_value| {
+        if (enum_value.number == number) return enum_value.name;
     }
     return null;
 }
@@ -3884,6 +3913,47 @@ test "descriptor encodes enum defaults using enum value names" {
     var decoded = try decodeFileDescriptorProto(allocator, encoded);
     defer decoded.deinit();
     try std.testing.expectEqual(@as(i64, 7), decoded.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "descriptor set encodes imported enum numeric defaults using names" {
+    const allocator = std.testing.allocator;
+    var common = schema.FileDescriptor.init(allocator);
+    defer common.deinit();
+    common.setSyntax(.proto2);
+    common.name = "common.proto";
+    common.package = "common";
+    var kind = schema.EnumDescriptor{ .name = "Kind" };
+    try kind.values.append(allocator, .{ .name = "UNKNOWN", .number = 0 });
+    try kind.values.append(allocator, .{ .name = "ADMIN", .number = 7 });
+    try common.enums.append(allocator, kind);
+
+    var app = schema.FileDescriptor.init(allocator);
+    defer app.deinit();
+    app.setSyntax(.proto2);
+    app.name = "app.proto";
+    app.package = "app";
+    try app.imports.append(allocator, .{ .path = "common.proto" });
+    var event = schema.MessageDescriptor{ .name = "Event" };
+    try event.fields.append(allocator, .{
+        .name = "kind",
+        .number = 1,
+        .cardinality = .optional,
+        .kind = .{ .enumeration = "common.Kind" },
+        .default_value = .{ .integer = 7 },
+    });
+    try app.messages.append(allocator, event);
+
+    const files = [_]*const schema.FileDescriptor{ &common, &app };
+    const bytes = try encodeFileDescriptorSet(allocator, &files);
+    defer allocator.free(bytes);
+
+    const decoded_files = try decodeFileDescriptorSet(allocator, bytes);
+    defer {
+        for (decoded_files) |*file| file.deinit();
+        allocator.free(decoded_files);
+    }
+    const decoded_default = decoded_files[1].findMessage("Event").?.findField("kind").?.default_value.?;
+    try std.testing.expectEqualStrings("ADMIN", decoded_default.identifier);
 }
 
 test "descriptor set rejects extension declaration and MessageSet shape violations" {
