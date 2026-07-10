@@ -3053,6 +3053,9 @@ test "dynamic initialized helpers validate proto2 extension message payloads" {
     defer missing_msg.deinit();
     try missing_msg.add(ext_field, .{ .message = missing_ext });
     try std.testing.expectError(error.MissingRequiredField, missing_msg.encodedInitializedWithRegistry(&file, &registry));
+    const missing_path = (try missing_msg.missingRequiredFieldPath(allocator)).?;
+    defer allocator.free(missing_path);
+    try std.testing.expectEqualStrings("ext.id", missing_path);
 
     const ok_ext = try allocator.create(DynamicMessage);
     ok_ext.* = DynamicMessage.init(allocator, ext_desc);
@@ -3073,6 +3076,9 @@ test "dynamic initialized helpers validate proto2 extension message payloads" {
     var invalid = DynamicMessage.init(allocator, host);
     defer invalid.deinit();
     try std.testing.expectError(error.MissingRequiredField, invalid.decodeInitializedWithRegistry(&file, &registry, bad_writer.slice()));
+    const invalid_path = (try invalid.missingRequiredFieldPath(allocator)).?;
+    defer allocator.free(invalid_path);
+    try std.testing.expectEqualStrings("ext.id", invalid_path);
 }
 
 test "dynamic encodes and decodes proto2 MessageSet items" {
@@ -3138,6 +3144,9 @@ test "dynamic initialized helpers validate MessageSet extension payloads" {
     defer missing_msg.deinit();
     try missing_msg.add(ext_field, .{ .message = missing_ext });
     try std.testing.expectError(error.MissingRequiredField, missing_msg.encodedInitializedWithRegistry(&file, &registry));
+    const missing_path = (try missing_msg.missingRequiredFieldPath(allocator)).?;
+    defer allocator.free(missing_path);
+    try std.testing.expectEqualStrings("ext.id", missing_path);
 
     var bad_writer = wire.Writer.init(allocator);
     defer bad_writer.deinit();
@@ -3148,6 +3157,9 @@ test "dynamic initialized helpers validate MessageSet extension payloads" {
     var invalid = DynamicMessage.init(allocator, host);
     defer invalid.deinit();
     try std.testing.expectError(error.MissingRequiredField, invalid.decodeInitializedWithRegistry(&file, &registry, bad_writer.slice()));
+    const invalid_path = (try invalid.missingRequiredFieldPath(allocator)).?;
+    defer allocator.free(invalid_path);
+    try std.testing.expectEqualStrings("ext.id", invalid_path);
 
     const ok_ext = try allocator.create(DynamicMessage);
     ok_ext.* = DynamicMessage.init(allocator, ext_desc);
