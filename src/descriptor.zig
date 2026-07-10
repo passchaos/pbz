@@ -6640,6 +6640,28 @@ test "descriptor round-trips group field source info" {
     try std.testing.expectEqual(@as(usize, 4), group_field_option_location.span.items.len);
 }
 
+test "descriptor round-trips field option source info" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  optional string name = 1 [deprecated = true, default = "anon"];
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "field-options-source.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const field_location = findSourceLocation(&decoded, &.{ 4, 0, 2, 0 }).?;
+    const option_location = findSourceLocation(&decoded, &.{ 4, 0, 2, 0, 8 }).?;
+    try std.testing.expectEqual(@as(usize, 4), field_location.span.items.len);
+    try std.testing.expectEqual(@as(usize, 4), option_location.span.items.len);
+    try std.testing.expect(option_location.span.items[0] >= field_location.span.items[0]);
+}
+
 test "descriptor round-trips extension range option source info" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
