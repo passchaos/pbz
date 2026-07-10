@@ -1278,8 +1278,13 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
 
 fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
     if (registry) |reg| {
-        if (reg.findMessage(name, current.name)) |message| return message;
-        if (reg.findMessage(name, null)) |message| return message;
+        if (std.mem.indexOfScalar(u8, name, '.') == null) {
+            if (resolveMessageDescriptor(file, current, name)) |message| return message;
+        }
+        var scope_buf: [512]u8 = undefined;
+        const scope = messageScope(file, current, &scope_buf) orelse if (file.package.len != 0) file.package else null;
+        if (reg.findMessageVisible(file, name, scope)) |message| return message;
+        if (reg.findMessage(name, scope)) |message| return message;
     }
     return resolveMessageDescriptor(file, current, name);
 }
@@ -1296,10 +1301,38 @@ fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const 
         else => return null,
     };
     if (registry) |reg| {
-        if (reg.findEnum(enum_name, current.name)) |enumeration| return enumeration;
-        if (reg.findEnum(enum_name, null)) |enumeration| return enumeration;
+        if (std.mem.indexOfScalar(u8, enum_name, '.') == null) {
+            if (current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name)) |enumeration| return enumeration;
+        }
+        var scope_buf: [512]u8 = undefined;
+        const scope = messageScope(file, current, &scope_buf) orelse if (file.package.len != 0) file.package else null;
+        if (reg.findEnumVisible(file, enum_name, scope)) |enumeration| return enumeration;
+        if (reg.findEnum(enum_name, scope)) |enumeration| return enumeration;
     }
     return current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name);
+}
+
+fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (file.messages.items) |*message| {
+        if (message == current) return formatMessageScope(file.package, message.name, buf);
+        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (message.messages.items) |*nested| {
+        var path_buf: [512]u8 = undefined;
+        const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
+        if (nested == target) return formatMessageScope(package, nested_path, buf);
+        if (messageScopeInMessage(package, nested_path, nested, target, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
+    if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
+    return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
 }
 
 fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
@@ -2905,6 +2938,59 @@ test "dynamic decodeWithRegistry resolves imported message fields" {
     const decoded_user = request.get("user").?.values.items[0].message;
     try std.testing.expectEqualStrings("User", decoded_user.descriptor.name);
     try std.testing.expectEqualSlices(u8, "Ada", decoded_user.get("name").?.values.items[0].string);
+}
+
+test "dynamic registry resolves same-package imported unqualified fields" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message User { optional string name = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event {
+        \\  optional User user = 1;
+        \\  optional Kind kind = 2 [default = ADMIN];
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateFileReferences(&app);
+
+    const user_desc = common.findMessage("User").?;
+    const event_desc = app.findMessage("Event").?;
+    const user_field = event_desc.findField("user").?;
+    const kind_field = event_desc.findField("kind").?;
+
+    const user = try allocator.create(DynamicMessage);
+    user.* = DynamicMessage.init(allocator, user_desc);
+    try user.add(user_desc.findField("name").?, .{ .string = try allocator.dupe(u8, "Ada") });
+
+    var event = DynamicMessage.init(allocator, event_desc);
+    defer event.deinit();
+    try event.add(user_field, .{ .message = user });
+    try event.add(kind_field, .{ .enumeration = 7 });
+
+    const encoded = try event.encodedWithRegistry(&app, &registry);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x05, 0x0a, 0x03, 'A', 'd', 'a', 0x10, 0x07 }, encoded);
+
+    var decoded = DynamicMessage.init(allocator, event_desc);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&app, &registry, encoded);
+    try std.testing.expectEqualStrings("Ada", decoded.get("user").?.values.items[0].message.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 7), decoded.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqualStrings("ADMIN", decoded.getEnumNameOrDefaultWithRegistry(&app, &registry, kind_field).?);
 }
 
 test "dynamic registry nested messages use owning file features" {
