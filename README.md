@@ -398,7 +398,7 @@ types and enum default names with cross-file visibility.
 
 The current descriptor support covers core file/message/import/field/enum/service
 metadata, proto2 group descriptors and nested group messages, map-entry/proto3-optional descriptors, packed field options, enum
-default names on encode including registry-aware imported enum fields/defaults, typed scalar/enum default values on decode including unsigned 64-bit maxima, and FileDescriptorSet-level imported enum default validation,
+default names on encode including registry-aware imported enum fields/defaults, typed scalar/enum default values on decode including unsigned 64-bit maxima, and FileDescriptorSet-level cross-file type-reference/imported-enum-default validation,
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name/field-contiguity validation, enum allow_alias misuse, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,

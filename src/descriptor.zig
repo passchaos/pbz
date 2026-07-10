@@ -3,7 +3,7 @@ const wire = @import("wire.zig");
 const schema = @import("schema.zig");
 const registry_mod = @import("registry.zig");
 
-pub const Error = wire.Error || std.mem.Allocator.Error || error{ InvalidFieldType, InvalidCharacter };
+pub const Error = wire.Error || std.mem.Allocator.Error || registry_mod.Error || error{ InvalidFieldType, InvalidCharacter };
 
 pub fn encodeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, name: []const u8) Error![]u8 {
     var writer = wire.Writer.init(allocator);
@@ -1937,14 +1937,15 @@ pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) 
             try files.append(allocator, try decodeFileDescriptorProto(allocator, try reader.readBytes()));
         } else try reader.skipValue(tag);
     }
-    try validateDecodedFileDescriptorSetEnumDefaults(allocator, files.items);
+    try validateDecodedFileDescriptorSetReferences(allocator, files.items);
     return try files.toOwnedSlice(allocator);
 }
 
-fn validateDecodedFileDescriptorSetEnumDefaults(allocator: std.mem.Allocator, files: []schema.FileDescriptor) Error!void {
+fn validateDecodedFileDescriptorSetReferences(allocator: std.mem.Allocator, files: []schema.FileDescriptor) Error!void {
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
     for (files) |*file| try registry.files.append(allocator, file);
+    try registry.validateAllFileReferences();
     for (files) |*file| {
         for (file.extensions.items) |*field| try validateDecodedSetFieldEnumDefault(&registry, file, field, if (file.package.len == 0) null else file.package);
         for (file.messages.items) |*message| {
@@ -3804,6 +3805,23 @@ test "descriptor encodes imported enum fields and defaults with registry" {
     const set_kind = set_app.findMessage("Event").?.findField("kind").?;
     try std.testing.expectEqualStrings("common.Kind", set_kind.kind.enumeration);
     try std.testing.expectEqualStrings("ADMIN", set_kind.default_value.?.identifier);
+
+    var missing_type = schema.FileDescriptor.init(allocator);
+    defer missing_type.deinit();
+    missing_type.setSyntax(.proto2);
+    missing_type.name = "missing-type.proto";
+    var missing_event = schema.MessageDescriptor{ .name = "Event" };
+    try missing_event.fields.append(allocator, .{
+        .name = "missing",
+        .number = 1,
+        .cardinality = .optional,
+        .kind = .{ .message = "MissingType" },
+    });
+    try missing_type.messages.append(allocator, missing_event);
+    const missing_files = [_]*const schema.FileDescriptor{&missing_type};
+    const missing_set_bytes = try encodeFileDescriptorSet(allocator, &missing_files);
+    defer allocator.free(missing_set_bytes);
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorSet(allocator, missing_set_bytes));
 
     var bad_common = schema.FileDescriptor.init(allocator);
     defer bad_common.deinit();
