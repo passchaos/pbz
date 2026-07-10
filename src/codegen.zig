@@ -5536,6 +5536,7 @@ fn writeTextScalarField(file: *const schema.FileDescriptor, field: *const schema
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(") |value| { ");
         try writeTextFieldPrefix(field, writer);
+        try writeTextUtf8Check(file, field, scalar, "value", writer);
         try writeTextScalarValue(scalar, "value", writer);
         try writer.writeAll("; try writer.writeByte('\\n'); }\n");
     } else {
@@ -5554,6 +5555,7 @@ fn writeTextScalarField(file: *const schema.FileDescriptor, field: *const schema
         try writer.writeAll("const value = self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll("; ");
+        try writeTextUtf8Check(file, field, scalar, "value", writer);
         try writeTextScalarValue(scalar, "value", writer);
         try writer.writeAll("; try writer.writeByte('\\n'); }\n");
     }
@@ -5649,6 +5651,7 @@ fn writeTextMapField(ctx: *const CodegenContext, field: *const schema.FieldDescr
     try writer.writeAll(" {\\n\");\n");
     try indent(writer, depth + 1);
     try writer.writeAll("try writer.writeAll(\"key: \"); ");
+    try writeTextUtf8Check(ctx.file, field, map_type.key, "entry.key", writer);
     try writeTextScalarValue(map_type.key, "entry.key", writer);
     try writer.writeAll("; try writer.writeByte('\\n');\n");
     try indent(writer, depth + 1);
@@ -5666,6 +5669,7 @@ fn writeTextMapField(ctx: *const CodegenContext, field: *const schema.FieldDescr
         try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
     } else {
         try writer.writeAll("try writer.writeAll(\"value: \"); ");
+        if (map_type.value.* == .scalar) try writeTextUtf8Check(ctx.file, field, map_type.value.scalar, "entry.value", writer);
         try writeTextMapValue(ctx, map_type.value.*, "entry.value", writer);
         try writer.writeAll("; try writer.writeByte('\\n');\n");
     }
@@ -5758,7 +5762,10 @@ fn writeTextUnknownExtensionField(ctx: *const CodegenContext, field: *const sche
     try indent(writer, depth + 2);
     try writeTextExtensionFieldPrefix(file, field, writer);
     switch (field.kind) {
-        .scalar => |scalar| try writeTextScalarValue(scalar, "value", writer),
+        .scalar => |scalar| {
+            try writeTextUtf8Check(file, field, scalar, "value", writer);
+            try writeTextScalarValue(scalar, "value", writer);
+        },
         .enumeration => |name| try writeTextEnumValue(file, name, "value", writer),
         else => unreachable,
     }
@@ -5779,7 +5786,10 @@ fn writeTextUnknownExtensionField(ctx: *const CodegenContext, field: *const sche
         try indent(writer, depth + 2);
         try writeTextExtensionFieldPrefix(file, field, writer);
         switch (field.kind) {
-            .scalar => |scalar| try writeTextScalarValue(scalar, "value", writer),
+            .scalar => |scalar| {
+                try writeTextUtf8Check(file, field, scalar, "value", writer);
+                try writeTextScalarValue(scalar, "value", writer);
+            },
             .enumeration => |name| try writeTextEnumValue(file, name, "value", writer),
             else => unreachable,
         }
@@ -5849,6 +5859,12 @@ fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *co
         }
     } else {
         try writeEscapedStringContents(leafTypeName(full_name), writer);
+    }
+}
+
+fn writeTextUtf8Check(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+        try writer.print("if (!std.unicode.utf8ValidateSlice({s})) return error.InvalidUtf8; ", .{value_expr});
     }
 }
 
@@ -9865,7 +9881,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.@\"id\"; try writer.print(\"{d}\", .{value});") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); try textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
@@ -10933,6 +10949,9 @@ test "codegen honors utf8 validation features for wire strings" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.value = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"strict: \"); const value = self.@\"strict\"; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"key: \"); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try textWriteQuotedBytes(entry.key, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value: \"); if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8; try textWriteQuotedBytes(entry.value, writer);") != null);
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
     const text_content = content[text_start..];

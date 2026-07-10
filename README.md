@@ -346,7 +346,7 @@ repeated, map value, oneof, and same-file extension enum fields.
 Generated `formatTextAlloc` / `formatTextWithAllocator` helpers emit basic
 TextFormat for scalar, enum-name, repeated, map, message payload, proto2 group,
 same-file proto2 extension values recovered from preserved unknown/raw fields,
-protobuf-escaped string/bytes values, numeric unknown varint/bytes-escaped string/group/fixed fields, and oneof fields; generated
+protobuf-escaped string/bytes values with UTF-8 validation for generated string/map-string formatting, numeric unknown varint/bytes-escaped string/group/fixed fields, and oneof fields; generated
 messages expose `TextFormatOptions` plus `formatText*WithOptions` for enum-name
 versus numeric enum output, with options propagated into nested generated message
 formatting; generated messages also expose `TextParseOptions` plus
