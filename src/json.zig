@@ -267,25 +267,27 @@ fn parseValue(
         .message => |name| blk: {
             if (registryEnumDescriptor(file, registry, current, name)) |_| break :blk try parseEnumWithRegistry(file, registry, current, name, json_value);
             const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
-            if (try parseKnownMessage(allocator, file, registry, descriptor, name, json_value, options)) |known| break :blk .{ .message = known };
+            const descriptor_file = messageDescriptorFile(file, registry, descriptor);
+            if (try parseKnownMessage(allocator, descriptor_file, registry, descriptor, name, json_value, options)) |known| break :blk .{ .message = known };
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
             errdefer {
                 nested.deinit();
                 allocator.destroy(nested);
             }
-            try fillMessageWithRegistry(allocator, file, registry, nested, json_value, options);
+            try fillMessageWithRegistry(allocator, descriptor_file, registry, nested, json_value, options);
             break :blk .{ .message = nested };
         },
         .group => |name| blk: {
             const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
+            const descriptor_file = messageDescriptorFile(file, registry, descriptor);
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
             errdefer {
                 nested.deinit();
                 allocator.destroy(nested);
             }
-            try fillMessageWithRegistry(allocator, file, registry, nested, json_value, options);
+            try fillMessageWithRegistry(allocator, descriptor_file, registry, nested, json_value, options);
             break :blk .{ .group = nested };
         },
         .map => error.TypeMismatch,
@@ -453,6 +455,11 @@ fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const 
     }
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     return current.findEnumDeep(trimmed) orelse file.findEnumDeep(trimmed);
+}
+
+fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingMessage(descriptor) orelse default_file;
 }
 
 fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
@@ -630,11 +637,14 @@ fn writeValue(
         .message => |name| if (registryEnumDescriptor(file, registry, current, name) != null)
             try writeEnum(file, registry, current, name, value, options, writer)
         else switch (value) {
-            .message => |message| if (try writeKnownMessage(file, registry, name, message, options, writer)) {} else try writeMessage(file, registry, message, options, writer),
+            .message => |message| {
+                const message_file = messageDescriptorFile(file, registry, message.descriptor);
+                if (try writeKnownMessage(message_file, registry, name, message, options, writer)) {} else try writeMessage(message_file, registry, message, options, writer);
+            },
             else => return error.TypeMismatch,
         },
         .group => switch (value) {
-            .group => |message| try writeMessage(file, registry, message, options, writer),
+            .group => |message| try writeMessage(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer),
             else => return error.TypeMismatch,
         },
         .map => return error.TypeMismatch,
@@ -805,15 +815,16 @@ fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const regis
         if (resolveAnyTypeWithRegistry(file, registry, message.descriptor, any.type_url)) |descriptor| {
             var nested = dynamic.DynamicMessage.init(message.allocator, descriptor);
             defer nested.deinit();
+            const payload_file = messageDescriptorFile(file, registry, descriptor);
             if (registry) |reg| {
-                try nested.decodeWithRegistry(file, reg, any.value);
+                try nested.decodeWithRegistry(payload_file, reg, any.value);
             } else {
-                try nested.decode(file, any.value);
+                try nested.decode(payload_file, any.value);
             }
             try writer.writeAll("{\"@type\":");
             try std.json.Stringify.value(any.type_url, .{}, writer);
             var first = false;
-            try writeMessageContents(file, registry, &nested, options, writer, &first);
+            try writeMessageContents(payload_file, registry, &nested, options, writer, &first);
             try writer.writeAll("}");
             return true;
         }
@@ -947,9 +958,10 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
             payload.deinit();
             allocator.destroy(payload);
         }
-        try fillMessageObject(allocator, file, registry, payload, object, options, true);
+        const payload_file = messageDescriptorFile(file, registry, payload_desc);
+        try fillMessageObject(allocator, payload_file, registry, payload, object, options, true);
         if (options.validate_any_payloads) try payload.validateRequired();
-        const encoded = try payload.encodedDeterministicWithRegistry(file, registry);
+        const encoded = try payload.encodedDeterministicWithRegistry(payload_file, registry);
         defer allocator.free(encoded);
         try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
     }
@@ -1605,6 +1617,108 @@ test "json imported enums use owning file features" {
     try std.testing.expectEqual(@as(i32, 123), open_in_proto2.get("kind").?.values.items[0].enumeration);
 
     try std.testing.expectError(error.InvalidEnumValue, parseAllocWithRegistry(allocator, &proto3_app, &registry, proto3_app.findMessage("Event").?, "{\"kind\":123}", .{}));
+}
+
+test "json imported messages use owning file features" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Payload { optional int32 id = 1; optional bytes raw = 2; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\import "common.proto";
+        \\message Event {
+        \\  common.Payload payload = 1;
+        \\  map<string, common.Payload> keyed = 2;
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const desc = app.findMessage("Event").?;
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, desc,
+        \\{"payload":{"id":0,"raw":"wA=="},"keyed":{"one":{"id":0,"raw":"wA=="}}}
+    , .{});
+    defer parsed.deinit();
+
+    try std.testing.expect(parsed.get("payload").?.values.items[0].message.has(common.findMessage("Payload").?.findField("id").?));
+    try std.testing.expectEqual(@as(i32, 0), parsed.get("payload").?.values.items[0].message.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, parsed.get("payload").?.values.items[0].message.get("raw").?.values.items[0].bytes);
+    const entry = parsed.get("keyed").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("one", entry.key.string);
+    try std.testing.expect(entry.value.message.has(common.findMessage("Payload").?.findField("id").?));
+    try std.testing.expectEqual(@as(i32, 0), entry.value.message.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, entry.value.message.get("raw").?.values.items[0].bytes);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &app, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"payload\":{\"id\":0,\"raw\":\"wA==\"},\"keyed\":{\"one\":{\"id\":0,\"raw\":\"wA==\"}}}", rendered);
+}
+
+test "json Any payloads use owning file features" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Payload { optional int32 id = 1; optional bytes raw = 2; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\import "common.proto";
+        \\message Any { optional string type_url = 1; optional bytes value = 2; }
+        \\message Holder { .google.protobuf.Any any = 1; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const holder_desc = app.findMessage("Holder").?;
+    const any_desc = app.findMessage("Any").?;
+    const payload_desc = common.findMessage("Payload").?;
+
+    var payload = dynamic.DynamicMessage.init(allocator, payload_desc);
+    defer payload.deinit();
+    try payload.add(payload_desc.findField("id").?, .{ .int32 = 0 });
+    try payload.add(payload_desc.findField("raw").?, .{ .bytes = try allocator.dupe(u8, &.{0xc0}) });
+    const payload_bytes = try payload.encodedDeterministicWithRegistry(&common, &registry);
+    defer allocator.free(payload_bytes);
+
+    var holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer holder.deinit();
+    const any_msg = try allocator.create(dynamic.DynamicMessage);
+    any_msg.* = dynamic.DynamicMessage.init(allocator, any_desc);
+    try any_msg.add(any_desc.findField("type_url").?, .{ .string = try allocator.dupe(u8, "type.googleapis.com/common.Payload") });
+    try any_msg.add(any_desc.findField("value").?, .{ .bytes = try allocator.dupe(u8, payload_bytes) });
+    try holder.add(holder_desc.findField("any").?, .{ .message = any_msg });
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &app, &registry, &holder, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"any\":{\"@type\":\"type.googleapis.com/common.Payload\",\"id\":0,\"raw\":\"wA==\"}}", rendered);
+
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/common.Payload\",\"id\":0,\"raw\":\"wA==\"}}", .{});
+    defer parsed.deinit();
+    const parsed_value = parsed.get("any").?.values.items[0].message.get("value").?.values.items[0].bytes;
+    var decoded_payload = dynamic.DynamicMessage.init(allocator, payload_desc);
+    defer decoded_payload.deinit();
+    try decoded_payload.decodeWithRegistry(&common, &registry, parsed_value);
+    try std.testing.expect(decoded_payload.has(payload_desc.findField("id").?));
+    try std.testing.expectEqual(@as(i32, 0), decoded_payload.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, decoded_payload.get("raw").?.values.items[0].bytes);
 }
 
 test "json parses and prints enum numbers and unknown enum values" {
