@@ -805,7 +805,8 @@ fn anyTypeName(type_url: []const u8) []const u8 {
 
 fn anyTypeMatches(type_url: []const u8, full_name: []const u8) bool {
     const expected = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
-    return std.mem.eql(u8, anyTypeName(type_url), expected);
+    const actual = anyTypeName(type_url);
+    return expected.len != 0 and actual.len != 0 and std.mem.eql(u8, actual, expected);
 }
 
 fn messageDescriptorFile(default_file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor) *const schema_mod.FileDescriptor {
@@ -876,6 +877,9 @@ test "any pack and type matching helpers" {
     try std.testing.expect(!any.isType("demo.Other"));
     try std.testing.expectEqualSlices(u8, "payload", try any.unpackBytes("demo.Msg"));
     try std.testing.expectError(error.TypeMismatch, any.unpackBytes("demo.Other"));
+    try std.testing.expect(!any.isType(""));
+    try std.testing.expect(!(Any{ .type_url = "type.googleapis.com/", .value = "" }).isType(""));
+    try std.testing.expectError(error.TypeMismatch, (Any{ .type_url = "type.googleapis.com/", .value = "" }).unpackBytes(""));
 
     var custom = try Any.packBytesWithPrefix(allocator, "example.test/prefix/", "demo.Msg", "abc");
     defer custom.deinit(allocator);
