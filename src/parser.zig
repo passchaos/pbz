@@ -801,6 +801,17 @@ pub const Parser = struct {
         errdefer field.deinit(self.allocator);
         var group_options_start: ?usize = null;
         var group_options_end: ?usize = null;
+        var group_message_path: ?[]i32 = null;
+        defer if (group_message_path) |path| self.allocator.free(path);
+        if (parent) |message| {
+            if (source_path) |path_base| {
+                const nested_index: i32 = @intCast(message.messages.items.len);
+                group_message_path = try self.childPath(path_base, 3, nested_index);
+            }
+        } else {
+            const nested_index: i32 = @intCast(self.file.messages.items.len);
+            group_message_path = try self.childPath(&.{}, 4, nested_index);
+        }
         if (self.current.tag == .symbol and self.current.symbol == '[') {
             group_options_start = self.current.start;
             try self.expectSymbol('[');
@@ -813,22 +824,22 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.consumeSymbol(';')) continue;
-            try nested.fields.append(self.allocator, try self.parseField(null, &nested, null));
+            const nested_field_start = self.current.start;
+            const nested_field_index: i32 = @intCast(nested.fields.items.len);
+            try nested.fields.append(self.allocator, try self.parseField(null, &nested, group_message_path));
+            if (group_message_path) |path_base| {
+                const nested_field_path = try self.childPath(path_base, 2, nested_field_index);
+                defer self.allocator.free(nested_field_path);
+                try self.addSourceLocation(nested_field_path, nested_field_start, self.previousEnd());
+                try self.addLastFieldOptionsLocation(nested_field_path);
+            }
         }
         if (parent) |message| {
-            const nested_index: i32 = @intCast(message.messages.items.len);
             try message.messages.append(self.allocator, nested);
-            if (source_path) |path_base| {
-                const path = try self.childPath(path_base, 3, nested_index);
-                defer self.allocator.free(path);
-                try self.addSourceLocation(path, field_start, self.previousEnd());
-            }
+            if (group_message_path) |path| try self.addSourceLocation(path, field_start, self.previousEnd());
         } else {
-            const nested_index: i32 = @intCast(self.file.messages.items.len);
             try self.file.messages.append(self.allocator, nested);
-            const path = try self.childPath(&.{}, 4, nested_index);
-            defer self.allocator.free(path);
-            try self.addSourceLocation(path, field_start, self.previousEnd());
+            if (group_message_path) |path| try self.addSourceLocation(path, field_start, self.previousEnd());
         }
         self.last_field_options_start = group_options_start;
         self.last_field_options_end = group_options_end;
@@ -2591,6 +2602,7 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{ 4, 0, 3, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 1 });
+    try expectLocationPath(&file, &.{ 4, 0, 3, 1, 2, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0, 8 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 2 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 2, 8 });
