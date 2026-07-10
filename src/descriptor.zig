@@ -2075,6 +2075,7 @@ pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) 
 }
 
 fn validateDecodedFileDescriptorSetReferences(allocator: std.mem.Allocator, files: []schema.FileDescriptor) Error!void {
+    try markMissingWeakImports(allocator, files);
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
     for (files) |*file| try registry.files.append(allocator, file);
@@ -2087,6 +2088,23 @@ fn validateDecodedFileDescriptorSetReferences(allocator: std.mem.Allocator, file
             try validateDecodedSetMessageEnumDefaults(allocator, &registry, file, message, scope);
         }
     }
+}
+
+fn markMissingWeakImports(allocator: std.mem.Allocator, files: []schema.FileDescriptor) std.mem.Allocator.Error!void {
+    for (files) |*file| {
+        for (file.imports.items) |import| {
+            if (import.kind != .weak) continue;
+            if (decodedSetContainsFile(files, import.path)) continue;
+            try file.missing_weak_imports.append(allocator, import.path);
+        }
+    }
+}
+
+fn decodedSetContainsFile(files: []const schema.FileDescriptor, path: []const u8) bool {
+    for (files) |*file| {
+        if (std.mem.eql(u8, file.name, path)) return true;
+    }
+    return false;
 }
 
 fn validateDecodedSetMessageEnumDefaults(allocator: std.mem.Allocator, registry: *const registry_mod.Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, scope: []const u8) Error!void {
@@ -4111,6 +4129,45 @@ test "descriptor set rejects duplicate symbols and extension conflicts" {
     const extension_bytes = try encodeFileDescriptorSet(allocator, &extension_files);
     defer allocator.free(extension_bytes);
     try std.testing.expectError(error.DuplicateSymbol, decodeFileDescriptorSet(allocator, extension_bytes));
+}
+
+test "descriptor set allows unresolved types from missing weak imports" {
+    const allocator = std.testing.allocator;
+    var weak = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package weakpkg;
+        \\import weak "missing.proto";
+        \\message Root { optional MissingType field = 1; }
+        \\service Api { rpc Get (MissingRequest) returns (Root); }
+    );
+    defer weak.deinit();
+    weak.name = "weak.proto";
+
+    const weak_files = [_]*const schema.FileDescriptor{&weak};
+    const weak_bytes = try encodeFileDescriptorSet(allocator, &weak_files);
+    defer allocator.free(weak_bytes);
+    const decoded_weak = try decodeFileDescriptorSet(allocator, weak_bytes);
+    defer {
+        for (decoded_weak) |*file| file.deinit();
+        allocator.free(decoded_weak);
+    }
+    try std.testing.expectEqual(@as(usize, 1), decoded_weak.len);
+    try std.testing.expectEqual(@as(usize, 1), decoded_weak[0].missing_weak_imports.items.len);
+    try std.testing.expectEqualStrings("missing.proto", decoded_weak[0].missing_weak_imports.items[0]);
+
+    var normal = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package weakpkg;
+        \\import "missing.proto";
+        \\message Root { optional MissingType field = 1; }
+    );
+    defer normal.deinit();
+    normal.name = "normal.proto";
+
+    const normal_files = [_]*const schema.FileDescriptor{&normal};
+    const normal_bytes = try encodeFileDescriptorSet(allocator, &normal_files);
+    defer allocator.free(normal_bytes);
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorSet(allocator, normal_bytes));
 }
 
 test "descriptor encodes imported enum fields and defaults with registry" {
