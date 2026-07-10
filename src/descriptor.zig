@@ -3920,6 +3920,7 @@ test "descriptor encodes imported enum fields and defaults with registry" {
         \\syntax = "proto2";
         \\package common;
         \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+        \\message Req { optional string id = 1; }
     );
     defer common.deinit();
     common.name = "common.proto";
@@ -3931,6 +3932,7 @@ test "descriptor encodes imported enum fields and defaults with registry" {
         \\  optional common.Kind kind = 1 [default = ADMIN];
         \\  map<string, common.Kind> keyed = 2;
         \\}
+        \\service Api { rpc Get (common.Req) returns (Event); }
     );
     defer app.deinit();
     app.name = "app.proto";
@@ -3967,6 +3969,7 @@ test "descriptor encodes imported enum fields and defaults with registry" {
     const set_kind = set_app.findMessage("Event").?.findField("kind").?;
     try std.testing.expectEqualStrings("common.Kind", set_kind.kind.enumeration);
     try std.testing.expectEqualStrings("ADMIN", set_kind.default_value.?.identifier);
+    try std.testing.expectEqualStrings("common.Req", set_app.services.items[0].methods.items[0].input_type);
 
     var missing_type = schema.FileDescriptor.init(allocator);
     defer missing_type.deinit();
@@ -4014,6 +4017,19 @@ test "descriptor encodes imported enum fields and defaults with registry" {
     const bad_set_bytes = try encodeFileDescriptorSet(allocator, &bad_files);
     defer allocator.free(bad_set_bytes);
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorSet(allocator, bad_set_bytes));
+
+    var bad_service = schema.FileDescriptor.init(allocator);
+    defer bad_service.deinit();
+    bad_service.setSyntax(.proto2);
+    bad_service.name = "bad-service.proto";
+    bad_service.package = "svc";
+    var bad_service_desc = schema.ServiceDescriptor{ .name = "Bad" };
+    try bad_service_desc.methods.append(allocator, .{ .name = "Get", .input_type = "MissingRequest", .output_type = "MissingResponse" });
+    try bad_service.services.append(allocator, bad_service_desc);
+    const bad_service_files = [_]*const schema.FileDescriptor{&bad_service};
+    const bad_service_set_bytes = try encodeFileDescriptorSet(allocator, &bad_service_files);
+    defer allocator.free(bad_service_set_bytes);
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorSet(allocator, bad_service_set_bytes));
 }
 
 test "descriptor decodes FileDescriptorSet" {
