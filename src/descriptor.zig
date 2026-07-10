@@ -1519,6 +1519,10 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
         for (file.services.items[i + 1 ..]) |other| {
             if (std.mem.eql(u8, service.name, other.name)) return error.InvalidFieldType;
         }
+        for (service.methods.items) |method| {
+            try validateDecodedServiceMethodType(file, method.input_type);
+            try validateDecodedServiceMethodType(file, method.output_type);
+        }
     }
     for (file.extensions.items, 0..) |extension, i| {
         if (!isIdentifier(extension.name)) return error.InvalidFieldType;
@@ -1540,6 +1544,11 @@ fn validateDecodedFileDescriptor(file: *const schema.FileDescriptor) Error!void 
         for (file.messages.items) |*message| try validateDecodedNoProto3ExtensionRanges(message);
     }
     for (file.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
+}
+
+fn validateDecodedServiceMethodType(file: *const schema.FileDescriptor, type_name: []const u8) Error!void {
+    if (file.findMessageDeep(type_name) != null) return;
+    if (file.findEnumDeep(type_name) != null) return error.InvalidFieldType;
 }
 
 fn validateDecodedNoProto3ExtensionRanges(message: *const schema.MessageDescriptor) Error!void {
@@ -3460,6 +3469,20 @@ test "descriptor rejects invalid service and method descriptors" {
         try file.writeString(1, "dup-method.proto");
         try file.writeMessage(6, service.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        var kind = schema.EnumDescriptor{ .name = "Kind" };
+        try kind.values.append(allocator, .{ .name = "UNKNOWN", .number = 0 });
+        try file.enums.append(allocator, kind);
+        var service = schema.ServiceDescriptor{ .name = "Svc" };
+        try service.methods.append(allocator, .{ .name = "Get", .input_type = "Kind", .output_type = "Kind" });
+        try file.services.append(allocator, service);
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "service-enum-type.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
 }
 
