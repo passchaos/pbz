@@ -179,7 +179,7 @@ fn writeField(
                 .message => |message| {
                     try writeFieldName(file, field, name, writer);
                     try writer.writeAll(" {\n");
-                    try writeMessageFields(file, registry, message, options, writer, depth + 1);
+                    try writeMessageFields(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer, depth + 1);
                     try writeIndent(writer, options, depth);
                     try writer.writeAll("}\n");
                 },
@@ -194,7 +194,7 @@ fn writeField(
                 } else name;
                 try writeFieldName(file, field, group_name, writer);
                 try writer.writeAll(" {\n");
-                try writeMessageFields(file, registry, message, options, writer, depth + 1);
+                try writeMessageFields(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
                 try writer.writeAll("}\n");
             },
@@ -339,6 +339,11 @@ fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const 
     }
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     return file.findEnumDeep(trimmed);
+}
+
+fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingMessage(descriptor) orelse default_file;
 }
 
 fn writeQuoted(bytes: []const u8, writer: *std.Io.Writer) Error!void {
@@ -513,6 +518,49 @@ test "text imported enums use owning file features" {
     try std.testing.expectEqual(@as(i32, 123), open_in_proto2.get("kind").?.values.items[0].enumeration);
 
     try std.testing.expectError(error.InvalidEnumValue, parseAllocWithRegistry(allocator, &proto3_app, &registry, proto3_app.findMessage("Event").?, "kind: 123"));
+}
+
+test "text imported messages use owning file features" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Payload { optional string raw = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\import "common.proto";
+        \\message Event {
+        \\  common.Payload payload = 1;
+        \\  map<string, common.Payload> keyed = 2;
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const desc = app.findMessage("Event").?;
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, desc,
+        \\payload { raw: "\300" }
+        \\keyed { key: "one" value { raw: "\300" } }
+    );
+    defer parsed.deinit();
+
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, parsed.get("payload").?.values.items[0].message.get("raw").?.values.items[0].string);
+    const entry = parsed.get("keyed").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("one", entry.key.string);
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, entry.value.message.get("raw").?.values.items[0].string);
+
+    const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "payload {\n  raw: \"\\300\"\n}\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "value {\n    raw: \"\\300\"\n  }\n") != null);
 }
 
 pub fn parseAlloc(
@@ -745,7 +793,7 @@ const TextParser = struct {
                 nested.deinit();
                 self.allocator.destroy(nested);
             }
-            try self.parseMessage(file, nested, close);
+            try self.parseMessage(messageDescriptorFile(file, self.registry, nested_desc), nested, close);
             try self.addOrMergeAggregate(message, field, nested);
             self.consumeSeparator();
         }
@@ -808,17 +856,51 @@ const TextParser = struct {
             if (self.eof()) return error.UnexpectedEof;
             const name = try self.readIdent();
             self.skipSpace();
-            try self.expect(':');
             if (std.mem.eql(u8, name, "key")) {
+                try self.expect(':');
+                if (key) |*old| {
+                    dynamic.deinitValue(old, self.allocator);
+                    key = null;
+                }
                 key = try self.parseValue(file, current, field, .{ .scalar = map_type.key });
             } else if (std.mem.eql(u8, name, "value")) {
-                value = try self.parseValue(file, current, field, map_type.value.*);
+                if (value) |*old| {
+                    dynamic.deinitValue(old, self.allocator);
+                    value = null;
+                }
+                value = try self.parseMapEntryValue(file, current, field, map_type.value.*);
             } else return error.UnknownField;
             self.consumeSeparator();
         }
+        var final_key = key orelse return error.TypeMismatch;
+        var final_value = value orelse return error.TypeMismatch;
+        key = null;
+        value = null;
+        errdefer {
+            dynamic.deinitValue(&final_key, self.allocator);
+            dynamic.deinitValue(&final_value, self.allocator);
+        }
         const entry = try self.allocator.create(dynamic.MapEntry);
-        entry.* = .{ .key = key orelse return error.TypeMismatch, .value = value orelse return error.TypeMismatch };
+        entry.* = .{ .key = final_key, .value = final_value };
         return .{ .map_entry = entry };
+    }
+
+    fn parseMapEntryValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind) !dynamic.Value {
+        if (kind == .message and registryEnumDescriptor(file, self.registry, field, kind.message) == null) {
+            _ = self.consume(':');
+            const close = try self.consumeAggregateStart();
+            const descriptor = resolveMessageDescriptorWithRegistry(file, self.registry, current, kind.message) orelse return error.TypeMismatch;
+            const nested = try self.allocator.create(dynamic.DynamicMessage);
+            nested.* = dynamic.DynamicMessage.init(self.allocator, descriptor);
+            errdefer {
+                nested.deinit();
+                self.allocator.destroy(nested);
+            }
+            try self.parseMessage(messageDescriptorFile(file, self.registry, descriptor), nested, close);
+            return .{ .message = nested };
+        }
+        try self.expect(':');
+        return try self.parseValue(file, current, field, kind);
     }
 
     fn parseValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind) !dynamic.Value {
