@@ -548,7 +548,7 @@ fn writeMessageContents(
     if (options.always_print_primitive_fields) {
         for (message.descriptor.fields.items) |*field| {
             if (message.getByNumber(field.number) != null) continue;
-            if (!shouldPrintAbsentField(field)) continue;
+            if (!shouldPrintAbsentField(file, registry, message.descriptor, field)) continue;
             if (!first.*) try writer.writeAll(",");
             first.* = false;
             try writeFieldName(file, registry, field, options, writer);
@@ -558,10 +558,11 @@ fn writeMessageContents(
     }
 }
 
-fn shouldPrintAbsentField(field: *const schema.FieldDescriptor) bool {
+fn shouldPrintAbsentField(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
     if (field.oneof_name != null) return false;
     return switch (field.kind) {
         .scalar, .enumeration, .map => true,
+        .message => |name| registryEnumDescriptor(file, registry, current, name) != null,
         else => field.cardinality == .repeated,
     };
 }
@@ -571,13 +572,13 @@ fn writeAbsentFieldDefault(file: *const schema.FileDescriptor, registry: ?*const
     switch (field.kind) {
         .scalar => |scalar| try writeDefaultScalar(scalar, field.default_value, writer),
         .enumeration => |name| {
-            const number: i32 = if (field.default_value) |value| switch (value) {
-                .integer => |v| @intCast(v),
-                .unsigned_integer => |v| @intCast(v),
-                else => 0,
-            } else 0;
+            const number: i32 = defaultEnumNumber(file, registry, current, name, field.default_value);
             try writeEnum(file, registry, current, name, .{ .enumeration = number }, options, writer);
         },
+        .message => |name| if (registryEnumDescriptor(file, registry, current, name) != null) {
+            const number: i32 = defaultEnumNumber(file, registry, current, name, field.default_value);
+            try writeEnum(file, registry, current, name, .{ .enumeration = number }, options, writer);
+        } else try writer.writeAll("null"),
         else => try writer.writeAll("null"),
     }
 }
@@ -1131,6 +1132,26 @@ fn defaultFloat(default_value: ?schema.OptionValue) f64 {
         .identifier, .string => |text| parseSpecialFloatDefault(text) orelse (std.fmt.parseFloat(f64, text) catch 0),
         else => 0,
     };
+}
+
+fn defaultEnumNumber(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8, default_value: ?schema.OptionValue) i32 {
+    const enumeration = registryEnumDescriptor(file, registry, current, name);
+    if (default_value) |value| switch (value) {
+        .integer => |v| return if (v >= std.math.minInt(i32) and v <= std.math.maxInt(i32)) @intCast(v) else 0,
+        .unsigned_integer => |v| return if (v <= std.math.maxInt(i32)) @intCast(v) else 0,
+        .identifier, .string => |text| {
+            if (std.fmt.parseInt(i32, text, 10)) |number| return number else |_| {}
+            if (enumeration) |enum_desc| {
+                if (enum_desc.findValue(text)) |enum_value| return enum_value.number;
+            }
+            return 0;
+        },
+        else => return 0,
+    };
+    if (enumeration) |enum_desc| {
+        if (enum_desc.values.items.len != 0) return enum_desc.values.items[0].number;
+    }
+    return 0;
 }
 
 fn parseSpecialFloatDefault(text: []const u8) ?f64 {
@@ -1991,6 +2012,42 @@ test "json stringify can always print absent primitive repeated and map fields" 
     const rendered = try stringifyAlloc(allocator, &file, &msg, .{ .always_print_primitive_fields = true });
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"count\":42,\"name\":\"anon\",\"enabled\":true,\"kind\":\"ADMIN\",\"tags\":[],\"counts\":{},\"raw\":\"aGk=\",\"big\":\"9007199254740993\",\"posInf\":\"Infinity\",\"negInf\":\"-Infinity\",\"quietNan\":\"NaN\",\"negNan\":\"NaN\",\"posInfinity\":\"Infinity\",\"negInfinity\":\"-Infinity\",\"maxU64\":\"18446744073709551615\"}", rendered);
+}
+
+test "json stringify prints imported enum defaults with registry" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event {
+        \\  optional common.Kind kind = 1 [default = ADMIN];
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateAllFileReferences();
+
+    var msg = dynamic.DynamicMessage.init(allocator, app.findMessage("Event").?);
+    defer msg.deinit();
+    const rendered = try stringifyAllocWithRegistry(allocator, &app, &registry, &msg, .{ .always_print_primitive_fields = true });
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"kind\":\"ADMIN\"}", rendered);
+
+    const rendered_number = try stringifyAllocWithRegistry(allocator, &app, &registry, &msg, .{ .always_print_primitive_fields = true, .enum_as_name = false });
+    defer allocator.free(rendered_number);
+    try std.testing.expectEqualSlices(u8, "{\"kind\":7}", rendered_number);
 }
 
 test "json parses bytes from base64 variants" {

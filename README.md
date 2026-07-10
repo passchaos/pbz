@@ -17,7 +17,7 @@ validated feature set.
   - proto2 required/optional/repeated cardinality plus proto3/editions required rejection in parser and descriptor decode paths, enum defaults, packed override handling, structured FeatureSet options, and FieldOptions edition default / feature support metadata
 - Multi-file registry and loader
   - package/import-aware lookup for messages/enums/extensions across FileDescriptor values, including scoped/nested proto2 extension full-name lookup, direct/public import visibility helpers and import-chain discovery, with duplicate type/extension conflict detection, unresolved/invisible type-reference and extension-extendee rejection, and cross-file extension declaration validation
-  - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports and tracking placeholder-style weak references
+  - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports, validating imported enum defaults, and tracking placeholder-style weak references
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
   - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges/names including editions identifier reserved names, field-number, reserved/extension/enum range conflicts and message reserved field-number bounds including `to max` handling, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, empty/duplicate import rejection, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including non-empty enums, allow_alias misuse plus enum-value sibling-scope and prefix/case conflicts
@@ -27,11 +27,11 @@ validated feature set.
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
-  - proto2 field default validation for scalar/string/bytes/enum defaults including max uint64/fixed64 values, with proto3/repeated/message/duplicate invalid-default rejection
+  - proto2 field default validation for scalar/string/bytes/enum defaults including max uint64/fixed64 values and registry-validated imported enum defaults, with proto3/repeated/message/duplicate invalid-default rejection
   - packed/lazy/unverified_lazy/weak/jstype field option validation, with editions rejecting legacy `[packed]`, `[ctype]`, and `group` syntax in favor of features and validating implicit-presence default/closed-enum constraints
 - Dynamic message runtime
   - scalar encoding/decoding for all protobuf scalar wire types
-  - proto2 strings/bytes, required-field validation, missing required field path reporting, schema-aware enum default number/name lookup plus repeated/map enum name helpers, encode/decodeInitialized helpers, repeated packed fields
+  - proto2 strings/bytes, required-field validation, missing required field path reporting, schema-aware enum default number/name lookup including imported enum defaults through Registry plus repeated/map enum name helpers, encode/decodeInitialized helpers, repeated packed fields
   - proto2 MessageSet wire-format encode/decode for known registry extensions plus unknown item preservation
   - proto2/closed-enum unknown numeric values are preserved as unknown fields for singular, repeated, packed repeated, and enum map entries, including imported enums resolved through Registry
   - proto3 optional scalar/message fields with descriptor synthetic-oneof round-trips, default-packed repeated numeric fields, and map fields
@@ -40,7 +40,7 @@ validated feature set.
   - nested message and group round-trips, including protobuf merge semantics for duplicate singular message/group fields, imported message and enum decode through Registry, plus registry-aware encode helpers for imported enum scalar/repeated/map fields
   - unknown field preservation/querying, extension encoding/decoding with Registry, registry-aware initialized encode/decode helpers, deterministic encoding including map key ordering, and recursive message merging
 - JSON support
-  - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums including editions open/closed enum numeric validation, nested messages including proto3 optional message presence, proto2 extension bracket keys including scoped extension names, initialized parse helpers with recursive required validation, and registry-aware imported message/enum parsing plus imported enum-name stringify
+  - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, enums including editions open/closed enum numeric validation, nested messages including proto3 optional message presence, proto2 extension bracket keys including scoped extension names, initialized parse helpers with recursive required validation, and registry-aware imported message/enum parsing plus imported enum-name/default stringify
 - Well-known types
   - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including registry-aware Any expanded payload JSON, Timestamp timezone-offset parsing, Duration sign/range validation, wrapper null/default parsing and float special values, FieldMask path validation, and strict Empty object parsing
 - Conformance helpers
@@ -56,7 +56,7 @@ validated feature set.
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
   - generated decoders retain unknown wire fields and preserve closed-enum unknown numeric values for singular/repeated/map/oneof enum fields; generated encoders replay retained unknowns
   - generated message structs expose unknown field count/list/filter, raw unknown append, clear helpers, and merge unknown fields through `mergeFrom`
-  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults plus editions field-presence, message-encoding, and string UTF-8 validation features
+  - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults, including imported enum defaults during registry-aware generation, plus editions field-presence, message-encoding, and string UTF-8 validation features
   - generated message structs expose field accessors for presence-aware singular fields, repeated/map append/replace/clear, oneof union arms, typed enum get/set/default/repeated-batch/map-entry helpers, typed map-message append/replace/remove/get entry helpers, same-file typed message payload encode/decode helpers, decodeMessageField aliases, and `cloneOwned` / `decodeOwned` helpers for deep-copying decoded slice payloads
   - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, same-file proto2 extension, and oneof fields; generated JSON helpers accept/emit bracketed same-file proto2 extension keys backed by unknown/raw storage and generated JSON/TextFormat helpers use registry-aware direct and transitive-public imported message types when available for singular, repeated, map, and oneof payloads; generated wire/TextFormat UTF-8 validation for string/map-string fields; and generated wire/TextFormat closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
@@ -154,7 +154,7 @@ nested messages recursively. Duplicate field appearances, including proto field
 name plus lowerCamelCase/`json_name` alternate spellings, use protobuf JSON's
 last-value-wins parsing behavior; `parseJsonAllocWithRegistry` resolves imported
 message and enum field types through a `Registry`, `stringifyJsonAllocWithRegistry`
-uses the same registry to print imported enum names, and ignore-unknown parsing
+uses the same registry to print imported enum names/defaults, and ignore-unknown parsing
 also skips unknown enum names for local and imported enum fields.
 Use `parseJsonInitializedAlloc` / `parseJsonInitializedAllocWithRegistry` when
 proto2 or editions legacy-required data must be validated recursively before the

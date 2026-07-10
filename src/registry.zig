@@ -310,6 +310,7 @@ pub const Registry = struct {
             if (self.findMessageVisible(file, extendee_name, null) == null and !isCustomOptionExtendee(extendee_name)) return error.InvalidFieldType;
         }
         try self.validateKindTypeReference(file, field.kind, scope);
+        try self.validateImportedEnumDefault(file, field, scope);
     }
 
     fn validateKindTypeReference(self: *const Registry, file: *const schema.FileDescriptor, kind: schema.FieldKind, scope: []const u8) Error!void {
@@ -329,6 +330,20 @@ pub const Registry = struct {
             },
             .map => |map_type| try self.validateKindTypeReference(file, map_type.value.*, scope),
         }
+    }
+
+    fn validateImportedEnumDefault(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scope: []const u8) Error!void {
+        const value = field.default_value orelse return;
+        const enum_name = switch (field.kind) {
+            .enumeration => |name| name,
+            .message => |name| name,
+            else => return,
+        };
+        if (field.kind == .message) {
+            if (self.findMessageVisible(file, enum_name, scope) != null) return error.InvalidFieldType;
+        }
+        const enumeration = self.findEnumVisible(file, enum_name, scope) orelse return error.InvalidFieldType;
+        if (!enumDefaultMatches(enumeration, value)) return error.InvalidFieldType;
     }
 
     pub fn findFile(self: *const Registry, path: []const u8) ?*const schema.FileDescriptor {
@@ -723,6 +738,22 @@ fn findInMessageByLeaf(message: *const schema.MessageDescriptor, leaf: []const u
         if (std.mem.eql(u8, enumeration.name, leaf)) return .{ .enumeration = enumeration };
     }
     return null;
+}
+
+fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
+    for (enumeration.values.items) |value| {
+        if (value.number == number) return true;
+    }
+    return false;
+}
+
+fn enumDefaultMatches(enumeration: *const schema.EnumDescriptor, value: schema.OptionValue) bool {
+    return switch (value) {
+        .integer => |number| number >= std.math.minInt(i32) and number <= std.math.maxInt(i32) and enumHasNumber(enumeration, @intCast(number)),
+        .unsigned_integer => |number| number <= std.math.maxInt(i32) and enumHasNumber(enumeration, @intCast(number)),
+        .identifier, .string => |name| enumeration.findValue(name) != null,
+        else => false,
+    };
 }
 
 fn splitFirst(name: []const u8) struct { []const u8, []const u8 } {

@@ -103,8 +103,15 @@ fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schem
     switch (field.kind) {
         .message => |name| {
             if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
+                try resolveImportedEnumDefaultForCodegen(field, enumeration);
                 try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
                 field.kind = .{ .enumeration = name };
+            }
+        },
+        .enumeration => |name| {
+            if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
+                try resolveImportedEnumDefaultForCodegen(field, enumeration);
+                try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
             }
         },
         .map => |map_type| switch (map_type.value.*) {
@@ -114,10 +121,23 @@ fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schem
                     map_type.value.* = .{ .enumeration = name };
                 }
             },
+            .enumeration => |name| {
+                if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
+                    try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+                }
+            },
             else => {},
         },
         else => {},
     }
+}
+
+fn resolveImportedEnumDefaultForCodegen(field: *schema.FieldDescriptor, enumeration: *const schema.EnumDescriptor) std.mem.Allocator.Error!void {
+    const default_name = switch (field.default_value orelse return) {
+        .identifier, .string => |text| text,
+        else => return,
+    };
+    if (enumeration.findValue(default_name)) |value| field.default_value = .{ .integer = value.number };
 }
 
 fn ensureEnumAliasForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, enumeration: *const schema.EnumDescriptor, type_name: []const u8) std.mem.Allocator.Error!void {
@@ -9153,7 +9173,7 @@ test "codegen with registry resolves imported enum fields" {
     var common = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.common;
-        \\enum Role { UNKNOWN = 0; ADMIN = 1; }
+        \\enum Role { UNKNOWN = 0; ADMIN = 1; GUEST = 2; }
     );
     defer common.deinit();
     common.name = "common.proto";
@@ -9162,7 +9182,7 @@ test "codegen with registry resolves imported enum fields" {
         \\package demo.app;
         \\import "common.proto";
         \\message Request {
-        \\  optional .demo.common.Role role = 1;
+        \\  optional .demo.common.Role role = 1 [default = GUEST];
         \\  repeated .demo.common.Role roles = 2;
         \\  map<string, .demo.common.Role> keyed = 3;
         \\  oneof pick { .demo.common.Role picked = 4; }
@@ -9181,14 +9201,15 @@ test "codegen with registry resolves imported enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"demo.common.Role\" = enum(i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const kind = \"enum\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_name = \".demo.common.Role\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"role\": i32 = 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"role\": i32 = 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"2\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: i32 = 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"picked\": i32,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"role\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, self.@\"role\")") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1}))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "&.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1, 2}))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "&.{\"UNKNOWN\", \"ADMIN\", \"GUEST\"}, &.{0, 1, 2}, true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_role\"") == null);
 
     const source = try allocator.dupeZ(u8, content);

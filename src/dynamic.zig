@@ -1517,11 +1517,29 @@ fn defaultForField(field: *const schema.FieldDescriptor) DefaultValue {
 }
 
 fn defaultForFieldWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) DefaultValue {
-    if (field.default_value) |value| return defaultFromOption(field.kind, value);
+    if (field.default_value) |value| {
+        if (registryEnumDescriptor(file, registry, current, field.kind)) |enumeration| {
+            return .{ .enumeration = enumDefaultNumber(enumeration, value) orelse 0 };
+        }
+        return defaultFromOption(field.kind, value);
+    }
     if (registryEnumDescriptor(file, registry, current, field.kind)) |enumeration| {
         if (enumeration.values.items.len != 0) return .{ .enumeration = enumeration.values.items[0].number };
     }
     return defaultForField(field);
+}
+
+fn enumDefaultNumber(enumeration: *const schema.EnumDescriptor, value: schema.OptionValue) ?i32 {
+    switch (value) {
+        .integer => |v| return if (v >= std.math.minInt(i32) and v <= std.math.maxInt(i32)) @intCast(v) else null,
+        .unsigned_integer => |v| return if (v <= std.math.maxInt(i32)) @intCast(v) else null,
+        .identifier, .string => |text| {
+            if (parseIntegerDefault(i32, text)) |number| return number else |_| {}
+            if (enumeration.findValue(text)) |enum_value| return enum_value.number;
+            return null;
+        },
+        else => return null,
+    }
 }
 
 fn defaultFromOption(kind: schema.FieldKind, value: schema.OptionValue) DefaultValue {
@@ -2236,6 +2254,38 @@ test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {
     const bad_key = try allocator.dupe(u8, "bad");
     defer allocator.free(bad_key);
     try std.testing.expectError(error.InvalidEnumValue, message.getEnumMapValueNameWithFile(&file, map_field, .{ .string = bad_key }));
+}
+
+test "dynamic resolves imported enum defaults with registry" {
+    const allocator = std.testing.allocator;
+    var common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event { optional common.Kind kind = 1 [default = ADMIN]; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateAllFileReferences();
+
+    const desc = app.findMessage("Event").?;
+    const field = desc.findField("kind").?;
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try std.testing.expectEqual(DefaultValue.none, message.getOrDefault(field));
+    try std.testing.expectEqual(@as(i32, 7), message.getOrDefaultWithRegistry(&app, &registry, field).enumeration);
+    try std.testing.expectEqualStrings("ADMIN", message.getEnumNameOrDefaultWithRegistry(&app, &registry, field).?);
 }
 
 test "dynamic decodeInitialized enforces proto2 required fields" {

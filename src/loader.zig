@@ -161,6 +161,42 @@ test "memory loader rejects unresolved type references" {
     try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "root.proto"));
 }
 
+test "memory loader resolves imported enum defaults" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("common.proto",
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    try tree.add("app.proto",
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event {
+        \\  optional common.Kind kind = 1 [default = ADMIN];
+        \\}
+    );
+
+    var loaded = try loadMemory(allocator, &tree, "app.proto");
+    defer loaded.deinit();
+    const app = loaded.registry.findFile("app.proto").?;
+    const event = app.findMessage("Event").?;
+    const field = event.findField("kind").?;
+    try std.testing.expectEqualStrings("ADMIN", field.default_value.?.identifier);
+
+    try tree.add("bad.proto",
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Bad {
+        \\  optional common.Kind kind = 1 [default = MISSING];
+        \\}
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "bad.proto"));
+}
+
 pub fn loadPath(allocator: std.mem.Allocator, root_dir_path: []const u8, root_path: []const u8) Error!LoadResult {
     const io = std.Io.Threaded.global_single_threaded.io();
     const root_dir = std.fs.openDirAbsolute(io, root_dir_path, .{}) catch return error.FileNotFound;

@@ -1178,9 +1178,25 @@ pub const Parser = struct {
                 }
                 return error.InvalidDefault;
             },
-            .message, .group => return error.InvalidDefault,
+            .message => |name| switch (value) {
+                .identifier, .string => return if (self.messageNameLooksImported(name, context)) {} else error.InvalidDefault,
+                else => return error.InvalidDefault,
+            },
+            .group => return error.InvalidDefault,
             .map => return error.InvalidDefault,
         }
+    }
+
+    fn messageNameLooksImported(self: *Parser, name: []const u8, context: ?*schema.MessageDescriptor) bool {
+        const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+        const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+        if (context) |message| {
+            if (message.findMessageDeep(trimmed) != null or message.findMessage(leaf) != null) return false;
+        }
+        for (self.file.messages.items) |*message| {
+            if (std.mem.eql(u8, message.name, trimmed) or std.mem.eql(u8, message.name, leaf) or message.findMessageDeep(trimmed) != null) return false;
+        }
+        return true;
     }
 
     fn validatePackedOptions(self: *Parser) ParseError!void {
