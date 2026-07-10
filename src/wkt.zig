@@ -38,6 +38,7 @@ pub const Timestamp = struct {
                 else => try reader.skipValue(tag),
             }
         }
+        try out.validate();
         return out;
     }
 
@@ -204,6 +205,19 @@ test "timestamp json parses timezone offsets and rejects invalid date times" {
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T00:00:00+0x:00\""));
 }
 
+test "timestamp wire decode validates range and nanos" {
+    const allocator = std.testing.allocator;
+    var seconds_writer = wire.Writer.init(allocator);
+    defer seconds_writer.deinit();
+    try seconds_writer.writeInt64(1, 253402300800);
+    try std.testing.expectError(error.TimestampOutOfRange, Timestamp.decode(seconds_writer.slice()));
+
+    var nanos_writer = wire.Writer.init(allocator);
+    defer nanos_writer.deinit();
+    try nanos_writer.writeInt32(2, 1_000_000_000);
+    try std.testing.expectError(error.InvalidNanos, Timestamp.decode(nanos_writer.slice()));
+}
+
 test "wkt json emits canonical fractional digits" {
     const allocator = std.testing.allocator;
     const ts_micros = try (Timestamp{ .seconds = 0, .nanos = 120_000 }).jsonStringifyAlloc(allocator);
@@ -252,6 +266,7 @@ pub const Duration = struct {
                 else => try reader.skipValue(tag),
             }
         }
+        try out.validate();
         return out;
     }
 
@@ -335,6 +350,25 @@ test "duration json parses plus sign and validates input" {
     try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"1.s\""));
     try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"1.1234567890s\""));
     try std.testing.expectError(error.DurationOutOfRange, Duration.jsonParse("\"315576000001s\""));
+}
+
+test "duration wire decode validates range and sign consistency" {
+    const allocator = std.testing.allocator;
+    var seconds_writer = wire.Writer.init(allocator);
+    defer seconds_writer.deinit();
+    try seconds_writer.writeInt64(1, 315_576_000_001);
+    try std.testing.expectError(error.DurationOutOfRange, Duration.decode(seconds_writer.slice()));
+
+    var nanos_writer = wire.Writer.init(allocator);
+    defer nanos_writer.deinit();
+    try nanos_writer.writeInt32(2, 1_000_000_000);
+    try std.testing.expectError(error.InvalidNanos, Duration.decode(nanos_writer.slice()));
+
+    var sign_writer = wire.Writer.init(allocator);
+    defer sign_writer.deinit();
+    try sign_writer.writeInt64(1, -1);
+    try sign_writer.writeInt32(2, 1);
+    try std.testing.expectError(error.DurationSignMismatch, Duration.decode(sign_writer.slice()));
 }
 
 pub const FieldMask = struct {
@@ -1243,7 +1277,9 @@ pub const Value = union(enum) {
                 },
                 2 => {
                     try wire.Reader.expectWireType(tag, .fixed64);
-                    replaceDecodedValue(&out, &has_value, allocator, .{ .number_value = try reader.readDouble() });
+                    const number_value = try reader.readDouble();
+                    if (std.math.isNan(number_value) or std.math.isPositiveInf(number_value) or std.math.isNegativeInf(number_value)) return error.InvalidNumber;
+                    replaceDecodedValue(&out, &has_value, allocator, .{ .number_value = number_value });
                 },
                 3 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
@@ -1257,16 +1293,22 @@ pub const Value = union(enum) {
                 5 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
                     const nested = try allocator.create(Struct);
-                    errdefer allocator.destroy(nested);
+                    var owns_nested = true;
+                    errdefer if (owns_nested) allocator.destroy(nested);
                     nested.* = try Struct.decode(allocator, try reader.readBytes());
+                    errdefer if (owns_nested) nested.deinit(allocator);
                     replaceDecodedValue(&out, &has_value, allocator, .{ .struct_value = nested });
+                    owns_nested = false;
                 },
                 6 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
                     const nested = try allocator.create(ListValue);
-                    errdefer allocator.destroy(nested);
+                    var owns_nested = true;
+                    errdefer if (owns_nested) allocator.destroy(nested);
                     nested.* = try ListValue.decode(allocator, try reader.readBytes());
+                    errdefer if (owns_nested) nested.deinit(allocator);
                     replaceDecodedValue(&out, &has_value, allocator, .{ .list_value = nested });
+                    owns_nested = false;
                 },
                 else => try reader.skipValue(tag),
             }
@@ -1518,6 +1560,11 @@ test "value json and wire reject invalid null enum and non-finite numbers" {
     defer writer.deinit();
     try writer.writeInt32(1, 1);
     try std.testing.expectError(error.InvalidNullValue, Value.decode(allocator, writer.slice()));
+
+    var nan_writer = wire.Writer.init(allocator);
+    defer nan_writer.deinit();
+    try nan_writer.writeDouble(2, std.math.nan(f64));
+    try std.testing.expectError(error.InvalidNumber, Value.decode(allocator, nan_writer.slice()));
 }
 
 test "value decode uses last oneof arm and parser cleans up on OOM" {
