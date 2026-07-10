@@ -7182,6 +7182,11 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return error.TypeMismatch;
         \\}
         \\
+        \\fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
+        \\    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+        \\    try std.json.Stringify.value(value, .{}, writer);
+        \\}
+        \\
     );
 }
 
@@ -7403,7 +7408,7 @@ fn jsonMapValueSupported(ctx: *const CodegenContext, kind: schema.FieldKind) boo
 
 fn writeJsonMapKeyValue(scalar: schema.ScalarType, key_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
-        .string => try writer.print("try std.json.Stringify.value({s}, .{{}}, writer)", .{key_expr}),
+        .string => try writer.print("try @This().jsonWriteString(writer, {s})", .{key_expr}),
         .bool => try writer.print("try writer.writeAll(if ({s}) \"\\\"true\\\"\" else \"\\\"false\\\"\")", .{key_expr}),
         .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("try writer.print(\"\\\"{{d}}\\\"\", .{{{s}}})", .{key_expr}),
         .double, .float, .bytes => try writer.writeAll("@compileError(\"invalid map key\")"),
@@ -7562,7 +7567,7 @@ fn writeJsonExtensionPrefix(file: *const schema.FileDescriptor, field: *const sc
 
 fn writeJsonScalarValue(scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
-        .string => try writer.print("try std.json.Stringify.value({s}, .{{}}, writer)", .{prefix}),
+        .string => try writer.print("try @This().jsonWriteString(writer, {s})", .{prefix}),
         .bytes => try writer.print("try writer.writeByte('\"'); try std.base64.standard.Encoder.encodeWriter(writer, {s}); try writer.writeByte('\"')", .{prefix}),
         .int64, .uint64, .sint64, .fixed64, .sfixed64 => try writer.print("try writer.print(\"\\\"{{d}}\\\"\", .{{{s}}})", .{prefix}),
         .bool => try writer.print("try writer.writeAll(if ({s}) \"true\" else \"false\")", .{prefix}),
@@ -10277,7 +10282,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"kind\" != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"tags\".len != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteString(writer, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.base64.standard.Encoder.encodeWriter(writer, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\", 0..) |item, i|") != null);
@@ -10316,6 +10321,8 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
 }
 
