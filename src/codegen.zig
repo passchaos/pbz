@@ -89,48 +89,69 @@ fn cloneFieldKindForCodegen(allocator: std.mem.Allocator, kind: schema.FieldKind
 }
 
 fn resolveImportedEnumsForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry) std.mem.Allocator.Error!void {
-    for (file.messages.items) |*message| try resolveMessageImportedEnumsForCodegen(allocator, file, registry, message);
-    for (file.extensions.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field);
+    for (file.messages.items) |*message| {
+        const scope = try codegenQualifiedName(allocator, file.package, message.name);
+        try resolveMessageImportedEnumsForCodegen(allocator, file, registry, message, scope);
+    }
+    const file_scope: ?[]const u8 = if (file.package.len == 0) null else file.package;
+    for (file.extensions.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field, file_scope);
 }
 
-fn resolveMessageImportedEnumsForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, message: *schema.MessageDescriptor) std.mem.Allocator.Error!void {
-    for (message.fields.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field);
-    for (message.extensions.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field);
-    for (message.messages.items) |*nested| try resolveMessageImportedEnumsForCodegen(allocator, file, registry, nested);
+fn resolveMessageImportedEnumsForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, message: *schema.MessageDescriptor, scope: []const u8) std.mem.Allocator.Error!void {
+    for (message.fields.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field, scope);
+    for (message.extensions.items) |*field| try resolveFieldImportedEnumForCodegen(allocator, file, registry, field, scope);
+    for (message.messages.items) |*nested| {
+        const nested_scope = try codegenQualifiedName(allocator, scope, nested.name);
+        try resolveMessageImportedEnumsForCodegen(allocator, file, registry, nested, nested_scope);
+    }
 }
 
-fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor) std.mem.Allocator.Error!void {
+fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor, scope: ?[]const u8) std.mem.Allocator.Error!void {
     try resolveFieldExtendeeForCodegen(allocator, file, registry, field);
     switch (field.kind) {
         .message => |name| {
-            if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
-                try resolveImportedEnumDefaultForCodegen(field, enumeration);
-                try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+            if (registry.findEnumVisible(file, name, scope)) |enumeration| {
+                try resolveEnumDefaultAndAliasForCodegen(allocator, file, registry, field, enumeration, name);
                 field.kind = .{ .enumeration = name };
             }
         },
         .enumeration => |name| {
-            if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
-                try resolveImportedEnumDefaultForCodegen(field, enumeration);
-                try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+            if (registry.findEnumVisible(file, name, scope)) |enumeration| {
+                try resolveEnumDefaultAndAliasForCodegen(allocator, file, registry, field, enumeration, name);
             }
         },
         .map => |map_type| switch (map_type.value.*) {
             .message => |name| {
-                if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
-                    try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+                if (registry.findEnumVisible(file, name, scope)) |enumeration| {
+                    try ensureImportedEnumAliasForCodegen(allocator, file, registry, enumeration, name);
                     map_type.value.* = .{ .enumeration = name };
                 }
             },
             .enumeration => |name| {
-                if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
-                    try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, name);
+                if (registry.findEnumVisible(file, name, scope)) |enumeration| {
+                    try ensureImportedEnumAliasForCodegen(allocator, file, registry, enumeration, name);
                 }
             },
             else => {},
         },
         else => {},
     }
+}
+
+fn resolveEnumDefaultAndAliasForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor, enumeration: *const schema.EnumDescriptor, type_name: []const u8) std.mem.Allocator.Error!void {
+    try resolveImportedEnumDefaultForCodegen(field, enumeration);
+    try ensureImportedEnumAliasForCodegen(allocator, file, registry, enumeration, type_name);
+}
+
+fn ensureImportedEnumAliasForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, enumeration: *const schema.EnumDescriptor, type_name: []const u8) std.mem.Allocator.Error!void {
+    const owner = registry.fileContainingEnum(enumeration) orelse return;
+    if (sameFileForCodegen(owner, file)) return;
+    try ensureEnumAliasForCodegen(allocator, file, registry, enumeration, type_name);
+}
+
+fn codegenQualifiedName(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) std.mem.Allocator.Error![]const u8 {
+    if (prefix.len == 0) return try allocator.dupe(u8, name);
+    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
 }
 
 fn resolveFieldExtendeeForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor) std.mem.Allocator.Error!void {
@@ -9118,6 +9139,50 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"User\".decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtensionMessages_ext_users\"(self: *@This(), allocator: std.mem.Allocator, values: []const imports.@\"common.proto\".@\"User\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessages_ext_users\"(self: @This(), allocator: std.mem.Allocator) ![]imports.@\"common.proto\".@\"User\"") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen with registry keeps local enum priority over imported enum" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; IMPORTED = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event {
+        \\  enum Kind { LOCAL = 7; }
+        \\  optional Kind kind = 1 [default = LOCAL];
+        \\  map<string, Kind> keyed = 2;
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateFileReferences(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"Kind\" = enum(i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"LOCAL\" = 7") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Event\".@\"Kind\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_enum_ref = @\"Event\".@\"Kind\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_kind\"(self: @This()) ?@\"Event\".@\"Kind\"") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
