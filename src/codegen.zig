@@ -5854,7 +5854,7 @@ fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *co
 
 fn writeTextScalarValue(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
-        .string, .bytes => try writer.print("try std.json.Stringify.value({s}, .{{}}, writer)", .{value_expr}),
+        .string, .bytes => try writer.print("try textWriteQuotedBytes({s}, writer)", .{value_expr}),
         .bool => try writer.print("try writer.writeAll(if ({s}) \"true\" else \"false\")", .{value_expr}),
         else => try writer.print("try writer.print(\"{{d}}\", .{{{s}}})", .{value_expr}),
     }
@@ -9865,14 +9865,14 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.@\"id\"; try writer.print(\"{d}\", .{value});") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); try textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithOptions(allocator, writer, options);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"kids {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value {\\n\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };") != null);
@@ -10045,10 +10045,10 @@ test "codegen emits map JSON stringify and parse helpers" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"counts\".len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"counts\", 0..) |entry, i|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(entry.key, .{}, writer)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteString(writer, entry.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"{d}\", .{entry.value})") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\"{d}\\\"\", .{entry.key})") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(entry.value, .{}, writer)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteString(writer, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (entry.key) \"\\\"true\\\"\" else \"\\\"false\\\"\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, options);") != null);
@@ -10569,13 +10569,13 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.@\"tag\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"[demo.tag]\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const value = values[values.len - 1];") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteString(writer, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"[demo.nums]\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: JsonStringifyOptions, payload_: []const u8) !void { var nested = try @\"Note\".decode(allocator_, payload_);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"tag\".decodeRaw(raw) catch null) |value| {") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try std.json.Stringify.value(value, .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"note\".decodeRaw(raw) catch null) |payload| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.note] {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".decode(allocator, payload);") != null);
