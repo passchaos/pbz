@@ -372,6 +372,7 @@ pub const Registry = struct {
             try self.validateMessageReferences(file, message, scope);
         }
         for (file.extensions.items) |*field| try self.validateFieldTypeReference(file, field, file.package);
+        for (file.services.items) |*service| try self.validateServiceReferences(file, service);
     }
 
     fn validateMessageReferences(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, scope: []const u8) Error!void {
@@ -390,6 +391,20 @@ pub const Registry = struct {
         }
         try self.validateKindTypeReference(file, field.kind, scope);
         try self.validateImportedEnumDefault(file, field, scope);
+    }
+
+    fn validateServiceReferences(self: *const Registry, file: *const schema.FileDescriptor, service: *const schema.ServiceDescriptor) Error!void {
+        for (service.methods.items) |*method| {
+            try self.validateMethodMessageType(file, method.input_type);
+            try self.validateMethodMessageType(file, method.output_type);
+        }
+    }
+
+    fn validateMethodMessageType(self: *const Registry, file: *const schema.FileDescriptor, type_name: []const u8) Error!void {
+        if (self.findMessageVisible(file, type_name, file.package) != null) return;
+        if (self.findEnumVisible(file, type_name, file.package) != null) return error.InvalidFieldType;
+        if (file.missing_weak_imports.items.len != 0 and self.findType(type_name, file.package) == null) return;
+        return error.InvalidFieldType;
     }
 
     fn validateKindTypeReference(self: *const Registry, file: *const schema.FileDescriptor, kind: schema.FieldKind, scope: []const u8) Error!void {
@@ -897,6 +912,7 @@ test "registry computes direct and public import chains" {
         \\syntax = "proto2";
         \\package demo.leaf;
         \\message User { optional string name = 1; }
+        \\enum Kind { A = 0; }
     );
     defer leaf.deinit();
     leaf.name = "leaf.proto";
@@ -929,6 +945,7 @@ test "registry computes direct and public import chains" {
         \\import "bridge.proto";
         \\import "private.proto";
         \\message App { optional demo.leaf.User user = 1; }
+        \\service Api { rpc Get (demo.leaf.User) returns (App); }
     );
     defer app.deinit();
     app.name = "app.proto";
@@ -973,6 +990,27 @@ test "registry computes direct and public import chains" {
     missing.name = "missing.proto";
     try registry.addFile(&missing);
     try std.testing.expectError(error.InvalidFieldType, registry.validateFileReferences(&missing));
+
+    var bad_service = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.badsvc;
+        \\import "bridge.proto";
+        \\service BadEnum { rpc Get (demo.leaf.Kind) returns (demo.leaf.User); }
+    );
+    defer bad_service.deinit();
+    bad_service.name = "bad-service.proto";
+    try registry.addFile(&bad_service);
+    try std.testing.expectError(error.InvalidFieldType, registry.validateFileReferences(&bad_service));
+
+    var missing_service = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.missingsvc;
+        \\service Missing { rpc Get (MissingRequest) returns (MissingResponse); }
+    );
+    defer missing_service.deinit();
+    missing_service.name = "missing-service.proto";
+    try registry.addFile(&missing_service);
+    try std.testing.expectError(error.InvalidFieldType, registry.validateFileReferences(&missing_service));
 }
 
 test "registry finds extension fields" {
