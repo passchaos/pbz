@@ -450,7 +450,7 @@ pub const DynamicMessage = struct {
         for (unknown_indexes, 0..) |*index, i| index.* = i;
         std.mem.sort(usize, unknown_indexes, self, struct {
             fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
-                return message.unknown_fields.items[a].number < message.unknown_fields.items[b].number;
+                return unknownFieldLessThan(message.unknown_fields.items[a], message.unknown_fields.items[b]);
             }
         }.lessThan);
         for (unknown_indexes) |index| try writer.appendSlice(self.unknown_fields.items[index].data);
@@ -1424,6 +1424,12 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
         },
         else => value,
     };
+}
+
+fn unknownFieldLessThan(a: UnknownField, b: UnknownField) bool {
+    if (a.number != b.number) return a.number < b.number;
+    if (a.wire_type != b.wire_type) return @intFromEnum(a.wire_type) < @intFromEnum(b.wire_type);
+    return std.mem.lessThan(u8, a.data, b.data);
 }
 
 fn mapEntryLessThan(a: Value, b: Value) bool {
@@ -3477,7 +3483,7 @@ test "dynamic closed enum map entries with unknown values are preserved whole" {
     try std.testing.expectEqualSlices(u8, bad_raw, msg.unknown_fields.items[0].data);
 }
 
-test "dynamic deterministic encoding sorts fields and unknowns by number" {
+test "dynamic deterministic encoding sorts fields and unknowns stably" {
     const allocator = std.testing.allocator;
     const source =
         \\syntax = "proto3";
@@ -3492,16 +3498,18 @@ test "dynamic deterministic encoding sorts fields and unknowns by number" {
     try msg.add(desc.findField("b").?, .{ .int32 = 2 });
     try msg.add(desc.findField("a").?, .{ .int32 = 1 });
     try msg.add(desc.findField("c").?, .{ .int32 = 3 });
-    try msg.unknown_fields.append(allocator, .{ .number = 50, .wire_type = .varint, .data = try allocator.dupe(u8, &.{ 0x90, 0x03, 0x01 }) });
+    try msg.unknown_fields.append(allocator, .{ .number = 50, .wire_type = .varint, .data = try allocator.dupe(u8, &.{ 0x90, 0x03, 0x02 }) });
     try msg.unknown_fields.append(allocator, .{ .number = 40, .wire_type = .varint, .data = try allocator.dupe(u8, &.{ 0xc0, 0x02, 0x01 }) });
+    try msg.unknown_fields.append(allocator, .{ .number = 50, .wire_type = .length_delimited, .data = try allocator.dupe(u8, &.{ 0x92, 0x03, 0x01, 0x61 }) });
+    try msg.unknown_fields.append(allocator, .{ .number = 50, .wire_type = .varint, .data = try allocator.dupe(u8, &.{ 0x90, 0x03, 0x01 }) });
 
     const normal = try msg.encoded(&file);
     defer allocator.free(normal);
-    try std.testing.expectEqualSlices(u8, &.{ 0x10, 0x02, 0x08, 0x01, 0x1a, 0x01, 0x03, 0x90, 0x03, 0x01, 0xc0, 0x02, 0x01 }, normal);
+    try std.testing.expectEqualSlices(u8, &.{ 0x10, 0x02, 0x08, 0x01, 0x1a, 0x01, 0x03, 0x90, 0x03, 0x02, 0xc0, 0x02, 0x01, 0x92, 0x03, 0x01, 0x61, 0x90, 0x03, 0x01 }, normal);
 
     const deterministic = try msg.encodedDeterministic(&file);
     defer allocator.free(deterministic);
-    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02, 0x1a, 0x01, 0x03, 0xc0, 0x02, 0x01, 0x90, 0x03, 0x01 }, deterministic);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02, 0x1a, 0x01, 0x03, 0xc0, 0x02, 0x01, 0x90, 0x03, 0x01, 0x90, 0x03, 0x02, 0x92, 0x03, 0x01, 0x61 }, deterministic);
 }
 
 test "dynamic deterministic encoding sorts map entries by key" {
