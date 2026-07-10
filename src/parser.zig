@@ -202,7 +202,9 @@ pub const Parser = struct {
                 try self.parseImport();
                 try self.addSourceLocation(&.{ 3, import_index }, decl_start, self.previousEnd());
             } else if (self.matchIdent("option")) {
+                const option_start = self.previous_end;
                 try self.addFileOption(try self.parseOptionAssignmentStatement());
+                try self.addSourceLocation(&.{8}, option_start, self.previousEnd());
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(self.file.messages.items.len);
                 try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start, self.file.package));
@@ -402,6 +404,13 @@ pub const Parser = struct {
         return path;
     }
 
+    fn childFieldPath(self: *Parser, base: []const i32, field_number: i32) std.mem.Allocator.Error![]i32 {
+        var path = try self.allocator.alloc(i32, base.len + 1);
+        @memcpy(path[0..base.len], base);
+        path[base.len] = field_number;
+        return path;
+    }
+
     fn addRepeatedLocations(self: *Parser, base: []const i32, field_number: i32, start_index: usize, end_index: usize, start: usize, end: usize) Error!void {
         var index = start_index;
         while (index < end_index) : (index += 1) {
@@ -460,9 +469,13 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
+                const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 try message.options.append(self.allocator, option);
                 try self.applyMessageOption(&message, option);
+                const path = try self.childFieldPath(source_path, 7);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, option_start, self.previousEnd());
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(message.messages.items.len);
                 const path = try self.childPath(source_path, 3, index);
@@ -519,9 +532,13 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
+                const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 try enumeration.options.append(self.allocator, option);
                 try self.applyFeatureOption(&enumeration.features, option);
+                const path = try self.childFieldPath(source_path, 3);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, option_start, self.previousEnd());
             } else if (self.matchIdent("reserved")) {
                 const reserved_start = self.previous_end;
                 const range_start_index = enumeration.reserved_ranges.items.len;
@@ -539,7 +556,9 @@ pub const Parser = struct {
                 const number = try self.parseSignedInt32();
                 var options: schema.OptionList = .empty;
                 errdefer schema.deinitOptions(&options, self.allocator);
-                if (self.consumeSymbol('[')) try self.parseOptionList(&options, ']');
+                const option_start = self.current.start;
+                const had_options = self.consumeSymbol('[');
+                if (had_options) try self.parseOptionList(&options, ']');
                 try self.expectSymbol(';');
                 var enum_value = schema.EnumValueDescriptor{ .name = name, .number = number, .options = options };
                 try self.applyEnumValueOptions(&enum_value);
@@ -548,6 +567,11 @@ pub const Parser = struct {
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, value_start, self.previousEnd());
+                if (had_options) {
+                    const option_path = try self.childFieldPath(path, 3);
+                    defer self.allocator.free(option_path);
+                    try self.addSourceLocation(option_path, option_start, self.previousEnd());
+                }
             }
         }
         try validateEnum(self.allocator, &enumeration, self.file.syntax);
@@ -562,15 +586,19 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
+                const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 try service.options.append(self.allocator, option);
                 try self.applyFeatureOption(&service.features, option);
+                const path = try self.childFieldPath(source_path, 3);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, option_start, self.previousEnd());
             } else if (self.matchIdent("rpc")) {
                 const method_start = self.previous_end;
                 const index: i32 = @intCast(service.methods.items.len);
-                try service.methods.append(self.allocator, try self.parseRpcAfterKeyword());
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
+                try service.methods.append(self.allocator, try self.parseRpcAfterKeyword(path));
                 try self.addSourceLocation(path, method_start, self.previousEnd());
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
@@ -580,7 +608,7 @@ pub const Parser = struct {
         return service;
     }
 
-    fn parseRpcAfterKeyword(self: *Parser) Error!schema.MethodDescriptor {
+    fn parseRpcAfterKeyword(self: *Parser, method_path: []const i32) Error!schema.MethodDescriptor {
         var method = schema.MethodDescriptor{ .name = try self.expectIdentifier(), .input_type = "", .output_type = "" };
         errdefer method.deinit(self.allocator);
         try self.expectSymbol('(');
@@ -596,9 +624,13 @@ pub const Parser = struct {
             while (!self.consumeSymbol('}')) {
                 if (self.current.tag == .eof) return error.UnexpectedEof;
                 if (self.matchIdent("option")) {
+                    const option_start = self.previous_end;
                     const option = try self.parseOptionAssignmentStatement();
                     try method.options.append(self.allocator, option);
                     try self.applyFeatureOption(&method.features, option);
+                    const path = try self.childFieldPath(method_path, 4);
+                    defer self.allocator.free(path);
+                    try self.addSourceLocation(path, option_start, self.previousEnd());
                 } else if (self.consumeSymbol(';')) {} else return error.UnexpectedToken;
             }
             _ = self.consumeSymbol(';');
@@ -613,10 +645,17 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.matchIdent("option")) {
+                const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 const oneof = &message.oneofs.items[message.oneofs.items.len - 1];
                 try oneof.options.append(self.allocator, option);
                 try self.applyFeatureOption(&oneof.features, option);
+                const oneof_index: i32 = @intCast(message.oneofs.items.len - 1);
+                const oneof_path = try self.childPath(message_path, 8, oneof_index);
+                defer self.allocator.free(oneof_path);
+                const path = try self.childFieldPath(oneof_path, 2);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, option_start, self.previousEnd());
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -2459,10 +2498,11 @@ test "parser records basic source code info locations" {
         \\syntax = "proto2";
         \\package demo;
         \\import "common.proto";
-        \\message Person { optional string name = 1; message Child { optional int32 id = 1; } oneof pick { string nick = 2; } extensions 100 to 199; reserved 50 to 60; reserved "old"; extend Person { optional int32 nested_ext = 100; } }
+        \\option java_package = "demo";
+        \\message Person { option deprecated = true; optional string name = 1; message Child { optional int32 id = 1; } oneof pick { option (demo.oneof_opt) = true; string nick = 2; } extensions 100 to 199; reserved 50 to 60; reserved "old"; extend Person { optional int32 nested_ext = 100; } }
         \\extend Person { optional string top_ext = 101; }
-        \\enum Kind { A = 0; reserved 5 to 6; reserved "OLD"; }
-        \\service Api { rpc Get (Person) returns (Person); }
+        \\enum Kind { option allow_alias = true; A = 0; B = 0 [deprecated = true]; reserved 5 to 6; reserved "OLD"; }
+        \\service Api { option deprecated = true; rpc Get (Person) returns (Person) { option deprecated = true; } }
     ;
     var file = try Parser.parse(allocator, source);
     defer file.deinit();
@@ -2470,11 +2510,14 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{12});
     try expectLocationPath(&file, &.{2});
     try expectLocationPath(&file, &.{ 3, 0 });
+    try expectLocationPath(&file, &.{8});
     try expectLocationPath(&file, &.{ 4, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 7 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 8, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 8, 0, 2 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 1 });
     try expectLocationPath(&file, &.{ 4, 0, 5, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 9, 0 });
@@ -2482,11 +2525,16 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{ 4, 0, 6, 0 });
     try expectLocationPath(&file, &.{ 7, 0 });
     try expectLocationPath(&file, &.{ 5, 0 });
+    try expectLocationPath(&file, &.{ 5, 0, 3 });
     try expectLocationPath(&file, &.{ 5, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 5, 0, 2, 1 });
+    try expectLocationPath(&file, &.{ 5, 0, 2, 1, 3 });
     try expectLocationPath(&file, &.{ 5, 0, 4, 0 });
     try expectLocationPath(&file, &.{ 5, 0, 5, 0 });
     try expectLocationPath(&file, &.{ 6, 0 });
+    try expectLocationPath(&file, &.{ 6, 0, 3 });
     try expectLocationPath(&file, &.{ 6, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 6, 0, 2, 0, 4 });
 }
 
 test "parser records source code info line comments" {
