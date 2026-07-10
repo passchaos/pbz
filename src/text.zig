@@ -64,9 +64,9 @@ fn writeMessageFields(
         if (entry.descriptor.kind == .map) {
             for (entry.values.items) |value| try writeMapEntry(file, registry, entry.descriptor, value, options, writer, depth);
         } else if (entry.descriptor.cardinality == .repeated) {
-            for (entry.values.items) |value| try writeField(file, registry, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
+            for (entry.values.items) |value| try writeField(file, registry, message.descriptor, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, value, options, writer, depth);
         } else if (entry.values.items.len != 0) {
-            try writeField(file, registry, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
+            try writeField(file, registry, message.descriptor, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
         }
     }
     for (message.unknown_fields.items) |*unknown| try writeUnknownRaw(unknown.data, options, writer, depth);
@@ -148,8 +148,8 @@ fn writeMapEntry(
     try writer.writeAll(" {\n");
     try validateTextFormatUtf8(file, field, .{ .scalar = map_type.key }, entry.key);
     try validateTextFormatUtf8(file, field, map_type.value.*, entry.value);
-    try writeField(file, registry, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
-    try writeField(file, registry, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
+    try writeField(file, registry, null, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
+    try writeField(file, registry, null, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
     try writeIndent(writer, options, depth);
     try writer.writeAll("}\n");
 }
@@ -157,6 +157,7 @@ fn writeMapEntry(
 fn writeField(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
+    current: ?*const schema.MessageDescriptor,
     field: ?*const schema.FieldDescriptor,
     name: []const u8,
     kind: schema.FieldKind,
@@ -169,10 +170,10 @@ fn writeField(
     switch (kind) {
         .message => |type_name| {
             if (value == .enumeration) {
-                if (registryEnumDescriptor(file, registry, field, type_name)) |_| {
+                if (registryEnumDescriptor(file, registry, current, field, type_name)) |_| {
                     try writeFieldName(file, field, name, writer);
                     try writer.writeAll(": ");
-                    try writeEnum(file, registry, type_name, value, options, writer);
+                    try writeEnum(file, registry, current, type_name, value, options, writer);
                     try writer.writeAll("\n");
                     return;
                 }
@@ -206,7 +207,7 @@ fn writeField(
             try validateTextFormatUtf8(file, field, kind, value);
             try writeFieldName(file, field, name, writer);
             try writer.writeAll(": ");
-            try writeValue(file, registry, kind, value, options, writer);
+            try writeValue(file, registry, current, kind, value, options, writer);
             try writer.writeAll("\n");
         },
     }
@@ -238,6 +239,7 @@ fn validateTextFormatUtf8(file: *const schema.FileDescriptor, field: ?*const sch
 fn writeValue(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
+    current: ?*const schema.MessageDescriptor,
     kind: schema.FieldKind,
     value: dynamic.Value,
     options: Options,
@@ -245,9 +247,9 @@ fn writeValue(
 ) Error!void {
     switch (kind) {
         .scalar => |scalar| try writeScalar(scalar, value, writer),
-        .enumeration => |name| try writeEnum(file, registry, name, value, options, writer),
+        .enumeration => |name| try writeEnum(file, registry, current, name, value, options, writer),
         .message => |name| {
-            if (value == .enumeration and registryEnumDescriptor(file, registry, null, name) != null) return try writeEnum(file, registry, name, value, options, writer);
+            if (value == .enumeration and registryEnumDescriptor(file, registry, current, null, name) != null) return try writeEnum(file, registry, current, name, value, options, writer);
             return error.TypeMismatch;
         },
         .group, .map => return error.TypeMismatch,
@@ -322,6 +324,7 @@ fn writeScalar(scalar: schema.ScalarType, value: dynamic.Value, writer: *std.Io.
 fn writeEnum(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
+    current: ?*const schema.MessageDescriptor,
     name: []const u8,
     value: dynamic.Value,
     options: Options,
@@ -332,7 +335,7 @@ fn writeEnum(
         else => return error.TypeMismatch,
     };
     if (options.enum_as_name) {
-        if (registryEnumDescriptor(file, registry, null, name) orelse file.findEnumDeep(name)) |enumeration| {
+        if (registryEnumDescriptor(file, registry, current, null, name) orelse file.findEnumDeep(name)) |enumeration| {
             for (enumeration.values.items) |enum_value| {
                 if (enum_value.number == number) return try writer.writeAll(enum_value.name);
             }
@@ -341,9 +344,16 @@ fn writeEnum(
     try writer.print("{d}", .{number});
 }
 
-fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
+fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: ?*const schema.FieldDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
+    if (std.mem.indexOfScalar(u8, name, '.') == null) {
+        if (current) |message| {
+            if (message.findEnumDeep(name)) |enumeration| return enumeration;
+        }
+        if (file.findEnumDeep(name)) |enumeration| return enumeration;
+    }
     if (registry) |reg| {
-        const scope = if (file.package.len != 0) file.package else null;
+        var scope_buf: [512]u8 = undefined;
+        const scope = if (current) |message| messageScope(file, message, &scope_buf) orelse if (file.package.len != 0) file.package else null else if (file.package.len != 0) file.package else null;
         if (reg.findEnumVisible(file, name, scope)) |enumeration| return enumeration;
         if (reg.findEnum(name, scope)) |enumeration| return enumeration;
         if (field) |descriptor| {
@@ -352,6 +362,29 @@ fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const 
     }
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     return file.findEnumDeep(trimmed);
+}
+
+fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (file.messages.items) |*message| {
+        if (message == current) return formatMessageScope(file.package, message.name, buf);
+        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (message.messages.items) |*nested| {
+        var path_buf: [512]u8 = undefined;
+        const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
+        if (nested == target) return formatMessageScope(package, nested_path, buf);
+        if (messageScopeInMessage(package, nested_path, nested, target, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
+    if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
+    return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
 }
 
 fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
@@ -448,6 +481,41 @@ test "text format formats imported enum names with registry" {
     const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &msg, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "kind: ADMIN\n", rendered);
+}
+
+test "text registry keeps local enum priority over imported enum" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; IMPORTED = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event {
+        \\  enum Kind { LOCAL = 7; }
+        \\  optional Kind kind = 1 [default = LOCAL];
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateFileReferences(&app);
+
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, app.findMessage("Event").?, "kind: LOCAL");
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 7), parsed.get("kind").?.values.items[0].enumeration);
+
+    const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualStrings("kind: LOCAL\n", rendered);
 }
 
 test "text registry resolves same-package imported unqualified fields" {
@@ -773,7 +841,7 @@ const TextParser = struct {
             .message => |type_name| type_name,
             else => return false,
         };
-        return registryEnumDescriptor(file, self.registry, field, name) != null or current.findEnumDeep(name) != null;
+        return registryEnumDescriptor(file, self.registry, current, field, name) != null or current.findEnumDeep(name) != null;
     }
 
     fn readFieldReference(self: *TextParser, descriptor: *const schema.MessageDescriptor) !*const schema.FieldDescriptor {
@@ -938,7 +1006,7 @@ const TextParser = struct {
     }
 
     fn parseMapEntryValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind) !dynamic.Value {
-        if (kind == .message and registryEnumDescriptor(file, self.registry, field, kind.message) == null) {
+        if (kind == .message and registryEnumDescriptor(file, self.registry, current, field, kind.message) == null) {
             _ = self.consume(':');
             const close = try self.consumeAggregateStart();
             const descriptor = resolveMessageDescriptorWithRegistry(file, self.registry, current, kind.message) orelse return error.TypeMismatch;
@@ -976,7 +1044,7 @@ const TextParser = struct {
             },
             .enumeration => |name| .{ .enumeration = defaultEnumNumber(file, registry, current, name) },
             .message => |name| blk: {
-                if (registryEnumDescriptor(file, registry, null, name) != null) break :blk .{ .enumeration = defaultEnumNumber(file, registry, current, name) };
+                if (registryEnumDescriptor(file, registry, current, null, name) != null) break :blk .{ .enumeration = defaultEnumNumber(file, registry, current, name) };
                 const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
                 const nested = try allocator.create(dynamic.DynamicMessage);
                 nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
@@ -991,7 +1059,7 @@ const TextParser = struct {
         return switch (kind) {
             .scalar => |scalar| try self.parseScalar(file, field, scalar),
             .enumeration => |name| try self.parseEnum(file, current, name),
-            .message => |name| if (registryEnumDescriptor(file, self.registry, field, name) != null) try self.parseEnum(file, current, name) else error.TypeMismatch,
+            .message => |name| if (registryEnumDescriptor(file, self.registry, current, field, name) != null) try self.parseEnum(file, current, name) else error.TypeMismatch,
             .group, .map => error.TypeMismatch,
         };
     }
@@ -1023,7 +1091,7 @@ const TextParser = struct {
 
     fn parseEnum(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) !dynamic.Value {
         const atom = try self.readAtom();
-        const enumeration = registryEnumDescriptor(file, self.registry, null, name) orelse current.findEnumDeep(name) orelse file.findEnumDeep(name);
+        const enumeration = registryEnumDescriptor(file, self.registry, current, null, name) orelse current.findEnumDeep(name) orelse file.findEnumDeep(name);
         if (std.fmt.parseInt(i32, atom, 10)) |number| {
             if (enumeration) |enum_desc| {
                 if (enumIsClosed(file, self.registry, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
@@ -1211,29 +1279,6 @@ fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, regi
     return resolveMessageDescriptor(file, current, name);
 }
 
-fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
-    for (file.messages.items) |*message| {
-        if (message == current) return formatMessageScope(file.package, message.name, buf);
-        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
-    }
-    return null;
-}
-
-fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
-    for (message.messages.items) |*nested| {
-        var path_buf: [512]u8 = undefined;
-        const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
-        if (nested == target) return formatMessageScope(package, nested_path, buf);
-        if (messageScopeInMessage(package, nested_path, nested, target, buf)) |path| return path;
-    }
-    return null;
-}
-
-fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
-    if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
-    return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
-}
-
 fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
     const reg = registry orelse return default_file;
     return reg.fileContainingEnum(descriptor) orelse default_file;
@@ -1245,7 +1290,7 @@ fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_m
 }
 
 fn defaultEnumNumber(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) i32 {
-    const enumeration = registryEnumDescriptor(file, registry, null, name) orelse current.findEnumDeep(name) orelse file.findEnumDeep(name) orelse return 0;
+    const enumeration = registryEnumDescriptor(file, registry, current, null, name) orelse current.findEnumDeep(name) orelse file.findEnumDeep(name) orelse return 0;
     if (enumeration.values.items.len == 0) return 0;
     return enumeration.values.items[0].number;
 }
