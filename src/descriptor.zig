@@ -1919,21 +1919,33 @@ fn descriptorNamesMatch(a: []const u8, b: []const u8) bool {
 
 fn descriptorExtensionTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
-        .message, .enumeration, .group => |type_name| descriptorDeclarationTypeMatches(package, declared_type, type_name),
+        .message, .enumeration, .group => |type_name| descriptorDeclarationTypeMatches(package, field, declared_type, type_name),
         .scalar => |scalar| std.mem.eql(u8, declared_type, schema.scalarTypeName(scalar)),
         .map => false,
     };
 }
 
-fn descriptorDeclarationTypeMatches(package: []const u8, declaration: []const u8, type_name: []const u8) bool {
+fn descriptorDeclarationTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declaration: []const u8, type_name: []const u8) bool {
     const declared = descriptorNormalizeName(declaration);
     const actual = descriptorNormalizeName(type_name);
     if (std.mem.eql(u8, declared, actual)) return true;
     if (package.len == 0 or std.mem.startsWith(u8, type_name, ".")) return false;
-    return declared.len == package.len + 1 + actual.len and
+    if (declared.len == package.len + 1 + actual.len and
         std.mem.eql(u8, declared[0..package.len], package) and
         declared[package.len] == '.' and
-        std.mem.eql(u8, declared[package.len + 1 ..], actual);
+        std.mem.eql(u8, declared[package.len + 1 ..], actual)) return true;
+    const full_name = schema.extensionFullName(field);
+    const scope = if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |idx| full_name[0..idx] else return false;
+    if (declared.len == scope.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..scope.len], scope) and
+        declared[scope.len] == '.' and
+        std.mem.eql(u8, declared[scope.len + 1 ..], actual)) return true;
+    return package.len != 0 and declared.len == package.len + 1 + scope.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..package.len], package) and
+        declared[package.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 ..][0..scope.len], scope) and
+        declared[package.len + 1 + scope.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 + scope.len + 1 ..], actual);
 }
 
 pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) Error![]schema.FileDescriptor {

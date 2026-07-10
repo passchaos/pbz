@@ -769,21 +769,33 @@ fn namesMatch(a: []const u8, b: []const u8) bool {
 
 fn extensionTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
-        .message, .enumeration, .group => |type_name| declarationTypeMatches(package, declared_type, type_name),
+        .message, .enumeration, .group => |type_name| declarationTypeMatches(package, field, declared_type, type_name),
         .scalar => |scalar| std.mem.eql(u8, declared_type, schema.scalarTypeName(scalar)),
         .map => false,
     };
 }
 
-fn declarationTypeMatches(package: []const u8, declaration: []const u8, type_name: []const u8) bool {
+fn declarationTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declaration: []const u8, type_name: []const u8) bool {
     const declared = normalizeName(declaration);
     const actual = normalizeName(type_name);
     if (std.mem.eql(u8, declared, actual)) return true;
     if (package.len == 0 or std.mem.startsWith(u8, type_name, ".")) return false;
-    return declared.len == package.len + 1 + actual.len and
+    if (declared.len == package.len + 1 + actual.len and
         std.mem.eql(u8, declared[0..package.len], package) and
         declared[package.len] == '.' and
-        std.mem.eql(u8, declared[package.len + 1 ..], actual);
+        std.mem.eql(u8, declared[package.len + 1 ..], actual)) return true;
+    const full_name = schema.extensionFullName(field);
+    const scope = if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |idx| full_name[0..idx] else return false;
+    if (declared.len == scope.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..scope.len], scope) and
+        declared[scope.len] == '.' and
+        std.mem.eql(u8, declared[scope.len + 1 ..], actual)) return true;
+    return package.len != 0 and declared.len == package.len + 1 + scope.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..package.len], package) and
+        declared[package.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 ..][0..scope.len], scope) and
+        declared[package.len + 1 + scope.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 + scope.len + 1 ..], actual);
 }
 
 fn findInFile(file: *const schema.FileDescriptor, relative_name: []const u8) ?TypeRef {
@@ -1277,7 +1289,7 @@ test "registry enforces declaration coverage when any declaration exists" {
     var wrong_package = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package other;
-        \\import "host.proto";
+        \\import "host-type.proto";
         \\message Ext {}
         \\extend demo.Host { optional Ext ext = 100; }
     );
@@ -1294,12 +1306,23 @@ test "registry enforces declaration coverage when any declaration exists" {
     );
     defer wrong_type_package.deinit();
     wrong_type_package.name = "wrong-type-package.proto";
-    wrong_type_package.extensions.items[0].full_name = "demo.ext";
-    // Reuse a host declaration that expects .demo.Ext while this extension's
-    // relative Ext resolves under package other.
+    var host_for_type = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".other.ext" type: ".demo.Ext" }
+        \\  ];
+        \\}
+        \\message Ext {}
+    );
+    defer host_for_type.deinit();
+    host_for_type.name = "host-type.proto";
+    // The declaration name matches .other.ext, but the extension's relative
+    // Ext resolves under package other rather than demo.
     var registry_for_type = Registry.init(allocator);
     defer registry_for_type.deinit();
-    try registry_for_type.addFile(&host);
+    try registry_for_type.addFile(&host_for_type);
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry_for_type.addFile(&wrong_type_package));
 }
 
