@@ -43,10 +43,20 @@ pub const Registry = struct {
     }
 
     pub fn validateLoadedFiles(self: *const Registry) Error!void {
+        try self.validateLoadedFileNames();
         try self.validateLoadedTypeConflicts();
         try self.validateLoadedExtensionConflicts();
         try self.validateExtensionDeclarations();
         try self.validateAllFileReferences();
+    }
+
+    fn validateLoadedFileNames(self: *const Registry) Error!void {
+        for (self.files.items, 0..) |file, i| {
+            if (file.name.len == 0) continue;
+            for (self.files.items[i + 1 ..]) |other| {
+                if (other.name.len != 0 and std.mem.eql(u8, file.name, other.name)) return error.DuplicateSymbol;
+            }
+        }
     }
 
     fn validateLoadedTypeConflicts(self: *const Registry) Error!void {

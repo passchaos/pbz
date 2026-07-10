@@ -3803,6 +3803,26 @@ test "descriptor set rejects extension declaration and MessageSet shape violatio
     try std.testing.expectError(error.InvalidExtensionDeclaration, decodeFileDescriptorSet(allocator, messageset_bytes));
 }
 
+test "descriptor set rejects duplicate file names" {
+    const allocator = std.testing.allocator;
+    var first = schema.FileDescriptor.init(allocator);
+    defer first.deinit();
+    first.setSyntax(.proto2);
+    first.name = "same.proto";
+    try first.messages.append(allocator, .{ .name = "First" });
+
+    var second = schema.FileDescriptor.init(allocator);
+    defer second.deinit();
+    second.setSyntax(.proto2);
+    second.name = "same.proto";
+    try second.messages.append(allocator, .{ .name = "Second" });
+
+    const files = [_]*const schema.FileDescriptor{ &first, &second };
+    const bytes = try encodeFileDescriptorSet(allocator, &files);
+    defer allocator.free(bytes);
+    try std.testing.expectError(error.DuplicateSymbol, decodeFileDescriptorSet(allocator, bytes));
+}
+
 test "descriptor set rejects duplicate symbols and extension conflicts" {
     const allocator = std.testing.allocator;
     var first = schema.FileDescriptor.init(allocator);
