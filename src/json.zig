@@ -2368,7 +2368,7 @@ test "json maps Timestamp and Duration messages as well-known strings" {
 
     const rendered = try stringifyAlloc(allocator, &file, &event, .{});
     defer allocator.free(rendered);
-    try std.testing.expectEqualSlices(u8, "{\"at\":\"2020-01-01T00:00:00.123Z\",\"span\":\"-3.25s\"}", rendered);
+    try std.testing.expectEqualSlices(u8, "{\"at\":\"2020-01-01T00:00:00.123Z\",\"span\":\"-3.250s\"}", rendered);
 
     var parsed = try parseAlloc(allocator, &file, event_desc, rendered, .{});
     defer parsed.deinit();

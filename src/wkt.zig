@@ -58,13 +58,7 @@ pub const Timestamp = struct {
         const minute = (seconds_of_day % 3600) / 60;
         const second = seconds_of_day % 60;
         try writer.print("\"{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}", .{ @as(u32, @intCast(date.year)), date.month, date.day, hour, minute, second });
-        if (self.nanos != 0) {
-            var frac: [9]u8 = undefined;
-            _ = std.fmt.bufPrint(&frac, "{d:0>9}", .{@abs(self.nanos)}) catch unreachable;
-            var len: usize = frac.len;
-            while (len > 0 and frac[len - 1] == '0') len -= 1;
-            try writer.print(".{s}", .{frac[0..len]});
-        }
+        if (self.nanos != 0) try writeCanonicalFraction(@intCast(self.nanos), writer);
         try writer.writeAll("Z\"");
     }
 
@@ -115,6 +109,21 @@ pub const Timestamp = struct {
         return out;
     }
 };
+
+fn writeCanonicalFraction(nanos: u32, writer: *std.Io.Writer) !void {
+    var frac: [9]u8 = undefined;
+    _ = std.fmt.bufPrint(&frac, "{d:0>9}", .{nanos}) catch unreachable;
+    var len: usize = frac.len;
+    while (len > 0 and frac[len - 1] == '0') len -= 1;
+    if (len <= 3) {
+        len = 3;
+    } else if (len <= 6) {
+        len = 6;
+    } else {
+        len = 9;
+    }
+    try writer.print(".{s}", .{frac[0..len]});
+}
 
 const Date = struct { year: i32, month: u8, day: u8 };
 
@@ -186,6 +195,19 @@ test "timestamp json parses timezone offsets and rejects invalid date times" {
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T00:00:00+24:00\""));
 }
 
+test "wkt json emits canonical fractional digits" {
+    const allocator = std.testing.allocator;
+    const ts_micros = try (Timestamp{ .seconds = 0, .nanos = 120_000 }).jsonStringifyAlloc(allocator);
+    defer allocator.free(ts_micros);
+    try std.testing.expectEqualStrings("1970-01-01T00:00:00.000120Z", ts_micros[1 .. ts_micros.len - 1]);
+    const ts_nanos = try (Timestamp{ .seconds = 0, .nanos = 123_456_789 }).jsonStringifyAlloc(allocator);
+    defer allocator.free(ts_nanos);
+    try std.testing.expectEqualStrings("1970-01-01T00:00:00.123456789Z", ts_nanos[1 .. ts_nanos.len - 1]);
+    const duration = try (Duration{ .seconds = 1, .nanos = 250_000_000 }).jsonStringifyAlloc(allocator);
+    defer allocator.free(duration);
+    try std.testing.expectEqualStrings("1.250s", duration[1 .. duration.len - 1]);
+}
+
 pub const Duration = struct {
     seconds: i64 = 0,
     nanos: i32 = 0,
@@ -236,13 +258,7 @@ pub const Duration = struct {
         try writer.writeAll("\"");
         if (self.seconds < 0 or self.nanos < 0) try writer.writeAll("-");
         try writer.print("{d}", .{@abs(self.seconds)});
-        if (self.nanos != 0) {
-            var frac: [9]u8 = undefined;
-            _ = std.fmt.bufPrint(&frac, "{d:0>9}", .{@abs(self.nanos)}) catch unreachable;
-            var len: usize = frac.len;
-            while (len > 0 and frac[len - 1] == '0') len -= 1;
-            try writer.print(".{s}", .{frac[0..len]});
-        }
+        if (self.nanos != 0) try writeCanonicalFraction(@intCast(@abs(self.nanos)), writer);
         try writer.writeAll("s\"");
     }
 
@@ -292,7 +308,7 @@ test "duration wire and json roundtrip" {
 
     const json = try duration.jsonStringifyAlloc(allocator);
     defer allocator.free(json);
-    try std.testing.expectEqualSlices(u8, "\"-3.25s\"", json);
+    try std.testing.expectEqualSlices(u8, "\"-3.250s\"", json);
     const parsed = try Duration.jsonParse(json);
     try std.testing.expectEqual(duration.seconds, parsed.seconds);
     try std.testing.expectEqual(duration.nanos, parsed.nanos);
