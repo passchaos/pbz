@@ -161,6 +161,18 @@ test "memory loader rejects unresolved type references" {
     try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "root.proto"));
 }
 
+test "memory loader rejects unresolved service method types" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("root.proto",
+        \\syntax = "proto2";
+        \\message Root {}
+        \\service Api { rpc Get (MissingRequest) returns (Root); }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "root.proto"));
+}
+
 test "memory loader resolves imported enum defaults" {
     const allocator = std.testing.allocator;
     var tree = MemorySourceTree.init(allocator);
