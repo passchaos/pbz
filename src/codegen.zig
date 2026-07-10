@@ -9126,6 +9126,52 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
+test "codegen with registry resolves same-package imported unqualified refs" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message User { optional int32 id = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event {
+        \\  optional User user = 1;
+        \\  optional Kind kind = 2 [default = ADMIN];
+        \\  map<string, User> keyed = 3;
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateFileReferences(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Kind\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".decode(allocator, self.@\"user\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".decode(allocator, entry.value)") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
 test "codegen with registry follows public import chains for message refs" {
     const allocator = std.testing.allocator;
     var leaf = try @import("parser.zig").Parser.parse(allocator,
