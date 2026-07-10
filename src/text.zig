@@ -872,8 +872,8 @@ const TextParser = struct {
             } else return error.UnknownField;
             self.consumeSeparator();
         }
-        var final_key = key orelse return error.TypeMismatch;
-        var final_value = value orelse return error.TypeMismatch;
+        var final_key = key orelse try defaultTextValue(self.allocator, file, self.registry, current, .{ .scalar = map_type.key });
+        var final_value = value orelse try defaultTextValue(self.allocator, file, self.registry, current, map_type.value.*);
         key = null;
         value = null;
         errdefer {
@@ -901,6 +901,37 @@ const TextParser = struct {
         }
         try self.expect(':');
         return try self.parseValue(file, current, field, kind);
+    }
+
+    fn defaultTextValue(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) !dynamic.Value {
+        return switch (kind) {
+            .scalar => |scalar| switch (scalar) {
+                .double => .{ .double = 0 },
+                .float => .{ .float = 0 },
+                .int32 => .{ .int32 = 0 },
+                .int64 => .{ .int64 = 0 },
+                .uint32 => .{ .uint32 = 0 },
+                .uint64 => .{ .uint64 = 0 },
+                .sint32 => .{ .sint32 = 0 },
+                .sint64 => .{ .sint64 = 0 },
+                .fixed32 => .{ .fixed32 = 0 },
+                .fixed64 => .{ .fixed64 = 0 },
+                .sfixed32 => .{ .sfixed32 = 0 },
+                .sfixed64 => .{ .sfixed64 = 0 },
+                .bool => .{ .boolean = false },
+                .string => .{ .string = try allocator.dupe(u8, "") },
+                .bytes => .{ .bytes = try allocator.dupe(u8, "") },
+            },
+            .enumeration => |name| .{ .enumeration = defaultEnumNumber(file, registry, current, name) },
+            .message => |name| blk: {
+                if (registryEnumDescriptor(file, registry, null, name) != null) break :blk .{ .enumeration = defaultEnumNumber(file, registry, current, name) };
+                const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
+                const nested = try allocator.create(dynamic.DynamicMessage);
+                nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
+                break :blk .{ .message = nested };
+            },
+            .group, .map => error.TypeMismatch,
+        };
     }
 
     fn parseValue(self: *TextParser, file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind) !dynamic.Value {
@@ -1133,6 +1164,12 @@ fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_m
     return enumDescriptorFile(file, registry, enumeration).features.enum_type == .closed;
 }
 
+fn defaultEnumNumber(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) i32 {
+    const enumeration = registryEnumDescriptor(file, registry, null, name) orelse current.findEnumDeep(name) orelse file.findEnumDeep(name) orelse return 0;
+    if (enumeration.values.items.len == 0) return 0;
+    return enumeration.values.items[0].number;
+}
+
 fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
     for (enumeration.values.items) |value| {
         if (value.number == number) return true;
@@ -1221,6 +1258,47 @@ test "text format parses dynamic messages" {
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
     try std.testing.expectEqualSlices(u8, "kid", msg.get("child").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 1), msg.get("kind").?.values.items[0].enumeration);
+}
+
+test "text format fills default map entry key and value" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\enum Kind { FIRST = 7; SECOND = 8; }
+        \\message Child { optional int32 id = 1; }
+        \\message M {
+        \\  map<string, int32> missing_value = 1;
+        \\  map<int32, string> missing_key_value = 2;
+        \\  map<bool, Kind> enum_value = 3;
+        \\  map<string, Child> message_value = 4;
+        \\}
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\missing_value { key: "present" }
+        \\missing_key_value {}
+        \\enum_value { key: true }
+        \\message_value { key: "child" }
+    );
+    defer msg.deinit();
+
+    const missing_value = msg.get("missing_value").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("present", missing_value.key.string);
+    try std.testing.expectEqual(@as(i32, 0), missing_value.value.int32);
+
+    const missing_key_value = msg.get("missing_key_value").?.values.items[0].map_entry;
+    try std.testing.expectEqual(@as(i32, 0), missing_key_value.key.int32);
+    try std.testing.expectEqualStrings("", missing_key_value.value.string);
+
+    const enum_value = msg.get("enum_value").?.values.items[0].map_entry;
+    try std.testing.expect(enum_value.key.boolean);
+    try std.testing.expectEqual(@as(i32, 7), enum_value.value.enumeration);
+
+    const message_value = msg.get("message_value").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("child", message_value.key.string);
+    try std.testing.expectEqual(@as(usize, 0), message_value.value.message.fields.items.len);
 }
 
 test "text format parses protobuf special float values" {
