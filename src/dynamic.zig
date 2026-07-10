@@ -3497,6 +3497,36 @@ test "dynamic MessageSet accepts payload before type id and preserves unknown it
     try std.testing.expectEqualSlices(u8, expected.slice(), deterministic);
 }
 
+test "dynamic MessageSet rejects invalid type ids" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+    );
+    defer file.deinit();
+    const host = file.findMessage("Host").?;
+
+    var zero = wire.Writer.init(allocator);
+    defer zero.deinit();
+    try zero.writeTag(1, .start_group);
+    try zero.writeUInt32(2, 0);
+    try zero.writeMessage(3, &.{});
+    try zero.writeTag(1, .end_group);
+    var zero_msg = DynamicMessage.init(allocator, host);
+    defer zero_msg.deinit();
+    try std.testing.expectError(error.InvalidFieldNumber, zero_msg.decode(&file, zero.slice()));
+
+    var too_large = wire.Writer.init(allocator);
+    defer too_large.deinit();
+    try too_large.writeTag(1, .start_group);
+    try too_large.writeUInt32(2, @as(u32, std.math.maxInt(wire.FieldNumber)) + 1);
+    try too_large.writeMessage(3, &.{});
+    try too_large.writeTag(1, .end_group);
+    var too_large_msg = DynamicMessage.init(allocator, host);
+    defer too_large_msg.deinit();
+    try std.testing.expectError(error.InvalidFieldNumber, too_large_msg.decode(&file, too_large.slice()));
+}
+
 test "dynamic closed enum unknown values are preserved as unknown fields" {
     const allocator = std.testing.allocator;
     var file = try parser.Parser.parse(allocator,
