@@ -64,7 +64,9 @@ pub const Timestamp = struct {
 
     pub fn jsonParse(text: []const u8) !Timestamp {
         const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
-        if (unquoted.len < 20 or unquoted[4] != '-' or unquoted[7] != '-' or unquoted[10] != 'T' or unquoted[13] != ':' or unquoted[16] != ':') return error.InvalidTimestamp;
+        if (unquoted.len < 20 or unquoted[4] != '-' or unquoted[7] != '-' or
+            (unquoted[10] != 'T' and unquoted[10] != 't') or
+            unquoted[13] != ':' or unquoted[16] != ':') return error.InvalidTimestamp;
         const year = std.fmt.parseInt(i32, unquoted[0..4], 10) catch return error.InvalidTimestamp;
         const month = std.fmt.parseInt(u8, unquoted[5..7], 10) catch return error.InvalidTimestamp;
         const day = std.fmt.parseInt(u8, unquoted[8..10], 10) catch return error.InvalidTimestamp;
@@ -89,7 +91,7 @@ pub const Timestamp = struct {
             }
         }
         var offset_seconds: i64 = 0;
-        if (index < unquoted.len and unquoted[index] == 'Z') {
+        if (index < unquoted.len and (unquoted[index] == 'Z' or unquoted[index] == 'z')) {
             index += 1;
         } else if (index + 6 <= unquoted.len and (unquoted[index] == '+' or unquoted[index] == '-')) {
             const sign: i64 = if (unquoted[index] == '+') 1 else -1;
@@ -189,6 +191,11 @@ test "timestamp json parses timezone offsets and rejects invalid date times" {
     try std.testing.expectEqual(@as(i64, 1_577_836_800), plus.seconds);
     const minus = try Timestamp.jsonParse("\"2019-12-31T19:30:00-04:30\"");
     try std.testing.expectEqual(@as(i64, 1_577_836_800), minus.seconds);
+    const lower_tz = try Timestamp.jsonParse("\"2020-01-01t00:00:00z\"");
+    try std.testing.expectEqual(@as(i64, 1_577_836_800), lower_tz.seconds);
+    const mixed_tz = try Timestamp.jsonParse("\"2020-01-01t00:00:00.123Z\"");
+    try std.testing.expectEqual(@as(i64, 1_577_836_800), mixed_tz.seconds);
+    try std.testing.expectEqual(@as(i32, 123_000_000), mixed_tz.nanos);
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-13-01T00:00:00Z\""));
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-02-30T00:00:00Z\""));
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T24:00:00Z\""));
