@@ -1885,13 +1885,13 @@ fn validateDecodedExtensionDeclaration(file: *const schema.FileDescriptor, field
     for (extendee.extension_ranges.items) |range| {
         const end = range.end orelse std.math.maxInt(i64);
         if (field.number >= range.start and field.number < end) {
-            return try validateDecodedExtensionFieldDeclaration(field, range);
+            return try validateDecodedExtensionFieldDeclaration(file.package, field, range);
         }
     }
     return error.InvalidFieldType;
 }
 
-fn validateDecodedExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
+fn validateDecodedExtensionFieldDeclaration(package: []const u8, field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
     var matching_declaration: ?schema.ExtensionDeclaration = null;
     for (range.declarations.items) |declaration| {
         if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
@@ -1901,7 +1901,7 @@ fn validateDecodedExtensionFieldDeclaration(field: *const schema.FieldDescriptor
         return;
     };
     if (declaration.reserved) return error.InvalidFieldType;
-    if (declaration.full_name.len != 0 and !descriptorNamesMatch(declaration.full_name, schema.extensionFullName(field))) return error.InvalidFieldType;
+    if (declaration.full_name.len != 0 and !schema.extensionDeclarationNameMatches(package, declaration.full_name, field)) return error.InvalidFieldType;
     if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
     if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
     if (declaration.type_name.len != 0 and !descriptorExtensionTypeMatches(field, declaration.type_name)) return error.InvalidFieldType;
@@ -6974,6 +6974,21 @@ test "descriptor rejects extensions that violate decoded declarations" {
         try file.messages.append(allocator, host);
         try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
         const bytes = try encodeFileDescriptorProto(allocator, &file, "singular-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        file.package = "other";
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".demo.tag", .type_name = "int32" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "wrong-package-ext-decl.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }

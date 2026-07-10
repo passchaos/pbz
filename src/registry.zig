@@ -201,7 +201,7 @@ pub const Registry = struct {
         for (extendee.extension_ranges.items) |range| {
             const end = range.end orelse std.math.maxInt(i64);
             if (field.number >= range.start and field.number < end) {
-                try validateExtensionFieldDeclaration(field, range);
+                try validateExtensionFieldDeclaration(owner.package, field, range);
                 try validateMessageSetExtensionShape(field, extendee);
                 return;
             }
@@ -672,7 +672,7 @@ fn extensionDeclarationTypeNameValid(type_name: []const u8) bool {
     return schema.declarationTypeNameIsScalar(type_name) or schema.declarationSymbolIsQualified(type_name);
 }
 
-fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
+fn validateExtensionFieldDeclaration(package: []const u8, field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
     var matching_declaration: ?schema.ExtensionDeclaration = null;
     for (range.declarations.items) |declaration| {
         if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
@@ -682,7 +682,7 @@ fn validateExtensionFieldDeclaration(field: *const schema.FieldDescriptor, range
         return;
     };
     if (declaration.reserved) return error.InvalidExtensionDeclaration;
-    if (declaration.full_name.len != 0 and !namesMatch(declaration.full_name, schema.extensionFullName(field))) return error.InvalidExtensionDeclaration;
+    if (declaration.full_name.len != 0 and !schema.extensionDeclarationNameMatches(package, declaration.full_name, field)) return error.InvalidExtensionDeclaration;
     if (declaration.repeated and field.cardinality != .repeated) return error.InvalidExtensionDeclaration;
     if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidExtensionDeclaration;
     if (declaration.type_name.len != 0 and !extensionTypeMatches(field, declaration.type_name)) return error.InvalidExtensionDeclaration;
@@ -1262,6 +1262,17 @@ test "registry enforces declaration coverage when any declaration exists" {
     defer registry.deinit();
     try registry.addFile(&host);
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&extension));
+
+    var wrong_package = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package other;
+        \\import "host.proto";
+        \\message Ext {}
+        \\extend demo.Host { optional Ext ext = 100; }
+    );
+    defer wrong_package.deinit();
+    wrong_package.name = "wrong-package.proto";
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&wrong_package));
 }
 
 test "registry rejects cross-file extension declaration mismatches" {
