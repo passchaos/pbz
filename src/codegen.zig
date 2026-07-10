@@ -7613,8 +7613,8 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
         try writer.writeAll(";\n");
     }
     if (extensionExtendeeHasTypeRef(ctx, field)) try writeExtensionFacadeHelpers(ctx, field, writer, depth + 1);
-    try writeExtensionWriteHelpers(file, field, writer, depth + 1);
-    try writeExtensionDecodeHelpers(file, field, writer, depth + 1);
+    try writeExtensionWriteHelpers(ctx, field, writer, depth + 1);
+    try writeExtensionDecodeHelpers(ctx, field, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n");
 }
@@ -7941,12 +7941,13 @@ fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const 
     }
 }
 
-fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeExtensionWriteHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub fn write(w: *pbz.Writer, value: ");
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(") !void {\n");
-    if (extensionUsesMessageSet(file, field)) {
+    if (extensionUsesMessageSet(ctx, field)) {
         try indent(writer, depth + 1);
         try writer.writeAll("try w.writeTag(1, .start_group);\n");
         try indent(writer, depth + 1);
@@ -8097,14 +8098,15 @@ fn writeExtensionWriteHelpers(file: *const schema.FileDescriptor, field: *const 
     }
 }
 
-fn extensionUsesMessageSet(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
+fn extensionUsesMessageSet(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
     if (field.kind != .message) return false;
     const extendee = field.extendee orelse return false;
-    const message = file.findMessageDeep(extendee) orelse return false;
-    return message.messageSetWireFormat();
+    const ref = resolveMessageReference(ctx, extendee) orelse return false;
+    return ref.message.messageSetWireFormat();
 }
 
-fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeValue(r: *pbz.Reader) !");
     try writer.writeAll(extensionSingleZigType(field.kind));
@@ -8128,7 +8130,7 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
     try writer.writeAll("var r = pbz.Reader.init(raw);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const tag = (try r.nextTag()) orelse return null;\n");
-    if (extensionUsesMessageSet(file, field)) {
+    if (extensionUsesMessageSet(ctx, field)) {
         try indent(writer, depth + 1);
         try writer.writeAll("if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);\n");
         try indent(writer, depth + 1);
@@ -8253,7 +8255,7 @@ fn writeExtensionDecodeHelpers(file: *const schema.FileDescriptor, field: *const
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
-    if (extensionUsesMessageSet(file, field)) {
+    if (extensionUsesMessageSet(ctx, field)) {
         try indent(writer, depth);
         try writer.writeAll("pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8 {\n");
         try indent(writer, depth + 1);
@@ -10637,6 +10639,38 @@ test "codegen emits MessageSet extension write helper" {
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
     defer tree.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen detects imported MessageSet extension extendees" {
+    const allocator = std.testing.allocator;
+    var host = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+    );
+    defer host.deinit();
+    host.name = "host.proto";
+    var ext = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "host.proto";
+        \\message Note { optional int32 id = 1; }
+        \\extend common.Host { optional Note note = 100; }
+    );
+    defer ext.deinit();
+    ext.name = "ext.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&host);
+    try registry.addFile(&ext);
+
+    const content = try generateZigFileWithRegistry(allocator, &ext, &registry);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .start_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeUInt32(2, 100);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(3, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
 }
 
 test "codegen emits service metadata and stubs" {
