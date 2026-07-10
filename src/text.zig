@@ -4,7 +4,7 @@ const dynamic = @import("dynamic.zig");
 const registry_mod = @import("registry.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.Io.Writer.Error || wire.Error || error{TypeMismatch};
+pub const Error = std.Io.Writer.Error || wire.Error || error{ TypeMismatch, InvalidUtf8 };
 
 pub const Options = struct {
     indent: []const u8 = "  ",
@@ -146,6 +146,8 @@ fn writeMapEntry(
     try writeIndent(writer, options, depth);
     try writeFieldName(file, field, field.name, writer);
     try writer.writeAll(" {\n");
+    try validateTextFormatUtf8(file, field, .{ .scalar = map_type.key }, entry.key);
+    try validateTextFormatUtf8(file, field, map_type.value.*, entry.value);
     try writeField(file, registry, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
     try writeField(file, registry, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
     try writeIndent(writer, options, depth);
@@ -201,6 +203,7 @@ fn writeField(
             else => return error.TypeMismatch,
         },
         else => {
+            try validateTextFormatUtf8(file, field, kind, value);
             try writeFieldName(file, field, name, writer);
             try writer.writeAll(": ");
             try writeValue(file, registry, kind, value, options, writer);
@@ -222,6 +225,14 @@ fn writeFieldName(file: *const schema.FileDescriptor, field: ?*const schema.Fiel
         try writer.print("{s}.{s}", .{ file.package, full_name });
     }
     try writer.writeByte(']');
+}
+
+fn validateTextFormatUtf8(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value: dynamic.Value) Error!void {
+    if (fieldUtf8Validation(file, field) != .verify) return;
+    switch (kind) {
+        .scalar => |scalar| if (scalar == .string and value == .string and !std.unicode.utf8ValidateSlice(value.string)) return error.InvalidUtf8,
+        else => {},
+    }
 }
 
 fn writeValue(
@@ -1397,6 +1408,48 @@ test "text format validates string utf8 according to syntax and features" {
         try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed.get("labels").?.values.items[0].map_entry.key.string);
         try std.testing.expectEqualSlices(u8, &.{0xc0}, relaxed.get("labels").?.values.items[0].map_entry.value.string);
         try std.testing.expectError(error.InvalidUtf8, parseAlloc(allocator, &file, desc, "strict: '\xc0'"));
+    }
+}
+
+test "text format formatting validates string utf8 according to syntax and features" {
+    const allocator = std.testing.allocator;
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\syntax = "proto3";
+            \\message M { string name = 1; repeated string tags = 2; map<string, string> labels = 3; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = dynamic.DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+        try std.testing.expectError(error.InvalidUtf8, formatAlloc(allocator, &file, &msg, .{}));
+
+        var repeated = dynamic.DynamicMessage.init(allocator, desc);
+        defer repeated.deinit();
+        try repeated.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+        try std.testing.expectError(error.InvalidUtf8, formatAlloc(allocator, &file, &repeated, .{}));
+
+        var keyed = dynamic.DynamicMessage.init(allocator, desc);
+        defer keyed.deinit();
+        const entry = try allocator.create(dynamic.MapEntry);
+        entry.* = .{ .key = .{ .string = try allocator.dupe(u8, &.{0xc0}) }, .value = .{ .string = try allocator.dupe(u8, "ok") } };
+        try keyed.add(desc.findField("labels").?, .{ .map_entry = entry });
+        try std.testing.expectError(error.InvalidUtf8, formatAlloc(allocator, &file, &keyed, .{}));
+    }
+    {
+        var file = try @import("parser.zig").Parser.parse(allocator,
+            \\syntax = "proto2";
+            \\message M { optional string name = 1; }
+        );
+        defer file.deinit();
+        const desc = file.findMessage("M").?;
+        var msg = dynamic.DynamicMessage.init(allocator, desc);
+        defer msg.deinit();
+        try msg.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+        const rendered = try formatAlloc(allocator, &file, &msg, .{});
+        defer allocator.free(rendered);
+        try std.testing.expectEqualStrings("name: \"\\300\"\n", rendered);
     }
 }
 
