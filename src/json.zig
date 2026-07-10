@@ -1002,7 +1002,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
         const encoded = try payload.encodedDeterministicWithRegistry(payload_file, registry);
         defer allocator.free(encoded);
         try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
-    }
+    } else return error.TypeMismatch;
     return message;
 }
 
@@ -2545,6 +2545,7 @@ test "json parses Any message with type and base64 value" {
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"value\":\"YWJj\"}}", .{}));
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"\",\"value\":\"YWJj\"}}", .{}));
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/\",\"value\":\"YWJj\"}}", .{}));
+    try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/unknown.Msg\"}}", .{}));
 }
 
 test "json expands Any message payloads when type is known" {
