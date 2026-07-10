@@ -1937,7 +1937,63 @@ pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) 
             try files.append(allocator, try decodeFileDescriptorProto(allocator, try reader.readBytes()));
         } else try reader.skipValue(tag);
     }
+    try validateDecodedFileDescriptorSetEnumDefaults(allocator, files.items);
     return try files.toOwnedSlice(allocator);
+}
+
+fn validateDecodedFileDescriptorSetEnumDefaults(allocator: std.mem.Allocator, files: []schema.FileDescriptor) Error!void {
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    for (files) |*file| try registry.files.append(allocator, file);
+    for (files) |*file| {
+        for (file.extensions.items) |*field| try validateDecodedSetFieldEnumDefault(&registry, file, field, if (file.package.len == 0) null else file.package);
+        for (file.messages.items) |*message| {
+            const scope = try descriptorMessageScopeName(allocator, file, message.name);
+            defer allocator.free(scope);
+            try validateDecodedSetMessageEnumDefaults(allocator, &registry, file, message, scope);
+        }
+    }
+}
+
+fn validateDecodedSetMessageEnumDefaults(allocator: std.mem.Allocator, registry: *const registry_mod.Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, scope: []const u8) Error!void {
+    for (message.fields.items) |*field| try validateDecodedSetFieldEnumDefault(registry, file, field, scope);
+    for (message.extensions.items) |*field| try validateDecodedSetFieldEnumDefault(registry, file, field, scope);
+    for (message.messages.items) |*nested| {
+        const full_scope = try joinScope(allocator, scope, nested.name);
+        defer allocator.free(full_scope);
+        try validateDecodedSetMessageEnumDefaults(allocator, registry, file, nested, full_scope);
+    }
+}
+
+fn validateDecodedSetFieldEnumDefault(registry: *const registry_mod.Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scope: ?[]const u8) Error!void {
+    const value = field.default_value orelse return;
+    const enum_name = switch (field.kind) {
+        .enumeration => |name| name,
+        else => return,
+    };
+    const enumeration = registry.findEnumVisible(file, enum_name, scope) orelse return;
+    if (!decodedEnumDefaultMatches(enumeration, value)) return error.InvalidFieldType;
+}
+
+fn decodedEnumDefaultMatches(enumeration: *const schema.EnumDescriptor, value: schema.OptionValue) bool {
+    return switch (value) {
+        .integer => |number| number >= std.math.minInt(i32) and number <= std.math.maxInt(i32) and decodedEnumHasNumber(enumeration, @intCast(number)),
+        .unsigned_integer => |number| number <= std.math.maxInt(i32) and decodedEnumHasNumber(enumeration, @intCast(number)),
+        .identifier, .string => |name| enumeration.findValue(name) != null,
+        else => false,
+    };
+}
+
+fn decodedEnumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
+    for (enumeration.values.items) |value| {
+        if (value.number == number) return true;
+    }
+    return false;
+}
+
+fn descriptorMessageScopeName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, name: []const u8) std.mem.Allocator.Error![]const u8 {
+    if (file.package.len == 0) return try allocator.dupe(u8, name);
+    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ file.package, name });
 }
 
 pub fn decodeFeatureSetDefaults(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FeatureSetDefaults {
@@ -3748,6 +3804,36 @@ test "descriptor encodes imported enum fields and defaults with registry" {
     const set_kind = set_app.findMessage("Event").?.findField("kind").?;
     try std.testing.expectEqualStrings("common.Kind", set_kind.kind.enumeration);
     try std.testing.expectEqualStrings("ADMIN", set_kind.default_value.?.identifier);
+
+    var bad_common = schema.FileDescriptor.init(allocator);
+    defer bad_common.deinit();
+    bad_common.setSyntax(.proto2);
+    bad_common.name = "bad-common.proto";
+    bad_common.package = "common";
+    var kind = schema.EnumDescriptor{ .name = "Kind" };
+    try kind.values.append(allocator, .{ .name = "UNKNOWN", .number = 0 });
+    try kind.values.append(allocator, .{ .name = "ADMIN", .number = 7 });
+    try bad_common.enums.append(allocator, kind);
+
+    var bad_app = schema.FileDescriptor.init(allocator);
+    defer bad_app.deinit();
+    bad_app.setSyntax(.proto2);
+    bad_app.name = "bad-app.proto";
+    bad_app.package = "app";
+    try bad_app.imports.append(allocator, .{ .path = "bad-common.proto" });
+    var bad_event = schema.MessageDescriptor{ .name = "Event" };
+    try bad_event.fields.append(allocator, .{
+        .name = "kind",
+        .number = 1,
+        .cardinality = .optional,
+        .kind = .{ .enumeration = "common.Kind" },
+        .default_value = .{ .identifier = "MISSING" },
+    });
+    try bad_app.messages.append(allocator, bad_event);
+    const bad_files = [_]*const schema.FileDescriptor{ &bad_common, &bad_app };
+    const bad_set_bytes = try encodeFileDescriptorSet(allocator, &bad_files);
+    defer allocator.free(bad_set_bytes);
+    try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorSet(allocator, bad_set_bytes));
 }
 
 test "descriptor decodes FileDescriptorSet" {
