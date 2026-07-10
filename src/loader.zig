@@ -161,6 +161,74 @@ test "memory loader rejects unresolved type references" {
     try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "root.proto"));
 }
 
+test "memory loader does not resolve unqualified imported leaf types" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("common.proto",
+        \\syntax = "proto2";
+        \\package common;
+        \\message User { optional string name = 1; }
+    );
+    try tree.add("app.proto",
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event { optional User user = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "app.proto"));
+}
+
+test "memory loader resolves qualified imported type references" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("common.proto",
+        \\syntax = "proto2";
+        \\package common;
+        \\message User { optional string name = 1; }
+    );
+    try tree.add("app.proto",
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event {
+        \\  optional common.User relative = 1;
+        \\  optional .common.User absolute = 2;
+        \\}
+    );
+
+    var loaded = try loadMemory(allocator, &tree, "app.proto");
+    defer loaded.deinit();
+    const app = loaded.registry.findFile("app.proto").?;
+    try std.testing.expect(loaded.registry.findMessageVisible(app, "common.User", "app.Event") != null);
+    try std.testing.expect(loaded.registry.findMessageVisible(app, ".common.User", "app.Event") != null);
+}
+
+test "memory loader resolves same-package extension extendees" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("host.proto",
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\message Scope { message Nested { extensions 100 to max; } }
+    );
+    try tree.add("extension.proto",
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "host.proto";
+        \\extend Host { optional string note = 100; }
+        \\message ExtScope { extend Scope.Nested { optional int32 nested_note = 100; } }
+    );
+
+    var loaded = try loadMemory(allocator, &tree, "extension.proto");
+    defer loaded.deinit();
+    try std.testing.expect(loaded.registry.findExtension(".demo.Host", 100) != null);
+    try std.testing.expect(loaded.registry.findExtension(".demo.Scope.Nested", 100) != null);
+}
+
 test "memory loader rejects unresolved service method types" {
     const allocator = std.testing.allocator;
     var tree = MemorySourceTree.init(allocator);
