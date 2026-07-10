@@ -907,13 +907,30 @@ fn writeTextParseMessageExtensions(ctx: *const CodegenContext, target: *const sc
 
 fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
     const extendee = field.extendee orelse return false;
-    if (std.mem.startsWith(u8, extendee, ".") or std.mem.indexOfScalar(u8, extendee, '.') != null) {
-        const resolved = findMessageByQualifiedName(file, extendee) orelse return false;
-        return resolved == message;
-    }
+    if (findExtensionExtendeeInFile(file, field)) |resolved| return resolved == message;
     const trimmed = if (std.mem.startsWith(u8, extendee, ".")) extendee[1..] else extendee;
     const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
     return std.mem.eql(u8, message.name, trimmed) or std.mem.eql(u8, message.name, leaf);
+}
+
+fn findExtensionExtendeeInFile(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+    const extendee = field.extendee orelse return null;
+    if (std.mem.startsWith(u8, extendee, ".")) return findMessageByQualifiedName(file, extendee);
+    if (extensionScopeForCodegen(file, field)) |scope| {
+        var current = scope;
+        while (true) {
+            var buf: [512]u8 = undefined;
+            if (current.len + 1 + extendee.len <= buf.len) {
+                const candidate = std.fmt.bufPrint(&buf, "{s}.{s}", .{ current, extendee }) catch unreachable;
+                if (findMessageByQualifiedName(file, candidate)) |message| return message;
+            }
+            if (std.mem.lastIndexOfScalar(u8, current, '.')) |idx| {
+                current = current[0..idx];
+            } else break;
+        }
+    }
+    if (std.mem.indexOfScalar(u8, extendee, '.') != null) return findMessageByQualifiedName(file, extendee);
+    return null;
 }
 
 fn findMessageByQualifiedName(file: *const schema.FileDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
@@ -10723,8 +10740,8 @@ test "codegen scopes qualified extensions to exact nested extendee" {
         \\message Host { extensions 100 to max; }
         \\message Outer {
         \\  message Host { extensions 100 to max; }
+        \\  extend Host { optional int32 nested_ext = 100; }
         \\}
-        \\extend .demo.Outer.Host { optional int32 nested_ext = 100; }
     );
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
