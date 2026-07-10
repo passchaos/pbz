@@ -526,7 +526,7 @@ pub const Parser = struct {
             } else {
                 const field_start = self.current.start;
                 const index: i32 = @intCast(message.fields.items.len);
-                try message.fields.append(self.allocator, try self.parseField(null, &message));
+                try message.fields.append(self.allocator, try self.parseField(null, &message, source_path));
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, field_start, self.previousEnd());
@@ -674,7 +674,7 @@ pub const Parser = struct {
             } else {
                 const field_start = self.current.start;
                 const index: i32 = @intCast(message.fields.items.len);
-                try message.fields.append(self.allocator, try self.parseField(oneof_name, message));
+                try message.fields.append(self.allocator, try self.parseField(oneof_name, message, message_path));
                 const path = try self.childPath(message_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, field_start, self.previousEnd());
@@ -691,7 +691,7 @@ pub const Parser = struct {
             if (self.consumeSymbol(';')) continue;
             const field_start = self.current.start;
             const index: i32 = @intCast(output.items.len);
-            var field = try self.parseField(null, parent);
+            var field = try self.parseField(null, parent, source_path);
             if (field.cardinality == .required) {
                 field.deinit(self.allocator);
                 return error.InvalidSyntax;
@@ -717,7 +717,7 @@ pub const Parser = struct {
         return full_name;
     }
 
-    fn parseField(self: *Parser, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
+    fn parseField(self: *Parser, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor, source_path: ?[]const i32) Error!schema.FieldDescriptor {
         self.last_field_options_start = null;
         self.last_field_options_end = null;
         var cardinality: schema.Cardinality = .implicit;
@@ -744,7 +744,7 @@ pub const Parser = struct {
             if (oneof_name != null) return error.InvalidSyntax;
             if (self.file.syntax == .editions) return error.InvalidSyntax;
             if (self.file.syntax == .proto2 and cardinality == .implicit) return error.InvalidSyntax;
-            return try self.parseGroupField(cardinality, oneof_name, parent);
+            return try self.parseGroupField(cardinality, oneof_name, parent, source_path);
         }
 
         const kind = try self.parseFieldKind();
@@ -773,9 +773,10 @@ pub const Parser = struct {
         return field;
     }
 
-    fn parseGroupField(self: *Parser, cardinality: schema.Cardinality, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor) Error!schema.FieldDescriptor {
+    fn parseGroupField(self: *Parser, cardinality: schema.Cardinality, oneof_name: ?[]const u8, parent: ?*schema.MessageDescriptor, source_path: ?[]const i32) Error!schema.FieldDescriptor {
         self.last_field_options_start = null;
         self.last_field_options_end = null;
+        const field_start = self.previous_end;
         const name = try self.expectIdentifier();
         if (name.len == 0 or !std.ascii.isUpper(name[0])) return error.InvalidFieldType;
         const field_name = try self.lowercaseOwned(name);
@@ -804,12 +805,22 @@ pub const Parser = struct {
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.consumeSymbol(';')) continue;
-            try nested.fields.append(self.allocator, try self.parseField(null, &nested));
+            try nested.fields.append(self.allocator, try self.parseField(null, &nested, null));
         }
         if (parent) |message| {
+            const nested_index: i32 = @intCast(message.messages.items.len);
             try message.messages.append(self.allocator, nested);
+            if (source_path) |path_base| {
+                const path = try self.childPath(path_base, 3, nested_index);
+                defer self.allocator.free(path);
+                try self.addSourceLocation(path, field_start, self.previousEnd());
+            }
         } else {
+            const nested_index: i32 = @intCast(self.file.messages.items.len);
             try self.file.messages.append(self.allocator, nested);
+            const path = try self.childPath(&.{}, 4, nested_index);
+            defer self.allocator.free(path);
+            try self.addSourceLocation(path, field_start, self.previousEnd());
         }
         self.last_field_options_start = group_options_start;
         self.last_field_options_end = group_options_end;
@@ -2550,6 +2561,7 @@ test "parser records basic source code info locations" {
     try expectLocationPath(&file, &.{ 4, 0, 2, 0, 8 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0 });
+    try expectLocationPath(&file, &.{ 4, 0, 3, 1 });
     try expectLocationPath(&file, &.{ 4, 0, 3, 0, 2, 0, 8 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 2 });
     try expectLocationPath(&file, &.{ 4, 0, 2, 2, 8 });
