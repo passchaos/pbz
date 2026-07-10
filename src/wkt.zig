@@ -65,12 +65,12 @@ pub const Timestamp = struct {
     pub fn jsonParse(text: []const u8) !Timestamp {
         const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
         if (unquoted.len < 20 or unquoted[4] != '-' or unquoted[7] != '-' or unquoted[10] != 'T' or unquoted[13] != ':' or unquoted[16] != ':') return error.InvalidTimestamp;
-        const year = try std.fmt.parseInt(i32, unquoted[0..4], 10);
-        const month = try std.fmt.parseInt(u8, unquoted[5..7], 10);
-        const day = try std.fmt.parseInt(u8, unquoted[8..10], 10);
-        const hour = try std.fmt.parseInt(u8, unquoted[11..13], 10);
-        const minute = try std.fmt.parseInt(u8, unquoted[14..16], 10);
-        const second = try std.fmt.parseInt(u8, unquoted[17..19], 10);
+        const year = std.fmt.parseInt(i32, unquoted[0..4], 10) catch return error.InvalidTimestamp;
+        const month = std.fmt.parseInt(u8, unquoted[5..7], 10) catch return error.InvalidTimestamp;
+        const day = std.fmt.parseInt(u8, unquoted[8..10], 10) catch return error.InvalidTimestamp;
+        const hour = std.fmt.parseInt(u8, unquoted[11..13], 10) catch return error.InvalidTimestamp;
+        const minute = std.fmt.parseInt(u8, unquoted[14..16], 10) catch return error.InvalidTimestamp;
+        const second = std.fmt.parseInt(u8, unquoted[17..19], 10) catch return error.InvalidTimestamp;
         if (month < 1 or month > 12 or hour > 23 or minute > 59 or second > 59) return error.InvalidTimestamp;
         const days = daysFromCivil(year, month, day);
         const normalized = civilFromDays(days);
@@ -93,9 +93,9 @@ pub const Timestamp = struct {
             index += 1;
         } else if (index + 6 <= unquoted.len and (unquoted[index] == '+' or unquoted[index] == '-')) {
             const sign: i64 = if (unquoted[index] == '+') 1 else -1;
-            const offset_hour = try std.fmt.parseInt(u8, unquoted[index + 1 .. index + 3], 10);
+            const offset_hour = std.fmt.parseInt(u8, unquoted[index + 1 .. index + 3], 10) catch return error.InvalidTimestamp;
             if (unquoted[index + 3] != ':') return error.InvalidTimestamp;
-            const offset_minute = try std.fmt.parseInt(u8, unquoted[index + 4 .. index + 6], 10);
+            const offset_minute = std.fmt.parseInt(u8, unquoted[index + 4 .. index + 6], 10) catch return error.InvalidTimestamp;
             if (offset_hour > 23 or offset_minute > 59) return error.InvalidTimestamp;
             offset_seconds = sign * (@as(i64, offset_hour) * 3600 + @as(i64, offset_minute) * 60);
             index += 6;
@@ -193,6 +193,8 @@ test "timestamp json parses timezone offsets and rejects invalid date times" {
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-02-30T00:00:00Z\""));
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T24:00:00Z\""));
     try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T00:00:00+24:00\""));
+    try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"202x-01-01T00:00:00Z\""));
+    try std.testing.expectError(error.InvalidTimestamp, Timestamp.jsonParse("\"2020-01-01T00:00:00+0x:00\""));
 }
 
 test "wkt json emits canonical fractional digits" {
