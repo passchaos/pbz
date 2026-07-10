@@ -287,7 +287,7 @@ extensions additionally expose `encodeAllRaw` and `decodeAppendRaw`; batch unkno
 for packed raw payloads.
 Extensions of `message_set_wire_format` messages emit MessageSet item groups
 from their generated `write` helper and expose a `decodeMessageSetItem` helper
-for extracting matching item payloads.
+with type-id validation for extracting matching item payloads.
 Generated message structs provide `encodeInitialized`, `decodeInitialized`, and
 `jsonParseInitialized` wrappers that call recursive required validation before returning initialized proto2 data,
 including generated message payload fields and map message values when their types are available.
