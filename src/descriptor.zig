@@ -6662,6 +6662,29 @@ test "descriptor round-trips field option source info" {
     try std.testing.expect(option_location.span.items[0] >= field_location.span.items[0]);
 }
 
+test "descriptor round-trips extension field option source info" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to max; }
+        \\extend Host {
+        \\  optional string tag = 100 [deprecated = true, default = "x"];
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "extension-field-options-source.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const extension_location = findSourceLocation(&decoded, &.{ 7, 0 }).?;
+    const option_location = findSourceLocation(&decoded, &.{ 7, 0, 8 }).?;
+    try std.testing.expectEqual(@as(usize, 4), extension_location.span.items.len);
+    try std.testing.expectEqual(@as(usize, 4), option_location.span.items.len);
+    try std.testing.expect(option_location.span.items[0] >= extension_location.span.items[0]);
+}
+
 test "descriptor round-trips oneof option source info" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
