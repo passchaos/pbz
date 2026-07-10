@@ -819,7 +819,7 @@ fn extensionFieldTargetsMessage(file: *const schema.FileDescriptor, registry: ?*
     const extendee = field.extendee orelse return true;
     if (registry) |reg| {
         const owner = reg.fileContainingExtension(field) orelse file;
-        if (reg.findMessageVisible(owner, extendee, null)) |message| return message == current;
+        if (reg.findMessageVisible(owner, extendee, extensionScope(owner, field))) |message| return message == current;
         return false;
     }
     if (file.findMessageDeep(extendee)) |message| {
@@ -875,6 +875,15 @@ fn extensionExtendsMessage(extendee: []const u8, message: *const schema.MessageD
     const trimmed = if (std.mem.startsWith(u8, extendee, ".")) extendee[1..] else extendee;
     const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
     return std.mem.eql(u8, trimmed, message.name) or std.mem.eql(u8, leaf, message.name);
+}
+
+fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+    if (field.full_name) |full_name| {
+        const normalized = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
+        if (std.mem.lastIndexOfScalar(u8, normalized, '.')) |idx| return normalized[0..idx];
+        if (std.mem.startsWith(u8, full_name, ".")) return null;
+    }
+    return if (file.package.len != 0) file.package else null;
 }
 
 fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer, deterministic: bool) EncodeError!void {
@@ -3383,6 +3392,38 @@ test "dynamic encodes extension fields using extension descriptors" {
     defer decoded.deinit();
     try decoded.decodeWithRegistry(&file, &registry, encoded);
     try std.testing.expectEqual(@as(i32, 123), decoded.get("score").?.values.items[0].int32);
+}
+
+test "dynamic encodes scoped extension extendees with registry" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Scope {
+        \\  message Nested { extensions 100 to max; }
+        \\  extend Nested { optional int32 nested_note = 100; }
+        \\}
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+
+    const nested = file.findMessage("Scope").?.findMessage("Nested").?;
+    const field = registry.findExtension(".demo.Scope.Nested", 100).?;
+
+    var msg = DynamicMessage.init(allocator, nested);
+    defer msg.deinit();
+    try msg.add(field, .{ .int32 = 123 });
+
+    const encoded = try msg.encodedWithRegistry(&file, &registry);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa0, 0x06, 0x7b }, encoded);
+
+    var decoded = DynamicMessage.init(allocator, nested);
+    defer decoded.deinit();
+    try decoded.decodeWithRegistry(&file, &registry, encoded);
+    try std.testing.expectEqual(@as(i32, 123), decoded.get("nested_note").?.values.items[0].int32);
 }
 
 test "dynamic rejects extension descriptors for different extendees" {
