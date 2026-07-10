@@ -979,6 +979,10 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
     };
     try message.add(type_field, .{ .string = try allocator.dupe(u8, type_url) });
     if (object.get("value")) |value_json| {
+        var it = object.iterator();
+        while (it.next()) |entry| {
+            if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
+        }
         const encoded = switch (value_json) {
             .string => |value| value,
             else => return error.TypeMismatch,
