@@ -753,6 +753,7 @@ pub const Any = struct {
     }
 
     pub fn jsonStringify(self: Any, writer: *std.Io.Writer) !void {
+        if (self.type_url.len == 0 or anyTypeName(self.type_url).len == 0) return error.TypeMismatch;
         try writer.writeAll("{\"@type\":");
         try std.json.Stringify.value(self.type_url, .{}, writer);
         try writer.writeAll(",\"value\":\"");
@@ -825,6 +826,8 @@ test "any wire and json helpers" {
     const json = try any.jsonStringifyAlloc(allocator);
     defer allocator.free(json);
     try std.testing.expectEqualSlices(u8, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}", json);
+    try std.testing.expectError(error.TypeMismatch, (Any{ .type_url = "", .value = "abc" }).jsonStringifyAlloc(allocator));
+    try std.testing.expectError(error.TypeMismatch, (Any{ .type_url = "type.googleapis.com/", .value = "abc" }).jsonStringifyAlloc(allocator));
 
     var parsed = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}");
     defer parsed.deinit(allocator);
