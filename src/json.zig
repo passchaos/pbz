@@ -346,14 +346,14 @@ fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const r
             }
             const number = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue;
             if (enumeration) |enum_desc| {
-                if (enumIsClosed(file, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
+                if (enumIsClosed(file, registry, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
             }
             return .{ .enumeration = number };
         },
         else => {
             const number = try numberAsInt(i32, json_value);
             if (enumeration) |enum_desc| {
-                if (enumIsClosed(file, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
+                if (enumIsClosed(file, registry, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
             }
             return .{ .enumeration = number };
         },
@@ -455,9 +455,14 @@ fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const 
     return current.findEnumDeep(trimmed) orelse file.findEnumDeep(trimmed);
 }
 
-fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
+fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingEnum(descriptor) orelse default_file;
+}
+
+fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
-    return file.features.enum_type == .closed;
+    return enumDescriptorFile(file, registry, enumeration).features.enum_type == .closed;
 }
 
 fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
@@ -1553,6 +1558,53 @@ test "json parse with registry resolves imported message and enum fields" {
     const rendered = try stringifyAllocWithRegistry(allocator, &app, &registry, &event, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\",\"roles\":[\"ADMIN\",\"UNKNOWN\"]}", rendered);
+}
+
+test "json imported enums use owning file features" {
+    const allocator = std.testing.allocator;
+    var open_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package openpkg;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer open_file.deinit();
+    open_file.name = "open.proto";
+    var closed_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package closedpkg;
+        \\enum Kind { ADMIN = 1; }
+    );
+    defer closed_file.deinit();
+    closed_file.name = "closed.proto";
+    var proto2_app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app2;
+        \\import "open.proto";
+        \\message Event { optional openpkg.Kind kind = 1; }
+    );
+    defer proto2_app.deinit();
+    proto2_app.name = "app2.proto";
+    var proto3_app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app3;
+        \\import "closed.proto";
+        \\message Event { closedpkg.Kind kind = 1; }
+    );
+    defer proto3_app.deinit();
+    proto3_app.name = "app3.proto";
+
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&open_file);
+    try registry.addFile(&closed_file);
+    try registry.addFile(&proto2_app);
+    try registry.addFile(&proto3_app);
+
+    var open_in_proto2 = try parseAllocWithRegistry(allocator, &proto2_app, &registry, proto2_app.findMessage("Event").?, "{\"kind\":123}", .{});
+    defer open_in_proto2.deinit();
+    try std.testing.expectEqual(@as(i32, 123), open_in_proto2.get("kind").?.values.items[0].enumeration);
+
+    try std.testing.expectError(error.InvalidEnumValue, parseAllocWithRegistry(allocator, &proto3_app, &registry, proto3_app.findMessage("Event").?, "{\"kind\":123}", .{}));
 }
 
 test "json parses and prints enum numbers and unknown enum values" {

@@ -635,7 +635,7 @@ pub const DynamicMessage = struct {
                         const value_start = packed_reader.position();
                         const value = try packed_reader.readInt32();
                         const value_end = packed_reader.position();
-                        if (enumIsClosed(file, enumeration) and !enumHasNumber(enumeration, value)) {
+                        if (enumIsClosed(file, registry, enumeration) and !enumHasNumber(enumeration, value)) {
                             try self.addUnknownVarintPayload(field.number, payload[value_start..value_end]);
                         } else {
                             try self.add(field, .{ .enumeration = value });
@@ -645,7 +645,7 @@ pub const DynamicMessage = struct {
                 }
                 if (tag.wire_type != .varint) return error.InvalidWireType;
                 const value = try reader.readInt32();
-                if (enumIsClosed(file, enumeration) and !enumHasNumber(enumeration, value)) {
+                if (enumIsClosed(file, registry, enumeration) and !enumHasNumber(enumeration, value)) {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                 } else {
                     try self.add(field, .{ .enumeration = value });
@@ -661,7 +661,7 @@ pub const DynamicMessage = struct {
                 const payload = try reader.readBytes();
                 var packed_reader = wire.Reader.init(payload);
                 while (!packed_reader.eof()) {
-                    if (closedEnumDescriptor(file, self.descriptor, field.kind)) |enumeration| {
+                    if (closedEnumDescriptor(file, registry, self.descriptor, field.kind)) |enumeration| {
                         const value_start = packed_reader.position();
                         const value = try packed_reader.readInt32();
                         const value_end = packed_reader.position();
@@ -679,7 +679,7 @@ pub const DynamicMessage = struct {
             }
 
             if (tag.wire_type != field.kind.wireType()) return error.InvalidWireType;
-            if (closedEnumDescriptor(file, self.descriptor, field.kind)) |enumeration| {
+            if (closedEnumDescriptor(file, registry, self.descriptor, field.kind)) |enumeration| {
                 const value = try reader.readInt32();
                 if (enumHasNumber(enumeration, value)) {
                     try self.add(field, .{ .enumeration = value });
@@ -800,6 +800,16 @@ fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const
     return reg.findExtensionForMessage(descriptor, number);
 }
 
+fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingMessage(descriptor) orelse default_file;
+}
+
+fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingEnum(descriptor) orelse default_file;
+}
+
 fn validateFieldTargetsMessage(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) EncodeError!void {
     if (field.extendee == null) return;
     if (!extensionFieldTargetsMessage(file, registry, current, field)) return error.TypeMismatch;
@@ -826,12 +836,13 @@ fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const Fi
             .message => |message_value| message_value,
             else => return error.TypeMismatch,
         };
+        const message_file = messageDescriptorFile(file, registry, message.descriptor);
         var payload_writer = wire.Writer.init(writer.allocator);
         defer payload_writer.deinit();
         if (deterministic) {
-            try message.encodeDeterministicWithRegistry(file, registry, &payload_writer);
+            try message.encodeDeterministicWithRegistry(message_file, registry, &payload_writer);
         } else {
-            try message.encodeWithRegistry(file, registry, &payload_writer);
+            try message.encodeWithRegistry(message_file, registry, &payload_writer);
         }
         try writeMessageSetItem(writer, entry.descriptor.number, payload_writer.slice());
     }
@@ -886,13 +897,13 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
                 if (registryEnumDescriptor(file, registry, current, field.kind) != null) return error.TypeMismatch;
                 if (fieldMessageEncoding(file, field) == .delimited) {
                     try writer.writeTag(field.number, .start_group);
-                    try message.encodeWithRegistry(file, registry, writer);
+                    try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, writer);
                     try writer.writeTag(field.number, .end_group);
                 } else {
                     var nested_writer = wire.Writer.init(writer.allocator);
                     defer nested_writer.deinit();
                     // Nested message packing depends on its own file-level features only for repeated scalar fields.
-                    try message.encodeWithRegistry(file, registry, &nested_writer);
+                    try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, &nested_writer);
                     try writer.writeMessage(field.number, nested_writer.slice());
                 }
             },
@@ -901,7 +912,7 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
         .group => switch (value) {
             .group => |message| {
                 try writer.writeTag(field.number, .start_group);
-                try message.encodeWithRegistry(file, registry, writer);
+                try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, writer);
                 try writer.writeTag(field.number, .end_group);
             },
             else => return error.TypeMismatch,
@@ -960,7 +971,7 @@ fn encodeMapElement(
                 if (registryEnumDescriptor(file, registry, current, kind) != null) return error.TypeMismatch;
                 var nested_writer = wire.Writer.init(writer.allocator);
                 defer nested_writer.deinit();
-                try message.encodeWithRegistry(file, registry, &nested_writer);
+                try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, &nested_writer);
                 try writer.writeMessage(number, nested_writer.slice());
             },
             else => return error.TypeMismatch,
@@ -1073,10 +1084,11 @@ fn decodeMessagePayload(
         message.deinit();
         allocator.destroy(message);
     }
+    const descriptor_file = messageDescriptorFile(file, registry, descriptor);
     if (registry) |reg| {
-        try message.decodeWithRegistry(file, reg, payload);
+        try message.decodeWithRegistry(descriptor_file, reg, payload);
     } else {
-        try message.decode(file, payload);
+        try message.decode(descriptor_file, payload);
     }
     return .{ .message = message };
 }
@@ -1114,7 +1126,7 @@ fn decodeMapEntryValue(
                 if (registryEnumDescriptor(file, registry, current, map_type.value.*)) |enumeration| {
                     if (tag.wire_type != .varint) return error.InvalidWireType;
                     const value = try entry_reader.readInt32();
-                    if (enumIsClosed(file, enumeration) and !enumHasNumber(enumeration, value)) return null;
+                    if (enumIsClosed(file, registry, enumeration) and !enumHasNumber(enumeration, value)) return null;
                     maybe_value = .{ .enumeration = value };
                 } else {
                     if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
@@ -1125,11 +1137,11 @@ fn decodeMapEntryValue(
         }
     }
 
-    var key = maybe_key orelse try defaultValue(allocator, file, current, .{ .scalar = map_type.key });
+    var key = maybe_key orelse try defaultValue(allocator, file, registry, current, .{ .scalar = map_type.key });
     maybe_key = null;
     var map_value = maybe_value orelse blk: {
         if (registryEnumDescriptor(file, registry, current, map_type.value.*) != null) break :blk Value{ .enumeration = 0 };
-        break :blk try defaultValue(allocator, file, current, map_type.value.*);
+        break :blk try defaultValue(allocator, file, registry, current, map_type.value.*);
     };
     maybe_value = null;
     defer {
@@ -1148,6 +1160,7 @@ fn decodeMapEntryValue(
 fn defaultValue(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     kind: schema.FieldKind,
 ) DecodeError!Value {
@@ -1171,7 +1184,7 @@ fn defaultValue(
         },
         .enumeration => .{ .enumeration = 0 },
         .message => |name| blk: {
-            const descriptor = resolveMessageDescriptor(file, current, name) orelse return error.TypeMismatch;
+            const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
             const message = try allocator.create(DynamicMessage);
             message.* = DynamicMessage.init(allocator, descriptor);
             break :blk .{ .message = message };
@@ -1199,7 +1212,7 @@ fn decodeGroupValue(
         message.deinit();
         allocator.destroy(message);
     }
-    try message.decodeStream(file, registry, reader, field.number);
+    try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
     return .{ .group = message };
 }
 
@@ -1222,7 +1235,7 @@ fn decodeDelimitedMessageValue(
         message.deinit();
         allocator.destroy(message);
     }
-    try message.decodeStream(file, registry, reader, field.number);
+    try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
     return .{ .message = message };
 }
 
@@ -1242,13 +1255,9 @@ fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, regi
     return resolveMessageDescriptor(file, current, name);
 }
 
-fn closedEnumDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
-    const enum_name = switch (kind) {
-        .enumeration => |name| name,
-        else => return null,
-    };
-    const enumeration = current.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name) orelse return null;
-    return if (enumIsClosed(file, enumeration)) enumeration else null;
+fn closedEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
+    const enumeration = registryEnumDescriptor(file, registry, current, kind) orelse return null;
+    return if (enumIsClosed(file, registry, enumeration)) enumeration else null;
 }
 
 fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) ?*const schema.EnumDescriptor {
@@ -1278,9 +1287,9 @@ fn enumNameForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?[]
     return null;
 }
 
-fn enumIsClosed(file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor) bool {
+fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
-    return file.features.enum_type == .closed;
+    return enumDescriptorFile(file, registry, enumeration).features.enum_type == .closed;
 }
 
 fn fieldUtf8Validation(file: ?*const schema.FileDescriptor, field: *const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
@@ -2869,6 +2878,95 @@ test "dynamic decodeWithRegistry resolves imported message fields" {
     try std.testing.expectEqualSlices(u8, "Ada", decoded_user.get("name").?.values.items[0].string);
 }
 
+test "dynamic registry nested messages use owning file features" {
+    const allocator = std.testing.allocator;
+    var proto2_common = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common.pb2;
+        \\message Payload {
+        \\  optional string raw = 1;
+        \\  repeated int32 nums = 2;
+        \\}
+    );
+    defer proto2_common.deinit();
+    proto2_common.name = "pb2.proto";
+    var proto3_common = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package common.pb3;
+        \\message Payload {
+        \\  repeated int32 nums = 1;
+        \\}
+    );
+    defer proto3_common.deinit();
+    proto3_common.name = "pb3.proto";
+    var proto3_app = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app3;
+        \\import "pb2.proto";
+        \\message Envelope { common.pb2.Payload payload = 1; }
+    );
+    defer proto3_app.deinit();
+    proto3_app.name = "app3.proto";
+    var proto2_app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app2;
+        \\import "pb3.proto";
+        \\message Envelope { optional common.pb3.Payload payload = 1; }
+    );
+    defer proto2_app.deinit();
+    proto2_app.name = "app2.proto";
+
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&proto2_common);
+    try registry.addFile(&proto3_common);
+    try registry.addFile(&proto3_app);
+    try registry.addFile(&proto2_app);
+
+    const pb2_payload_desc = proto2_common.findMessage("Payload").?;
+    const app3_envelope_desc = proto3_app.findMessage("Envelope").?;
+    var pb2_payload = try allocator.create(DynamicMessage);
+    var pb2_payload_transferred = false;
+    errdefer if (!pb2_payload_transferred) allocator.destroy(pb2_payload);
+    pb2_payload.* = DynamicMessage.init(allocator, pb2_payload_desc);
+    errdefer if (!pb2_payload_transferred) pb2_payload.deinit();
+    try pb2_payload.add(pb2_payload_desc.findField("raw").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+    try pb2_payload.add(pb2_payload_desc.findField("nums").?, .{ .int32 = 1 });
+    try pb2_payload.add(pb2_payload_desc.findField("nums").?, .{ .int32 = 2 });
+    var app3_envelope = DynamicMessage.init(allocator, app3_envelope_desc);
+    defer app3_envelope.deinit();
+    try app3_envelope.add(app3_envelope_desc.findField("payload").?, .{ .message = pb2_payload });
+    pb2_payload_transferred = true;
+    const app3_encoded = try app3_envelope.encodedWithRegistry(&proto3_app, &registry);
+    defer allocator.free(app3_encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x07, 0x0a, 0x01, 0xc0, 0x10, 0x01, 0x10, 0x02 }, app3_encoded);
+
+    var app3_decoded = DynamicMessage.init(allocator, app3_envelope_desc);
+    defer app3_decoded.deinit();
+    try app3_decoded.decodeWithRegistry(&proto3_app, &registry, app3_encoded);
+    const decoded_pb2_payload = app3_decoded.get("payload").?.values.items[0].message;
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, decoded_pb2_payload.get("raw").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 1), decoded_pb2_payload.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), decoded_pb2_payload.get("nums").?.values.items[1].int32);
+
+    const pb3_payload_desc = proto3_common.findMessage("Payload").?;
+    const app2_envelope_desc = proto2_app.findMessage("Envelope").?;
+    var pb3_payload = try allocator.create(DynamicMessage);
+    var pb3_payload_transferred = false;
+    errdefer if (!pb3_payload_transferred) allocator.destroy(pb3_payload);
+    pb3_payload.* = DynamicMessage.init(allocator, pb3_payload_desc);
+    errdefer if (!pb3_payload_transferred) pb3_payload.deinit();
+    try pb3_payload.add(pb3_payload_desc.findField("nums").?, .{ .int32 = 1 });
+    try pb3_payload.add(pb3_payload_desc.findField("nums").?, .{ .int32 = 2 });
+    var app2_envelope = DynamicMessage.init(allocator, app2_envelope_desc);
+    defer app2_envelope.deinit();
+    try app2_envelope.add(app2_envelope_desc.findField("payload").?, .{ .message = pb3_payload });
+    pb3_payload_transferred = true;
+    const app2_encoded = try app2_envelope.encodedWithRegistry(&proto2_app, &registry);
+    defer allocator.free(app2_encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x04, 0x0a, 0x02, 0x01, 0x02 }, app2_encoded);
+}
+
 test "dynamic decodeWithRegistry resolves imported enum fields" {
     const allocator = std.testing.allocator;
     var common = try parser.Parser.parse(allocator,
@@ -2907,6 +3005,63 @@ test "dynamic decodeWithRegistry resolves imported enum fields" {
     try std.testing.expectEqual(@as(usize, 1), names.len);
     try std.testing.expectEqualStrings("A", names[0]);
     try std.testing.expectEqual(@as(usize, 1), event.unknownCount());
+}
+
+test "dynamic imported enums use owning file features" {
+    const allocator = std.testing.allocator;
+    var open_file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package openpkg;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+    );
+    defer open_file.deinit();
+    open_file.name = "open.proto";
+    var closed_file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package closedpkg;
+        \\enum Kind { ADMIN = 1; }
+    );
+    defer closed_file.deinit();
+    closed_file.name = "closed.proto";
+    var proto2_app = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app2;
+        \\import "open.proto";
+        \\message Event { optional openpkg.Kind kind = 1; }
+    );
+    defer proto2_app.deinit();
+    proto2_app.name = "app2.proto";
+    var proto3_app = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app3;
+        \\import "closed.proto";
+        \\message Event { closedpkg.Kind kind = 1; }
+    );
+    defer proto3_app.deinit();
+    proto3_app.name = "app3.proto";
+
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&open_file);
+    try registry.addFile(&closed_file);
+    try registry.addFile(&proto2_app);
+    try registry.addFile(&proto3_app);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeInt32(1, 123);
+
+    var open_in_proto2 = DynamicMessage.init(allocator, proto2_app.findMessage("Event").?);
+    defer open_in_proto2.deinit();
+    try open_in_proto2.decodeWithRegistry(&proto2_app, &registry, encoded.slice());
+    try std.testing.expectEqual(@as(i32, 123), open_in_proto2.get("kind").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(usize, 0), open_in_proto2.unknownCount());
+
+    var closed_in_proto3 = DynamicMessage.init(allocator, proto3_app.findMessage("Event").?);
+    defer closed_in_proto3.deinit();
+    try closed_in_proto3.decodeWithRegistry(&proto3_app, &registry, encoded.slice());
+    try std.testing.expect(closed_in_proto3.get("kind") == null);
+    try std.testing.expectEqual(@as(usize, 1), closed_in_proto3.unknownCount());
 }
 
 test "dynamic decodeWithRegistry resolves imported enum map entries" {
