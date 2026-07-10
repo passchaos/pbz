@@ -1405,6 +1405,91 @@ test "text format formats and parses proto2 extensions" {
     try std.testing.expectEqual(@as(i32, 1), parsed.get("role").?.values.items[0].enumeration);
 }
 
+test "text format formats and parses proto2 group extensions" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  optional int32 id = 1;
+        \\  extensions 100 to max;
+        \\}
+        \\extend Host {
+        \\  optional group Box = 100 {
+        \\    optional int32 a = 101;
+        \\    optional string label = 102;
+        \\  }
+        \\  repeated group Item = 103 {
+        \\    optional int32 a = 104;
+        \\  }
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const box_desc = file.findMessage("Box").?;
+    const item_desc = file.findMessage("Item").?;
+    const box = registry.findExtension("demo.Host", 100).?;
+    const item = registry.findExtension("demo.Host", 103).?;
+
+    var msg = dynamic.DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.add(host.findField("id").?, .{ .int32 = 7 });
+    const box_value = try allocator.create(dynamic.DynamicMessage);
+    box_value.* = dynamic.DynamicMessage.init(allocator, box_desc);
+    try box_value.add(box_desc.findField("a").?, .{ .int32 = 11 });
+    try box_value.add(box_desc.findField("label").?, .{ .string = try allocator.dupe(u8, "box") });
+    try msg.add(box, .{ .group = box_value });
+    const first_item = try allocator.create(dynamic.DynamicMessage);
+    first_item.* = dynamic.DynamicMessage.init(allocator, item_desc);
+    try first_item.add(item_desc.findField("a").?, .{ .int32 = 1 });
+    try msg.add(item, .{ .group = first_item });
+    const second_item = try allocator.create(dynamic.DynamicMessage);
+    second_item.* = dynamic.DynamicMessage.init(allocator, item_desc);
+    try second_item.add(item_desc.findField("a").?, .{ .int32 = 2 });
+    try msg.add(item, .{ .group = second_item });
+
+    const rendered = try formatAllocWithRegistry(allocator, &file, &registry, &msg, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8,
+        \\id: 7
+        \\[demo.box] {
+        \\  a: 11
+        \\  label: "box"
+        \\}
+        \\[demo.item] {
+        \\  a: 1
+        \\}
+        \\[demo.item] {
+        \\  a: 2
+        \\}
+        \\
+    , rendered);
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, host,
+        \\id: 8
+        \\[demo.box] < a: 21 label: "parsed" >
+        \\[demo.item] { a: 3 }
+        \\[demo.item] < a: 4 >
+    );
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 8), parsed.get("id").?.values.items[0].int32);
+    const parsed_box = parsed.getByNumber(box.number).?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 21), parsed_box.get("a").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "parsed", parsed_box.get("label").?.values.items[0].string);
+    const parsed_items = parsed.getByNumber(item.number).?.values.items;
+    try std.testing.expectEqual(@as(usize, 2), parsed_items.len);
+    try std.testing.expectEqual(@as(i32, 3), parsed_items[0].group.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 4), parsed_items[1].group.get("a").?.values.items[0].int32);
+
+    var leaf = try parseAllocWithRegistry(allocator, &file, &registry, host, "[box] { a: 31 }");
+    defer leaf.deinit();
+    try std.testing.expectEqual(@as(i32, 31), leaf.getByNumber(box.number).?.values.items[0].group.get("a").?.values.items[0].int32);
+}
+
 test "text format formats and parses MessageSet extensions" {
     const allocator = std.testing.allocator;
     const source =

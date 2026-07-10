@@ -1726,6 +1726,57 @@ test "json parses and stringifies proto2 extension fields" {
     try std.testing.expectEqual(@as(i32, 8), leaf.getByNumber(ext.number).?.values.items[0].int32);
 }
 
+test "json parses and stringifies proto2 group extensions" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  optional int32 id = 1;
+        \\  extensions 100 to max;
+        \\}
+        \\extend Host {
+        \\  optional group Box = 100 {
+        \\    optional int32 a = 101;
+        \\    optional string label = 102;
+        \\  }
+        \\  repeated group Item = 103 {
+        \\    optional int32 a = 104;
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const desc = file.findMessage("Host").?;
+    const box = registry.findExtension("demo.Host", 100).?;
+    const item = registry.findExtension("demo.Host", 103).?;
+
+    var parsed = try parseAllocWithRegistry(allocator, &file, &registry, desc,
+        \\{"id":1,"[demo.box]":{"a":7,"label":"seven"},"[demo.item]":[{"a":1},{"a":2}]}
+    , .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 1), parsed.get("id").?.values.items[0].int32);
+    const parsed_box = parsed.getByNumber(box.number).?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 7), parsed_box.get("a").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, "seven", parsed_box.get("label").?.values.items[0].string);
+    const parsed_items = parsed.getByNumber(item.number).?.values.items;
+    try std.testing.expectEqual(@as(usize, 2), parsed_items.len);
+    try std.testing.expectEqual(@as(i32, 1), parsed_items[0].group.get("a").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), parsed_items[1].group.get("a").?.values.items[0].int32);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &file, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8,
+        \\{"id":1,"[demo.box]":{"a":7,"label":"seven"},"[demo.item]":[{"a":1},{"a":2}]}
+    , rendered);
+
+    var leaf = try parseAllocWithRegistry(allocator, &file, &registry, desc, "{\"[box]\":{\"a\":9}}", .{});
+    defer leaf.deinit();
+    try std.testing.expectEqual(@as(i32, 9), leaf.getByNumber(box.number).?.values.items[0].group.get("a").?.values.items[0].int32);
+}
+
 test "json registry extension lookup distinguishes same leaf message names" {
     const allocator = std.testing.allocator;
     var a_file = try @import("parser.zig").Parser.parse(allocator,
