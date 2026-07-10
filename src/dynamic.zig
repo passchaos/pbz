@@ -692,7 +692,7 @@ pub const DynamicMessage = struct {
             for (unknown_indexes, 0..) |*index, i| index.* = i;
             std.mem.sort(usize, unknown_indexes, self, struct {
                 fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
-                    return message.unknown_fields.items[a].number < message.unknown_fields.items[b].number;
+                    return unknownFieldLessThan(message.unknown_fields.items[a], message.unknown_fields.items[b]);
                 }
             }.lessThan);
             for (unknown_indexes) |index| try encodeUnknownMessageSetField(&self.unknown_fields.items[index], writer);
@@ -3316,6 +3316,31 @@ test "dynamic MessageSet accepts payload before type id and preserves unknown it
     const unknown_roundtrip = try unknown_msg.encoded(&file);
     defer allocator.free(unknown_roundtrip);
     try std.testing.expectEqualSlices(u8, unknown.slice(), unknown_roundtrip);
+
+    var later = wire.Writer.init(allocator);
+    defer later.deinit();
+    try later.writeBytes(160, &.{ 0x08, 0x02 });
+    var earlier = wire.Writer.init(allocator);
+    defer earlier.deinit();
+    try earlier.writeBytes(150, &.{ 0x08, 0x01 });
+    var same_later = wire.Writer.init(allocator);
+    defer same_later.deinit();
+    try same_later.writeBytes(150, &.{ 0x08, 0x03 });
+
+    var deterministic_unknown = DynamicMessage.init(allocator, host);
+    defer deterministic_unknown.deinit();
+    try deterministic_unknown.unknown_fields.append(allocator, .{ .number = 160, .wire_type = .length_delimited, .data = try allocator.dupe(u8, later.slice()) });
+    try deterministic_unknown.unknown_fields.append(allocator, .{ .number = 150, .wire_type = .length_delimited, .data = try allocator.dupe(u8, same_later.slice()) });
+    try deterministic_unknown.unknown_fields.append(allocator, .{ .number = 150, .wire_type = .length_delimited, .data = try allocator.dupe(u8, earlier.slice()) });
+
+    const deterministic = try deterministic_unknown.encodedDeterministic(&file);
+    defer allocator.free(deterministic);
+    var expected = wire.Writer.init(allocator);
+    defer expected.deinit();
+    try writeMessageSetItem(&expected, 150, &.{ 0x08, 0x01 });
+    try writeMessageSetItem(&expected, 150, &.{ 0x08, 0x03 });
+    try writeMessageSetItem(&expected, 160, &.{ 0x08, 0x02 });
+    try std.testing.expectEqualSlices(u8, expected.slice(), deterministic);
 }
 
 test "dynamic closed enum unknown values are preserved as unknown fields" {
