@@ -20,11 +20,11 @@ validated feature set.
   - in-memory and filesystem source tree loaders that recursively parse imports while allowing missing proto2 weak imports, validating imported enum defaults, and tracking placeholder-style weak references
 - `.proto` parser
   - `syntax = "proto2"` plus package/import/option declarations
-  - messages, nested messages, groups, enums, oneofs, services/rpc, extensions, reserved ranges/names including editions identifier reserved names, field-number, reserved/extension/enum range conflicts and message reserved field-number bounds including `to max` handling, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, empty/duplicate import rejection, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including non-empty enums, allow_alias misuse plus enum-value sibling-scope and prefix/case conflicts
+  - messages, nested messages, groups, enums, oneofs, service/rpc descriptor declarations, extensions, reserved ranges/names including editions identifier reserved names, field-number, reserved/extension/enum range conflicts and message reserved field-number bounds including `to max` handling, extension extendee/range/label/duplicate checks, duplicate-field/oneof/type/service/rpc-symbol, oneof field-shape, empty/duplicate import rejection, weak-import, option-import edition/order, and edition-value restrictions, and enum validation including non-empty enums, allow_alias misuse plus enum-value sibling-scope and prefix/case conflicts
   - JSON field-name validation for default lowerCamelCase collisions, explicit `json_name` duplicates/collisions, extension-looking names, embedded NULs, extension-field `json_name` misuse, and explicit `map_entry` misuse
   - proto2 MessageSet declaration validation for `message_set_wire_format`, extension ranges, and optional-message extension shape in parser and descriptor decode paths
   - extension range options for `declaration`, `verification`, and range-local `features.*`; declaration-scope `features.*` across file/message/field/oneof/enum/enum-value/service/method with editions-only applicability and strict feature-name/value validation; nested/scoped proto2 extension full-name tracking; plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation
-  - services/rpc declarations and custom option names including `(ext).field`
+  - service/rpc descriptor declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
   - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, implicit group nested messages, fields, oneofs, options, extension fields, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
   - proto2 field default validation for scalar/string/bytes/enum defaults including max uint64/fixed64 values and registry-validated imported enum defaults, with proto3/repeated/message/duplicate invalid-default rejection
@@ -50,7 +50,7 @@ validated feature set.
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation, including proto `allow_alias` enum values emitted as Zig enum namespace aliases and generated enum `fromInt` / `fromName` / `toInt` / `protoName` / JSON parse/stringify and TextFormat parse/format helpers
   - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for direct and transitive-public imported message type references and imported enum field resolution
   - generated proto2 extension metadata structs with extension number, extendee, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
-  - generated service metadata with registry-aware RPC request/response type references plus reusable raw/typed dispatch adapters, Handler/Client stub types for raw payload dispatch, typed server dispatch, and typed non-streaming client helpers when request/response message types are resolvable
+  - generated service metadata with registry-aware method input/output type references; RPC transport, Handler/Client stubs, and dispatch adapters are intentionally out of scope
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
   - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
@@ -264,17 +264,11 @@ encode/decode the underlying payload bytes through same-file, direct-imported, o
 `pbz.generateZigFileWithRegistry` additionally resolves message and enum fields
 through a `Registry`: direct and transitive-public imported message fields get module type refs/accessors,
 direct and transitive-public imported message fields participate in generated JSON and TextFormat stringify/parse for singular, repeated, map, and oneof payloads; and direct or transitive-public imported enum fields are treated as enum scalars for generated wire, JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
-For `service` declarations, generated files include a `services` namespace with
-service/method metadata, registry-aware `input_type_ref` / `output_type_ref`
-aliases where request/response messages can be resolved, an unimplemented raw
-`Handler` stub with method-name dispatch, reusable `dispatchRaw` /
-`dispatchTyped` adapters for caller-defined handler structs, a `TypedHandler`
-stub that decodes non-streaming typed requests and encodes typed responses for
-resolvable methods, and a `Client` wrapper that dispatches serialized
-request/response payloads through a caller-provided function pointer. For
-non-streaming methods with resolvable generated message types, the client also
-emits `*Typed` helpers that encode the typed request, call the raw payload
-method, and return an owned decoded response message.
+For `service` declarations, generated files include only a `services` namespace
+with service/method metadata, streaming flags, and registry-aware
+`input_type_ref` / `output_type_ref` aliases where request/response messages can
+be resolved. RPC transport, `Handler`/`Client` stubs, dispatch adapters, and
+client/server call helpers are intentionally out of scope for this library.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)
