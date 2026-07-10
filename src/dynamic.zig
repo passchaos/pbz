@@ -273,6 +273,15 @@ pub const DynamicMessage = struct {
     pub fn add(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
         if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
+        if (field.kind == .map and value == .map_entry) {
+            for (entry.values.items) |*existing| {
+                if (existing.* == .map_entry and valueEqual(existing.map_entry.key, value.map_entry.key)) {
+                    deinitValue(existing, self.allocator);
+                    existing.* = value;
+                    return;
+                }
+            }
+        }
         if (!field.isRepeatedLike() and entry.values.items.len != 0) {
             deinitValue(&entry.values.items[0], self.allocator);
             entry.values.items.len = 0;
@@ -1918,6 +1927,50 @@ test "dynamic proto3 round-trips map fields and default packed repeated scalars"
     const decoded_child = decoded.get("children").?.values.items[0].map_entry;
     try std.testing.expectEqualSlices(u8, "first", decoded_child.key.string);
     try std.testing.expectEqualSlices(u8, "kid", decoded_child.value.message.get("label").?.values.items[0].string);
+}
+
+test "dynamic map fields replace duplicate keys with last value" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { map<string, int32> counts = 1; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+    const field = desc.findField("counts").?;
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    const first = try allocator.create(MapEntry);
+    first.* = .{ .key = .{ .string = try allocator.dupe(u8, "red") }, .value = .{ .int32 = 1 } };
+    try msg.add(field, .{ .map_entry = first });
+    const second = try allocator.create(MapEntry);
+    second.* = .{ .key = .{ .string = try allocator.dupe(u8, "red") }, .value = .{ .int32 = 7 } };
+    try msg.add(field, .{ .map_entry = second });
+    try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 7), msg.get("counts").?.values.items[0].map_entry.value.int32);
+
+    var first_entry = wire.Writer.init(allocator);
+    defer first_entry.deinit();
+    try first_entry.writeString(1, "red");
+    try first_entry.writeInt32(2, 3);
+    var second_entry = wire.Writer.init(allocator);
+    defer second_entry.deinit();
+    try second_entry.writeString(1, "red");
+    try second_entry.writeInt32(2, 9);
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeMessage(1, first_entry.slice());
+    try encoded.writeMessage(1, second_entry.slice());
+
+    var decoded = DynamicMessage.init(allocator, desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, encoded.slice());
+    try std.testing.expectEqual(@as(usize, 1), decoded.get("counts").?.values.items.len);
+    const entry = decoded.get("counts").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("red", entry.key.string);
+    try std.testing.expectEqual(@as(i32, 9), entry.value.int32);
 }
 
 test "dynamic editions honors repeated field encoding features and accepts packed compatibility" {
