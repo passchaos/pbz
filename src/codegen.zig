@@ -753,7 +753,6 @@ fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.M
 }
 
 fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };\n\n");
 
@@ -797,7 +796,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
             }
         }
     }
-    try writeTextParseExtensions(file, message, writer, depth + 2);
+    try writeTextParseExtensions(ctx, message, writer, depth + 2);
     try indent(writer, depth + 2);
     try writer.writeAll("if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
     try indent(writer, depth + 2);
@@ -851,18 +850,20 @@ fn messageTextParseUsesAllocator(message: *const schema.MessageDescriptor) bool 
     return false;
 }
 
-fn writeTextParseExtensions(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextParseExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field)) try writeTextParseExtensionField(file, field, writer, depth);
+        if (extensionAppliesToMessage(file, message, field)) try writeTextParseExtensionField(ctx, field, writer, depth);
     }
-    for (file.messages.items) |*scope| try writeTextParseMessageExtensions(file, message, scope, writer, depth);
+    for (file.messages.items) |*scope| try writeTextParseMessageExtensions(ctx, message, scope, writer, depth);
 }
 
-fn writeTextParseMessageExtensions(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextParseMessageExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field)) try writeTextParseExtensionField(file, field, writer, depth);
+        if (extensionAppliesToMessage(file, target, field)) try writeTextParseExtensionField(ctx, field, writer, depth);
     }
-    for (scope.messages.items) |*nested| try writeTextParseMessageExtensions(file, target, nested, writer, depth);
+    for (scope.messages.items) |*nested| try writeTextParseMessageExtensions(ctx, target, nested, writer, depth);
 }
 
 fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
@@ -901,12 +902,13 @@ fn splitFirst(name: []const u8) struct { []const u8, []const u8 } {
     return .{ name, "" };
 }
 
-fn writeTextParseExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextParseExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     switch (field.kind) {
         .scalar, .enumeration => {},
         .message, .group => |type_name| {
-            if (!codegenCanReferenceMessage(file, type_name)) return;
-            return try writeTextParseMessageExtensionField(file, field, type_name, writer, depth);
+            if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
+            return try writeTextParseMessageExtensionField(ctx, field, type_name, writer, depth);
         },
         else => return,
     }
@@ -935,7 +937,8 @@ fn writeTextParseExtensionField(file: *const schema.FileDescriptor, field: *cons
     try writer.writeAll("}\n");
 }
 
-fn writeTextParseMessageExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextParseMessageExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeExtensionTextBlockCondition(file, field, "line", writer);
@@ -946,7 +949,7 @@ fn writeTextParseMessageExtensionField(file: *const schema.FileDescriptor, field
     try writer.writeAll("defer allocator.free(block);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var nested = try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer nested.deinit(allocator);\n");
@@ -5268,7 +5271,6 @@ fn writeEscapedStringChar(c: u8, writer: *std.Io.Writer) Error!void {
 }
 
 fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const TextFormatOptions = struct { enum_as_name: bool = true };\n\n");
 
@@ -5320,7 +5322,7 @@ fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     for (message.oneofs.items) |oneof| {
         if (oneofHasTextField(ctx, message, oneof.name)) try writeTextOneof(ctx, message, oneof, writer, depth + 1);
     }
-    try writeTextUnknownFields(file, message, writer, depth + 1);
+    try writeTextUnknownFields(ctx, message, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -5603,36 +5605,39 @@ fn writeTextOneof(ctx: *const CodegenContext, message: *const schema.MessageDesc
     try writer.writeAll("}\n");
 }
 
-fn writeTextUnknownFields(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextUnknownFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
-    try writeTextUnknownExtensionFields(file, message, writer, depth + 1);
+    try writeTextUnknownExtensionFields(ctx, message, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("try @This().textWriteUnknownRaw(raw, writer);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
 
-fn writeTextUnknownExtensionFields(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextUnknownExtensionFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field)) try writeTextUnknownExtensionField(file, field, writer, depth);
+        if (extensionAppliesToMessage(file, message, field)) try writeTextUnknownExtensionField(ctx, field, writer, depth);
     }
-    for (file.messages.items) |*scope| try writeTextUnknownMessageExtensions(file, message, scope, writer, depth);
+    for (file.messages.items) |*scope| try writeTextUnknownMessageExtensions(ctx, message, scope, writer, depth);
 }
 
-fn writeTextUnknownMessageExtensions(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextUnknownMessageExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field)) try writeTextUnknownExtensionField(file, field, writer, depth);
+        if (extensionAppliesToMessage(file, target, field)) try writeTextUnknownExtensionField(ctx, field, writer, depth);
     }
-    for (scope.messages.items) |*nested| try writeTextUnknownMessageExtensions(file, target, nested, writer, depth);
+    for (scope.messages.items) |*nested| try writeTextUnknownMessageExtensions(ctx, target, nested, writer, depth);
 }
 
-fn writeTextUnknownExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextUnknownExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     switch (field.kind) {
         .scalar, .enumeration => {},
         .message, .group => |type_name| {
-            if (!codegenCanReferenceMessage(file, type_name)) return;
-            return try writeTextUnknownMessageExtensionField(file, field, type_name, writer, depth);
+            if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
+            return try writeTextUnknownMessageExtensionField(ctx, field, type_name, writer, depth);
         },
         else => return,
     }
@@ -5678,7 +5683,8 @@ fn writeTextUnknownExtensionField(file: *const schema.FileDescriptor, field: *co
     }
 }
 
-fn writeTextUnknownMessageExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeTextUnknownMessageExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeExtensionHelperReference(field, writer);
@@ -5687,7 +5693,7 @@ fn writeTextUnknownMessageExtensionField(file: *const schema.FileDescriptor, fie
     try writeTextExtensionBlockPrefix(file, field, writer);
     try indent(writer, depth + 2);
     try writer.writeAll("var nested = try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, payload);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("defer nested.deinit(allocator);\n");
@@ -9234,11 +9240,13 @@ test "codegen with registry emits extension type refs" {
         \\syntax = "proto2";
         \\package demo.app;
         \\import "common.proto";
+        \\message LocalHost { extensions 200 to max; }
         \\extend .demo.common.Host {
         \\  optional .demo.common.Note note = 100;
         \\  optional .demo.common.Role role = 101;
         \\  repeated .demo.common.Role roles = 102;
         \\}
+        \\extend LocalHost { optional .demo.common.Note local_note = 200; }
     );
     defer app.deinit();
     app.name = "app.proto";
@@ -9274,6 +9282,8 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Note\".parseTextWithOptions(allocator, block, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Note\".decode(allocator, payload);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
