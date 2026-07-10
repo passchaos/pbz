@@ -549,7 +549,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeEncode(file, message, writer, depth + 1);
     try writer.writeAll("\n");
-    try writeEncodeDeterministic(file, message, writer, depth + 1);
+    try writeEncodeDeterministic(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeEncodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
@@ -2468,14 +2468,14 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try writer.writeAll("}\n");
 }
 
-fn writeEncodeDeterministic(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeDeterministic(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
-    try writeEncodeFieldsByNumber(file, message, writer, depth + 1);
+    try writeEncodeFieldsByNumber(ctx, message, writer, depth + 1);
     try writeEncodeUnknownFieldsDeterministic(writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
@@ -2540,7 +2540,7 @@ fn writeEncodeUnknownFieldsDeterministic(writer: *std.Io.Writer, depth: usize) E
     try writer.writeAll("}\n");
 }
 
-fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeFieldsByNumber(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     var emitted: usize = 0;
     var previous: u29 = 0;
     while (emitted < message.fields.items.len) : (emitted += 1) {
@@ -2552,16 +2552,16 @@ fn writeEncodeFieldsByNumber(file: *const schema.FileDescriptor, message: *const
         const field = next orelse break;
         previous = field.number;
         if (field.oneof_name) |oneof_name| {
-            try writeEncodeOneofSingleField(file, field, oneof_name, writer, depth);
+            try writeEncodeOneofSingleField(ctx, field, oneof_name, writer, depth);
         } else if (field.kind == .map) {
-            try writeEncodeMapFieldDeterministic(file, field, writer, depth);
+            try writeEncodeMapFieldDeterministic(ctx, field, writer, depth);
         } else {
-            try writeEncodeField(file, field, writer, depth);
+            try writeEncodeFieldDeterministic(ctx, field, writer, depth);
         }
     }
 }
 
-fn writeEncodeOneofSingleField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, oneof_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeOneofSingleField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, oneof_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof_name, writer);
@@ -2570,12 +2570,33 @@ fn writeEncodeOneofSingleField(file: *const schema.FileDescriptor, field: *const
     try writer.writeAll(".");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" => |value| ");
-    try writeOneofValueEncode(file, field, "value", writer);
+    try writeOneofValueEncodeDeterministic(ctx, field, "value", writer);
     try writer.writeAll(",\n");
     try indent(writer, depth + 1);
     try writer.writeAll("else => {},\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeOneofValueEncodeDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    const file = ctx.file;
+    switch (field.kind) {
+        .message => |type_name| {
+            if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+                try writer.writeAll("{ ");
+                try writeEncodeMessagePayloadDeterministic(ctx, field.number, fieldMessageEncoding(file, field) == .delimited, type_name, value_expr, "w", writer);
+                try writer.writeAll(" }");
+            } else try writeOneofValueEncode(file, field, value_expr, writer);
+        },
+        .group => |type_name| {
+            if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+                try writer.writeAll("{ ");
+                try writeEncodeMessagePayloadDeterministic(ctx, field.number, true, type_name, value_expr, "w", writer);
+                try writer.writeAll(" }");
+            } else try writeOneofValueEncode(file, field, value_expr, writer);
+        },
+        else => try writeOneofValueEncode(file, field, value_expr, writer),
+    }
 }
 
 fn writeEncodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
@@ -4634,6 +4655,21 @@ fn writeEncodeField(file: *const schema.FileDescriptor, field: *const schema.Fie
     }
 }
 
+fn writeEncodeFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    switch (field.kind) {
+        .scalar => |scalar| try writeEncodeScalarField(file, field, scalar, writer, depth),
+        .enumeration => try writeEncodeEnumField(file, field, writer, depth),
+        .message => |type_name| if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+            try writeEncodeMessageFieldDeterministic(ctx, field, type_name, writer, depth);
+        } else try writeEncodeMessageField(file, field, writer, depth),
+        .group => |type_name| if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+            try writeEncodeGroupFieldDeterministic(ctx, field, type_name, writer, depth);
+        } else try writeEncodeGroupField(field, writer, depth),
+        .map => try writeEncodeMapFieldDeterministic(ctx, field, writer, depth),
+    }
+}
+
 fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         if (field.resolvedPacked(file)) {
@@ -4817,6 +4853,66 @@ fn writeEncodeMessageField(file: *const schema.FileDescriptor, field: *const sch
     }
 }
 
+fn writeEncodeMessageFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| { ");
+        try writeEncodeMessagePayloadDeterministic(ctx, field.number, fieldMessageEncoding(file, field) == .delimited, type_name, "item", "w", writer);
+        try writer.writeAll(" }\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        if (hasPresence(file, field.*)) {
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") { ");
+        } else {
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(".len != 0) { ");
+        }
+        try writer.writeAll("const item = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll("; ");
+        try writeEncodeMessagePayloadDeterministic(ctx, field.number, fieldMessageEncoding(file, field) == .delimited, type_name, "item", "w", writer);
+        try writer.writeAll(" }\n");
+    }
+}
+
+fn writeEncodeGroupFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| { ");
+        try writeEncodeMessagePayloadDeterministic(ctx, field.number, true, type_name, "item", "w", writer);
+        try writer.writeAll(" }\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(") { const item = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll("; ");
+        try writeEncodeMessagePayloadDeterministic(ctx, field.number, true, type_name, "item", "w", writer);
+        try writer.writeAll(" }\n");
+    }
+}
+
+fn writeEncodeMessagePayloadDeterministic(ctx: *const CodegenContext, number: u29, delimited: bool, type_name: []const u8, payload_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("var nested = try ");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    try writer.writeAll(".decode(allocator, ");
+    try writer.writeAll(payload_expr);
+    try writer.writeAll("); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator); defer allocator.free(payload); ");
+    if (delimited) {
+        try writer.print("try {s}.writeTag({d}, .start_group); try {s}.appendSlice(payload); try {s}.writeTag({d}, .end_group);", .{ writer_name, number, writer_name, writer_name, number });
+    } else {
+        try writer.print("try {s}.writeMessage({d}, payload);", .{ writer_name, number });
+    }
+}
+
 fn writeEncodeGroupField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
@@ -4860,7 +4956,8 @@ fn writeEncodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try writer.writeAll("}\n");
 }
 
-fn writeEncodeMapFieldDeterministic(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeMapFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
     const map_type = switch (field.kind) {
         .map => |map| map,
         else => return,
@@ -4899,8 +4996,13 @@ fn writeEncodeMapFieldDeterministic(file: *const schema.FileDescriptor, field: *
     try writer.writeAll(");\n");
     try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 2);
     try indent(writer, depth + 2);
-    try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
-    try writer.writeAll(");\n");
+    if (map_type.value.* == .message and codegenCanReferenceMessageWithContext(ctx, map_type.value.message)) {
+        try writeEncodeMessagePayloadDeterministic(ctx, 2, false, map_type.value.message, "entry.value", "entry_writer", writer);
+        try writer.writeAll("\n");
+    } else {
+        try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
+        try writer.writeAll(");\n");
+    }
     try indent(writer, depth + 2);
     try writer.print("try w.writeMessage({d}, entry_writer.slice());\n", .{field.number});
     try indent(writer, depth + 1);
@@ -9868,6 +9970,38 @@ test "codegen deterministic encoder emits fields by number" {
     const later_pos = std.mem.indexOf(u8, deterministic, "try w.writeInt32(10, self.@\"later\")").?;
     try std.testing.expect(first_pos < mid_pos);
     try std.testing.expect(mid_pos < later_pos);
+}
+
+test "codegen deterministic encoder recurses into available message payloads" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Child { optional int32 a = 1; optional int32 b = 2; }
+        \\message Parent {
+        \\  optional Child child = 1;
+        \\  repeated Child children = 2;
+        \\  optional group Legacy = 3 { optional int32 a = 4; optional int32 b = 5; }
+        \\  map<string, Child> keyed = 6;
+        \\  oneof pick { Child picked = 7; }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    const parent_start = std.mem.indexOf(u8, content, "pub const @\"Parent\" = struct").?;
+    const deterministic_start = std.mem.indexOfPos(u8, content, parent_start, "pub fn encodeDeterministic").?;
+    const deterministic_end = std.mem.indexOfPos(u8, content, deterministic_start, "pub fn encodeDeterministicInitialized").?;
+    const deterministic = content[deterministic_start..deterministic_end];
+
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "var nested = try @\"Child\".decode(allocator, item); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "try w.writeMessage(1, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "try w.writeMessage(2, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "var nested = try @\"Legacy\".decode(allocator, item); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "try w.writeTag(3, .start_group); try w.appendSlice(payload); try w.writeTag(3, .end_group);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "std.mem.sort(@\"keyedEntry\", entries") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "try entry_writer.writeMessage(2, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, ".@\"picked\" => |value| { var nested = try @\"Child\".decode(allocator, value); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator);") != null);
 }
 
 test "codegen emits map JSON stringify and parse helpers" {
