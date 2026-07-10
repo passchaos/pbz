@@ -26,7 +26,7 @@ validated feature set.
   - extension range options for `declaration`, `verification`, and range-local `features.*`; declaration-scope `features.*` across file/message/field/oneof/enum/enum-value/service/method with editions-only applicability and strict feature-name/value validation; nested/scoped proto2 extension full-name tracking; plus field-level `edition_defaults` / `feature_support` aggregate parsing, with declaration/extension consistency validation
   - services/rpc declarations and custom option names including `(ext).field`
   - string/bytes literal escape decoding and adjacent literal concatenation
-  - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
+  - basic SourceCodeInfo path/span generation for file-level syntax/package/import, top-level and nested message/enum/service declarations, fields, oneofs, extension fields, extension/reserved ranges, reserved names, enum values, and RPC methods, including adjacent/detached line leading comments plus same-line line/block trailing comments
   - proto2 field default validation for scalar/string/bytes/enum defaults including max uint64/fixed64 values and registry-validated imported enum defaults, with proto3/repeated/message/duplicate invalid-default rejection
   - packed/lazy/unverified_lazy/weak/jstype field option validation, with editions rejecting legacy `[packed]`, `[ctype]`, and `group` syntax in favor of features and validating implicit-presence default/closed-enum constraints
 - Dynamic message runtime
@@ -402,7 +402,7 @@ default names on encode including registry-aware imported enum fields/defaults, 
 file/message/enum/enum-value/field/oneof/service/method uninterpreted options plus selected known options (message/enum deprecation flags, field ctype/jstype/lazy/weak/redaction/retention/targets, enum-value/service/method deprecation/idempotency), including multi-part custom option names with extension name parts, decoded file syntax/edition/dependency metadata, file/message/field number/label/type-name,
 oneof index/name/field-contiguity validation, enum allow_alias misuse, enum descriptor validation,
 service/method validation, proto2 MessageOptions.message_set_wire_format,
-structured SourceCodeInfo location path/span/comments including parser-generated basic declaration/field/oneof/extension-range/reserved/enum-value/method locations plus leading/trailing/detached line and block comments, ExtensionRangeOptions
+structured SourceCodeInfo location path/span/comments including parser-generated basic declaration/field/extension-field/oneof/extension-range/reserved/enum-value/method locations plus leading/trailing/detached line and block comments, ExtensionRangeOptions
 declarations/verification/features with parser-side consistency checks,
 structured GeneratedCodeInfo annotations, and edition feature metadata.
 
