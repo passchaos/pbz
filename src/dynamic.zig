@@ -206,6 +206,22 @@ pub const DynamicMessage = struct {
         return self.unknown_fields.items.len;
     }
 
+    pub fn unknownFields(self: *const DynamicMessage) []const UnknownField {
+        return self.unknown_fields.items;
+    }
+
+    pub fn unknownFieldCountByNumber(self: *const DynamicMessage, number: wire.FieldNumber) usize {
+        var count: usize = 0;
+        for (self.unknown_fields.items) |field| {
+            if (field.number == number) count += 1;
+        }
+        return count;
+    }
+
+    pub fn hasUnknownFieldNumber(self: *const DynamicMessage, number: wire.FieldNumber) bool {
+        return self.unknownFieldCountByNumber(number) != 0;
+    }
+
     pub fn unknownByNumber(self: *const DynamicMessage, number: wire.FieldNumber) []const UnknownField {
         var first: ?usize = null;
         var last: usize = 0;
@@ -225,6 +241,28 @@ pub const DynamicMessage = struct {
             if (field.number == number) try fields.append(allocator, field);
         }
         return try fields.toOwnedSlice(allocator);
+    }
+
+    pub fn appendUnknownRaw(self: *DynamicMessage, raw: []const u8) DecodeError!void {
+        var reader = wire.Reader.init(raw);
+        const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
+        try reader.skipValue(tag);
+        if (!reader.eof()) return error.InvalidWireType;
+        try self.addUnknownRaw(tag.number, tag.wire_type, raw);
+    }
+
+    pub fn clearUnknownFieldsByNumber(self: *DynamicMessage, number: wire.FieldNumber) void {
+        var write_index: usize = 0;
+        var read_index: usize = 0;
+        while (read_index < self.unknown_fields.items.len) : (read_index += 1) {
+            if (self.unknown_fields.items[read_index].number == number) {
+                self.unknown_fields.items[read_index].deinit(self.allocator);
+                continue;
+            }
+            if (write_index != read_index) self.unknown_fields.items[write_index] = self.unknown_fields.items[read_index];
+            write_index += 1;
+        }
+        self.unknown_fields.items.len = write_index;
     }
 
     pub fn clearUnknownFields(self: *DynamicMessage) void {
@@ -2182,14 +2220,38 @@ test "dynamic unknown field API preserves queries and clears raw fields" {
     try message.decode(&file, writer.slice());
 
     try std.testing.expectEqual(@as(usize, 2), message.unknownCount());
+    try std.testing.expectEqual(@as(usize, 2), message.unknownFields().len);
+    try std.testing.expect(message.hasUnknownFieldNumber(100));
+    try std.testing.expect(message.hasUnknownFieldNumber(101));
+    try std.testing.expect(!message.hasUnknownFieldNumber(102));
+    try std.testing.expectEqual(@as(usize, 1), message.unknownFieldCountByNumber(100));
+    try std.testing.expectEqual(@as(usize, 1), message.unknownFieldCountByNumber(101));
     const unknown_100 = message.unknownByNumber(100);
     try std.testing.expectEqual(@as(usize, 1), unknown_100.len);
     try std.testing.expectEqual(wire.WireType.length_delimited, unknown_100[0].wire_type);
     try std.testing.expectEqualSlices(u8, &.{ 0xa2, 0x06, 0x05, 'e', 'x', 't', 'r', 'a' }, unknown_100[0].data);
 
+    var appended_raw = wire.Writer.init(allocator);
+    defer appended_raw.deinit();
+    try appended_raw.writeUInt32(102, 9);
+    try message.appendUnknownRaw(appended_raw.slice());
+    try std.testing.expectEqual(@as(usize, 3), message.unknownCount());
+    try std.testing.expect(message.hasUnknownFieldNumber(102));
+    try std.testing.expectEqual(@as(usize, 1), message.unknownFieldCountByNumber(102));
+
+    var invalid_raw = wire.Writer.init(allocator);
+    defer invalid_raw.deinit();
+    try invalid_raw.writeUInt32(103, 1);
+    try invalid_raw.writeUInt32(104, 2);
+    try std.testing.expectError(error.InvalidWireType, message.appendUnknownRaw(invalid_raw.slice()));
+
+    message.clearUnknownFieldsByNumber(100);
+    try std.testing.expectEqual(@as(usize, 2), message.unknownCount());
+    try std.testing.expect(!message.hasUnknownFieldNumber(100));
+
     const encoded = try message.encoded(&file);
     defer allocator.free(encoded);
-    try std.testing.expectEqualSlices(u8, writer.slice(), encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x05, 0xa8, 0x06, 0x07, 0xb0, 0x06, 0x09 }, encoded);
 
     message.clearUnknownFields();
     try std.testing.expectEqual(@as(usize, 0), message.unknownCount());
