@@ -281,7 +281,7 @@ encode/decode extension values or wire them into dynamic registries and custom
 typed wrappers. Extension metadata
 also emits `encodeRaw`, `appendToUnknown`, `decodeRaw`,
 `decodeAllRaw`, `decodeFromUnknownFieldsAlloc` / `decodeAllFromUnknown`, and
-`decodeFirstFromUnknown` helpers so typed message wrappers can shuttle proto2
+`decodeFirstFromUnknown` helpers with strict trailing-data checks so typed message wrappers can shuttle proto2
 extension payloads through their preserved unknown field storage; repeated
 extensions additionally expose `encodeAllRaw` and `decodeAppendRaw`; batch unknown append stores expanded values one field at a time unless the extension is packed, and repeated packable extensions honor resolved packed encoding with `decodePackedRaw` support
 for packed raw payloads.

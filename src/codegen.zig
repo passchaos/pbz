@@ -8220,16 +8220,20 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
     try writer.writeAll("const tag = (try r.nextTag()) orelse return null;\n");
     if (extensionUsesMessageSet(ctx, field)) {
         try indent(writer, depth + 1);
-        try writer.writeAll("if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);\n");
+        try writer.writeAll("if (tag.number == 1 and tag.wire_type == .start_group) { const value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return value; }\n");
         try indent(writer, depth + 1);
-        try writer.print("if (tag.number == {d} and tag.wire_type == .length_delimited) return try r.readBytes();\n", .{field.number});
+        try writer.print("if (tag.number == {d} and tag.wire_type == .length_delimited) {{ const value = try r.readBytes(); if (!r.eof()) return error.InvalidWireType; return value; }}\n", .{field.number});
         try indent(writer, depth + 1);
         try writer.writeAll("return null;\n");
     } else {
         try indent(writer, depth + 1);
         try writer.print("if (tag.number != number or tag.wire_type != .{s}) return null;\n", .{@tagName(field.kind.wireType())});
         try indent(writer, depth + 1);
-        try writer.writeAll("return try decodeValue(&r);\n");
+        try writer.writeAll("const value = try decodeValue(&r);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return value;\n");
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
@@ -8247,6 +8251,8 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
         try writer.writeAll("if (tag.number != number or tag.wire_type != .length_delimited) return null;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("var list: std.ArrayList(");
         try writer.writeAll(extensionSingleZigType(field.kind));
@@ -10350,7 +10356,9 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeRaw(raw: []const u8) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number != number or tag.wire_type != .length_delimited) return null;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeValue(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value = try decodeValue(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!r.eof()) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return value;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |raw| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
@@ -10532,8 +10540,8 @@ test "codegen emits MessageSet extension write helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .end_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 100 and tag.wire_type == .length_delimited) return try r.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) { const value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 100 and tag.wire_type == .length_delimited) { const value = try r.readBytes(); if (!r.eof()) return error.InvalidWireType; return value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) payload else null;") != null);
     const source = try allocator.dupeZ(u8, content);
@@ -10571,7 +10579,7 @@ test "codegen detects imported MessageSet extension extendees" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .start_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeUInt32(2, 100);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(3, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) return try decodeMessageSetItem(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) { const value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
 }
 
