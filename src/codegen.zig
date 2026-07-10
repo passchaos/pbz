@@ -8159,12 +8159,17 @@ fn writeExtensionWriteHelpers(ctx: *const CodegenContext, field: *const schema.F
         try writer.writeAll("pub fn appendAllToUnknown(message: anytype, allocator: std.mem.Allocator, values: ");
         try writer.writeAll(fieldType(field.*));
         try writer.writeAll(") !void {\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("const raw = try encodeAllRaw(allocator, values);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(raw);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("try message.appendUnknownRaw(allocator, raw);\n");
+        if (field.resolvedPacked(file)) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("const raw = try encodeAllRaw(allocator, values);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("defer allocator.free(raw);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try message.appendUnknownRaw(allocator, raw);\n");
+        } else {
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (values) |value| try appendToUnknown(message, allocator, value);\n");
+        }
         try indent(writer, depth);
         try writer.writeAll("}\n");
 
@@ -10361,7 +10366,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try write(w, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeAllRaw(allocator: std.mem.Allocator, values: []const i32) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllToUnknown(message: anytype, allocator: std.mem.Allocator, values: []const i32) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try appendToUnknown(message, allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllInUnknown(message: anytype, allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllToUnknown(message, allocator, values);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
@@ -10372,6 +10377,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, value))));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(103, packed_writer.slice());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodePackedRaw(allocator: std.mem.Allocator, raw: []const u8) !?[]i32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try encodeAllRaw(allocator, values);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try list.append(allocator, try packed_reader.readInt32());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"packed_nums\".decodePackedRaw(allocator, raw) catch null) |values| {") != null);
