@@ -2582,6 +2582,8 @@ test "json expands Any message payloads when type is known" {
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"id\":7,\"label\":\"known\"}}", rendered);
 
+    try std.testing.expectError(error.UnknownField, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"AA==\",\"id\":8}}", .{}));
+
     var parsed = try parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"id\":8,\"label\":\"parsed\"}}", .{});
     defer parsed.deinit();
     const parsed_any = parsed.get("any").?.values.items[0].message;
