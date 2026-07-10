@@ -1482,6 +1482,12 @@ test "value json and wire reject invalid null enum and non-finite numbers" {
     const allocator = std.testing.allocator;
     try std.testing.expectError(error.InvalidNumber, (Value{ .number_value = std.math.inf(f64) }).encode(allocator));
     try std.testing.expectError(error.InvalidNumber, (Value{ .number_value = std.math.nan(f64) }).jsonStringifyAlloc(allocator));
+    var string_nan = try Value.jsonParse(allocator, "\"NaN\"");
+    defer string_nan.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "NaN", string_nan.string_value);
+    var string_inf = try Value.jsonParse(allocator, "\"Infinity\"");
+    defer string_inf.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "Infinity", string_inf.string_value);
 
     var writer = wire.Writer.init(allocator);
     defer writer.deinit();
