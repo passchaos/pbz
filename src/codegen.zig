@@ -619,9 +619,9 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeMissingRequiredFieldName(message, writer, depth + 1);
     try writer.writeAll("\n");
-    try writeMissingRequiredFieldPath(file, message, writer, depth + 1);
+    try writeMissingRequiredFieldPath(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
-    try writeValidateRequired(file, message, writer, depth + 1);
+    try writeValidateRequired(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     if (ctx.emit_json) {
         try writeJsonMethods(ctx, message, writer, depth + 1);
@@ -3671,7 +3671,7 @@ fn writeMissingRequiredFieldName(message: *const schema.MessageDescriptor, write
     try writer.writeAll("}\n");
 }
 
-fn writeMissingRequiredFieldPath(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMissingRequiredFieldPath(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {\n");
     var uses_allocator = false;
@@ -3688,16 +3688,16 @@ fn writeMissingRequiredFieldPath(file: *const schema.FileDescriptor, message: *c
     }
     for (message.fields.items) |*field| {
         if (field.kind == .message or field.kind == .group or fieldHasMessageMapValue(field)) {
-            if (try writeMissingRequiredPathField(file, field, writer, depth + 1)) uses_allocator = true;
+            if (try writeMissingRequiredPathField(ctx, field, writer, depth + 1)) uses_allocator = true;
         }
     }
     for (message.oneofs.items) |oneof| {
         if (oneofHasMessageField(message, oneof.name)) {
             uses_allocator = true;
-            try writeMissingRequiredPathOneof(file, message, oneof, writer, depth + 1);
+            try writeMissingRequiredPathOneof(ctx, message, oneof, writer, depth + 1);
         }
     }
-    if (try writeMissingRequiredPathExtensionPayloads(file, message, writer, depth + 1)) uses_allocator = true;
+    if (try writeMissingRequiredPathExtensionPayloads(ctx, message, writer, depth + 1)) uses_allocator = true;
     if (!uses_allocator) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = self; _ = allocator;\n");
@@ -3708,36 +3708,38 @@ fn writeMissingRequiredFieldPath(file: *const schema.FileDescriptor, message: *c
     try writer.writeAll("}\n");
 }
 
-fn writeMissingRequiredPathExtensionPayloads(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeMissingRequiredPathExtensionPayloads(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    const file = ctx.file;
     var wrote_any = false;
     for (file.extensions.items) |*field| {
-        if (try writeMissingRequiredPathExtensionPayload(file, message, field, writer, depth)) wrote_any = true;
+        if (try writeMissingRequiredPathExtensionPayload(ctx, message, field, writer, depth)) wrote_any = true;
     }
     for (file.messages.items) |*scope| {
-        if (try writeMissingRequiredPathScopedExtensionPayloads(file, message, scope, writer, depth)) wrote_any = true;
+        if (try writeMissingRequiredPathScopedExtensionPayloads(ctx, message, scope, writer, depth)) wrote_any = true;
     }
     return wrote_any;
 }
 
-fn writeMissingRequiredPathScopedExtensionPayloads(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeMissingRequiredPathScopedExtensionPayloads(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
     var wrote_any = false;
     for (scope.extensions.items) |*field| {
-        if (try writeMissingRequiredPathExtensionPayload(file, target, field, writer, depth)) wrote_any = true;
+        if (try writeMissingRequiredPathExtensionPayload(ctx, target, field, writer, depth)) wrote_any = true;
     }
     for (scope.messages.items) |*nested| {
-        if (try writeMissingRequiredPathScopedExtensionPayloads(file, target, nested, writer, depth)) wrote_any = true;
+        if (try writeMissingRequiredPathScopedExtensionPayloads(ctx, target, nested, writer, depth)) wrote_any = true;
     }
     return wrote_any;
 }
 
-fn writeMissingRequiredPathExtensionPayload(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeMissingRequiredPathExtensionPayload(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    const file = ctx.file;
     if (!extensionAppliesToMessage(file, target, field)) return false;
     const type_name = switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
         else => return false,
     };
-    if (!codegenCanReferenceMessage(file, type_name)) return false;
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return false;
 
     try indent(writer, depth);
     try writer.writeAll("{\n");
@@ -3749,7 +3751,7 @@ fn writeMissingRequiredPathExtensionPayload(file: *const schema.FileDescriptor, 
     try writer.writeAll("defer allocator.free(payloads);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("for (payloads) |payload| {\n");
-    try writeMissingRequiredPathPayload(type_name, field.name, "payload", writer, depth + 2);
+    try writeMissingRequiredPathPayload(ctx, type_name, field.name, "payload", writer, depth + 2);
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -3757,21 +3759,21 @@ fn writeMissingRequiredPathExtensionPayload(file: *const schema.FileDescriptor, 
     return true;
 }
 
-fn writeMissingRequiredPathField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
-    if (field.kind == .map) return try writeMissingRequiredPathMapField(file, field, writer, depth);
+fn writeMissingRequiredPathField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    if (field.kind == .map) return try writeMissingRequiredPathMapField(ctx, field, writer, depth);
     const type_name = switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
         else => return false,
     };
-    if (!codegenCanReferenceMessage(file, type_name)) return false;
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return false;
     if (field.oneof_name != null) return false;
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(") |payload| {\n");
-        try writeMissingRequiredPathPayload(type_name, field.name, "payload", writer, depth + 1);
+        try writeMissingRequiredPathPayload(ctx, type_name, field.name, "payload", writer, depth + 1);
         try indent(writer, depth);
         try writer.writeAll("}\n");
     } else {
@@ -3779,14 +3781,14 @@ fn writeMissingRequiredPathField(file: *const schema.FileDescriptor, field: *con
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(".len != 0) {\n");
-        try writeMissingRequiredPathPayload(type_name, field.name, "self.", writer, depth + 1);
+        try writeMissingRequiredPathPayload(ctx, type_name, field.name, "self.", writer, depth + 1);
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
     return true;
 }
 
-fn writeMissingRequiredPathMapField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeMissingRequiredPathMapField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
     const map_type = switch (field.kind) {
         .map => |map_type| map_type,
         else => return false,
@@ -3795,18 +3797,18 @@ fn writeMissingRequiredPathMapField(file: *const schema.FileDescriptor, field: *
         .message => |name| name,
         else => return false,
     };
-    if (!codegenCanReferenceMessage(file, type_name)) return false;
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return false;
     try indent(writer, depth);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |entry| {\n");
-    try writeMissingRequiredPathPayload(type_name, field.name, "entry.value", writer, depth + 1);
+    try writeMissingRequiredPathPayload(ctx, type_name, field.name, "entry.value", writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("}\n");
     return true;
 }
 
-fn writeMissingRequiredPathOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMissingRequiredPathOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof.name, writer);
@@ -3820,12 +3822,12 @@ fn writeMissingRequiredPathOneof(file: *const schema.FileDescriptor, message: *c
                 .group => |group_name| group_name,
                 else => continue,
             };
-            if (std.mem.eql(u8, name, oneof.name) and codegenCanReferenceMessage(file, type_name)) {
+            if (std.mem.eql(u8, name, oneof.name) and codegenCanReferenceMessageWithContext(ctx, type_name)) {
                 try indent(writer, depth + 1);
                 try writer.writeAll(".");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |payload| {\n");
-                try writeMissingRequiredPathPayload(type_name, field.name, "payload", writer, depth + 2);
+                try writeMissingRequiredPathPayload(ctx, type_name, field.name, "payload", writer, depth + 2);
                 try indent(writer, depth + 1);
                 try writer.writeAll("},\n");
             }
@@ -3835,10 +3837,10 @@ fn writeMissingRequiredPathOneof(file: *const schema.FileDescriptor, message: *c
     try writer.writeAll("}\n");
 }
 
-fn writeMissingRequiredPathPayload(type_name: []const u8, field_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMissingRequiredPathPayload(ctx: *const CodegenContext, type_name: []const u8, field_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("var nested = try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
     if (std.mem.eql(u8, payload_expr, "self.")) try writeQuotedIdent(field_name, writer);
@@ -3857,7 +3859,7 @@ fn writeMissingRequiredPathPayload(type_name: []const u8, field_name: []const u8
     try writer.writeAll("}\n");
 }
 
-fn writeValidateRequired(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeValidateRequired(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn validateRequired(self: @This()) !void {\n");
     try indent(writer, depth + 1);
@@ -3874,16 +3876,16 @@ fn writeValidateRequired(file: *const schema.FileDescriptor, message: *const sch
     for (message.fields.items) |*field| {
         if (field.kind == .message or field.kind == .group or fieldHasMessageMapValue(field)) {
             uses_allocator = true;
-            try writeValidateMessagePayloadField(file, field, writer, depth + 1);
+            try writeValidateMessagePayloadField(ctx, field, writer, depth + 1);
         }
     }
     for (message.oneofs.items) |oneof| {
         if (oneofHasMessageField(message, oneof.name)) {
             uses_allocator = true;
-            try writeValidateMessagePayloadOneof(file, message, oneof, writer, depth + 1);
+            try writeValidateMessagePayloadOneof(ctx, message, oneof, writer, depth + 1);
         }
     }
-    if (try writeValidateMessageExtensionPayloads(file, message, writer, depth + 1)) uses_allocator = true;
+    if (try writeValidateMessageExtensionPayloads(ctx, message, writer, depth + 1)) uses_allocator = true;
     if (!uses_allocator) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
@@ -3892,36 +3894,38 @@ fn writeValidateRequired(file: *const schema.FileDescriptor, message: *const sch
     try writer.writeAll("}\n");
 }
 
-fn writeValidateMessageExtensionPayloads(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeValidateMessageExtensionPayloads(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    const file = ctx.file;
     var wrote_any = false;
     for (file.extensions.items) |*field| {
-        if (try writeValidateMessageExtensionPayload(file, message, field, writer, depth)) wrote_any = true;
+        if (try writeValidateMessageExtensionPayload(ctx, message, field, writer, depth)) wrote_any = true;
     }
     for (file.messages.items) |*scope| {
-        if (try writeValidateScopedMessageExtensionPayloads(file, message, scope, writer, depth)) wrote_any = true;
+        if (try writeValidateScopedMessageExtensionPayloads(ctx, message, scope, writer, depth)) wrote_any = true;
     }
     return wrote_any;
 }
 
-fn writeValidateScopedMessageExtensionPayloads(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeValidateScopedMessageExtensionPayloads(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
     var wrote_any = false;
     for (scope.extensions.items) |*field| {
-        if (try writeValidateMessageExtensionPayload(file, target, field, writer, depth)) wrote_any = true;
+        if (try writeValidateMessageExtensionPayload(ctx, target, field, writer, depth)) wrote_any = true;
     }
     for (scope.messages.items) |*nested| {
-        if (try writeValidateScopedMessageExtensionPayloads(file, target, nested, writer, depth)) wrote_any = true;
+        if (try writeValidateScopedMessageExtensionPayloads(ctx, target, nested, writer, depth)) wrote_any = true;
     }
     return wrote_any;
 }
 
-fn writeValidateMessageExtensionPayload(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+fn writeValidateMessageExtensionPayload(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!bool {
+    const file = ctx.file;
     if (!extensionAppliesToMessage(file, target, field)) return false;
     const type_name = switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
         else => return false,
     };
-    if (!codegenCanReferenceMessage(file, type_name)) return false;
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return false;
 
     try indent(writer, depth);
     try writer.writeAll("{\n");
@@ -3933,7 +3937,7 @@ fn writeValidateMessageExtensionPayload(file: *const schema.FileDescriptor, targ
     try writer.writeAll("defer allocator.free(payloads);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("for (payloads) |payload| {\n");
-    try writeDecodeAndValidatePayload(type_name, "payload", writer, depth + 2);
+    try writeDecodeAndValidatePayload(ctx, type_name, "payload", writer, depth + 2);
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -3941,21 +3945,21 @@ fn writeValidateMessageExtensionPayload(file: *const schema.FileDescriptor, targ
     return true;
 }
 
-fn writeValidateMessagePayloadField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.kind == .map) return try writeValidateMapMessagePayloadField(file, field, writer, depth);
+fn writeValidateMessagePayloadField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind == .map) return try writeValidateMapMessagePayloadField(ctx, field, writer, depth);
     const type_name = switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
         else => return,
     };
-    if (!codegenCanReferenceMessage(file, type_name)) return;
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
     if (field.oneof_name != null) return;
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(") |payload| {\n");
-        try writeDecodeAndValidatePayload(type_name, "payload", writer, depth + 1);
+        try writeDecodeAndValidatePayload(ctx, type_name, "payload", writer, depth + 1);
         try indent(writer, depth);
         try writer.writeAll("}\n");
     } else {
@@ -3965,7 +3969,7 @@ fn writeValidateMessagePayloadField(file: *const schema.FileDescriptor, field: *
         try writer.writeAll(".len != 0) {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("var nested = try ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".decode(allocator, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
@@ -3978,7 +3982,7 @@ fn writeValidateMessagePayloadField(file: *const schema.FileDescriptor, field: *
     }
 }
 
-fn writeValidateMapMessagePayloadField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeValidateMapMessagePayloadField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const map_type = switch (field.kind) {
         .map => |map_type| map_type,
         else => return,
@@ -3987,12 +3991,12 @@ fn writeValidateMapMessagePayloadField(file: *const schema.FileDescriptor, field
         .message => |name| name,
         else => return,
     };
-    if (!codegenCanReferenceMessage(file, type_name)) return;
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
     try indent(writer, depth);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |entry| {\n");
-    try writeDecodeAndValidatePayload(type_name, "entry.value", writer, depth + 1);
+    try writeDecodeAndValidatePayload(ctx, type_name, "entry.value", writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -4005,7 +4009,7 @@ fn fieldHasMessageMapValue(field: *const schema.FieldDescriptor) bool {
     return map_type.value.* == .message;
 }
 
-fn writeValidateMessagePayloadOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeValidateMessagePayloadOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof.name, writer);
@@ -4019,12 +4023,12 @@ fn writeValidateMessagePayloadOneof(file: *const schema.FileDescriptor, message:
                 .group => |group_name| group_name,
                 else => continue,
             };
-            if (std.mem.eql(u8, name, oneof.name) and codegenCanReferenceMessage(file, type_name)) {
+            if (std.mem.eql(u8, name, oneof.name) and codegenCanReferenceMessageWithContext(ctx, type_name)) {
                 try indent(writer, depth + 1);
                 try writer.writeAll(".");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |payload| {\n");
-                try writeDecodeAndValidatePayload(type_name, "payload", writer, depth + 2);
+                try writeDecodeAndValidatePayload(ctx, type_name, "payload", writer, depth + 2);
                 try indent(writer, depth + 1);
                 try writer.writeAll("},\n");
             }
@@ -4034,10 +4038,10 @@ fn writeValidateMessagePayloadOneof(file: *const schema.FileDescriptor, message:
     try writer.writeAll("}\n");
 }
 
-fn writeDecodeAndValidatePayload(type_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeAndValidatePayload(ctx: *const CodegenContext, type_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("var nested = try ");
-    try writeMessageTypeReference(type_name, writer);
+    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
     try writer.writeAll(");\n");
@@ -9326,6 +9330,43 @@ test "codegen with registry resolves imported enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1, 2}))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "&.{\"UNKNOWN\", \"ADMIN\", \"GUEST\"}, &.{0, 1, 2}, true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_role\"") == null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen validates imported extension required payloads" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Host { extensions 100 to max; }
+        \\message Payload { required int32 id = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message LocalHost { extensions 100 to max; }
+        \\extend LocalHost { optional common.Payload payload = 100; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.@\"payload\".decodeAllFromUnknown(self, allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Payload\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
