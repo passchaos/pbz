@@ -1462,7 +1462,10 @@ test "json parseInitialized validates required fields recursively" {
         \\package demo;
         \\message Host { extensions 100 to max; }
         \\message Ext { required int32 id = 1; }
-        \\extend Host { optional Ext ext = 100; }
+        \\extend Host {
+        \\  optional Ext ext = 100;
+        \\  repeated Ext exts = 101;
+        \\}
     );
     defer ext_file.deinit();
     var ext_registry = registry_mod.Registry.init(allocator);
@@ -1473,6 +1476,10 @@ test "json parseInitialized validates required fields recursively" {
     var ext_parsed = try parseInitializedAllocWithRegistry(allocator, &ext_file, &ext_registry, host_desc, "{\"[demo.ext]\":{\"id\":11}}", .{});
     defer ext_parsed.deinit();
     try std.testing.expectEqual(@as(i32, 11), ext_parsed.get("ext").?.values.items[0].message.get("id").?.values.items[0].int32);
+    try std.testing.expectError(error.MissingRequiredField, parseInitializedAllocWithRegistry(allocator, &ext_file, &ext_registry, host_desc, "{\"[demo.exts]\":[{\"id\":1},{}]}", .{}));
+    var repeated_ext_parsed = try parseInitializedAllocWithRegistry(allocator, &ext_file, &ext_registry, host_desc, "{\"[demo.exts]\":[{\"id\":1},{\"id\":2}]}", .{});
+    defer repeated_ext_parsed.deinit();
+    try std.testing.expectEqual(@as(usize, 2), repeated_ext_parsed.get("exts").?.values.items.len);
 
     var messageset_file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
