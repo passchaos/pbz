@@ -320,6 +320,9 @@ test "duration json parses plus sign and validates input" {
     const positive = try Duration.jsonParse("\"+3.250s\"");
     try std.testing.expectEqual(@as(i64, 3), positive.seconds);
     try std.testing.expectEqual(@as(i32, 250_000_000), positive.nanos);
+    const negative_fraction = try (Duration{ .seconds = 0, .nanos = -250_000_000 }).jsonStringifyAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(negative_fraction);
+    try std.testing.expectEqualSlices(u8, "\"-0.250s\"", negative_fraction);
     try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"s\""));
     try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\".1s\""));
     try std.testing.expectError(error.InvalidDuration, Duration.jsonParse("\"1.s\""));
