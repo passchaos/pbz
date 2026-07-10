@@ -1750,6 +1750,7 @@ fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message
 fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
     if (is_extension) {
         if (field.extendee == null or field.oneof_name != null) return error.InvalidFieldType;
+        if (field.proto3_optional) return error.InvalidFieldType;
     } else if (field.extendee != null) return error.InvalidFieldType;
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
@@ -5915,6 +5916,22 @@ test "descriptor rejects required labels outside proto2 and on extensions" {
         defer file.deinit();
         try file.writeString(1, "required-extension.proto");
         try file.writeMessage(4, host.slice());
+        try file.writeMessage(7, field.slice());
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+    }
+    {
+        var field = wire.Writer.init(allocator);
+        defer field.deinit();
+        try field.writeString(1, "bad_ext");
+        try field.writeString(2, ".google.protobuf.MessageOptions");
+        try field.writeInt32(3, 100);
+        try field.writeInt32(4, 1);
+        try field.writeInt32(5, 5);
+        try field.writeBool(17, true);
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "extension-with-proto3-optional.proto");
+        try file.writeString(12, "proto3");
         try file.writeMessage(7, field.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }

@@ -704,6 +704,7 @@ pub const Parser = struct {
                 field.deinit(self.allocator);
                 return error.InvalidSyntax;
             }
+            field.proto3_optional = false;
             field.extendee = extendee;
             field.full_name = if (scope.len == 0) null else try self.qualifiedName(scope, field.name);
             try output.append(self.allocator, field);
@@ -3882,6 +3883,7 @@ test "parser rejects non-option extensions in proto3" {
     );
     defer options_extension.deinit();
     try std.testing.expectEqual(@as(usize, 1), options_extension.extensions.items.len);
+    try std.testing.expect(!options_extension.extensions.items[0].proto3_optional);
 }
 
 test "parser rejects required extension fields" {
