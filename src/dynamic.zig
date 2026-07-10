@@ -3030,6 +3030,51 @@ test "dynamic encodes extension fields using extension descriptors" {
     try std.testing.expectEqual(@as(i32, 123), decoded.get("score").?.values.items[0].int32);
 }
 
+test "dynamic initialized helpers validate proto2 extension message payloads" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\message Ext { required int32 id = 1; }
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const ext_desc = file.findMessage("Ext").?;
+    const ext_field = registry.findExtension("demo.Host", 100).?;
+
+    const missing_ext = try allocator.create(DynamicMessage);
+    missing_ext.* = DynamicMessage.init(allocator, ext_desc);
+    var missing_msg = DynamicMessage.init(allocator, host);
+    defer missing_msg.deinit();
+    try missing_msg.add(ext_field, .{ .message = missing_ext });
+    try std.testing.expectError(error.MissingRequiredField, missing_msg.encodedInitializedWithRegistry(&file, &registry));
+
+    const ok_ext = try allocator.create(DynamicMessage);
+    ok_ext.* = DynamicMessage.init(allocator, ext_desc);
+    try ok_ext.add(ext_desc.findField("id").?, .{ .int32 = 7 });
+    var ok_msg = DynamicMessage.init(allocator, host);
+    defer ok_msg.deinit();
+    try ok_msg.add(ext_field, .{ .message = ok_ext });
+    const encoded = try ok_msg.encodedInitializedWithRegistry(&file, &registry);
+    defer allocator.free(encoded);
+
+    var decoded = DynamicMessage.init(allocator, host);
+    defer decoded.deinit();
+    try decoded.decodeInitializedWithRegistry(&file, &registry, encoded);
+
+    var bad_writer = wire.Writer.init(allocator);
+    defer bad_writer.deinit();
+    try bad_writer.writeMessage(100, &.{});
+    var invalid = DynamicMessage.init(allocator, host);
+    defer invalid.deinit();
+    try std.testing.expectError(error.MissingRequiredField, invalid.decodeInitializedWithRegistry(&file, &registry, bad_writer.slice()));
+}
+
 test "dynamic encodes and decodes proto2 MessageSet items" {
     const allocator = std.testing.allocator;
     var file = try parser.Parser.parse(allocator,
@@ -3068,6 +3113,53 @@ test "dynamic encodes and decodes proto2 MessageSet items" {
     try decoded.decodeWithRegistry(&file, &registry, encoded);
     const decoded_ext = decoded.get("ext").?.values.items[0].message;
     try std.testing.expectEqual(@as(i32, 7), decoded_ext.get("value").?.values.items[0].int32);
+}
+
+test "dynamic initialized helpers validate MessageSet extension payloads" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { option message_set_wire_format = true; extensions 4 to max; }
+        \\message Ext { required int32 id = 1; }
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const ext_desc = file.findMessage("Ext").?;
+    const ext_field = registry.findExtension("demo.Host", 100).?;
+
+    const missing_ext = try allocator.create(DynamicMessage);
+    missing_ext.* = DynamicMessage.init(allocator, ext_desc);
+    var missing_msg = DynamicMessage.init(allocator, host);
+    defer missing_msg.deinit();
+    try missing_msg.add(ext_field, .{ .message = missing_ext });
+    try std.testing.expectError(error.MissingRequiredField, missing_msg.encodedInitializedWithRegistry(&file, &registry));
+
+    var bad_writer = wire.Writer.init(allocator);
+    defer bad_writer.deinit();
+    try bad_writer.writeTag(1, .start_group);
+    try bad_writer.writeUInt32(2, 100);
+    try bad_writer.writeMessage(3, &.{});
+    try bad_writer.writeTag(1, .end_group);
+    var invalid = DynamicMessage.init(allocator, host);
+    defer invalid.deinit();
+    try std.testing.expectError(error.MissingRequiredField, invalid.decodeInitializedWithRegistry(&file, &registry, bad_writer.slice()));
+
+    const ok_ext = try allocator.create(DynamicMessage);
+    ok_ext.* = DynamicMessage.init(allocator, ext_desc);
+    try ok_ext.add(ext_desc.findField("id").?, .{ .int32 = 9 });
+    var ok_msg = DynamicMessage.init(allocator, host);
+    defer ok_msg.deinit();
+    try ok_msg.add(ext_field, .{ .message = ok_ext });
+    const encoded = try ok_msg.encodedInitializedWithRegistry(&file, &registry);
+    defer allocator.free(encoded);
+    var decoded = DynamicMessage.init(allocator, host);
+    defer decoded.deinit();
+    try decoded.decodeInitializedWithRegistry(&file, &registry, encoded);
 }
 
 test "dynamic MessageSet accepts payload before type id and preserves unknown items" {
