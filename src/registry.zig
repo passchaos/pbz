@@ -685,7 +685,7 @@ fn validateExtensionFieldDeclaration(package: []const u8, field: *const schema.F
     if (declaration.full_name.len != 0 and !schema.extensionDeclarationNameMatches(package, declaration.full_name, field)) return error.InvalidExtensionDeclaration;
     if (declaration.repeated and field.cardinality != .repeated) return error.InvalidExtensionDeclaration;
     if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidExtensionDeclaration;
-    if (declaration.type_name.len != 0 and !extensionTypeMatches(field, declaration.type_name)) return error.InvalidExtensionDeclaration;
+    if (declaration.type_name.len != 0 and !extensionTypeMatches(package, field, declaration.type_name)) return error.InvalidExtensionDeclaration;
 }
 
 fn validateMessageSetExtensionShape(field: *const schema.FieldDescriptor, extendee: *const schema.MessageDescriptor) Error!void {
@@ -767,12 +767,23 @@ fn namesMatch(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, na, nb) or std.mem.endsWith(u8, na, nb) or std.mem.endsWith(u8, nb, na);
 }
 
-fn extensionTypeMatches(field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
+fn extensionTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
-        .message, .enumeration, .group => |type_name| namesMatch(declared_type, type_name),
+        .message, .enumeration, .group => |type_name| declarationTypeMatches(package, declared_type, type_name),
         .scalar => |scalar| std.mem.eql(u8, declared_type, schema.scalarTypeName(scalar)),
         .map => false,
     };
+}
+
+fn declarationTypeMatches(package: []const u8, declaration: []const u8, type_name: []const u8) bool {
+    const declared = normalizeName(declaration);
+    const actual = normalizeName(type_name);
+    if (std.mem.eql(u8, declared, actual)) return true;
+    if (package.len == 0 or std.mem.startsWith(u8, type_name, ".")) return false;
+    return declared.len == package.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..package.len], package) and
+        declared[package.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 ..], actual);
 }
 
 fn findInFile(file: *const schema.FileDescriptor, relative_name: []const u8) ?TypeRef {
@@ -1273,6 +1284,23 @@ test "registry enforces declaration coverage when any declaration exists" {
     defer wrong_package.deinit();
     wrong_package.name = "wrong-package.proto";
     try std.testing.expectError(error.InvalidExtensionDeclaration, registry.addFile(&wrong_package));
+
+    var wrong_type_package = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package other;
+        \\import "host.proto";
+        \\message Ext {}
+        \\extend demo.Host { optional Ext ext = 100; }
+    );
+    defer wrong_type_package.deinit();
+    wrong_type_package.name = "wrong-type-package.proto";
+    wrong_type_package.extensions.items[0].full_name = "demo.ext";
+    // Reuse a host declaration that expects .demo.Ext while this extension's
+    // relative Ext resolves under package other.
+    var registry_for_type = Registry.init(allocator);
+    defer registry_for_type.deinit();
+    try registry_for_type.addFile(&host);
+    try std.testing.expectError(error.InvalidExtensionDeclaration, registry_for_type.addFile(&wrong_type_package));
 }
 
 test "registry rejects cross-file extension declaration mismatches" {

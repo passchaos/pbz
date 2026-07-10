@@ -1644,7 +1644,7 @@ pub const Parser = struct {
         if (declaration.full_name.len != 0 and !schema.extensionDeclarationNameMatches(self.file.package, declaration.full_name, field)) return error.InvalidFieldType;
         if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
         if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
-        if (declaration.type_name.len != 0 and !extensionTypeMatches(self, field, declaration.type_name)) return error.InvalidFieldType;
+        if (declaration.type_name.len != 0 and !extensionTypeMatches(self.file.package, field, declaration.type_name)) return error.InvalidFieldType;
     }
 
     fn validateMessageSets(self: *Parser) ParseError!void {
@@ -2251,22 +2251,23 @@ fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8)
     return null;
 }
 
-fn extensionTypeMatches(parser: *Parser, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
-    _ = parser;
+fn extensionTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
-        .message, .enumeration, .group => |type_name| nameMatchesType(declared_type, type_name),
+        .message, .enumeration, .group => |type_name| declarationTypeMatches(package, declared_type, type_name),
         .scalar => |scalar| std.mem.eql(u8, schema.scalarTypeName(scalar), declared_type),
         .map => false,
     };
 }
 
-fn nameMatchesType(a: []const u8, b: []const u8) bool {
-    const an = stripLeadingDot(a);
-    const bn = stripLeadingDot(b);
-    if (std.mem.eql(u8, an, bn)) return true;
-    const a_leaf = if (std.mem.lastIndexOfScalar(u8, an, '.')) |idx| an[idx + 1 ..] else an;
-    const b_leaf = if (std.mem.lastIndexOfScalar(u8, bn, '.')) |idx| bn[idx + 1 ..] else bn;
-    return std.mem.eql(u8, a_leaf, b_leaf);
+fn declarationTypeMatches(package: []const u8, declaration: []const u8, type_name: []const u8) bool {
+    const declared = stripLeadingDot(declaration);
+    const actual = stripLeadingDot(type_name);
+    if (std.mem.eql(u8, declared, actual)) return true;
+    if (package.len == 0 or std.mem.startsWith(u8, type_name, ".")) return false;
+    return declared.len == package.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..package.len], package) and
+        declared[package.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 ..], actual);
 }
 
 fn stripLeadingDot(name: []const u8) []const u8 {
@@ -3724,6 +3725,17 @@ test "parser validates extension range declarations against defined extensions" 
         \\}
         \\message Ext {}
         \\message Other {}
+        \\extend Host { optional Ext ext = 100; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package other;
+        \\message Host {
+        \\  extensions 100 to max [
+        \\    declaration = { number: 100 full_name: ".other.ext" type: ".demo.Ext" }
+        \\  ];
+        \\}
+        \\message Ext {}
         \\extend Host { optional Ext ext = 100; }
     ));
     try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,

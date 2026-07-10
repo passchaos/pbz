@@ -1904,7 +1904,7 @@ fn validateDecodedExtensionFieldDeclaration(package: []const u8, field: *const s
     if (declaration.full_name.len != 0 and !schema.extensionDeclarationNameMatches(package, declaration.full_name, field)) return error.InvalidFieldType;
     if (declaration.repeated and field.cardinality != .repeated) return error.InvalidFieldType;
     if (!declaration.repeated and field.cardinality == .repeated) return error.InvalidFieldType;
-    if (declaration.type_name.len != 0 and !descriptorExtensionTypeMatches(field, declaration.type_name)) return error.InvalidFieldType;
+    if (declaration.type_name.len != 0 and !descriptorExtensionTypeMatches(package, field, declaration.type_name)) return error.InvalidFieldType;
 }
 
 fn descriptorNormalizeName(name: []const u8) []const u8 {
@@ -1917,12 +1917,23 @@ fn descriptorNamesMatch(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, na, nb) or std.mem.endsWith(u8, na, nb) or std.mem.endsWith(u8, nb, na);
 }
 
-fn descriptorExtensionTypeMatches(field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
+fn descriptorExtensionTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
     return switch (field.kind) {
-        .message, .enumeration, .group => |type_name| descriptorNamesMatch(declared_type, type_name),
+        .message, .enumeration, .group => |type_name| descriptorDeclarationTypeMatches(package, declared_type, type_name),
         .scalar => |scalar| std.mem.eql(u8, declared_type, schema.scalarTypeName(scalar)),
         .map => false,
     };
+}
+
+fn descriptorDeclarationTypeMatches(package: []const u8, declaration: []const u8, type_name: []const u8) bool {
+    const declared = descriptorNormalizeName(declaration);
+    const actual = descriptorNormalizeName(type_name);
+    if (std.mem.eql(u8, declared, actual)) return true;
+    if (package.len == 0 or std.mem.startsWith(u8, type_name, ".")) return false;
+    return declared.len == package.len + 1 + actual.len and
+        std.mem.eql(u8, declared[0..package.len], package) and
+        declared[package.len] == '.' and
+        std.mem.eql(u8, declared[package.len + 1 ..], actual);
 }
 
 pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) Error![]schema.FileDescriptor {
@@ -6989,6 +7000,22 @@ test "descriptor rejects extensions that violate decoded declarations" {
         try file.messages.append(allocator, host);
         try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .scalar = .int32 }, .extendee = "Host" });
         const bytes = try encodeFileDescriptorProto(allocator, &file, "wrong-package-ext-decl.proto");
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var file = schema.FileDescriptor.init(allocator);
+        defer file.deinit();
+        file.setSyntax(.proto2);
+        file.package = "other";
+        var host = schema.MessageDescriptor{ .name = "Host" };
+        var range = schema.ExtensionRange{ .start = 100, .end = 200 };
+        try range.declarations.append(allocator, .{ .number = 100, .full_name = ".other.tag", .type_name = ".demo.Ext" });
+        try host.extension_ranges.append(allocator, range);
+        try file.messages.append(allocator, host);
+        try file.messages.append(allocator, .{ .name = "Ext" });
+        try file.extensions.append(allocator, .{ .name = "tag", .number = 100, .cardinality = .optional, .kind = .{ .message = "Ext" }, .extendee = "Host" });
+        const bytes = try encodeFileDescriptorProto(allocator, &file, "wrong-package-ext-type-decl.proto");
         defer allocator.free(bytes);
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
     }
