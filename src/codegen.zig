@@ -7117,6 +7117,14 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    while (try r.nextTag()) |tag| try textWriteUnknownField(tag, &r, writer);
         \\}
         \\
+        \\fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
+        \\    try writer.writeByte('"');
+        \\    for (bytes) |c| {
+        \\        if (c == '\\') try writer.writeAll("\\\\") else if (c == '"') try writer.writeAll("\\\"") else if (c == '\n') try writer.writeAll("\\n") else if (c == '\r') try writer.writeAll("\\r") else if (c == '\t') try writer.writeAll("\\t") else if (c >= 0x20 and c <= 0x7e) try writer.writeByte(c) else try writer.print("\\{o:0>3}", .{c});
+        \\    }
+        \\    try writer.writeByte('"');
+        \\}
+        \\
         \\fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void {
         \\    switch (tag.wire_type) {
         \\        .varint => try writer.print("{d}: {d}\n", .{ tag.number, try r.readVarint() }),
@@ -7124,7 +7132,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\        .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         \\        .length_delimited => {
         \\            try writer.print("{d}: ", .{tag.number});
-        \\            try std.json.Stringify.value(try r.readBytes(), .{}, writer);
+        \\            try textWriteQuotedBytes(try r.readBytes(), writer);
         \\            try writer.writeByte('\n');
         \\        },
         \\        .start_group => {
@@ -9878,8 +9886,10 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteUnknownRaw(raw, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.json.Stringify.value(try r.readBytes(), .{}, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try textWriteQuotedBytes(try r.readBytes(), writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\\{o:0>3}\", .{c});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"{d} {{\\n\", .{tag.number});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8") != null);
