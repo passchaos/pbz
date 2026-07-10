@@ -6615,6 +6615,31 @@ test "descriptor round-trips parser source code info comments and nested paths" 
     try std.testing.expectEqual(@as(usize, 4), nested_field_location.span.items.len);
 }
 
+test "descriptor round-trips group field source info" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Parent {
+        \\  optional group Box = 1 {
+        \\    optional int32 id = 2 [deprecated = true];
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "group-source.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const group_location = findSourceLocation(&decoded, &.{ 4, 0, 3, 0 }).?;
+    const group_field_location = findSourceLocation(&decoded, &.{ 4, 0, 3, 0, 2, 0 }).?;
+    const group_field_option_location = findSourceLocation(&decoded, &.{ 4, 0, 3, 0, 2, 0, 8 }).?;
+    try std.testing.expectEqual(@as(usize, 4), group_location.span.items.len);
+    try std.testing.expectEqual(@as(usize, 4), group_field_location.span.items.len);
+    try std.testing.expectEqual(@as(usize, 4), group_field_option_location.span.items.len);
+}
+
 test "descriptor round-trips extension range option source info" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
