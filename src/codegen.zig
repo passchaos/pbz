@@ -2715,7 +2715,6 @@ fn writeScopedMessageExtensionAccessors(ctx: *const CodegenContext, target: *con
 }
 
 fn writeMessageExtensionAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     const helper_name = extensionAccessorSuffix(schema.extensionFullName(field));
 
     try indent(writer, depth);
@@ -2836,12 +2835,12 @@ fn writeMessageExtensionAccessor(ctx: *const CodegenContext, field: *const schem
         try writer.writeAll("}\n\n");
     }
 
-    if ((field.kind == .message or field.kind == .group) and codegenCanReferenceMessage(file, switch (field.kind) {
+    if ((field.kind == .message or field.kind == .group) and codegenCanReferenceMessageWithContext(ctx, switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
         else => unreachable,
     })) {
-        try writeMessageExtensionTypedAccessor(field, helper_name, writer, depth);
+        try writeMessageExtensionTypedAccessor(ctx, field, helper_name, writer, depth);
     }
 
     try indent(writer, depth);
@@ -2986,7 +2985,7 @@ fn writeMessageEnumExtensionAccessor(ctx: *const CodegenContext, field: *const s
     try writer.writeAll("}\n\n");
 }
 
-fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, helper_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessageExtensionTypedAccessor(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, helper_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     const type_name = switch (field.kind) {
         .message => |name| name,
         .group => |name| name,
@@ -2997,7 +2996,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "addExtensionMessage_", writer);
         try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("const payload = try value.encode(allocator);\n");
@@ -3014,7 +3013,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "appendExtensionMessages_", writer);
         try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("for (values) |value| try self.");
@@ -3027,7 +3026,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "replaceExtensionMessages_", writer);
         try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, values: []const ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try ");
@@ -3044,7 +3043,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "getExtensionMessages_", writer);
         try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) ![]");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(" {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("const payloads = try ");
@@ -3054,13 +3053,13 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll("defer allocator.free(payloads);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("var list: std.ArrayList(");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") = .empty;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("errdefer { for (list.items) |*item| item.deinit(allocator); list.deinit(allocator); }\n");
         try indent(writer, depth + 1);
         try writer.writeAll("for (payloads) |payload| try list.append(allocator, try ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".decode(allocator, payload));\n");
         try indent(writer, depth + 1);
         try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
@@ -3071,7 +3070,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithPrefix(helper_name, "setExtensionMessage_", writer);
         try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("const payload = try value.encode(allocator);\n");
@@ -3089,7 +3088,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writeQuotedIdentWithPrefix(helper_name, "getExtensionMessage_", writer);
         try writer.writeAll("(self: @This(), allocator: std.mem.Allocator) !");
         try writer.writeAll("?");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(" {\n");
         try indent(writer, depth + 1);
         try writer.writeAll("const payload = (try ");
@@ -3097,7 +3096,7 @@ fn writeMessageExtensionTypedAccessor(field: *const schema.FieldDescriptor, help
         try writer.writeAll(".decodeFirstFromUnknown(self, allocator)) orelse return null;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("return try ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".decode(allocator, payload);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
@@ -9029,6 +9028,11 @@ test "codegen with registry emits imported message type refs and accessors" {
         \\  repeated .demo.common.User.Profile profiles = 2;
         \\  map<string, .demo.common.User.Profile> keyed = 3;
         \\  oneof pick { .demo.common.User picked = 4; }
+        \\  extensions 100 to max;
+        \\}
+        \\extend Request {
+        \\  optional .demo.common.User ext_user = 100;
+        \\  repeated .demo.common.User ext_users = 101;
         \\}
     );
     defer app.deinit();
@@ -9057,6 +9061,11 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".parseTextWithOptions(allocator, block, options)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".parseTextWithOptions(allocator, block, options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtensionMessage_ext_user\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessage_ext_user\"(self: @This(), allocator: std.mem.Allocator) !?imports.@\"common.proto\".@\"User\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"User\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtensionMessages_ext_users\"(self: *@This(), allocator: std.mem.Allocator, values: []const imports.@\"common.proto\".@\"User\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessages_ext_users\"(self: @This(), allocator: std.mem.Allocator) ![]imports.@\"common.proto\".@\"User\"") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
