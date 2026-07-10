@@ -1227,6 +1227,23 @@ test "text parseInitialized validates required fields recursively" {
     var imported = try parseInitializedAllocWithRegistry(allocator, &app, &registry, imported_parent, "child { id: 9 }");
     defer imported.deinit();
     try std.testing.expectEqual(@as(i32, 9), imported.get("child").?.values.items[0].message.get("id").?.values.items[0].int32);
+
+    var ext_file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\message Ext { required int32 id = 1; }
+        \\extend Host { optional Ext ext = 100; }
+    );
+    defer ext_file.deinit();
+    var ext_registry = registry_mod.Registry.init(allocator);
+    defer ext_registry.deinit();
+    try ext_registry.addFile(&ext_file);
+    const host_desc = ext_file.findMessage("Host").?;
+    try std.testing.expectError(error.MissingRequiredField, parseInitializedAllocWithRegistry(allocator, &ext_file, &ext_registry, host_desc, "[demo.ext] {}"));
+    var ext_parsed = try parseInitializedAllocWithRegistry(allocator, &ext_file, &ext_registry, host_desc, "[demo.ext] { id: 11 }");
+    defer ext_parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 11), ext_parsed.get("ext").?.values.items[0].message.get("id").?.values.items[0].int32);
 }
 
 test "text parser merges duplicate singular message and group fields" {
