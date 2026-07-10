@@ -635,7 +635,7 @@ pub const Any = struct {
     }
 
     pub fn packDynamicWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
-        const payload = try message.encodedWithRegistry(file, registry);
+        const payload = try message.encodedWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry);
         defer message.allocator.free(payload);
         return try packBytes(allocator, full_name, payload);
     }
@@ -645,7 +645,7 @@ pub const Any = struct {
     }
 
     pub fn packDynamicInitializedWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
-        const payload = try message.encodedInitializedWithRegistry(file, registry);
+        const payload = try message.encodedInitializedWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry);
         defer message.allocator.free(payload);
         return try packBytes(allocator, full_name, payload);
     }
@@ -691,7 +691,7 @@ pub const Any = struct {
     pub fn unpackDynamicWithRegistry(self: Any, allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: *const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor, expected_full_name: []const u8) !dynamic_mod.DynamicMessage {
         var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
         errdefer message.deinit();
-        try message.decodeWithRegistry(file, registry, try self.unpackBytes(expected_full_name));
+        try message.decodeWithRegistry(messageDescriptorFile(file, registry, descriptor), registry, try self.unpackBytes(expected_full_name));
         return message;
     }
 
@@ -705,7 +705,7 @@ pub const Any = struct {
     pub fn unpackDynamicInitializedWithRegistry(self: Any, allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: *const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor, expected_full_name: []const u8) !dynamic_mod.DynamicMessage {
         var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
         errdefer message.deinit();
-        try message.decodeInitializedWithRegistry(file, registry, try self.unpackBytes(expected_full_name));
+        try message.decodeInitializedWithRegistry(messageDescriptorFile(file, registry, descriptor), registry, try self.unpackBytes(expected_full_name));
         return message;
     }
 
@@ -770,6 +770,11 @@ fn anyTypeName(type_url: []const u8) []const u8 {
 fn anyTypeMatches(type_url: []const u8, full_name: []const u8) bool {
     const expected = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
     return std.mem.eql(u8, anyTypeName(type_url), expected);
+}
+
+fn messageDescriptorFile(default_file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor) *const schema_mod.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingMessage(descriptor) orelse default_file;
 }
 
 test "any wire and json helpers" {
@@ -874,6 +879,50 @@ test "any packs and unpacks dynamic messages" {
     const id = unpacked.get("id").?.values.items[0].int32;
     try std.testing.expectEqual(@as(i32, 7), id);
     try std.testing.expectError(error.TypeMismatch, any.unpackDynamic(allocator, &file, descriptor, "demo.Other"));
+}
+
+test "any registry dynamic helpers use owning file features" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Payload { optional int32 id = 1; optional bytes raw = 2; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package app;
+        \\import "common.proto";
+        \\message Holder { common.Payload payload = 1; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const payload_desc = common.findMessage("Payload").?;
+    var payload = dynamic_mod.DynamicMessage.init(allocator, payload_desc);
+    defer payload.deinit();
+    try payload.add(payload_desc.findField("id").?, .{ .int32 = 0 });
+    try payload.add(payload_desc.findField("raw").?, .{ .bytes = try allocator.dupe(u8, &.{0xc0}) });
+
+    var any = try Any.packDynamicWithRegistry(allocator, &app, &registry, "common.Payload", &payload);
+    defer any.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x00, 0x12, 0x01, 0xc0 }, any.value);
+
+    var unpacked = try any.unpackDynamicWithRegistry(allocator, &app, &registry, payload_desc, "common.Payload");
+    defer unpacked.deinit();
+    try std.testing.expect(unpacked.has(payload_desc.findField("id").?));
+    try std.testing.expectEqual(@as(i32, 0), unpacked.get("id").?.values.items[0].int32);
+    try std.testing.expectEqualSlices(u8, &.{0xc0}, unpacked.get("raw").?.values.items[0].bytes);
+
+    var initialized = try any.unpackDynamicInitializedWithRegistry(allocator, &app, &registry, payload_desc, "common.Payload");
+    defer initialized.deinit();
+    try std.testing.expect(initialized.has(payload_desc.findField("id").?));
 }
 
 test "any initialized dynamic helpers validate required fields" {

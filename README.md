@@ -196,7 +196,8 @@ defer unpacked_string.deinit(allocator);
 ```
 
 `pbz.Any` also provides `packDynamic` / `unpackDynamic` helpers, including
-initialized variants, for reflection workflows backed by `DynamicMessage`.
+initialized variants, for reflection workflows backed by `DynamicMessage`; registry-aware
+variants use the dynamic message descriptor's owning-file features when packing or unpacking imported payloads.
 
 ## TextFormat support
 
