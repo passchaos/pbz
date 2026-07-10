@@ -393,6 +393,7 @@ pub const DynamicMessage = struct {
     pub fn encodeWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
         if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, registry, writer, false);
         for (self.fields.items) |*entry| {
+            try validateFieldTargetsMessage(file, registry, self.descriptor, entry.descriptor);
             if (!entry.descriptor.isRepeatedLike() and !fieldHasPresenceForEncoding(file, registry, self.descriptor, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValueForEncoding(file, registry, self.descriptor, entry.descriptor, entry.values.items[0])) continue;
             if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
                 try encodePackedWithRegistry(self.descriptor, entry.descriptor, entry.values.items, file, registry, writer);
@@ -428,6 +429,7 @@ pub const DynamicMessage = struct {
         }.lessThan);
         for (indexes) |index| {
             const entry = &self.fields.items[index];
+            try validateFieldTargetsMessage(file, registry, self.descriptor, entry.descriptor);
             if (!entry.descriptor.isRepeatedLike() and !fieldHasPresenceForEncoding(file, registry, self.descriptor, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValueForEncoding(file, registry, self.descriptor, entry.descriptor, entry.values.items[0])) continue;
             if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
                 try encodePackedWithRegistry(self.descriptor, entry.descriptor, entry.values.items, file, registry, writer);
@@ -760,9 +762,27 @@ fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const
     return reg.findExtensionForMessage(descriptor, number);
 }
 
+fn validateFieldTargetsMessage(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) EncodeError!void {
+    if (field.extendee == null) return;
+    if (!extensionFieldTargetsMessage(file, registry, current, field)) return error.TypeMismatch;
+}
+
+fn extensionFieldTargetsMessage(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+    const extendee = field.extendee orelse return true;
+    if (registry) |reg| {
+        const owner = reg.fileContainingExtension(field) orelse file;
+        if (reg.findMessageVisible(owner, extendee, null)) |message| return message == current;
+        return false;
+    }
+    if (file.findMessageDeep(extendee)) |message| {
+        if (message == current) return true;
+    }
+    return extensionExtendsMessage(extendee, current);
+}
+
 fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const FieldValue, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer, deterministic: bool) EncodeError!void {
     if (entry.descriptor.kind != .message or entry.descriptor.extendee == null or entry.descriptor.cardinality == .repeated or entry.descriptor.cardinality == .required) return error.TypeMismatch;
-    if (!extensionExtendsMessage(entry.descriptor.extendee.?, host)) return error.TypeMismatch;
+    if (!extensionFieldTargetsMessage(file, registry, host, entry.descriptor)) return error.TypeMismatch;
     for (entry.values.items) |value| {
         const message = switch (value) {
             .message => |message_value| message_value,
@@ -3126,6 +3146,78 @@ test "dynamic encodes extension fields using extension descriptors" {
     defer decoded.deinit();
     try decoded.decodeWithRegistry(&file, &registry, encoded);
     try std.testing.expectEqual(@as(i32, 123), decoded.get("score").?.values.items[0].int32);
+}
+
+test "dynamic rejects extension descriptors for different extendees" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message First { extensions 100 to max; }
+        \\message Second { extensions 100 to max; }
+        \\message FirstPayload { optional int32 id = 1; }
+        \\message SecondPayload { optional int32 id = 1; }
+        \\message MsFirst { option message_set_wire_format = true; extensions 4 to max; }
+        \\message MsSecond { option message_set_wire_format = true; extensions 4 to max; }
+        \\extend First { optional int32 first_score = 100; }
+        \\extend Second { optional int32 second_score = 100; }
+        \\extend First { optional FirstPayload first_payload = 101; }
+        \\extend Second { optional SecondPayload second_payload = 101; }
+        \\extend MsFirst { optional FirstPayload ms_first_payload = 100; }
+        \\extend MsSecond { optional SecondPayload ms_second_payload = 100; }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const first = file.findMessage("First").?;
+    const ms_first = file.findMessage("MsFirst").?;
+    const second_score = registry.findExtensionByName("demo.Second", "demo.second_score").?;
+    const first_payload_ext = registry.findExtensionByName("demo.First", "demo.first_payload").?;
+    const second_payload_ext = registry.findExtensionByName("demo.Second", "demo.second_payload").?;
+    const ms_first_payload_ext = registry.findExtensionByName("demo.MsFirst", "demo.ms_first_payload").?;
+    const ms_second_payload_ext = registry.findExtensionByName("demo.MsSecond", "demo.ms_second_payload").?;
+    const second_payload_desc = file.findMessage("SecondPayload").?;
+
+    var wrong_scalar = DynamicMessage.init(allocator, first);
+    defer wrong_scalar.deinit();
+    try wrong_scalar.add(second_score, .{ .int32 = 7 });
+    try std.testing.expectError(error.TypeMismatch, wrong_scalar.encodedWithRegistry(&file, &registry));
+    try std.testing.expectError(error.TypeMismatch, wrong_scalar.encodedDeterministicWithRegistry(&file, &registry));
+
+    const wrong_payload = try allocator.create(DynamicMessage);
+    wrong_payload.* = DynamicMessage.init(allocator, second_payload_desc);
+    var wrong_message = DynamicMessage.init(allocator, first);
+    defer wrong_message.deinit();
+    try wrong_message.add(second_payload_ext, .{ .message = wrong_payload });
+    try std.testing.expectError(error.TypeMismatch, wrong_message.encodedWithRegistry(&file, &registry));
+    try std.testing.expectError(error.TypeMismatch, wrong_message.encodedDeterministicWithRegistry(&file, &registry));
+
+    const ok_payload = try allocator.create(DynamicMessage);
+    ok_payload.* = DynamicMessage.init(allocator, file.findMessage("FirstPayload").?);
+    var ok = DynamicMessage.init(allocator, first);
+    defer ok.deinit();
+    try ok.add(first_payload_ext, .{ .message = ok_payload });
+    const encoded = try ok.encodedWithRegistry(&file, &registry);
+    defer allocator.free(encoded);
+    try std.testing.expect(std.mem.indexOf(u8, encoded, &.{ 0xaa, 0x06, 0x00 }) != null);
+
+    const wrong_ms_payload = try allocator.create(DynamicMessage);
+    wrong_ms_payload.* = DynamicMessage.init(allocator, second_payload_desc);
+    var wrong_message_set = DynamicMessage.init(allocator, ms_first);
+    defer wrong_message_set.deinit();
+    try wrong_message_set.add(ms_second_payload_ext, .{ .message = wrong_ms_payload });
+    try std.testing.expectError(error.TypeMismatch, wrong_message_set.encodedWithRegistry(&file, &registry));
+    try std.testing.expectError(error.TypeMismatch, wrong_message_set.encodedDeterministicWithRegistry(&file, &registry));
+
+    const ok_ms_payload = try allocator.create(DynamicMessage);
+    ok_ms_payload.* = DynamicMessage.init(allocator, file.findMessage("FirstPayload").?);
+    var ok_message_set = DynamicMessage.init(allocator, ms_first);
+    defer ok_message_set.deinit();
+    try ok_message_set.add(ms_first_payload_ext, .{ .message = ok_ms_payload });
+    const encoded_message_set = try ok_message_set.encodedWithRegistry(&file, &registry);
+    defer allocator.free(encoded_message_set);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0b, 0x10, 0x64, 0x1a, 0x00, 0x0c }, encoded_message_set);
 }
 
 test "dynamic initialized helpers validate proto2 extension message payloads" {
