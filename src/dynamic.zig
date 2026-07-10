@@ -2611,6 +2611,48 @@ test "dynamic decodeWithRegistry decodes proto2 extensions" {
     try std.testing.expectEqualSlices(u8, "hello", msg.get("note").?.values.items[0].string);
 }
 
+test "dynamic decodes and encodes proto2 group extensions" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional group Legacy = 100 { optional int32 id = 1; } }
+    );
+    defer file.deinit();
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const host = file.findMessage("Host").?;
+    const legacy = registry.findExtension("demo.Host", 100).?;
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeTag(100, .start_group);
+    try encoded.writeInt32(1, 7);
+    try encoded.writeTag(100, .end_group);
+
+    var msg = DynamicMessage.init(allocator, host);
+    defer msg.deinit();
+    try msg.decodeWithRegistry(&file, &registry, encoded.slice());
+    const decoded_legacy = msg.get("legacy").?.values.items[0].group;
+    try std.testing.expectEqual(@as(i32, 7), decoded_legacy.get("id").?.values.items[0].int32);
+
+    const roundtrip = try msg.encodedWithRegistry(&file, &registry);
+    defer allocator.free(roundtrip);
+    try std.testing.expectEqualSlices(u8, encoded.slice(), roundtrip);
+
+    const group = try allocator.create(DynamicMessage);
+    group.* = DynamicMessage.init(allocator, file.findMessage("Legacy").?);
+    try group.add(group.descriptor.findField("id").?, .{ .int32 = 9 });
+    var built = DynamicMessage.init(allocator, host);
+    defer built.deinit();
+    try built.add(legacy, .{ .group = group });
+    const built_bytes = try built.encodedWithRegistry(&file, &registry);
+    defer allocator.free(built_bytes);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa3, 0x06, 0x08, 0x09, 0xa4, 0x06 }, built_bytes);
+}
+
 test "dynamic registry extension lookup distinguishes same leaf message names" {
     const allocator = std.testing.allocator;
     var a_file = try parser.Parser.parse(allocator,

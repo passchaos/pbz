@@ -210,7 +210,7 @@ pub const Parser = struct {
                 const index: i32 = @intCast(self.file.enums.items.len);
                 try self.file.enums.append(self.allocator, try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start));
             } else if (self.matchIdent("extend")) {
-                try self.parseExtend(&self.file.extensions, "");
+                try self.parseExtend(&self.file.extensions, "", null);
             } else if (self.matchIdent("service")) {
                 const index: i32 = @intCast(self.file.services.items.len);
                 try self.file.services.append(self.allocator, try self.parseServiceAfterKeyword(&.{ 6, index }, decl_start));
@@ -495,7 +495,7 @@ pub const Parser = struct {
                 try self.addRepeatedLocations(source_path, 9, range_start_index, message.reserved_ranges.items.len, reserved_start, self.previousEnd());
                 try self.addRepeatedLocations(source_path, 10, name_start_index, message.reserved_names.items.len, reserved_start, self.previousEnd());
             } else if (self.matchIdent("extend")) {
-                try self.parseExtend(&message.extensions, message_scope);
+                try self.parseExtend(&message.extensions, message_scope, &message);
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -630,13 +630,13 @@ pub const Parser = struct {
         }
     }
 
-    fn parseExtend(self: *Parser, output: *std.ArrayList(schema.FieldDescriptor), scope: []const u8) Error!void {
+    fn parseExtend(self: *Parser, output: *std.ArrayList(schema.FieldDescriptor), scope: []const u8, parent: ?*schema.MessageDescriptor) Error!void {
         const extendee = try self.parseTypeNameSlice();
         try self.expectSymbol('{');
         while (!self.consumeSymbol('}')) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
             if (self.consumeSymbol(';')) continue;
-            var field = try self.parseField(null, null);
+            var field = try self.parseField(null, parent);
             if (field.cardinality == .required) {
                 field.deinit(self.allocator);
                 return error.InvalidSyntax;
@@ -731,7 +731,7 @@ pub const Parser = struct {
         if (parent) |message| {
             try message.messages.append(self.allocator, nested);
         } else {
-            nested.deinit(self.allocator);
+            try self.file.messages.append(self.allocator, nested);
         }
         return field;
     }
@@ -3675,6 +3675,24 @@ test "parser rejects map and duplicate extension fields" {
     const scoped_ext = scoped.findMessage("Scope").?.extensions.items[0];
     try std.testing.expectEqualStrings("a", scoped_ext.name);
     try std.testing.expectEqualStrings("Scope.a", scoped_ext.full_name.?);
+}
+
+test "parser preserves proto2 group extension message types" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message Host { extensions 100 to 200; }
+        \\extend Host { optional group Legacy = 100 { optional int32 id = 1; } }
+        \\message Scope {
+        \\  extend Host { optional group Scoped = 101 { optional string name = 1; } }
+        \\}
+    );
+    defer file.deinit();
+    try std.testing.expect(file.findMessage("Legacy") != null);
+    try std.testing.expectEqualStrings("Legacy", file.extensions.items[0].kind.group);
+    const scope = file.findMessage("Scope").?;
+    try std.testing.expect(scope.findMessage("Scoped") != null);
+    try std.testing.expectEqualStrings("Scoped", scope.extensions.items[0].kind.group);
 }
 
 test "parser rejects required label outside proto2" {
