@@ -436,7 +436,7 @@ pub const DynamicMessage = struct {
             if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
                 try encodePackedWithRegistry(self.descriptor, entry.descriptor, entry.values.items, file, registry, writer);
             } else {
-                for (entry.values.items) |value| try encodeField(self.descriptor, entry.descriptor, value, file, registry, writer);
+                for (entry.values.items) |value| try encodeField(self.descriptor, entry.descriptor, value, file, registry, writer, false);
             }
         }
         for (self.unknown_fields.items) |unknown| try writer.appendSlice(unknown.data);
@@ -480,9 +480,9 @@ pub const DynamicMessage = struct {
                         return mapEntryLessThan(field_value.values.items[a], field_value.values.items[b]);
                     }
                 }.lessThan);
-                for (value_indexes) |value_index| try encodeField(self.descriptor, entry.descriptor, entry.values.items[value_index], file, registry, writer);
+                for (value_indexes) |value_index| try encodeField(self.descriptor, entry.descriptor, entry.values.items[value_index], file, registry, writer, true);
             } else {
-                for (entry.values.items) |value| try encodeField(self.descriptor, entry.descriptor, value, file, registry, writer);
+                for (entry.values.items) |value| try encodeField(self.descriptor, entry.descriptor, value, file, registry, writer, true);
             }
         }
         const unknown_indexes = try self.allocator.alloc(usize, self.unknown_fields.items.len);
@@ -877,7 +877,7 @@ fn extensionExtendsMessage(extendee: []const u8, message: *const schema.MessageD
     return std.mem.eql(u8, trimmed, message.name) or std.mem.eql(u8, leaf, message.name);
 }
 
-fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
+fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer, deterministic: bool) EncodeError!void {
     switch (field.kind) {
         .scalar => |scalar| try encodeScalar(file, field, field.number, scalar, value, writer),
         .enumeration => switch (value) {
@@ -895,15 +895,23 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
             },
             .message => |message| {
                 if (registryEnumDescriptor(file, registry, current, field.kind) != null) return error.TypeMismatch;
+                const message_file = messageDescriptorFile(file, registry, message.descriptor);
                 if (fieldMessageEncoding(file, field) == .delimited) {
                     try writer.writeTag(field.number, .start_group);
-                    try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, writer);
+                    if (deterministic) {
+                        try message.encodeDeterministicWithRegistry(message_file, registry, writer);
+                    } else {
+                        try message.encodeWithRegistry(message_file, registry, writer);
+                    }
                     try writer.writeTag(field.number, .end_group);
                 } else {
                     var nested_writer = wire.Writer.init(writer.allocator);
                     defer nested_writer.deinit();
-                    // Nested message packing depends on its own file-level features only for repeated scalar fields.
-                    try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, &nested_writer);
+                    if (deterministic) {
+                        try message.encodeDeterministicWithRegistry(message_file, registry, &nested_writer);
+                    } else {
+                        try message.encodeWithRegistry(message_file, registry, &nested_writer);
+                    }
                     try writer.writeMessage(field.number, nested_writer.slice());
                 }
             },
@@ -912,12 +920,17 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
         .group => switch (value) {
             .group => |message| {
                 try writer.writeTag(field.number, .start_group);
-                try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, writer);
+                const message_file = messageDescriptorFile(file, registry, message.descriptor);
+                if (deterministic) {
+                    try message.encodeDeterministicWithRegistry(message_file, registry, writer);
+                } else {
+                    try message.encodeWithRegistry(message_file, registry, writer);
+                }
                 try writer.writeTag(field.number, .end_group);
             },
             else => return error.TypeMismatch,
         },
-        .map => |map_type| try encodeMapEntry(current, field, map_type, value, file, registry, writer),
+        .map => |map_type| try encodeMapEntry(current, field, map_type, value, file, registry, writer, deterministic),
     }
 }
 
@@ -929,6 +942,7 @@ fn encodeMapEntry(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
     writer: *wire.Writer,
+    deterministic: bool,
 ) EncodeError!void {
     const entry = switch (value) {
         .map_entry => |map_entry| map_entry,
@@ -937,8 +951,8 @@ fn encodeMapEntry(
 
     var entry_writer = wire.Writer.init(writer.allocator);
     defer entry_writer.deinit();
-    try encodeMapElement(current, field, 1, .{ .scalar = map_type.key }, entry.key, file, registry, &entry_writer);
-    try encodeMapElement(current, field, 2, map_type.value.*, entry.value, file, registry, &entry_writer);
+    try encodeMapElement(current, field, 1, .{ .scalar = map_type.key }, entry.key, file, registry, &entry_writer, deterministic);
+    try encodeMapElement(current, field, 2, map_type.value.*, entry.value, file, registry, &entry_writer, deterministic);
     try writer.writeMessage(field.number, entry_writer.slice());
 }
 
@@ -951,6 +965,7 @@ fn encodeMapElement(
     file: *const schema.FileDescriptor,
     registry: ?*const registry_mod.Registry,
     writer: *wire.Writer,
+    deterministic: bool,
 ) EncodeError!void {
     switch (kind) {
         .scalar => |scalar| try encodeScalar(file, field, number, scalar, value, writer),
@@ -971,7 +986,12 @@ fn encodeMapElement(
                 if (registryEnumDescriptor(file, registry, current, kind) != null) return error.TypeMismatch;
                 var nested_writer = wire.Writer.init(writer.allocator);
                 defer nested_writer.deinit();
-                try message.encodeWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry, &nested_writer);
+                const message_file = messageDescriptorFile(file, registry, message.descriptor);
+                if (deterministic) {
+                    try message.encodeDeterministicWithRegistry(message_file, registry, &nested_writer);
+                } else {
+                    try message.encodeWithRegistry(message_file, registry, &nested_writer);
+                }
                 try writer.writeMessage(number, nested_writer.slice());
             },
             else => return error.TypeMismatch,
@@ -3899,6 +3919,97 @@ test "dynamic deterministic encoding sorts map entries by key" {
     const deterministic = try msg.encodedDeterministic(&file);
     defer allocator.free(deterministic);
     try std.testing.expect(std.mem.indexOf(u8, deterministic, &.{ 'a', 0x10, 0x01 }).? < std.mem.indexOf(u8, deterministic, &.{ 'b', 0x10, 0x02 }).?);
+}
+
+test "dynamic deterministic encoding recurses into messages groups and map values" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto2";
+        \\message Child {
+        \\  optional int32 a = 1;
+        \\  optional int32 b = 2;
+        \\}
+        \\message Parent {
+        \\  optional Child child = 1;
+        \\  optional group Legacy = 2 {
+        \\    optional int32 a = 3;
+        \\    optional int32 b = 4;
+        \\  }
+        \\  map<string, Child> keyed = 5;
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const child_desc = file.findMessage("Child").?;
+    const parent_desc = file.findMessage("Parent").?;
+    const legacy_desc = parent_desc.findMessage("Legacy").?;
+
+    var msg = DynamicMessage.init(allocator, parent_desc);
+    defer msg.deinit();
+
+    var child = try allocator.create(DynamicMessage);
+    var child_transferred = false;
+    errdefer if (!child_transferred) allocator.destroy(child);
+    child.* = DynamicMessage.init(allocator, child_desc);
+    errdefer if (!child_transferred) child.deinit();
+    try child.add(child_desc.findField("b").?, .{ .int32 = 2 });
+    try child.add(child_desc.findField("a").?, .{ .int32 = 1 });
+    try msg.add(parent_desc.findField("child").?, .{ .message = child });
+    child_transferred = true;
+
+    var legacy = try allocator.create(DynamicMessage);
+    var legacy_transferred = false;
+    errdefer if (!legacy_transferred) allocator.destroy(legacy);
+    legacy.* = DynamicMessage.init(allocator, legacy_desc);
+    errdefer if (!legacy_transferred) legacy.deinit();
+    try legacy.add(legacy_desc.findField("b").?, .{ .int32 = 4 });
+    try legacy.add(legacy_desc.findField("a").?, .{ .int32 = 3 });
+    try msg.add(parent_desc.findField("legacy").?, .{ .group = legacy });
+    legacy_transferred = true;
+
+    const keyed = parent_desc.findField("keyed").?;
+    const b_entry = try allocator.create(MapEntry);
+    var b_entry_transferred = false;
+    errdefer if (!b_entry_transferred) allocator.destroy(b_entry);
+    b_entry.* = .{
+        .key = .{ .string = try allocator.dupe(u8, "b") },
+        .value = .{ .message = try allocator.create(DynamicMessage) },
+    };
+    errdefer if (!b_entry_transferred) b_entry.deinit(allocator);
+    b_entry.value.message.* = DynamicMessage.init(allocator, child_desc);
+    try b_entry.value.message.add(child_desc.findField("b").?, .{ .int32 = 20 });
+    try b_entry.value.message.add(child_desc.findField("a").?, .{ .int32 = 10 });
+    try msg.add(keyed, .{ .map_entry = b_entry });
+    b_entry_transferred = true;
+
+    const a_entry = try allocator.create(MapEntry);
+    var a_entry_transferred = false;
+    errdefer if (!a_entry_transferred) allocator.destroy(a_entry);
+    a_entry.* = .{
+        .key = .{ .string = try allocator.dupe(u8, "a") },
+        .value = .{ .message = try allocator.create(DynamicMessage) },
+    };
+    errdefer if (!a_entry_transferred) a_entry.deinit(allocator);
+    a_entry.value.message.* = DynamicMessage.init(allocator, child_desc);
+    try a_entry.value.message.add(child_desc.findField("b").?, .{ .int32 = 2 });
+    try a_entry.value.message.add(child_desc.findField("a").?, .{ .int32 = 1 });
+    try msg.add(keyed, .{ .map_entry = a_entry });
+    a_entry_transferred = true;
+
+    const normal = try msg.encoded(&file);
+    defer allocator.free(normal);
+    const deterministic = try msg.encodedDeterministic(&file);
+    defer allocator.free(deterministic);
+
+    try std.testing.expect(!std.mem.eql(u8, normal, deterministic));
+    try std.testing.expectEqualSlices(u8, &.{
+        0x0a, 0x04, 0x08, 0x01, 0x10, 0x02,
+        0x13, 0x18, 0x03, 0x20, 0x04, 0x14,
+        0x2a, 0x09, 0x0a, 0x01, 'a',  0x12,
+        0x04, 0x08, 0x01, 0x10, 0x02, 0x2a,
+        0x09, 0x0a, 0x01, 'b',  0x12, 0x04,
+        0x08, 0x0a, 0x10, 0x14,
+    }, deterministic);
 }
 
 test "dynamic unknownByNumberAlloc returns non-contiguous unknown fields" {
