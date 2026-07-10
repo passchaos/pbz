@@ -1,6 +1,7 @@
 const std = @import("std");
 const wire = @import("wire.zig");
 const schema = @import("schema.zig");
+const registry_mod = @import("registry.zig");
 
 pub const Error = wire.Error || std.mem.Allocator.Error || error{ InvalidFieldType, InvalidCharacter };
 
@@ -11,7 +12,22 @@ pub fn encodeFileDescriptorProto(allocator: std.mem.Allocator, file: *const sche
     return try writer.toOwnedSlice();
 }
 
+pub fn encodeFileDescriptorProtoWithRegistry(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry, name: []const u8) Error![]u8 {
+    var writer = wire.Writer.init(allocator);
+    errdefer writer.deinit();
+    try writeFileDescriptorProtoWithRegistry(allocator, file, registry, name, &writer);
+    return try writer.toOwnedSlice();
+}
+
 pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, name: []const u8, writer: *wire.Writer) Error!void {
+    try writeFileDescriptorProtoInner(allocator, file, null, name, writer);
+}
+
+pub fn writeFileDescriptorProtoWithRegistry(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry, name: []const u8, writer: *wire.Writer) Error!void {
+    try writeFileDescriptorProtoInner(allocator, file, registry, name, writer);
+}
+
+fn writeFileDescriptorProtoInner(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, name: []const u8, writer: *wire.Writer) Error!void {
     const file_name = if (file.name.len != 0) file.name else name;
     if (file_name.len != 0) try writer.writeString(1, file_name);
     if (file.package.len != 0) try writer.writeString(2, file.package);
@@ -35,10 +51,10 @@ pub fn writeFileDescriptorProto(allocator: std.mem.Allocator, file: *const schem
             },
         }
     }
-    for (file.messages.items) |*message| try writeMessageDescriptor(allocator, file, message, "", 4, writer);
+    for (file.messages.items) |*message| try writeMessageDescriptor(allocator, file, registry, message, "", 4, writer);
     for (file.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 5, writer);
     for (file.services.items) |*service| try writeServiceDescriptor(allocator, file, service, 6, writer);
-    for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, null, "", field, 7, writer);
+    for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, registry, null, "", field, 7, writer);
     if (hasFileOptions(file)) try writeFileOptions(allocator, file, 8, writer);
     if (!file.source_code_info.isEmpty()) try writeSourceCodeInfo(allocator, &file.source_code_info, 9, writer);
     try writer.writeString(12, switch (file.syntax) {
@@ -56,6 +72,13 @@ pub fn encodeFileDescriptorSet(allocator: std.mem.Allocator, files: []const *con
     return try writer.toOwnedSlice();
 }
 
+pub fn encodeFileDescriptorSetWithRegistry(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: *const registry_mod.Registry) Error![]u8 {
+    var writer = wire.Writer.init(allocator);
+    errdefer writer.deinit();
+    try writeFileDescriptorSetWithRegistry(allocator, files, registry, &writer);
+    return try writer.toOwnedSlice();
+}
+
 pub fn encodeFeatureSetDefaults(allocator: std.mem.Allocator, defaults: *const schema.FeatureSetDefaults) Error![]u8 {
     var writer = wire.Writer.init(allocator);
     errdefer writer.deinit();
@@ -64,10 +87,21 @@ pub fn encodeFeatureSetDefaults(allocator: std.mem.Allocator, defaults: *const s
 }
 
 pub fn writeFileDescriptorSet(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, writer: *wire.Writer) Error!void {
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    for (files) |file| try registry.files.append(allocator, file);
+    try writeFileDescriptorSetInner(allocator, files, &registry, writer);
+}
+
+pub fn writeFileDescriptorSetWithRegistry(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: *const registry_mod.Registry, writer: *wire.Writer) Error!void {
+    try writeFileDescriptorSetInner(allocator, files, registry, writer);
+}
+
+fn writeFileDescriptorSetInner(allocator: std.mem.Allocator, files: []const *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) Error!void {
     for (files) |file| {
         var file_writer = wire.Writer.init(allocator);
         defer file_writer.deinit();
-        try writeFileDescriptorProto(allocator, file, file.name, &file_writer);
+        try writeFileDescriptorProtoInner(allocator, file, registry, file.name, &file_writer);
         try writer.writeMessage(1, file_writer.slice());
     }
 }
@@ -91,6 +125,7 @@ fn writeFeatureSetEditionDefault(allocator: std.mem.Allocator, entry: schema.Fea
 fn writeMessageDescriptor(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     message: *const schema.MessageDescriptor,
     parent_scope: []const u8,
     field_number: wire.FieldNumber,
@@ -103,14 +138,14 @@ fn writeMessageDescriptor(
     const scope = try joinScope(allocator, parent_scope, message.name);
     defer allocator.free(scope);
 
-    for (message.fields.items) |*field| try writeFieldDescriptor(allocator, file, message, scope, field, 2, &tmp);
-    for (message.messages.items) |*nested| try writeMessageDescriptor(allocator, file, nested, scope, 3, &tmp);
+    for (message.fields.items) |*field| try writeFieldDescriptor(allocator, file, registry, message, scope, field, 2, &tmp);
+    for (message.messages.items) |*nested| try writeMessageDescriptor(allocator, file, registry, nested, scope, 3, &tmp);
     for (message.fields.items) |*field| {
-        if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, scope, field, 3, &tmp);
+        if (field.kind == .map) try writeMapEntryDescriptor(allocator, file, registry, scope, field, 3, &tmp);
     }
     for (message.enums.items) |*enumeration| try writeEnumDescriptor(allocator, file, enumeration, 4, &tmp);
     for (message.extension_ranges.items) |*range| try writeExtensionRange(allocator, message, range, 5, &tmp);
-    for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, message, scope, field, 6, &tmp);
+    for (message.extensions.items) |*field| try writeFieldDescriptor(allocator, file, registry, message, scope, field, 6, &tmp);
     if (hasMessageOptions(message)) try writeMessageOptions(allocator, message, 7, &tmp);
     for (message.oneofs.items) |*oneof| try writeOneofDescriptor(allocator, file, oneof, 8, &tmp);
     for (message.fields.items) |*field| {
@@ -125,6 +160,7 @@ fn writeMessageDescriptor(
 fn writeMapEntryDescriptor(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     parent_scope: []const u8,
     field: *const schema.FieldDescriptor,
     field_number: wire.FieldNumber,
@@ -156,12 +192,13 @@ fn writeMapEntryDescriptor(
     };
     try entry_message.fields.append(allocator, value_field);
 
-    try writeMessageDescriptor(allocator, file, &entry_message, parent_scope, field_number, writer);
+    try writeMessageDescriptor(allocator, file, registry, &entry_message, parent_scope, field_number, writer);
 }
 
 fn writeFieldDescriptor(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     containing_message: ?*const schema.MessageDescriptor,
     containing_scope: []const u8,
     field: *const schema.FieldDescriptor,
@@ -175,10 +212,18 @@ fn writeFieldDescriptor(
     if (field.extendee) |extendee| try writeQualifiedName(allocator, file, extendee, 2, &tmp);
     try tmp.writeInt32(3, @intCast(field.number));
     try tmp.writeInt32(4, labelNumber(field.cardinality));
-    try tmp.writeInt32(5, typeNumber(field.kind));
+    const descriptor_kind = descriptorFieldKind(file, registry, containing_scope, field.kind);
+    try tmp.writeInt32(5, typeNumber(descriptor_kind));
     switch (field.kind) {
-        .message, .group => |type_name| try writeQualifiedTypeName(allocator, file, containing_scope, type_name, .message, 6, &tmp),
-        .enumeration => |type_name| try writeQualifiedTypeName(allocator, file, containing_scope, type_name, .enumeration, 6, &tmp),
+        .message => |type_name| {
+            if (descriptor_kind == .enumeration) {
+                try writeQualifiedTypeName(allocator, file, registry, containing_scope, type_name, .enumeration, 6, &tmp);
+            } else {
+                try writeQualifiedTypeName(allocator, file, registry, containing_scope, type_name, .message, 6, &tmp);
+            }
+        },
+        .group => |type_name| try writeQualifiedTypeName(allocator, file, registry, containing_scope, type_name, .message, 6, &tmp),
+        .enumeration => |type_name| try writeQualifiedTypeName(allocator, file, registry, containing_scope, type_name, .enumeration, 6, &tmp),
         .map => {
             const entry_name = try mapEntryName(allocator, field.name);
             defer allocator.free(entry_name);
@@ -191,7 +236,7 @@ fn writeFieldDescriptor(
         },
         else => {},
     }
-    if (field.default_value) |value| try writeDefaultValue(allocator, file, field.kind, value, 7, &tmp);
+    if (field.default_value) |value| try writeDefaultValue(allocator, file, descriptor_kind, value, 7, &tmp);
     if (hasFieldOptions(field)) try writeFieldOptions(allocator, field, 8, &tmp);
     if (containing_message) |message| {
         if (field.oneof_name) |oneof_name| {
@@ -261,6 +306,28 @@ fn writeEnumValueOptions(allocator: std.mem.Allocator, value: *const schema.Enum
 
 fn hasEnumValueOptions(value: *const schema.EnumValueDescriptor) bool {
     return value.options.items.len != 0 or value.features != null or value.feature_support != null;
+}
+
+fn descriptorFieldKind(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, containing_scope: []const u8, kind: schema.FieldKind) schema.FieldKind {
+    return switch (kind) {
+        .message => |type_name| if (descriptorEnumVisible(file, registry, containing_scope, type_name)) |_| .{ .enumeration = type_name } else kind,
+        .map => |map_type| .{ .map = .{ .key = map_type.key, .value = map_type.value } },
+        else => kind,
+    };
+}
+
+fn descriptorEnumVisible(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, containing_scope: []const u8, type_name: []const u8) ?*const schema.EnumDescriptor {
+    if (registry) |reg| {
+        const scope = descriptorScopeName(file, containing_scope);
+        if (reg.findEnumVisible(file, type_name, scope)) |enumeration| return enumeration;
+    }
+    return file.findEnumDeep(type_name);
+}
+
+fn descriptorScopeName(file: *const schema.FileDescriptor, containing_scope: []const u8) ?[]const u8 {
+    if (containing_scope.len == 0) return if (file.package.len == 0) null else file.package;
+    if (file.package.len == 0) return containing_scope;
+    return containing_scope;
 }
 
 fn writeOneofDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, oneof: *const schema.OneofDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -903,7 +970,7 @@ fn writeDefaultValue(allocator: std.mem.Allocator, file: *const schema.FileDescr
     try writer.writeString(field_number, text);
 }
 
-fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, kind: schema.FieldKind, value: schema.OptionValue) std.mem.Allocator.Error![]u8 {
+fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, kind: schema.FieldKind, value: schema.OptionValue) Error![]u8 {
     if (kind == .enumeration) {
         if (enumDefaultName(file, kind.enumeration, value)) |name| return try allocator.dupe(u8, name);
     }
@@ -914,7 +981,10 @@ fn defaultValueText(allocator: std.mem.Allocator, file: *const schema.FileDescri
         };
         return try escapeBytesDefaultAlloc(allocator, bytes);
     }
-    return optionValueText(allocator, value);
+    return switch (kind) {
+        .scalar, .enumeration => optionValueText(allocator, value),
+        .message, .group, .map => error.InvalidFieldType,
+    };
 }
 
 fn enumDefaultName(file: *const schema.FileDescriptor, enum_name: []const u8, value: schema.OptionValue) ?[]const u8 {
@@ -959,13 +1029,14 @@ const DescriptorTypeKind = enum { message, enumeration };
 fn writeQualifiedTypeName(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
     containing_scope: []const u8,
     type_name: []const u8,
     comptime kind: DescriptorTypeKind,
     field_number: wire.FieldNumber,
     writer: *wire.Writer,
 ) Error!void {
-    const resolved = try resolveDescriptorTypeName(allocator, file, containing_scope, type_name, kind);
+    const resolved = try resolveDescriptorTypeName(allocator, file, registry, containing_scope, type_name, kind);
     defer allocator.free(resolved);
     try writer.writeString(field_number, resolved);
 }
@@ -977,8 +1048,27 @@ fn qualifiedName(allocator: std.mem.Allocator, file: *const schema.FileDescripto
     return try std.fmt.allocPrint(allocator, ".{s}.{s}", .{ file.package, name });
 }
 
-fn resolveDescriptorTypeName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, containing_scope: []const u8, type_name: []const u8, comptime kind: DescriptorTypeKind) std.mem.Allocator.Error![]u8 {
+fn resolveDescriptorTypeName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, containing_scope: []const u8, type_name: []const u8, comptime kind: DescriptorTypeKind) Error![]u8 {
     if (std.mem.startsWith(u8, type_name, ".")) return try allocator.dupe(u8, type_name);
+    if (registry) |reg| {
+        const scope = descriptorScopeName(file, containing_scope);
+        switch (kind) {
+            .message => {
+                if (reg.findMessageVisible(file, type_name, scope)) |message| {
+                    if (reg.fileContainingMessage(message)) |owner| {
+                        if (try descriptorMessageFullName(allocator, owner, message)) |full_name| return full_name;
+                    }
+                }
+            },
+            .enumeration => {
+                if (reg.findEnumVisible(file, type_name, scope)) |enumeration| {
+                    if (reg.fileContainingEnum(enumeration)) |owner| {
+                        if (try descriptorEnumFullName(allocator, owner, enumeration)) |full_name| return full_name;
+                    }
+                }
+            },
+        }
+    }
     if (typeNameExistsInFile(file, type_name, kind)) return try qualifiedName(allocator, file, type_name);
     var scope = containing_scope;
     while (scope.len != 0) {
@@ -992,6 +1082,48 @@ fn resolveDescriptorTypeName(allocator: std.mem.Allocator, file: *const schema.F
         }
     }
     return try qualifiedName(allocator, file, type_name);
+}
+
+fn descriptorMessageFullName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor) std.mem.Allocator.Error!?[]u8 {
+    for (file.messages.items) |*message| {
+        if (message == target) return try qualifiedName(allocator, file, message.name);
+        if (try descriptorNestedMessagePath(allocator, file, message.name, message, target)) |path| return path;
+    }
+    return null;
+}
+
+fn descriptorNestedMessagePath(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) std.mem.Allocator.Error!?[]u8 {
+    for (message.messages.items) |*nested| {
+        const path = try joinScope(allocator, prefix, nested.name);
+        defer allocator.free(path);
+        if (nested == target) return try qualifiedName(allocator, file, path);
+        if (try descriptorNestedMessagePath(allocator, file, path, nested, target)) |found| return found;
+    }
+    return null;
+}
+
+fn descriptorEnumFullName(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]u8 {
+    for (file.enums.items) |*enumeration| {
+        if (enumeration == target) return try qualifiedName(allocator, file, enumeration.name);
+    }
+    for (file.messages.items) |*message| {
+        if (try descriptorNestedEnumPath(allocator, file, message.name, message, target)) |path| return path;
+    }
+    return null;
+}
+
+fn descriptorNestedEnumPath(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]u8 {
+    for (message.enums.items) |*enumeration| {
+        const path = try joinScope(allocator, prefix, enumeration.name);
+        defer allocator.free(path);
+        if (enumeration == target) return try qualifiedName(allocator, file, path);
+    }
+    for (message.messages.items) |*nested| {
+        const path = try joinScope(allocator, prefix, nested.name);
+        defer allocator.free(path);
+        if (try descriptorNestedEnumPath(allocator, file, path, nested, target)) |found| return found;
+    }
+    return null;
 }
 
 fn typeNameExistsInFile(file: *const schema.FileDescriptor, type_name: []const u8, comptime kind: DescriptorTypeKind) bool {
@@ -3561,6 +3693,61 @@ test "descriptor encodes enum defaults using enum value names" {
     var decoded = try decodeFileDescriptorProto(allocator, encoded);
     defer decoded.deinit();
     try std.testing.expectEqual(@as(i64, 7), decoded.findMessage("Defaults").?.findField("kind").?.default_value.?.integer);
+}
+
+test "descriptor encodes imported enum fields and defaults with registry" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\message Event {
+        \\  optional common.Kind kind = 1 [default = ADMIN];
+        \\  map<string, common.Kind> keyed = 2;
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateAllFileReferences();
+
+    try std.testing.expectError(error.InvalidFieldType, encodeFileDescriptorProto(allocator, &app, "app.proto"));
+
+    const app_bytes = try encodeFileDescriptorProtoWithRegistry(allocator, &app, &registry, "app.proto");
+    defer allocator.free(app_bytes);
+    var decoded_app = try decodeFileDescriptorProto(allocator, app_bytes);
+    defer decoded_app.deinit();
+    const decoded_event = decoded_app.findMessage("Event").?;
+    const decoded_kind = decoded_event.findField("kind").?;
+    try std.testing.expectEqualStrings("common.Kind", decoded_kind.kind.enumeration);
+    try std.testing.expectEqualStrings("ADMIN", decoded_kind.default_value.?.identifier);
+    const decoded_keyed = decoded_event.findField("keyed").?;
+    try std.testing.expectEqualStrings("common.Kind", decoded_keyed.kind.map.value.enumeration);
+
+    const files = [_]*const schema.FileDescriptor{ &common, &app };
+    const set_bytes = try encodeFileDescriptorSet(allocator, &files);
+    defer allocator.free(set_bytes);
+    const decoded_files = try decodeFileDescriptorSet(allocator, set_bytes);
+    defer {
+        for (decoded_files) |*file| file.deinit();
+        allocator.free(decoded_files);
+    }
+    const set_app = for (decoded_files) |*file| {
+        if (std.mem.eql(u8, file.name, "app.proto")) break file;
+    } else return error.InvalidFieldType;
+    const set_kind = set_app.findMessage("Event").?.findField("kind").?;
+    try std.testing.expectEqualStrings("common.Kind", set_kind.kind.enumeration);
+    try std.testing.expectEqualStrings("ADMIN", set_kind.default_value.?.identifier);
 }
 
 test "descriptor decodes FileDescriptorSet" {
