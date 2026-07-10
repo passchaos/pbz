@@ -442,19 +442,52 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
 
 fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
     if (registry) |reg| {
-        if (reg.findMessage(name, current.name)) |message| return message;
-        if (reg.findMessage(name, null)) |message| return message;
+        if (std.mem.indexOfScalar(u8, name, '.') == null) {
+            if (resolveMessageDescriptor(file, current, name)) |message| return message;
+        }
+        var scope_buf: [512]u8 = undefined;
+        const scope = messageScope(file, current, &scope_buf) orelse if (file.package.len != 0) file.package else null;
+        if (reg.findMessageVisible(file, name, scope)) |message| return message;
+        if (reg.findMessage(name, scope)) |message| return message;
     }
     return resolveMessageDescriptor(file, current, name);
 }
 
 fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
     if (registry) |reg| {
-        if (reg.findEnum(name, current.name)) |enumeration| return enumeration;
-        if (reg.findEnum(name, null)) |enumeration| return enumeration;
+        if (std.mem.indexOfScalar(u8, name, '.') == null) {
+            if (current.findEnumDeep(name) orelse file.findEnumDeep(name)) |enumeration| return enumeration;
+        }
+        var scope_buf: [512]u8 = undefined;
+        const scope = messageScope(file, current, &scope_buf) orelse if (file.package.len != 0) file.package else null;
+        if (reg.findEnumVisible(file, name, scope)) |enumeration| return enumeration;
+        if (reg.findEnum(name, scope)) |enumeration| return enumeration;
     }
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     return current.findEnumDeep(trimmed) orelse file.findEnumDeep(trimmed);
+}
+
+fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (file.messages.items) |*message| {
+        if (message == current) return formatMessageScope(file.package, message.name, buf);
+        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (message.messages.items) |*nested| {
+        var path_buf: [512]u8 = undefined;
+        const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
+        if (nested == target) return formatMessageScope(package, nested_path, buf);
+        if (messageScopeInMessage(package, nested_path, nested, target, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
+    if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
+    return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
 }
 
 fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
@@ -1568,6 +1601,43 @@ test "json parseInitialized validates required fields recursively" {
     var messageset_parsed = try parseInitializedAllocWithRegistry(allocator, &messageset_file, &messageset_registry, messageset_host, "{\"[demo.ms.ext]\":{\"id\":12}}", .{});
     defer messageset_parsed.deinit();
     try std.testing.expectEqual(@as(i32, 12), messageset_parsed.get("ext").?.values.items[0].message.get("id").?.values.items[0].int32);
+}
+
+test "json registry resolves same-package imported unqualified fields" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message User { optional string name = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event { optional User user = 1; optional Kind kind = 2 [default = ADMIN]; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateFileReferences(&app);
+
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, app.findMessage("Event").?,
+        \\{"user":{"name":"Ada"},"kind":"ADMIN"}
+    , .{});
+    defer parsed.deinit();
+
+    try std.testing.expectEqualStrings("Ada", parsed.get("user").?.values.items[0].message.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 7), parsed.get("kind").?.values.items[0].enumeration);
+
+    const rendered = try stringifyAllocWithRegistry(allocator, &app, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualStrings("{\"user\":{\"name\":\"Ada\"},\"kind\":\"ADMIN\"}", rendered);
 }
 
 test "json parse with registry resolves imported message and enum fields" {

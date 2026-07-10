@@ -343,10 +343,12 @@ fn writeEnum(
 
 fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
     if (registry) |reg| {
+        const scope = if (file.package.len != 0) file.package else null;
+        if (reg.findEnumVisible(file, name, scope)) |enumeration| return enumeration;
+        if (reg.findEnum(name, scope)) |enumeration| return enumeration;
         if (field) |descriptor| {
             if (reg.findEnum(name, descriptor.name)) |enumeration| return enumeration;
         }
-        if (reg.findEnum(name, null)) |enumeration| return enumeration;
     }
     const trimmed = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
     return file.findEnumDeep(trimmed);
@@ -446,6 +448,45 @@ test "text format formats imported enum names with registry" {
     const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &msg, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "kind: ADMIN\n", rendered);
+}
+
+test "text registry resolves same-package imported unqualified fields" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message User { optional string name = 1; }
+        \\enum Kind { UNKNOWN = 0; ADMIN = 7; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event { optional User user = 1; optional Kind kind = 2 [default = ADMIN]; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+    try registry.validateFileReferences(&app);
+
+    var parsed = try parseAllocWithRegistry(allocator, &app, &registry, app.findMessage("Event").?,
+        \\user { name: "Ada" }
+        \\kind: ADMIN
+    );
+    defer parsed.deinit();
+
+    try std.testing.expectEqualStrings("Ada", parsed.get("user").?.values.items[0].message.get("name").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 7), parsed.get("kind").?.values.items[0].enumeration);
+
+    const rendered = try formatAllocWithRegistry(allocator, &app, &registry, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "user {\n  name: \"Ada\"\n}\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "kind: ADMIN\n") != null);
 }
 
 test "text format parses imported message and enum fields with registry" {
@@ -1159,10 +1200,38 @@ fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const 
 
 fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
     if (registry) |reg| {
-        if (reg.findMessage(name, current.name)) |message| return message;
-        if (reg.findMessage(name, null)) |message| return message;
+        if (std.mem.indexOfScalar(u8, name, '.') == null) {
+            if (resolveMessageDescriptor(file, current, name)) |message| return message;
+        }
+        var scope_buf: [512]u8 = undefined;
+        const scope = messageScope(file, current, &scope_buf) orelse if (file.package.len != 0) file.package else null;
+        if (reg.findMessageVisible(file, name, scope)) |message| return message;
+        if (reg.findMessage(name, scope)) |message| return message;
     }
     return resolveMessageDescriptor(file, current, name);
+}
+
+fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (file.messages.items) |*message| {
+        if (message == current) return formatMessageScope(file.package, message.name, buf);
+        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (message.messages.items) |*nested| {
+        var path_buf: [512]u8 = undefined;
+        const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
+        if (nested == target) return formatMessageScope(package, nested_path, buf);
+        if (messageScopeInMessage(package, nested_path, nested, target, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
+    if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
+    return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
 }
 
 fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
