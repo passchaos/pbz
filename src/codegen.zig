@@ -100,6 +100,7 @@ fn resolveMessageImportedEnumsForCodegen(allocator: std.mem.Allocator, file: *sc
 }
 
 fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor) std.mem.Allocator.Error!void {
+    try resolveFieldExtendeeForCodegen(allocator, file, registry, field);
     switch (field.kind) {
         .message => |name| {
             if (registry.findEnumVisible(file, name, file.package)) |enumeration| {
@@ -132,6 +133,13 @@ fn resolveFieldImportedEnumForCodegen(allocator: std.mem.Allocator, file: *schem
     }
 }
 
+fn resolveFieldExtendeeForCodegen(allocator: std.mem.Allocator, file: *schema.FileDescriptor, registry: *const registry_mod.Registry, field: *schema.FieldDescriptor) std.mem.Allocator.Error!void {
+    const extendee = field.extendee orelse return;
+    const message = registry.findMessageVisible(file, extendee, extensionScopeForCodegen(file, field)) orelse return;
+    const owner = registry.fileContainingMessage(message) orelse return;
+    if (try messageFullNameForCodegen(allocator, owner, message)) |full_name| field.extendee = full_name;
+}
+
 fn resolveImportedEnumDefaultForCodegen(field: *schema.FieldDescriptor, enumeration: *const schema.EnumDescriptor) std.mem.Allocator.Error!void {
     const default_name = switch (field.default_value orelse return) {
         .identifier, .string => |text| text,
@@ -155,6 +163,37 @@ fn ensureEnumAliasForCodegen(allocator: std.mem.Allocator, file: *schema.FileDes
 
 fn normalizedTypeName(type_name: []const u8) []const u8 {
     return if (std.mem.startsWith(u8, type_name, ".")) type_name[1..] else type_name;
+}
+
+fn extensionScopeForCodegen(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+    if (field.full_name) |full_name| {
+        const normalized = normalizedTypeName(full_name);
+        if (std.mem.lastIndexOfScalar(u8, normalized, '.')) |idx| return normalized[0..idx];
+        if (std.mem.startsWith(u8, full_name, ".")) return null;
+    }
+    return if (file.package.len != 0) file.package else null;
+}
+
+fn messageFullNameForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor) std.mem.Allocator.Error!?[]const u8 {
+    for (file.messages.items) |*message| {
+        if (message == target) return try joinFullProtoName(allocator, file.package, message.name);
+        if (try nestedMessageFullNameForCodegen(allocator, file.package, message.name, message, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn nestedMessageFullNameForCodegen(allocator: std.mem.Allocator, package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) std.mem.Allocator.Error!?[]const u8 {
+    for (message.messages.items) |*nested| {
+        const path = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, nested.name });
+        if (nested == target) return try joinFullProtoName(allocator, package, path);
+        if (try nestedMessageFullNameForCodegen(allocator, package, path, nested, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn joinFullProtoName(allocator: std.mem.Allocator, package: []const u8, relative: []const u8) std.mem.Allocator.Error![]const u8 {
+    if (package.len == 0) return try std.fmt.allocPrint(allocator, ".{s}", .{relative});
+    return try std.fmt.allocPrint(allocator, ".{s}.{s}", .{ package, relative });
 }
 
 const PluginParameterOptions = struct {
@@ -10723,6 +10762,42 @@ test "codegen emits MessageSet extension write helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw_type_id = try r.readUInt32(); if (raw_type_id == 0 or raw_type_id > std.math.maxInt(pbz.FieldNumber)) return error.InvalidFieldNumber; type_id = raw_type_id;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) payload else null;") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen with registry normalizes imported extension extendee names" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package common;
+        \\message Host { extensions 100 to max; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package app;
+        \\import "common.proto";
+        \\extend common.Host { optional string note = 100; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+    var registry = registry_mod.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&common);
+    try registry.addFile(&app);
+
+    const content = try generateZigFileWithRegistry(allocator, &app, &registry);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \".common.Host\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \"common.Host\";") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".@\"Host\";") != null);
+
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
