@@ -579,7 +579,10 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     for (message.fields.items) |*field| try writeFieldMetadataDecl(ctx, field, writer, depth + 1);
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     for (message.fields.items) |*field| {
-        if (field.kind == .map) try writeMapEntryType(file, field, writer, depth + 1);
+        if (field.kind == .map) {
+            try writeMapEntryType(file, field, writer, depth + 1);
+            try writeMapEntryHelpers(field, writer, depth + 1);
+        }
     }
     for (message.oneofs.items) |oneof| try writeOneofUnion(message, oneof, writer, depth + 1);
     for (message.fields.items) |*field| {
@@ -1198,11 +1201,13 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll("{};\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var skip_entry = false;\n");
+    try writer.writeAll(if (textMapEntryCanSkip(map_type)) "var skip_entry = false;\n" else "const skip_entry = false;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_entry_line| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("const entry_line = @This().textCleanLine(raw_entry_line);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (entry_line.len == 0) continue;\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (std.mem.eql(u8, entry_line, \"}\") or std.mem.eql(u8, entry_line, \">\")) break;\n");
     try indent(writer, depth + 2);
@@ -1251,12 +1256,19 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try indent(writer, depth + 1);
     try writer.writeAll("if (skip_entry) continue;\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("try @This().");
+    try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+    try writer.writeAll("(allocator, &");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".append(allocator, entry) catch |err| return err;\n");
+    try writer.writeAll(", entry);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn textMapEntryCanSkip(map_type: schema.MapType) bool {
+    return map_type.value.* == .enumeration;
 }
 
 fn writeTextParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -1535,6 +1547,33 @@ fn writeMapEntryType(file: *const schema.FileDescriptor, field: *const schema.Fi
     try writer.writeAll("};\n\n");
 }
 
+fn writeMapEntryHelpers(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("fn ");
+    try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+    try writer.writeAll("(allocator: std.mem.Allocator, list: *std.ArrayList(");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll("), entry: ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(") !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (list.items) |*existing| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (");
+    try writeMapKeyEqualExpr(map_type.key, "existing.key", "entry.key", writer);
+    try writer.writeAll(") { existing.* = entry; return; }\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try list.append(allocator, entry);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
 fn writeFieldAccessors(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeFieldAccessor(ctx, field, writer, depth);
@@ -1789,6 +1828,39 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, value: ");
     try writeRepeatedElementType(field.*, writer);
     try writer.writeAll(") !void {\n");
+    if (field.kind == .map) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList(");
+        try writeRepeatedElementType(field.*, writer);
+        try writer.writeAll(") = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) try list.appendSlice(allocator, self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try @This().");
+        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+        try writer.writeAll("(allocator, &list, value);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const old = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try list.toOwnedSlice(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+        try writeRepeatedAppendAllReplaceClear(ctx, field, writer, depth);
+        try writeRepeatedSpecialFieldAccessors(ctx, field, writer, depth);
+        return;
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("const old = self.");
     try writeQuotedIdent(field.name, writer);
@@ -1810,6 +1882,12 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
+    try writeRepeatedAppendAllReplaceClear(ctx, field, writer, depth);
+    try writeRepeatedSpecialFieldAccessors(ctx, field, writer, depth);
+}
+
+fn writeRepeatedAppendAllReplaceClear(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    _ = ctx;
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("appendAll", field.name, writer);
@@ -1818,6 +1896,38 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (values.len == 0) return;\n");
+    if (field.kind == .map) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList(");
+        try writeRepeatedElementType(field.*, writer);
+        try writer.writeAll(") = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) try list.appendSlice(allocator, self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values) |value| try @This().");
+        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+        try writer.writeAll("(allocator, &list, value);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const old = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try list.toOwnedSlice(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+        try writeRepeatedReplaceClear(field, writer, depth);
+        return;
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("const old = self.");
     try writeQuotedIdent(field.name, writer);
@@ -1839,6 +1949,10 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
+    try writeRepeatedReplaceClear(field, writer, depth);
+}
+
+fn writeRepeatedReplaceClear(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("replace", field.name, writer);
@@ -1861,6 +1975,28 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll("return;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
+    if (field.kind == .map) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var list: std.ArrayList(");
+        try writeRepeatedElementType(field.*, writer);
+        try writer.writeAll(") = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer list.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (values) |value| try @This().");
+        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+        try writer.writeAll("(allocator, &list, value);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try list.toOwnedSlice(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+        try writeRepeatedClear(field, writer, depth);
+        return;
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("const owned = try allocator.dupe(");
     try writeRepeatedElementType(field.*, writer);
@@ -1874,6 +2010,10 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
+    try writeRepeatedClear(field, writer, depth);
+}
+
+fn writeRepeatedClear(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedAccessorIdent("clear", field.name, writer);
@@ -1890,7 +2030,9 @@ fn writeRepeatedFieldAccessor(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
+}
 
+fn writeRepeatedSpecialFieldAccessors(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (fieldMessageTypeName(field)) |type_name| {
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) try writeRepeatedMessageFieldAccessor(ctx, field, type_name, writer, depth);
     }
@@ -2732,7 +2874,11 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 2);
     try writer.writeAll("var r = pbz.Reader.init(raw);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("if (try r.nextTag()) |tag| if (tag.number == number) count += 1;\n");
+    try writer.writeAll("if (try r.nextTag()) |tag| {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag.number == number) count += 1;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
@@ -3282,7 +3428,8 @@ fn mergeUsesAllocator(message: *const schema.MessageDescriptor) bool {
 }
 
 fn writeMergeField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    if (field.cardinality == .repeated or field.kind == .map) return try writeMergeRepeatedField(field, writer, depth);
+    if (field.kind == .map) return try writeMergeMapField(field, writer, depth);
+    if (field.cardinality == .repeated) return try writeMergeRepeatedField(field, writer, depth);
     switch (field.kind) {
         .message, .group => try writeMergeSingularMessageField(field, writer, depth),
         .scalar => |scalar| try writeMergeSingularScalarField(file, field, scalar, writer, depth),
@@ -3318,6 +3465,21 @@ fn writeMergeRepeatedField(field: *const schema.FieldDescriptor, writer: *std.Io
     try writer.writeAll(" = merged;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeMergeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (other.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (other.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| try self.");
+    try writeQuotedAccessorIdent("append", field.name, writer);
+    try writer.writeAll("(allocator, entry);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -3483,8 +3645,10 @@ fn writeCloneOwned(file: *const schema.FileDescriptor, message: *const schema.Me
     try writer.writeAll("var out = @This().init();\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer out.deinit(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);\n");
+    if (cloneUsesOwnedAllocator(message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);\n");
+    }
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeCloneField(file, field, writer, depth + 1);
     }
@@ -3494,6 +3658,36 @@ fn writeCloneOwned(file: *const schema.FileDescriptor, message: *const schema.Me
     try writer.writeAll("return out;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn cloneUsesOwnedAllocator(message: *const schema.MessageDescriptor) bool {
+    for (message.fields.items) |field| {
+        if (field.oneof_name == null and cloneFieldUsesOwnedAllocator(field)) return true;
+    }
+    for (message.oneofs.items) |oneof| {
+        for (message.fields.items) |field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name) and cloneFieldUsesOwnedAllocator(field)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn cloneFieldUsesOwnedAllocator(field: schema.FieldDescriptor) bool {
+    if (field.kind == .map) {
+        const map_type = field.kind.map;
+        return cloneKindUsesOwnedAllocator(.{ .scalar = map_type.key }) or cloneKindUsesOwnedAllocator(map_type.value.*);
+    }
+    return cloneKindUsesOwnedAllocator(field.kind);
+}
+
+fn cloneKindUsesOwnedAllocator(kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .scalar => |scalar| scalar == .string or scalar == .bytes,
+        .message, .group => true,
+        else => false,
+    };
 }
 
 fn writeCloneField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -4575,7 +4769,7 @@ fn writeDecodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try indent(writer, depth + 1);
     try writer.writeAll("var entry_reader = pbz.Reader.init(payload);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var skip_entry = false;\n");
+    try writer.writeAll(if (wireMapEntryCanSkip(file, map_type)) "var skip_entry = false;\n" else "const skip_entry = false;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (try entry_reader.nextTag()) |entry_tag| {\n");
     try indent(writer, depth + 2);
@@ -4591,11 +4785,17 @@ fn writeDecodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try indent(writer, depth + 1);
     try writer.writeAll("if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(");
     try writer.print("{d}", .{field.number});
-    try writer.writeAll(", payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else try ");
+    try writer.writeAll(", payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else try @This().");
+    try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+    try writer.writeAll("(allocator, &");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".append(allocator, entry);\n");
+    try writer.writeAll(", entry);\n");
     try indent(writer, depth);
     try writer.writeAll("},\n");
+}
+
+fn wireMapEntryCanSkip(file: *const schema.FileDescriptor, map_type: schema.MapType) bool {
+    return map_type.value.* == .enumeration and enumIsClosed(file, map_type.value.enumeration);
 }
 
 fn writeMapEntryDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, target: []const u8, number: u29, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5505,8 +5705,10 @@ fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
     }
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = options;\n");
+    if (!messageTextUsesOptions(ctx, message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = options;\n");
+    }
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeTextField(ctx, field, writer, depth + 1);
     }
@@ -5539,6 +5741,37 @@ fn messageTextUsesAllocator(ctx: *const CodegenContext, message: *const schema.M
     }
     if (messageHasTextMessageExtension(file, message)) return true;
     return false;
+}
+
+fn messageTextUsesOptions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
+    for (message.fields.items) |field| {
+        if (field.oneof_name == null and textFieldUsesOptions(ctx, field)) return true;
+    }
+    for (message.oneofs.items) |oneof| {
+        for (message.fields.items) |field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name) and textFieldUsesOptions(ctx, field)) return true;
+            }
+        }
+    }
+    return messageHasTextMessageExtension(ctx.file, message);
+}
+
+fn textFieldUsesOptions(ctx: *const CodegenContext, field: schema.FieldDescriptor) bool {
+    return switch (field.kind) {
+        .enumeration => true,
+        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
+        .map => |map_type| textMapValueUsesOptions(ctx, map_type.value.*),
+        else => false,
+    };
+}
+
+fn textMapValueUsesOptions(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .enumeration => true,
+        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
+        else => false,
+    };
 }
 
 fn messageHasTextMessageExtension(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
@@ -6027,8 +6260,10 @@ fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
     }
-    try indent(writer, depth + 1);
-    try writer.writeAll("_ = options;\n");
+    if (!messageJsonStringifyUsesOptions(ctx, message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = options;\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("try writer.writeAll(\"{\");\n");
     if (messageJsonStringifyHasFields(ctx, message)) {
@@ -6216,8 +6451,27 @@ fn messageJsonStringifyHasFields(ctx: *const CodegenContext, message: *const sch
 fn messageJsonStringifyUsesAllocator(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
     for (message.fields.items) |field| {
         if (field.kind == .message or field.kind == .group) return true;
+        if (field.kind == .map and jsonMapStringifyValueUsesAllocator(ctx, field.kind.map.value.*)) return true;
     }
     if (messageHasJsonExtensions(ctx, message)) return true;
+    return false;
+}
+
+fn jsonMapStringifyValueUsesAllocator(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
+    return switch (kind) {
+        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
+        else => false,
+    };
+}
+
+fn messageJsonStringifyUsesOptions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
+    for (message.fields.items) |field| {
+        if (field.oneof_name == null and fieldJsonStringifySupported(ctx, field)) return true;
+    }
+    for (message.oneofs.items) |oneof| {
+        if (oneofHasJsonField(ctx, message, oneof.name)) return true;
+    }
+    if (messageHasJsonOptionUsingExtensions(ctx, message)) return true;
     return false;
 }
 
@@ -6245,6 +6499,7 @@ fn messageJsonParseUsesArenaAllocator(ctx: *const CodegenContext, message: *cons
             .message, .group => return true,
             .map => |map_type| switch (map_type.value.*) {
                 .scalar => |scalar| if (scalar == .bytes) return true,
+                .message, .group => return true,
                 else => {},
             },
             else => {},
@@ -6276,6 +6531,28 @@ fn messageScopeHasJsonExtensions(ctx: *const CodegenContext, target: *const sche
     }
     for (scope.messages.items) |*nested| {
         if (messageScopeHasJsonExtensions(ctx, target, nested)) return true;
+    }
+    return false;
+}
+
+fn messageHasJsonOptionUsingExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
+    const file = ctx.file;
+    for (file.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, message, field) and jsonExtensionUsesOptions(ctx, field)) return true;
+    }
+    for (file.messages.items) |*scope| {
+        if (messageScopeHasJsonOptionUsingExtensions(ctx, message, scope)) return true;
+    }
+    return false;
+}
+
+fn messageScopeHasJsonOptionUsingExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) bool {
+    const file = ctx.file;
+    for (scope.extensions.items) |*field| {
+        if (extensionAppliesToMessage(file, target, field) and jsonExtensionUsesOptions(ctx, field)) return true;
+    }
+    for (scope.messages.items) |*nested| {
+        if (messageScopeHasJsonOptionUsingExtensions(ctx, target, nested)) return true;
     }
     return false;
 }
@@ -6313,6 +6590,14 @@ fn jsonExtensionSupported(file: *const schema.FileDescriptor, field: *const sche
 fn jsonExtensionSupportedWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
     return switch (field.kind) {
         .scalar, .enumeration => true,
+        .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
+        else => false,
+    };
+}
+
+fn jsonExtensionUsesOptions(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
+    return switch (field.kind) {
+        .enumeration => true,
         .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
         else => false,
     };
@@ -6673,11 +6958,15 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try writeJsonParseEnumExpr(file, map_type.value.enumeration, "map_entry.value_ptr.*", writer);
         try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("try list.append(allocator, .{ .key = ");
+        try writer.writeAll("try @This().");
+        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+        try writer.writeAll("(allocator, &list, .{ .key = ");
         try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
         try writer.writeAll(", .value = parsed_value });\n");
     } else {
-        try writer.writeAll("try list.append(allocator, .{ .key = ");
+        try writer.writeAll("try @This().");
+        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+        try writer.writeAll("(allocator, &list, .{ .key = ");
         try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
         try writer.writeAll(", .value = ");
         try writeJsonParseMapValueExpr(ctx, map_type.value.*, "map_entry.value_ptr.*", "arena_allocator", writer);
@@ -6959,15 +7248,17 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8 {
         \\    if (!std.mem.startsWith(u8, line, name)) return null;
         \\    var rest = line[name.len..];
-        \\    rest = std.mem.trimLeft(u8, rest, " \t");
+        \\    rest = std.mem.trimStart(u8, rest, " \t");
         \\    if (rest.len == 0 or rest[0] != ':') return null;
         \\    return std.mem.trim(u8, rest[1..], " \t\r");
         \\}
         \\
         \\fn textBlockField(line: []const u8, comptime name: []const u8) bool {
         \\    if (!std.mem.startsWith(u8, line, name)) return false;
-        \\    var rest = std.mem.trimLeft(u8, line[name.len..], " \t");
-        \\    if (rest.len != 0 and rest[0] == ':') rest = std.mem.trimLeft(u8, rest[1..], " \t");
+        \\    var rest = std.mem.trimStart(u8, line[name.len..], " \t");
+        \\    if (rest.len != 0 and rest[0] == ':') {
+        \\        rest = std.mem.trimStart(u8, rest[1..], " \t");
+        \\    }
         \\    return std.mem.eql(u8, rest, "{") or std.mem.eql(u8, rest, "<");
         \\}
         \\
@@ -10197,6 +10488,40 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
 }
 
+test "codegen emits map duplicate-key last-wins helpers" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message M {
+        \\  map<string, int32> counts = 1;
+        \\  map<bool, Kind> flags = 2;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn @\"appendOrReplaceMapEntry_counts\"(allocator: std.mem.Allocator, list: *std.ArrayList(@\"countsEntry\"), entry: @\"countsEntry\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, existing.key, entry.key)) { existing.* = entry; return; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn @\"appendOrReplaceMapEntry_flags\"(allocator: std.mem.Allocator, list: *std.ArrayList(@\"flagsEntry\"), entry: @\"flagsEntry\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (existing.key == entry.key) { existing.* = entry; return; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"counts\") |entry| try self.@\"appendField_counts\"(allocator, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &@\"counts_list\", entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
+
+    const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
+    try std.testing.expect(std.mem.indexOf(u8, content[text_start..], "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &@\"counts_list\", entry);") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
 test "codegen deterministic encoder emits fields by number" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
@@ -10277,14 +10602,14 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, options);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = blk: { const old = self.@\"counts\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_value = @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = try @This().jsonMapKeyBool(map_entry.key_ptr.*), .value = parsed_value });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try list.append(allocator, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try @\"Child\".jsonParseWithOptions(arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_flags\"(allocator, &list, .{ .key = try @This().jsonMapKeyBool(map_entry.key_ptr.*), .value = parsed_value });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_kids\"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try @\"Child\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"kids\" = blk: { const old = self.@\"kids\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -10313,7 +10638,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCount(self: @This()) usize") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFields(self: @This()) []const []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (try r.nextTag()) |tag| if (tag.number == number) count += 1;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try r.nextTag()) |tag| {\n                if (tag.number == number) count += 1;\n            }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.unknownFieldCountByNumber(number)) != 0;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8") != null);
@@ -10371,7 +10696,7 @@ test "codegen decodes map fields into entry slices" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var entry = @\"countsEntry\"{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"counts_list\".append(allocator, entry)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &@\"counts_list\", entry)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = try @\"counts_list\".toOwnedSlice(allocator)") != null);
 }
 
@@ -11269,5 +11594,5 @@ test "codegen validates closed enum map values in wire decode" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var skip_entry = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { skip_entry = true; } else { entry.value = value; } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(1, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"_unknown_fields_list\".append(allocator, raw); } else try @\"keyed_list\".append(allocator, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"_unknown_fields_list\".append(allocator, raw); } else try @This().@\"appendOrReplaceMapEntry_keyed\"(allocator, &@\"keyed_list\", entry);") != null);
 }
