@@ -4170,6 +4170,43 @@ test "descriptor set allows unresolved types from missing weak imports" {
     try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorSet(allocator, normal_bytes));
 }
 
+test "descriptor set validates local enum defaults before imported enums" {
+    const allocator = std.testing.allocator;
+    var common = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; IMPORTED = 1; }
+    );
+    defer common.deinit();
+    common.name = "common.proto";
+    var app = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "common.proto";
+        \\message Event {
+        \\  enum Kind { LOCAL = 7; }
+        \\  optional Kind kind = 1 [default = LOCAL];
+        \\}
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+
+    const files = [_]*const schema.FileDescriptor{ &common, &app };
+    const bytes = try encodeFileDescriptorSet(allocator, &files);
+    defer allocator.free(bytes);
+    const decoded = try decodeFileDescriptorSet(allocator, bytes);
+    defer {
+        for (decoded) |*file| file.deinit();
+        allocator.free(decoded);
+    }
+    const decoded_app = for (decoded) |*file| {
+        if (std.mem.eql(u8, file.name, "app.proto")) break file;
+    } else return error.InvalidFieldType;
+    const kind = decoded_app.findMessage("Event").?.findField("kind").?;
+    try std.testing.expectEqualStrings("demo.Event.Kind", kind.kind.enumeration);
+    try std.testing.expectEqual(@as(i64, 7), kind.default_value.?.integer);
+}
+
 test "descriptor encodes imported enum fields and defaults with registry" {
     const allocator = std.testing.allocator;
     var common = try @import("parser.zig").Parser.parse(allocator,
