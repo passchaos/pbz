@@ -2060,12 +2060,13 @@ fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
 
 fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
     if (syntax == .proto3 and message.extension_ranges.items.len != 0) return error.InvalidSyntax;
+    const max_end = messageRangeMaxExclusive(message);
     for (message.extension_ranges.items, 0..) |range, i| {
-        const end = range.end orelse std.math.maxInt(i64);
-        if (range.start <= 0 or range.start >= end) return error.InvalidRange;
+        const end = range.end orelse max_end;
+        if (range.start <= 0 or range.start >= end or range.start >= max_end or end > max_end) return error.InvalidRange;
         for (message.extension_ranges.items[i + 1 ..]) |other| {
-            const other_end = other.end orelse std.math.maxInt(i64);
-            if (other.start <= 0 or other.start >= other_end) return error.InvalidRange;
+            const other_end = other.end orelse max_end;
+            if (other.start <= 0 or other.start >= other_end or other.start >= max_end or other_end > max_end) return error.InvalidRange;
             if (range.start < other_end and other.start < end) return error.InvalidRange;
         }
         for (message.reserved_ranges.items) |reserved| {
@@ -2076,15 +2077,16 @@ fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: sch
 }
 
 fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
+    const max_end = messageRangeMaxExclusive(message);
     for (message.reserved_ranges.items, 0..) |range, i| {
-        const end = range.end orelse @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
-        if (range.start <= 0 or range.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidRange;
-        if (range.end != null and end > @as(i64, std.math.maxInt(wire.FieldNumber)) + 1) return error.InvalidRange;
+        const end = range.end orelse max_end;
+        if (range.start <= 0 or range.start >= max_end) return error.InvalidRange;
+        if (range.end != null and end > max_end) return error.InvalidRange;
         if (end <= range.start) return error.InvalidRange;
         for (message.reserved_ranges.items[i + 1 ..]) |other| {
-            const other_end = other.end orelse @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
-            if (other.start <= 0 or other.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidRange;
-            if (other.end != null and other_end > @as(i64, std.math.maxInt(wire.FieldNumber)) + 1) return error.InvalidRange;
+            const other_end = other.end orelse max_end;
+            if (other.start <= 0 or other.start >= max_end) return error.InvalidRange;
+            if (other.end != null and other_end > max_end) return error.InvalidRange;
             if (other_end <= other.start) return error.InvalidRange;
             if (range.start < other_end and other.start < end) return error.InvalidRange;
         }
@@ -2094,6 +2096,13 @@ fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
             if (std.mem.eql(u8, name, other)) return error.ReservedField;
         }
     }
+}
+
+fn messageRangeMaxExclusive(message: *const schema.MessageDescriptor) i64 {
+    return if (message.messageSetWireFormat())
+        std.math.maxInt(i32)
+    else
+        @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
 }
 
 fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
@@ -2106,11 +2115,11 @@ fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schem
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
         }
         for (message.reserved_ranges.items) |range| {
-            const end = range.end orelse std.math.maxInt(i64);
+            const end = range.end orelse messageRangeMaxExclusive(message);
             if (field.number >= range.start and field.number < end) return error.ReservedField;
         }
         for (message.extension_ranges.items) |range| {
-            const end = range.end orelse std.math.maxInt(i64);
+            const end = range.end orelse messageRangeMaxExclusive(message);
             if (field.number >= range.start and field.number < end) return error.ReservedField;
         }
         for (message.reserved_names.items) |name| {
@@ -3340,6 +3349,48 @@ test "parser rejects overlapping extension ranges" {
         \\syntax = "proto2";
         \\message Bad { extensions 100 to 200, 150 to 250; }
     ));
+}
+
+test "parser enforces message range upper bounds with MessageSet exception" {
+    const allocator = std.testing.allocator;
+    const field_max = @as(i64, std.math.maxInt(wire.FieldNumber));
+    const beyond_field_max = field_max + 1;
+
+    const bad_extension_range = try std.fmt.allocPrint(allocator,
+        \\syntax = "proto2";
+        \\message Bad {{ extensions {d} to max; }}
+    , .{beyond_field_max});
+    defer allocator.free(bad_extension_range);
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator, bad_extension_range));
+
+    const bad_reserved_range = try std.fmt.allocPrint(allocator,
+        \\syntax = "proto2";
+        \\message Bad {{ reserved {d} to max; }}
+    , .{beyond_field_max});
+    defer allocator.free(bad_reserved_range);
+    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator, bad_reserved_range));
+
+    const ordinary_max = try std.fmt.allocPrint(allocator,
+        \\syntax = "proto2";
+        \\message MaxExtension {{ extensions {d} to max; }}
+        \\message MaxReserved {{ reserved {d} to max; }}
+    , .{ field_max, field_max });
+    defer allocator.free(ordinary_max);
+    var ordinary = try Parser.parse(allocator, ordinary_max);
+    defer ordinary.deinit();
+    try std.testing.expectEqual(field_max, ordinary.findMessage("MaxExtension").?.extension_ranges.items[0].start);
+    try std.testing.expectEqual(field_max, ordinary.findMessage("MaxReserved").?.reserved_ranges.items[0].start);
+
+    const message_set_high_ranges = try std.fmt.allocPrint(allocator,
+        \\syntax = "proto2";
+        \\message MsExt {{ option message_set_wire_format = true; extensions 4 to 4, {d} to max; }}
+        \\message MsReserved {{ option message_set_wire_format = true; extensions 4 to 4; reserved {d} to max; }}
+    , .{ beyond_field_max, beyond_field_max });
+    defer allocator.free(message_set_high_ranges);
+    var message_set = try Parser.parse(allocator, message_set_high_ranges);
+    defer message_set.deinit();
+    try std.testing.expectEqual(beyond_field_max, message_set.findMessage("MsExt").?.extension_ranges.items[1].start);
+    try std.testing.expectEqual(beyond_field_max, message_set.findMessage("MsReserved").?.reserved_ranges.items[0].start);
 }
 
 test "parser rejects normal fields inside extension ranges" {

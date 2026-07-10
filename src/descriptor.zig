@@ -2154,10 +2154,10 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
         }
         for (message.reserved_ranges.items) |range| {
-            if (rangeContains(range, field.number)) return error.InvalidFieldType;
+            if (rangeContains(range, field.number, messageRangeMaxExclusive(message))) return error.InvalidFieldType;
         }
         for (message.extension_ranges.items) |range| {
-            if (rangeContains(.{ .start = range.start, .end = range.end }, field.number)) return error.InvalidFieldType;
+            if (rangeContains(.{ .start = range.start, .end = range.end }, field.number, messageRangeMaxExclusive(message))) return error.InvalidFieldType;
         }
         for (message.reserved_names.items) |name| {
             if (std.mem.eql(u8, name, field.name)) return error.InvalidFieldType;
@@ -2218,9 +2218,9 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
     try validateDecodedMessageEnumValueSymbols(message);
     try validateDecodedFieldJsonNameUniqueness(message.fields.items);
     for (message.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
-    try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items);
+    try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items, messageRangeMaxExclusive(message));
     try validateDecodedExtensionDeclarationNames(message.extension_ranges.items);
-    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items, false, if (message.messageSetWireFormat()) std.math.maxInt(i32) else @as(i64, std.math.maxInt(wire.FieldNumber)) + 1);
+    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items, false, messageRangeMaxExclusive(message));
 }
 
 fn validateDecodedMessageEnumValueSymbols(message: *const schema.MessageDescriptor) Error!void {
@@ -2294,16 +2294,32 @@ fn customJsonName(field: *const schema.FieldDescriptor) ?[]const u8 {
     return if (schema.eqlDefaultJsonName(field.name, json_name)) null else json_name;
 }
 
-fn validateDecodedExtensionRanges(extension_ranges: []const schema.ExtensionRange, reserved_ranges: []const schema.ReservedRange) Error!void {
+fn validateDecodedExtensionRanges(extension_ranges: []const schema.ExtensionRange, reserved_ranges: []const schema.ReservedRange, max_end: i64) Error!void {
     for (extension_ranges, 0..) |range, i| {
+        try validateDecodedExtensionRangeBounds(range, max_end);
         const as_reserved = schema.ReservedRange{ .start = range.start, .end = range.end };
         for (extension_ranges[i + 1 ..]) |other| {
+            try validateDecodedExtensionRangeBounds(other, max_end);
             if (rangesOverlap(as_reserved, .{ .start = other.start, .end = other.end })) return error.InvalidFieldType;
         }
         for (reserved_ranges) |reserved| {
             if (rangesOverlap(as_reserved, reserved)) return error.InvalidFieldType;
         }
     }
+}
+
+fn validateDecodedExtensionRangeBounds(range: schema.ExtensionRange, max_end: i64) Error!void {
+    const end = range.end orelse max_end;
+    if (range.start <= 0 or range.start >= max_end) return error.InvalidFieldType;
+    if (range.end != null and end > max_end) return error.InvalidFieldType;
+    if (end <= range.start) return error.InvalidFieldType;
+}
+
+fn messageRangeMaxExclusive(message: *const schema.MessageDescriptor) i64 {
+    return if (message.messageSetWireFormat())
+        std.math.maxInt(i32)
+    else
+        @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
 }
 
 fn decodeFieldDescriptor(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), bytes: []const u8) Error!schema.FieldDescriptor {
@@ -2674,7 +2690,7 @@ fn validateEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const sche
             }
         }
         for (enumeration.reserved_ranges.items) |range| {
-            if (rangeContains(range, value.number)) return error.InvalidFieldType;
+            if (rangeContains(range, value.number, std.math.maxInt(i64))) return error.InvalidFieldType;
         }
         for (enumeration.reserved_names.items) |name| {
             if (std.mem.eql(u8, name, value.name)) return error.InvalidFieldType;
@@ -2701,14 +2717,14 @@ fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []
     for (ranges, 0..) |range, i| {
         const end = range.end orelse max_end;
         if (!is_enum) {
-            if (range.start <= 0 or range.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldType;
+            if (range.start <= 0 or range.start >= max_end) return error.InvalidFieldType;
             if (range.end != null and end > max_end) return error.InvalidFieldType;
         }
         if (end <= range.start) return error.InvalidFieldType;
         for (ranges[i + 1 ..]) |other| {
             const other_end = other.end orelse max_end;
             if (!is_enum) {
-                if (other.start <= 0 or other.start > std.math.maxInt(wire.FieldNumber)) return error.InvalidFieldType;
+                if (other.start <= 0 or other.start >= max_end) return error.InvalidFieldType;
                 if (other.end != null and other_end > max_end) return error.InvalidFieldType;
             }
             if (rangesOverlap(range, other)) return error.InvalidFieldType;
@@ -2722,8 +2738,8 @@ fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []
     }
 }
 
-fn rangeContains(range: schema.ReservedRange, number: i64) bool {
-    const end = range.end orelse std.math.maxInt(i64);
+fn rangeContains(range: schema.ReservedRange, number: i64, max_end: i64) bool {
+    const end = range.end orelse max_end;
     return number >= range.start and number < end;
 }
 
@@ -5466,6 +5482,8 @@ test "descriptor rejects extension ranges in proto3" {
 
 test "descriptor rejects invalid extension ranges" {
     const allocator = std.testing.allocator;
+    const field_max_end: i32 = @intCast(@as(i64, std.math.maxInt(wire.FieldNumber)) + 1);
+    const beyond_field_max_end = field_max_end + 1;
     {
         const bytes = try testFileWithExtensionRange(allocator, 100, 50, null);
         defer allocator.free(bytes);
@@ -5482,6 +5500,45 @@ test "descriptor rejects invalid extension ranges" {
         var decoded = try decodeFileDescriptorProto(allocator, bytes);
         defer decoded.deinit();
         try std.testing.expectEqual(@as(i64, 100), decoded.findMessage("Host").?.extension_ranges.items[0].start);
+    }
+    {
+        const bytes = try testFileWithExtensionRange(allocator, field_max_end, beyond_field_max_end, null);
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        const bytes = try testFileWithExtensionRange(allocator, std.math.maxInt(wire.FieldNumber), beyond_field_max_end, null);
+        defer allocator.free(bytes);
+        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, bytes));
+    }
+    {
+        var low_range = wire.Writer.init(allocator);
+        defer low_range.deinit();
+        try low_range.writeInt32(1, 4);
+        try low_range.writeInt32(2, 5);
+        var high_range = wire.Writer.init(allocator);
+        defer high_range.deinit();
+        try high_range.writeInt32(1, field_max_end);
+        try high_range.writeInt32(2, beyond_field_max_end);
+        var options = wire.Writer.init(allocator);
+        defer options.deinit();
+        try options.writeBool(1, true);
+        var message = wire.Writer.init(allocator);
+        defer message.deinit();
+        try message.writeString(1, "MessageSetHost");
+        try message.writeMessage(5, low_range.slice());
+        try message.writeMessage(5, high_range.slice());
+        try message.writeMessage(7, options.slice());
+        var file = wire.Writer.init(allocator);
+        defer file.deinit();
+        try file.writeString(1, "messageset-high-extension-range.proto");
+        try file.writeString(12, "proto2");
+        try file.writeMessage(4, message.slice());
+        var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+        defer decoded.deinit();
+        const decoded_host = decoded.findMessage("MessageSetHost").?;
+        try std.testing.expectEqual(@as(i64, field_max_end), decoded_host.extension_ranges.items[1].start);
+        try std.testing.expectEqual(@as(?i64, beyond_field_max_end), decoded_host.extension_ranges.items[1].end);
     }
     {
         var file = schema.FileDescriptor.init(allocator);
