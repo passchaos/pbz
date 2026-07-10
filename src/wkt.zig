@@ -776,6 +776,7 @@ pub const Any = struct {
             .string => |value| value,
             else => return error.TypeMismatch,
         };
+        if (type_url.len == 0) return error.TypeMismatch;
         const value_json = object.get("value") orelse std.json.Value{ .string = "" };
         const encoded = switch (value_json) {
             .string => |value| value,
@@ -834,6 +835,7 @@ test "any wire and json helpers" {
     defer parsed_url_safe.deinit(allocator);
     try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xff }, parsed_url_safe.value);
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"value\":\"YWJj\"}"));
+    try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"@type\":\"\",\"value\":\"YWJj\"}"));
     try std.testing.expectError(error.UnknownField, Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\",\"extra\":1}"));
 }
 
