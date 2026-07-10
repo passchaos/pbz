@@ -1296,6 +1296,7 @@ fn writeBase64String(bytes: []const u8, writer: *std.Io.Writer) Error!void {
 }
 
 fn writeJsonString(value: []const u8, writer: *std.Io.Writer) Error!void {
+    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -1408,6 +1409,38 @@ test "json stringify dynamic message with scalars repeated maps enums and nested
     const json = try stringifyAlloc(allocator, &file, &bag, .{});
     defer allocator.free(json);
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", json);
+}
+
+test "json stringify rejects invalid utf8 strings" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  optional string name = 1;
+        \\  repeated string tags = 2;
+        \\  map<string, int32> keyed = 3;
+        \\}
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var bad_name = dynamic.DynamicMessage.init(allocator, desc);
+    defer bad_name.deinit();
+    try bad_name.add(desc.findField("name").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+    try std.testing.expectError(error.InvalidUtf8, stringifyAlloc(allocator, &file, &bad_name, .{}));
+
+    var bad_repeated = dynamic.DynamicMessage.init(allocator, desc);
+    defer bad_repeated.deinit();
+    try bad_repeated.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "ok") });
+    try bad_repeated.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+    try std.testing.expectError(error.InvalidUtf8, stringifyAlloc(allocator, &file, &bad_repeated, .{}));
+
+    var bad_key = dynamic.DynamicMessage.init(allocator, desc);
+    defer bad_key.deinit();
+    const entry = try allocator.create(dynamic.MapEntry);
+    entry.* = .{ .key = .{ .string = try allocator.dupe(u8, &.{0xc0}) }, .value = .{ .int32 = 1 } };
+    try bad_key.add(desc.findField("keyed").?, .{ .map_entry = entry });
+    try std.testing.expectError(error.InvalidUtf8, stringifyAlloc(allocator, &file, &bad_key, .{}));
 }
 
 test "json parse dynamic message with scalars repeated maps enums and nested messages" {
