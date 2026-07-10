@@ -846,11 +846,39 @@ fn writeTextParseMessageExtensions(file: *const schema.FileDescriptor, target: *
 }
 
 fn extensionAppliesToMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
-    _ = file;
     const extendee = field.extendee orelse return false;
+    if (std.mem.startsWith(u8, extendee, ".") or std.mem.indexOfScalar(u8, extendee, '.') != null) {
+        const resolved = findMessageByQualifiedName(file, extendee) orelse return false;
+        return resolved == message;
+    }
     const trimmed = if (std.mem.startsWith(u8, extendee, ".")) extendee[1..] else extendee;
     const leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
     return std.mem.eql(u8, message.name, trimmed) or std.mem.eql(u8, message.name, leaf);
+}
+
+fn findMessageByQualifiedName(file: *const schema.FileDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
+    var normalized = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    if (file.package.len != 0 and std.mem.startsWith(u8, normalized, file.package)) {
+        if (normalized.len == file.package.len) return null;
+        if (normalized.len > file.package.len and normalized[file.package.len] == '.') normalized = normalized[file.package.len + 1 ..];
+    }
+    return findMessageByPath(file.messages.items, normalized);
+}
+
+fn findMessageByPath(messages: []const schema.MessageDescriptor, path: []const u8) ?*const schema.MessageDescriptor {
+    if (path.len == 0) return null;
+    const head, const tail = splitFirst(path);
+    for (messages) |*message| {
+        if (!std.mem.eql(u8, message.name, head)) continue;
+        if (tail.len == 0) return message;
+        return findMessageByPath(message.messages.items, tail);
+    }
+    return null;
+}
+
+fn splitFirst(name: []const u8) struct { []const u8, []const u8 } {
+    if (std.mem.indexOfScalar(u8, name, '.')) |idx| return .{ name[0..idx], name[idx + 1 ..] };
+    return .{ name, "" };
 }
 
 fn writeTextParseExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -10620,6 +10648,31 @@ test "codegen emits proto2 extension metadata" {
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
     defer tree.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen scopes qualified extensions to exact nested extendee" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\message Outer {
+        \\  message Host { extensions 100 to max; }
+        \\}
+        \\extend .demo.Outer.Host { optional int32 nested_ext = 100; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    var count: usize = 0;
+    var index: usize = 0;
+    const needle = "pub fn @\"hasExtension_nested_ext\"";
+    while (std.mem.indexOfPos(u8, content, index, needle)) |found| {
+        count += 1;
+        index = found + needle.len;
+    }
+    try std.testing.expectEqual(@as(usize, 1), count);
 }
 
 test "codegen emits MessageSet extension write helper" {
