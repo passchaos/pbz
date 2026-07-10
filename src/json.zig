@@ -2449,6 +2449,14 @@ test "json maps Any message with type and base64 value" {
     const rendered = try stringifyAlloc(allocator, &file, &holder, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"any\":{\"@type\":\"type.googleapis.com/demo.Msg\",\"value\":\"YWJj\"}}", rendered);
+
+    const bad_any = try allocator.create(dynamic.DynamicMessage);
+    bad_any.* = dynamic.DynamicMessage.init(allocator, any_desc);
+    try bad_any.add(any_desc.findField("value").?, .{ .bytes = try allocator.dupe(u8, "abc") });
+    var bad_holder = dynamic.DynamicMessage.init(allocator, holder_desc);
+    defer bad_holder.deinit();
+    try bad_holder.add(holder_desc.findField("any").?, .{ .message = bad_any });
+    try std.testing.expectError(error.TypeMismatch, stringifyAlloc(allocator, &file, &bad_holder, .{}));
 }
 
 test "json maps FieldMask message as comma-separated string" {
