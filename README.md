@@ -356,7 +356,7 @@ unknown enum TextFormat values skipped for scalar, repeated, map value, oneof,
 and same-file extension enum fields;
 generated
 `parseText` / `parseTextInitialized` cover basic line-oriented scalar, enum,
-repeated, scalar/enum/message map, scalar/enum oneof input, plus same-file proto2
+repeated, scalar/enum/message map with default key/value fill for omitted map-entry members, scalar/enum oneof input, plus same-file proto2
 extension references such as `[demo.ext]` or `[ext]` stored as preserved
 unknown/raw extension fields, message/group block payloads with duplicate
 singular message/group merge semantics when their generated types are available,

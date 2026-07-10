@@ -519,7 +519,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     for (message.fields.items) |*field| try writeFieldMetadataDecl(ctx, field, writer, depth + 1);
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     for (message.fields.items) |*field| {
-        if (field.kind == .map) try writeMapEntryType(field, writer, depth + 1);
+        if (field.kind == .map) try writeMapEntryType(file, field, writer, depth + 1);
     }
     for (message.oneofs.items) |oneof| try writeOneofUnion(message, oneof, writer, depth + 1);
     for (message.fields.items) |*field| {
@@ -1433,7 +1433,7 @@ fn writeFieldDecl(file: *const schema.FileDescriptor, field: *const schema.Field
     }
 }
 
-fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMapEntryType(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const map_type = switch (field.kind) {
         .map => |map| map,
         else => return,
@@ -1452,7 +1452,7 @@ fn writeMapEntryType(field: *const schema.FieldDescriptor, writer: *std.Io.Write
     try writer.writeAll("value: ");
     try writeFieldKindType(map_type.value.*, writer);
     try writer.writeAll(" = ");
-    try writeFieldKindDefault(null, map_type.value.*, null, writer);
+    try writeFieldKindDefault(file, map_type.value.*, null, writer);
     try writer.writeAll(",\n");
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
@@ -9933,8 +9933,14 @@ test "codegen emits basic TextFormat formatters" {
 test "codegen emits map entry types and encoders" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
-        \\syntax = "proto3";
-        \\message M { map<string, int32> counts = 1; }
+        \\syntax = "proto2";
+        \\enum Kind { FIRST = 7; SECOND = 8; }
+        \\message Child {}
+        \\message M {
+        \\  map<string, int32> counts = 1;
+        \\  map<string, Kind> keyed = 2;
+        \\  map<string, Child> kids = 3;
+        \\}
     );
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
@@ -9944,6 +9950,8 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeString(1, entry.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeInt32(2, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, entry_writer.slice())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "value: i32 = 7") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "value: []const u8 = \"\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.sort(@\"countsEntry\", entries") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.lessThan(u8, a.key, b.key)") != null);
