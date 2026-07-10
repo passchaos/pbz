@@ -977,6 +977,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
         .string => |value| value,
         else => return error.TypeMismatch,
     };
+    if (type_url.len == 0 or anyTypeName(type_url).len == 0) return error.TypeMismatch;
     try message.add(type_field, .{ .string = try allocator.dupe(u8, type_url) });
     if (object.get("value")) |value_json| {
         var it = object.iterator();
@@ -1003,6 +1004,10 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
         try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
     }
     return message;
+}
+
+fn anyTypeName(type_url: []const u8) []const u8 {
+    return if (std.mem.lastIndexOfScalar(u8, type_url, '/')) |idx| type_url[idx + 1 ..] else type_url;
 }
 
 fn resolveAnyType(file: *const schema.FileDescriptor, type_url: []const u8) ?*const schema.MessageDescriptor {
@@ -2530,6 +2535,8 @@ test "json parses Any message with type and base64 value" {
     try std.testing.expectEqualSlices(u8, "abc", any_msg.get("value").?.values.items[0].bytes);
 
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"value\":\"YWJj\"}}", .{}));
+    try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"\",\"value\":\"YWJj\"}}", .{}));
+    try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, holder_desc, "{\"any\":{\"@type\":\"type.googleapis.com/\",\"value\":\"YWJj\"}}", .{}));
 }
 
 test "json expands Any message payloads when type is known" {
