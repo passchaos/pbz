@@ -423,6 +423,14 @@ pub const Parser = struct {
         try self.addSourceLocation(path, start, end);
     }
 
+    fn addExtensionRangeOptionsLocation(self: *Parser, message_path: []const i32, range_index: usize, start: usize, end: usize) Error!void {
+        const range_path = try self.childPath(message_path, 5, @intCast(range_index));
+        defer self.allocator.free(range_path);
+        const options_path = try self.childFieldPath(range_path, 3);
+        defer self.allocator.free(options_path);
+        try self.addSourceLocation(options_path, start, end);
+    }
+
     fn addRepeatedLocations(self: *Parser, base: []const i32, field_number: i32, start_index: usize, end_index: usize, start: usize, end: usize) Error!void {
         var index = start_index;
         while (index < end_index) : (index += 1) {
@@ -510,7 +518,7 @@ pub const Parser = struct {
             } else if (self.matchIdent("extensions")) {
                 const range_start = self.previous_end;
                 const start_index = message.extension_ranges.items.len;
-                try self.parseExtensionRanges(&message.extension_ranges);
+                try self.parseExtensionRanges(&message.extension_ranges, source_path);
                 try self.addRepeatedLocations(source_path, 5, start_index, message.extension_ranges.items.len, range_start, self.previousEnd());
             } else if (self.matchIdent("reserved")) {
                 const reserved_start = self.previous_end;
@@ -1049,9 +1057,11 @@ pub const Parser = struct {
         return error.UnexpectedToken;
     }
 
-    fn parseExtensionRanges(self: *Parser, ranges: *std.ArrayList(schema.ExtensionRange)) Error!void {
+    fn parseExtensionRanges(self: *Parser, ranges: *std.ArrayList(schema.ExtensionRange), source_path: []const i32) Error!void {
         const statement_start = ranges.items.len;
         var optioned_ranges: usize = 0;
+        var trailing_options_start: ?usize = null;
+        var trailing_options_end: ?usize = null;
         while (true) {
             const start = try self.parseRangeBound();
             var end: ?i64 = start + 1;
@@ -1059,16 +1069,26 @@ pub const Parser = struct {
             const range_index = ranges.items.len;
             try ranges.append(self.allocator, .{ .start = start, .end = end });
             var range_has_options = false;
-            if (self.consumeSymbol('[')) {
+            if (self.current.tag == .symbol and self.current.symbol == '[') {
                 range_has_options = true;
                 optioned_ranges += 1;
+                const options_start = self.current.start;
+                try self.expectSymbol('[');
                 const range = &ranges.items[range_index];
                 try self.parseOptionList(&range.options, ']');
+                const options_end = self.previousEnd();
                 try self.applyExtensionRangeOptions(range);
+                trailing_options_start = options_start;
+                trailing_options_end = options_end;
+                try self.addExtensionRangeOptionsLocation(source_path, range_index, options_start, options_end);
             }
             if (!self.consumeSymbol(',')) {
                 if (range_has_options and optioned_ranges == 1 and range_index > statement_start) {
                     try self.copyExtensionRangeOptionsToEarlierRanges(ranges, statement_start, range_index);
+                    var copied_index = statement_start;
+                    while (copied_index < range_index) : (copied_index += 1) {
+                        try self.addExtensionRangeOptionsLocation(source_path, copied_index, trailing_options_start.?, trailing_options_end.?);
+                    }
                 }
                 break;
             }
@@ -3444,6 +3464,7 @@ test "parser preserves extension range declarations verification and features" {
     try std.testing.expect(range.declarations.items[0].repeated);
     try std.testing.expectEqual(schema.ExtensionRangeVerification.declaration, range.verification.?);
     try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, range.features.?.repeated_field_encoding);
+    try expectLocationPath(&file, &.{ 4, 0, 5, 0, 3 });
 }
 
 test "parser copies trailing extension range options across same statement" {
@@ -3465,6 +3486,8 @@ test "parser copies trailing extension range options across same statement" {
         try std.testing.expectEqual(schema.ExtensionRangeVerification.unverified, range.verification.?);
         try std.testing.expectEqual(schema.FeatureSet.RepeatedFieldEncoding.expanded, range.features.?.repeated_field_encoding);
     }
+    try expectLocationPath(&file, &.{ 4, 0, 5, 0, 3 });
+    try expectLocationPath(&file, &.{ 4, 0, 5, 1, 3 });
 }
 
 test "parser parses field edition_defaults and feature_support aggregates" {
