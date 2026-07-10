@@ -6615,6 +6615,31 @@ test "descriptor round-trips parser source code info comments and nested paths" 
     try std.testing.expectEqual(@as(usize, 4), nested_field_location.span.items.len);
 }
 
+test "descriptor round-trips extension range option source info" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Host {
+        \\  extensions 100 to 101, 200 to 201 [
+        \\    verification = UNVERIFIED,
+        \\    features.repeated_field_encoding = EXPANDED
+        \\  ];
+        \\}
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "extension-range-options-source.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+
+    const first_range_options = findSourceLocation(&decoded, &.{ 4, 0, 5, 0, 3 }).?;
+    const second_range_options = findSourceLocation(&decoded, &.{ 4, 0, 5, 1, 3 }).?;
+    try std.testing.expectEqual(@as(usize, 4), first_range_options.span.items.len);
+    try std.testing.expectEqual(@as(usize, 4), second_range_options.span.items.len);
+    try std.testing.expectEqualSlices(i32, first_range_options.span.items, second_range_options.span.items);
+}
+
 test "descriptor rejects invalid source code info locations" {
     const allocator = std.testing.allocator;
     {
