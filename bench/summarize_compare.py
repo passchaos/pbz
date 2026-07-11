@@ -72,6 +72,31 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
 
 
+
+    Workload(
+        "scalarmix encode",
+        (
+            "generated scalarmix encode",
+            "generated scalarmix writeToAssumeCapacity reuse",
+            "generated scalarmix encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost scalarmix encode",),
+            "rust quick-protobuf": ("quick-protobuf scalarmix encode", "quick-protobuf scalarmix encode reuse"),
+            "c++ protobuf": ("c++ protobuf scalarmix encode", "c++ protobuf scalarmix SerializeToArray reuse"),
+            "go protobuf": ("go protobuf scalarmix encode", "go protobuf scalarmix encode reuse"),
+        },
+    ),
+    Workload(
+        "scalarmix decode",
+        ("generated scalarmix decode", "generated scalarmix decode reuse"),
+        {
+            "rust prost": ("prost scalarmix decode",),
+            "rust quick-protobuf": ("quick-protobuf scalarmix decode",),
+            "c++ protobuf": ("c++ protobuf scalarmix decode", "c++ protobuf scalarmix decode reuse"),
+            "go protobuf": ("go protobuf scalarmix decode",),
+        },
+    ),
     Workload(
         "textbytes encode",
         (

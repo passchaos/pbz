@@ -16,6 +16,46 @@ pub struct Person {
     pub counts: HashMap<String, i32>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum BenchKind {
+    Unknown = 0,
+    Alpha = 1,
+    Beta = 2,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct ScalarMix {
+    #[prost(bool, tag = "1")]
+    pub active: bool,
+    #[prost(uint32, tag = "2")]
+    pub count: u32,
+    #[prost(uint64, tag = "3")]
+    pub total: u64,
+    #[prost(sint32, tag = "4")]
+    pub delta: i32,
+    #[prost(sint64, tag = "5")]
+    pub big_delta: i64,
+    #[prost(fixed32, tag = "6")]
+    pub checksum: u32,
+    #[prost(fixed64, tag = "7")]
+    pub token: u64,
+    #[prost(sfixed32, tag = "8")]
+    pub signed_fixed: i32,
+    #[prost(sfixed64, tag = "9")]
+    pub signed_big_fixed: i64,
+    #[prost(float, tag = "10")]
+    pub ratio: f32,
+    #[prost(double, tag = "11")]
+    pub score: f64,
+    #[prost(enumeration = "BenchKind", tag = "12")]
+    pub kind: i32,
+    #[prost(bool, repeated, tag = "13")]
+    pub flags: Vec<bool>,
+    #[prost(uint64, repeated, tag = "14")]
+    pub ids: Vec<u64>,
+}
+
 #[derive(Clone, PartialEq, Message)]
 pub struct TextBytes {
     #[prost(string, tag = "1")]
@@ -148,6 +188,25 @@ fn make_person() -> Person {
     }
 }
 
+fn make_scalarmix() -> ScalarMix {
+    ScalarMix {
+        active: true,
+        count: 12345,
+        total: 9_876_543_210,
+        delta: -321,
+        big_delta: -9_876_543,
+        checksum: 0xdead_beef,
+        token: 0x0102_0304_0506_0708,
+        signed_fixed: -123456,
+        signed_big_fixed: -9_876_543_210,
+        ratio: 1.25,
+        score: 9.5,
+        kind: BenchKind::Beta as i32,
+        flags: vec![true, false, true, true, false, true, false, false],
+        ids: vec![1, 127, 128, 16_384, 1_048_576, 9_876_543_210],
+    }
+}
+
 fn make_textbytes() -> TextBytes {
     TextBytes {
         title: "ASCII title for protobuf".to_string(),
@@ -226,6 +285,8 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = person.encode_to_vec();
+    let scalarmix = make_scalarmix();
+    let scalarmix_bytes = scalarmix.encode_to_vec();
     let textbytes = make_textbytes();
     let textbytes_bytes = textbytes.encode_to_vec();
     let complex = make_complex();
@@ -239,6 +300,7 @@ fn main() {
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("scalarmix payload size: {}", scalarmix_bytes.len());
     println!("textbytes payload size: {}", textbytes_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
@@ -259,6 +321,28 @@ fn main() {
         std::hint::black_box(decoded);
     });
     decode.print();
+
+    run_timed(
+        "prost scalarmix encode",
+        iters.binary,
+        scalarmix_bytes.len(),
+        || {
+            let encoded = scalarmix.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost scalarmix decode",
+        iters.binary,
+        scalarmix_bytes.len(),
+        || {
+            let decoded = ScalarMix::decode(scalarmix_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
 
     run_timed(
         "prost textbytes encode",

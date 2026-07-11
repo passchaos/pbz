@@ -786,6 +786,10 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeDecode(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
+    if (messageCanDecodeReuseFast(message)) {
+        try writeDecodeReuse(ctx, message, writer, depth + 1);
+        try writer.writeAll("\n");
+    }
     try writeDecodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
     try writeMissingRequiredFieldName(message, writer, depth + 1);
@@ -3166,14 +3170,239 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.writeToAssumeCapacity(&w);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return buffer[0..w.slice().len];\n");
+    if (messageCanFastDirectEncode(ctx.file, message)) {
+        try writeFastDirectEncodeIntoAssumeCapacity(ctx, message, writer, depth + 1);
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.writeToAssumeCapacity(&w);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return buffer[0..w.slice().len];\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn messageCanFastDirectEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
+    if (message.fields.items.len < 8) return false;
+    if (message.oneofs.items.len != 0) return false;
+    for (message.fields.items) |field| {
+        if (hasPresence(file, field)) return false;
+        switch (field.kind) {
+            .scalar => |scalar| switch (scalar) {
+                .string, .bytes => return false,
+                else => {},
+            },
+            .enumeration => {},
+            .message, .group, .map => return false,
+        }
+    }
+    return true;
+}
+
+fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    try indent(writer, depth);
+    try writer.writeAll("var index: usize = 0;\n");
+    for (message.fields.items) |*field| {
+        if (field.cardinality == .repeated) {
+            if (field.kind == .scalar and field.resolvedPacked(file)) {
+                try writeFastDirectPackedScalarEncode(field, field.kind.scalar, writer, depth);
+            } else if (field.kind == .enumeration and field.resolvedPacked(file)) {
+                try writeFastDirectPackedEnumEncode(field, writer, depth);
+            } else if (field.kind == .scalar) {
+                try writeFastDirectRepeatedScalarEncode(field, field.kind.scalar, writer, depth);
+            } else if (field.kind == .enumeration) {
+                try writeFastDirectRepeatedEnumEncode(field, writer, depth);
+            }
+            continue;
+        }
+        switch (field.kind) {
+            .scalar => |scalar| try writeFastDirectScalarEncode(field, scalar, writer, depth),
+            .enumeration => try writeFastDirectEnumEncode(field, writer, depth),
+            else => {},
+        }
+    }
+    try indent(writer, depth);
+    try writer.writeAll("for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }\n");
+    try indent(writer, depth);
+    try writer.writeAll("return buffer[0..index];\n");
+}
+
+fn writeFastDirectScalarEncode(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(defaultSkipCondition(scalar));
+    try writer.writeAll("{ ");
+    try writeFastDirectTag(field.number, .{ .scalar = scalar }, writer);
+    try writer.writeAll(" ");
+    try writeFastDirectScalarPayload("self.", field.name, scalar, writer);
+    try writer.writeAll(" }\n");
+}
+
+fn writeFastDirectEnumEncode(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" != 0) { ");
+    try writeFastDirectTag(field.number, .{ .enumeration = "" }, writer);
+    try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(")))); }\n");
+}
+
+fn writeFastDirectRepeatedScalarEncode(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| { ");
+    try writeFastDirectTag(field.number, .{ .scalar = scalar }, writer);
+    try writer.writeAll(" ");
+    try writeFastDirectScalarPayload("item", "", scalar, writer);
+    try writer.writeAll(" }\n");
+}
+
+fn writeFastDirectRepeatedEnumEncode(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| { ");
+    try writeFastDirectTag(field.number, .{ .enumeration = "" }, writer);
+    try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, item)))); }\n");
+}
+
+fn writeFastDirectPackedScalarEncode(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    if (fixedPackedScalarWidth(scalar)) |width| {
+        try writer.writeAll("const packed_len = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(".len * {d};\n", .{width});
+    } else {
+        try writer.writeAll("var packed_len: usize = 0;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| packed_len += ");
+        try writePackedScalarSizeExpr(scalar, "item", writer);
+        try writer.writeAll(";\n");
+    }
+    try indent(writer, depth + 1);
+    try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
+    try writer.writeAll("\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, packed_len);\n");
+    if (fixedWidthViewScalarType(scalar)) |_| {
+        try indent(writer, depth + 1);
+        if (scalar == .double) {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(item));\n");
+        } else if (scalar == .float) {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(item));\n");
+        } else {
+            try writer.writeAll("const payload = std.mem.sliceAsBytes(self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;\n");
+        }
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| ");
+        try writeFastDirectPackedScalarPayload("item", scalar, writer);
+        try writer.writeAll("\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeFastDirectPackedEnumEncode(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var packed_len: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));\n");
+    try indent(writer, depth + 1);
+    try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
+    try writer.writeAll("\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, packed_len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, item))));\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeFastDirectTag(number: u29, kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
+    const tag = rawFieldTag(number, kind);
+    if (tag <= std.math.maxInt(u8)) {
+        try writer.print("buffer[index] = {d}; index += 1;", .{tag});
+    } else {
+        try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, {d});", .{tag});
+    }
+}
+
+fn writeFastDirectScalarPayload(prefix: []const u8, field_name: []const u8, scalar: schema.ScalarType, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double => try writeFastDirectRawFieldPayload(prefix, field_name, "u64", true, writer),
+        .float => try writeFastDirectRawFieldPayload(prefix, field_name, "u32", true, writer),
+        .fixed32 => try writeFastDirectRawFieldPayload(prefix, field_name, "u32", false, writer),
+        .fixed64 => try writeFastDirectRawFieldPayload(prefix, field_name, "u64", false, writer),
+        .sfixed32 => try writeFastDirectRawFieldPayload(prefix, field_name, "i32", false, writer),
+        .sfixed64 => try writeFastDirectRawFieldPayload(prefix, field_name, "i64", false, writer),
+        .int32 => try writeFastDirectVarintFieldPayload(prefix, field_name, "@as(u64, @bitCast(@as(i64, ", ")))", writer),
+        .int64 => try writeFastDirectVarintFieldPayload(prefix, field_name, "@as(u64, @bitCast(", "))", writer),
+        .uint32, .uint64 => try writeFastDirectVarintFieldPayload(prefix, field_name, "", "", writer),
+        .sint32 => try writeFastDirectVarintFieldPayload(prefix, field_name, "pbz.wire.zigZagEncode32(", ")", writer),
+        .sint64 => try writeFastDirectVarintFieldPayload(prefix, field_name, "pbz.wire.zigZagEncode64(", ")", writer),
+        .bool => try writeFastDirectVarintFieldPayload(prefix, field_name, "@as(u64, if (", ") 1 else 0)", writer),
+        .string, .bytes => try writer.writeAll("@compileError(\"unsupported direct payload\")"),
+    }
+}
+
+fn writeFastDirectRawFieldPayload(prefix: []const u8, field_name: []const u8, zig_type: []const u8, bitcast_value: bool, writer: *std.Io.Writer) Error!void {
+    try writer.print("pbz.wire.writeRawLittleToSlice({s}, buffer, &index, ", .{zig_type});
+    if (bitcast_value) try writer.writeAll("@bitCast(");
+    try writer.writeAll(prefix);
+    if (field_name.len != 0) try writeQuotedIdent(field_name, writer);
+    if (bitcast_value) try writer.writeAll(")");
+    try writer.writeAll(");");
+}
+
+fn writeFastDirectVarintFieldPayload(prefix: []const u8, field_name: []const u8, before: []const u8, after: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, ");
+    try writer.writeAll(before);
+    try writer.writeAll(prefix);
+    if (field_name.len != 0) try writeQuotedIdent(field_name, writer);
+    try writer.writeAll(after);
+    try writer.writeAll(");");
+}
+
+fn writeFastDirectPackedScalarPayload(value_expr: []const u8, scalar: schema.ScalarType, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .int32 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, {s}))));", .{value_expr}),
+        .int64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast({s})));", .{value_expr}),
+        .uint32, .uint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, {s});", .{value_expr}),
+        .sint32 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32({s}));", .{value_expr}),
+        .sint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode64({s}));", .{value_expr}),
+        .bool => try writer.print("{{ buffer[index] = if ({s}) 1 else 0; index += 1; }}", .{value_expr}),
+        else => try writer.writeAll("@compileError(\"unsupported packed direct payload\")"),
+    }
 }
 
 fn writeEncodedSize(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5731,6 +5960,8 @@ fn messageContainsEnumDescriptor(message: *const schema.MessageDescriptor, targe
 }
 
 fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (messageCanFastRawTagDecode(ctx.file, message)) return try writeDecodeFastRawTag(ctx, message, writer, depth);
+
     try indent(writer, depth);
     try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
@@ -5757,11 +5988,266 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn messageCanFastRawTagDecode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
+    if (message.fields.items.len < 8) return false;
+    if (message.oneofs.items.len != 0) return false;
+    for (message.fields.items) |field| {
+        switch (field.kind) {
+            .scalar => |scalar| switch (scalar) {
+                .string, .bytes => return false,
+                else => {},
+            },
+            .enumeration => |name| if (enumIsClosed(file, name)) return false,
+            .message, .group, .map => return false,
+        }
+    }
+    return true;
+}
+
+fn writeDecodeFastRawTag(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var self = @This().init();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    for (message.fields.items) |*field| try writeRepeatedListDecl(ctx, field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
+    try writeRawTagDecodeLoop(ctx, message, writer, depth + 1);
+    for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeRawTagDecodeLoop(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("while (!r.eof()) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw_tag_start = r.position();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const first_tag_byte = try r.readByte();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("switch (raw_tag) {\n");
+    for (message.fields.items) |*field| try writeRawTagDecodeFieldCases(ctx, field, writer, depth + 2);
+    try indent(writer, depth + 2);
+    try writer.writeAll("else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeRawTagDecodeFieldCases(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    switch (field.kind) {
+        .scalar => |scalar| {
+            if (field.cardinality == .repeated and scalar.packable()) {
+                try writeRawTagDecodePackedScalarCase(field, scalar, writer, depth);
+                try writeRawTagDecodeUnpackedScalarCase(field, scalar, writer, depth);
+            } else if (field.cardinality == .repeated) {
+                try writeRawTagDecodeUnpackedScalarCase(field, scalar, writer, depth);
+            } else {
+                try writeRawTagDecodeSingularScalarCase(field, scalar, writer, depth);
+            }
+        },
+        .enumeration => {
+            if (field.cardinality == .repeated) {
+                if (field.resolvedPacked(ctx.file)) try writeRawTagDecodePackedEnumCase(field, writer, depth);
+                try writeRawTagDecodeUnpackedEnumCase(field, writer, depth);
+            } else {
+                try writeRawTagDecodeSingularEnumCase(field, writer, depth);
+            }
+        },
+        else => unreachable,
+    }
+}
+
+fn writeRawTagDecodeSingularScalarCase(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{ self.", .{rawFieldTag(field.number, .{ .scalar = scalar })});
+    try writeQuotedIdent(field.name, writer);
+    try writer.print(" = try r.{s}();", .{scalarReaderName(scalar)});
+    try writer.writeAll(" },\n");
+}
+
+fn writeRawTagDecodeUnpackedScalarCase(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => ", .{rawFieldTag(field.number, .{ .scalar = scalar })});
+    try writeRepeatedAppendPrefix(field, writer);
+    try writer.print("try r.{s}()),\n", .{scalarReaderName(scalar)});
+}
+
+fn writeRawTagDecodePackedScalarCase(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .length_delimited)});
+    try writeDecodePackedScalarPayload(field, scalar, writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+}
+
+fn writeRawTagDecodeSingularEnumCase(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{ const value = try r.readInt32(); self.", .{rawTagValue(field.number, .varint)});
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = value; },\n");
+}
+
+fn writeRawTagDecodeUnpackedEnumCase(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => ", .{rawTagValue(field.number, .varint)});
+    try writeRepeatedAppendPrefix(field, writer);
+    try writer.writeAll("try r.readInt32()),\n");
+}
+
+fn writeRawTagDecodePackedEnumCase(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .length_delimited)});
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payload = try r.readBytes();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".ensureUnusedCapacity(allocator, payload.len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("while (!packed_reader.eof()) ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".appendAssumeCapacity(try packed_reader.readInt32());\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+}
+
+fn rawFieldTag(number: u29, kind: schema.FieldKind) u64 {
+    return rawTagValue(number, kind.wireType());
+}
+
+fn rawTagValue(number: u29, wire_type: wire.WireType) u64 {
+    return (@as(u64, number) << 3) | @intFromEnum(wire_type);
+}
+
+fn messageCanDecodeReuseFast(message: *const schema.MessageDescriptor) bool {
+    if (message.oneofs.items.len != 0) return false;
+    for (message.fields.items) |field| {
+        switch (field.kind) {
+            .scalar => |scalar| switch (scalar) {
+                .string, .bytes => return false,
+                else => {},
+            },
+            .enumeration => {},
+            .message, .group, .map => return false,
+        }
+    }
+    return true;
+}
+
+fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
+    for (message.fields.items) |*field| try writeRepeatedReuseListDecl(ctx, field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self._unknown_fields = &.{};\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
+    for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx.file, field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
+    if (messageCanFastRawTagDecode(ctx.file, message)) {
+        try writeRawTagDecodeLoop(ctx, message, writer, depth + 1);
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("while (try r.nextTag()) |tag| {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("switch (tag.number) {\n");
+        for (message.fields.items) |*field| try writeDecodeField(ctx, field, writer, depth + 3);
+        try indent(writer, depth + 3);
+        try writer.writeAll("else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+    }
+    for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeRepeatedReuseListDecl(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality != .repeated) return;
+    try indent(writer, depth);
+    try writer.writeAll("var ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(": std.ArrayList(");
+    if (typedRepeatedMessageFieldWithContext(ctx, field)) |type_name| {
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    } else {
+        try writeRepeatedElementType(field.*, writer);
+    }
+    try writer.writeAll(") = std.ArrayList(");
+    if (typedRepeatedMessageFieldWithContext(ctx, field)) |type_name| {
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+    } else {
+        try writeRepeatedElementType(field.*, writer);
+    }
+    try writer.writeAll(").fromOwnedSlice(@constCast(self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll("));\n");
+    try indent(writer, depth);
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".clearRetainingCapacity();\n");
+    try indent(writer, depth);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = &.{};\n");
+    try indent(writer, depth);
+    try writer.writeAll("errdefer ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".deinit(allocator);\n");
+}
+
+fn writeDecodeReuseResetField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) return;
+    try indent(writer, depth);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = ");
+    try writeFieldDefault(file, field.*, writer);
+    try writer.writeAll(";\n");
+    if (hasPresence(file, field.*)) {
+        try indent(writer, depth);
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(" = false;\n");
+    }
 }
 
 fn messageHasRepeatedOrMap(message: *const schema.MessageDescriptor) bool {
@@ -6008,29 +6494,7 @@ fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
     try writer.writeAll("{\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("const payload = try r.readBytes();\n");
-    if (packedScalarAppendHelperName(scalar)) |helper_name| {
-        try indent(writer, depth + 2);
-        try writer.writeAll("try pbz.wire.");
-        try writer.writeAll(helper_name);
-        try writer.writeAll("(allocator, &");
-        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(", payload);\n");
-    } else {
-        try indent(writer, depth + 2);
-        try writer.writeAll("try ");
-        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(".ensureUnusedCapacity(allocator, ");
-        try writePackedScalarDecodeCapacityExpr(scalar, "payload", writer);
-        try writer.writeAll(");\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("while (!packed_reader.eof()) ");
-        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.print(".appendAssumeCapacity(try packed_reader.{s}());\n", .{scalarReaderName(scalar)});
-    }
+    try writeDecodePackedScalarPayload(field, scalar, writer, depth + 2);
     try indent(writer, depth + 1);
     try writer.writeAll("} else {\n");
     try indent(writer, depth + 2);
@@ -6042,9 +6506,40 @@ fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
     try writer.writeAll("},\n");
 }
 
+fn writeDecodePackedScalarPayload(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("const payload = try r.readBytes();\n");
+    if (packedScalarAppendHelperName(scalar)) |helper_name| {
+        try indent(writer, depth);
+        try writer.writeAll("try pbz.wire.");
+        try writer.writeAll(helper_name);
+        try writer.writeAll("(allocator, &");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(", payload);\n");
+    } else {
+        try indent(writer, depth);
+        try writer.writeAll("try ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".ensureUnusedCapacity(allocator, ");
+        try writePackedScalarDecodeCapacityExpr(scalar, "payload", writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth);
+        try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
+        try indent(writer, depth);
+        try writer.writeAll("while (!packed_reader.eof()) ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.print(".appendAssumeCapacity(try packed_reader.{s}());\n", .{scalarReaderName(scalar)});
+    }
+}
+
 fn packedScalarAppendHelperName(scalar: schema.ScalarType) ?[]const u8 {
     return switch (scalar) {
         .int32 => "appendPackedInt32",
+        .uint32 => "appendPackedUInt32",
+        .uint64 => "appendPackedUInt64",
+        .sint32 => "appendPackedSInt32",
+        .sint64 => "appendPackedSInt64",
+        .bool => "appendPackedBool",
         .fixed32 => "appendPackedFixed32",
         .fixed64 => "appendPackedFixed64",
         .sfixed32 => "appendPackedSFixed32",
@@ -6697,7 +7192,7 @@ fn writePackedScalarPayloadAssumeCapacity(scalar: schema.ScalarType, value_expr:
         .fixed64 => try writer.print("{s}.writeRawLittleAssumeCapacity(u64, {s})", .{ writer_name, value_expr }),
         .sfixed32 => try writer.print("{s}.writeRawLittleAssumeCapacity(i32, {s})", .{ writer_name, value_expr }),
         .sfixed64 => try writer.print("{s}.writeRawLittleAssumeCapacity(i64, {s})", .{ writer_name, value_expr }),
-        .bool => try writer.print("{s}.writeVarintAssumeCapacity(@as(u64, if ({s}) 1 else 0))", .{ writer_name, value_expr }),
+        .bool => try writer.print("{s}.appendByteAssumeCapacity(if ({s}) 1 else 0)", .{ writer_name, value_expr }),
         .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
     }
 }

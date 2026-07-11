@@ -300,7 +300,7 @@ pub const demo = struct {
                             else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
                         }
                     }
-                    self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
+                    self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                     return self;
                 }
 

@@ -86,6 +86,10 @@ func makePerson() *personpb.Person {
 	}
 }
 
+func makeScalarMix() *personpb.ScalarMix {
+	return &personpb.ScalarMix{Active: true, Count: 12345, Total: 9876543210, Delta: -321, BigDelta: -9876543, Checksum: 0xdeadbeef, Token: 0x0102030405060708, SignedFixed: -123456, SignedBigFixed: -9876543210, Ratio: 1.25, Score: 9.5, Kind: personpb.BenchKind_BENCH_KIND_BETA, Flags: []bool{true, false, true, true, false, true, false, false}, Ids: []uint64{1, 127, 128, 16384, 1048576, 9876543210}}
+}
+
 func makeTextBytes() *personpb.TextBytes {
 	return &personpb.TextBytes{
 		Title:   "ASCII title for protobuf",
@@ -115,6 +119,7 @@ func makeComplex() *personpb.Complex {
 func main() {
 	const iterations = 20_000
 	person := makePerson()
+	scalarmix := makeScalarMix()
 	textbytes := makeTextBytes()
 	complex := makeComplex()
 	bytes, err := proto.Marshal(person)
@@ -126,6 +131,10 @@ func main() {
 		panic(err)
 	}
 	textBytes, err := prototext.Marshal(person)
+	if err != nil {
+		panic(err)
+	}
+	scalarmixBytes, err := proto.Marshal(scalarmix)
 	if err != nil {
 		panic(err)
 	}
@@ -165,6 +174,7 @@ func main() {
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
+	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
 	fmt.Printf("complex json payload size: %d\n", len(complexJSONBytes))
@@ -205,6 +215,28 @@ func main() {
 	runTimed("go protobuf binary decode", iterations, len(bytes), func() {
 		var decoded personpb.Person
 		if err := unmarshalOptions.Unmarshal(bytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf scalarmix encode", iterations, len(scalarmixBytes), func() {
+		out, err := proto.Marshal(scalarmix)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	scalarmixBuf := make([]byte, 0, len(scalarmixBytes))
+	runTimed("go protobuf scalarmix encode reuse", iterations, len(scalarmixBytes), func() {
+		var err error
+		scalarmixBuf, err = marshalOptions.MarshalAppend(scalarmixBuf[:0], scalarmix)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf scalarmix decode", iterations, len(scalarmixBytes), func() {
+		var decoded personpb.ScalarMix
+		if err := unmarshalOptions.Unmarshal(scalarmixBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

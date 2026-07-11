@@ -8,6 +8,30 @@ message Person {
   map<string, int32> counts = 4;
 }
 
+
+enum BenchKind {
+  BENCH_KIND_UNKNOWN = 0;
+  BENCH_KIND_ALPHA = 1;
+  BENCH_KIND_BETA = 2;
+}
+
+message ScalarMix {
+  bool active = 1;
+  uint32 count = 2;
+  uint64 total = 3;
+  sint32 delta = 4;
+  sint64 big_delta = 5;
+  fixed32 checksum = 6;
+  fixed64 token = 7;
+  sfixed32 signed_fixed = 8;
+  sfixed64 signed_big_fixed = 9;
+  float ratio = 10;
+  double score = 11;
+  BenchKind kind = 12;
+  repeated bool flags = 13;
+  repeated uint64 ids = 14;
+}
+
 message TextBytes {
   string title = 1;
   bytes payload = 2;

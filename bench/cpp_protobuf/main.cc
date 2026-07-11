@@ -78,6 +78,26 @@ demo::Person MakePerson() {
 
 
 
+
+demo::ScalarMix MakeScalarMix() {
+  demo::ScalarMix msg;
+  msg.set_active(true);
+  msg.set_count(12345);
+  msg.set_total(9876543210ULL);
+  msg.set_delta(-321);
+  msg.set_big_delta(-9876543);
+  msg.set_checksum(0xdeadbeefU);
+  msg.set_token(0x0102030405060708ULL);
+  msg.set_signed_fixed(-123456);
+  msg.set_signed_big_fixed(-9876543210LL);
+  msg.set_ratio(1.25f);
+  msg.set_score(9.5);
+  msg.set_kind(demo::BENCH_KIND_BETA);
+  for (bool flag : {true, false, true, true, false, true, false, false}) msg.add_flags(flag);
+  for (uint64_t id : {1ULL, 127ULL, 128ULL, 16384ULL, 1048576ULL, 9876543210ULL}) msg.add_ids(id);
+  return msg;
+}
+
 demo::TextBytes MakeTextBytes() {
   demo::TextBytes msg;
   msg.set_title("ASCII title for protobuf");
@@ -109,6 +129,7 @@ demo::Complex MakeComplex() {
 int main() {
   constexpr int kIterations = 20000;
   const demo::Person person = MakePerson();
+  const demo::ScalarMix scalarmix = MakeScalarMix();
   const demo::TextBytes textbytes = MakeTextBytes();
   const demo::Complex complex = MakeComplex();
   std::string bytes;
@@ -117,6 +138,8 @@ int main() {
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok()) std::abort();
   std::string text;
   if (!google::protobuf::TextFormat::PrintToString(person, &text)) std::abort();
+  std::string scalarmix_bytes;
+  scalarmix.SerializeToString(&scalarmix_bytes);
   std::string textbytes_bytes;
   textbytes.SerializeToString(&textbytes_bytes);
   std::string complex_bytes;
@@ -139,6 +162,7 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
+  std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
   std::cout << "complex json payload size: " << complex_json.size() << "\n";
@@ -203,6 +227,36 @@ int main() {
 
 
 
+
+
+
+  auto scalarmix_encode = RunTimed("c++ protobuf scalarmix encode", kIterations, scalarmix_bytes.size(), [&]() {
+    std::string out;
+    out.reserve(scalarmix_bytes.size());
+    scalarmix.SerializeToString(&out);
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  scalarmix_encode.Print();
+  std::string scalarmix_array_buffer;
+  scalarmix_array_buffer.resize(scalarmix_bytes.size());
+  auto scalarmix_encode_array_reuse = RunTimed("c++ protobuf scalarmix SerializeToArray reuse", kIterations, scalarmix_bytes.size(), [&]() {
+    if (!scalarmix.SerializeToArray(scalarmix_array_buffer.data(), static_cast<int>(scalarmix_array_buffer.size()))) std::abort();
+    asm volatile("" : : "g"(scalarmix_array_buffer.data()) : "memory");
+  });
+  scalarmix_encode_array_reuse.Print();
+  auto scalarmix_decode = RunTimed("c++ protobuf scalarmix decode", kIterations, scalarmix_bytes.size(), [&]() {
+    demo::ScalarMix decoded;
+    if (!decoded.ParseFromString(scalarmix_bytes)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  scalarmix_decode.Print();
+  demo::ScalarMix reused_scalarmix_decoded;
+  auto scalarmix_decode_reuse = RunTimed("c++ protobuf scalarmix decode reuse", kIterations, scalarmix_bytes.size(), [&]() {
+    reused_scalarmix_decoded.Clear();
+    if (!reused_scalarmix_decoded.ParseFromString(scalarmix_bytes)) std::abort();
+    asm volatile("" : : "g"(&reused_scalarmix_decoded) : "memory");
+  });
+  scalarmix_decode_reuse.Print();
 
   auto textbytes_encode = RunTimed("c++ protobuf textbytes encode", kIterations, textbytes_bytes.size(), [&]() {
     std::string out;

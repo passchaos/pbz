@@ -27,6 +27,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
 - deterministic binary encode
+- scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - packed repeated integer encode/decode

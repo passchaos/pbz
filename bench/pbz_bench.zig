@@ -80,6 +80,26 @@ fn makeDynamicPerson(allocator: std.mem.Allocator, desc: *const pbz.MessageDescr
     return msg;
 }
 
+fn makeGeneratedScalarMix(allocator: std.mem.Allocator) !person_pb.demo.ScalarMix {
+    var msg = person_pb.demo.ScalarMix.init();
+    errdefer msg.deinit(allocator);
+    msg.active = true;
+    msg.count = 12345;
+    msg.total = 9_876_543_210;
+    msg.delta = -321;
+    msg.big_delta = -9_876_543;
+    msg.checksum = 0xdead_beef;
+    msg.token = 0x0102_0304_0506_0708;
+    msg.signed_fixed = -123456;
+    msg.signed_big_fixed = -9_876_543_210;
+    msg.ratio = 1.25;
+    msg.score = 9.5;
+    msg.kind = person_pb.demo.BenchKind.BENCH_KIND_BETA.toInt();
+    msg.flags = try allocator.dupe(bool, &.{ true, false, true, true, false, true, false, false });
+    msg.ids = try allocator.dupe(u64, &.{ 1, 127, 128, 16_384, 1_048_576, 9_876_543_210 });
+    return msg;
+}
+
 fn makeGeneratedTextBytes(allocator: std.mem.Allocator) !person_pb.demo.TextBytes {
     var msg = person_pb.demo.TextBytes.init();
     errdefer msg.deinit(allocator);
@@ -163,6 +183,40 @@ fn makeDynamicFixed64Packed(allocator: std.mem.Allocator, desc: *const pbz.Messa
     var i: usize = 0;
     while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .fixed64 = @intCast(i * 5 + 1) });
     return msg;
+}
+
+const GeneratedScalarMixEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.ScalarMix };
+fn generatedScalarMixEncode(ctx: GeneratedScalarMixEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedScalarMixWriteToCtx = struct { writer: *pbz.Writer, message: *const person_pb.demo.ScalarMix };
+fn generatedScalarMixWriteToReuse(ctx: GeneratedScalarMixWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.message.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+const GeneratedScalarMixEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.ScalarMix };
+fn generatedScalarMixEncodeIntoReuse(ctx: GeneratedScalarMixEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+
+const GeneratedScalarMixDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedScalarMixDecode(ctx: GeneratedScalarMixDecodeCtx) !void {
+    var decoded = try person_pb.demo.ScalarMix.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
+const GeneratedScalarMixDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.ScalarMix };
+fn generatedScalarMixDecodeReuse(ctx: GeneratedScalarMixDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
 }
 
 const GeneratedTextBytesEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.TextBytes };
@@ -582,6 +636,8 @@ pub fn main() !void {
     defer generated_person.deinit(allocator);
     var dynamic_person = try makeDynamicPerson(allocator, desc);
     defer dynamic_person.deinit();
+    var generated_scalar_mix = try makeGeneratedScalarMix(allocator);
+    defer generated_scalar_mix.deinit(allocator);
     var generated_text_bytes = try makeGeneratedTextBytes(allocator);
     defer generated_text_bytes.deinit(allocator);
     var generated_complex = try makeGeneratedComplex(allocator);
@@ -612,6 +668,15 @@ pub fn main() !void {
     defer allocator.free(generated_buffer);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
+    const generated_scalar_mix_bytes = try generated_scalar_mix.encode(allocator);
+    defer allocator.free(generated_scalar_mix_bytes);
+    var reusable_scalar_mix_writer = pbz.Writer.init(allocator);
+    defer reusable_scalar_mix_writer.deinit();
+    try reusable_scalar_mix_writer.bytes.ensureTotalCapacity(allocator, generated_scalar_mix_bytes.len);
+    const generated_scalar_mix_buffer = try allocator.alloc(u8, generated_scalar_mix_bytes.len);
+    defer allocator.free(generated_scalar_mix_buffer);
+    var generated_scalar_mix_decode_reuse = person_pb.demo.ScalarMix.init();
+    defer generated_scalar_mix_decode_reuse.deinit(allocator);
     const generated_text_bytes_bytes = try generated_text_bytes.encode(allocator);
     defer allocator.free(generated_text_bytes_bytes);
     var reusable_text_bytes_writer = pbz.Writer.init(allocator);
@@ -661,7 +726,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} scalar_mix={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -670,6 +735,11 @@ pub fn main() !void {
         try runTimed(io, "generated deterministic binary encode", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedDeterministicEncode),
         try runTimed(io, "generated deterministic binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_buffer, .person = &generated_person }, generatedDeterministicEncodeIntoReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
+        try runTimed(io, "generated scalarmix encode", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeCtx{ .allocator = allocator, .message = &generated_scalar_mix }, generatedScalarMixEncode),
+        try runTimed(io, "generated scalarmix writeToAssumeCapacity reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixWriteToCtx{ .writer = &reusable_scalar_mix_writer, .message = &generated_scalar_mix }, generatedScalarMixWriteToReuse),
+        try runTimed(io, "generated scalarmix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeIntoCtx{ .buffer = generated_scalar_mix_buffer, .message = &generated_scalar_mix }, generatedScalarMixEncodeIntoReuse),
+        try runTimed(io, "generated scalarmix decode", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixDecodeCtx{ .allocator = allocator, .bytes = generated_scalar_mix_bytes }, generatedScalarMixDecode),
+        try runTimed(io, "generated scalarmix decode reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixDecodeReuseCtx{ .allocator = allocator, .bytes = generated_scalar_mix_bytes, .message = &generated_scalar_mix_decode_reuse }, generatedScalarMixDecodeReuse),
         try runTimed(io, "generated textbytes encode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeCtx{ .allocator = allocator, .message = &generated_text_bytes }, generatedTextBytesEncode),
         try runTimed(io, "generated textbytes writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesWriteToReuse),
         try runTimed(io, "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8WriteToReuse),

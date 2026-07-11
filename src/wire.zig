@@ -152,6 +152,16 @@ fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
     return len + 1;
 }
 
+pub inline fn writeVarintToSlice(buffer: []u8, index: *usize, value: u64) void {
+    index.* += writeVarintToBuffer(buffer[index.*..], value);
+}
+
+pub inline fn writeRawLittleToSlice(comptime T: type, buffer: []u8, index: *usize, value: T) void {
+    const start = index.*;
+    index.* = start + @sizeOf(T);
+    std.mem.writeInt(T, buffer[start..][0..@sizeOf(T)], value, .little);
+}
+
 pub fn packedFixedWidthFieldSlices(comptime T: type, header: *[20]u8, number: FieldNumber, values: []const T) Error!BorrowedFieldSlices {
     if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
         @compileError("packedFixedWidthFieldSlices requires u32, i32, f32, u64, i64, or f64");
@@ -498,15 +508,13 @@ pub const Writer = struct {
     }
 
     pub fn writeRawLittle(self: *Writer, comptime T: type, value: T) std.mem.Allocator.Error!void {
-        var buf: [@sizeOf(T)]u8 = undefined;
-        std.mem.writeInt(T, &buf, value, .little);
-        try self.appendSlice(&buf);
+        const out = try self.bytes.addManyAsSlice(self.allocator, @sizeOf(T));
+        std.mem.writeInt(T, out[0..@sizeOf(T)], value, .little);
     }
 
     pub fn writeRawLittleAssumeCapacity(self: *Writer, comptime T: type, value: T) void {
-        var buf: [@sizeOf(T)]u8 = undefined;
-        std.mem.writeInt(T, &buf, value, .little);
-        self.appendSliceAssumeCapacity(&buf);
+        const out = self.bytes.addManyAsSliceAssumeCapacity(@sizeOf(T));
+        std.mem.writeInt(T, out[0..@sizeOf(T)], value, .little);
     }
 };
 
@@ -722,12 +730,139 @@ pub inline fn readVarintAt(input: []const u8, index_ptr: *usize) Error!u64 {
 }
 
 pub inline fn appendPackedInt32(allocator: std.mem.Allocator, list: *std.ArrayList(i32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
-    try list.ensureUnusedCapacity(allocator, payload.len);
+    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
+    try list.ensureUnusedCapacity(allocator, required);
     var index: usize = 0;
     while (index < payload.len) {
         const value = try readVarintAt(payload, &index);
         list.appendAssumeCapacity(@truncate(@as(i64, @bitCast(value))));
     }
+}
+
+inline fn countPackedVarints(payload: []const u8) Error!usize {
+    var index: usize = 0;
+    var count: usize = 0;
+    while (index < payload.len) : (count += 1) _ = try readVarintAt(payload, &index);
+    return count;
+}
+
+pub inline fn appendPackedBool(allocator: std.mem.Allocator, list: *std.ArrayList(bool), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (payload.len == 0) return;
+    var all_single_byte = true;
+    for (payload) |byte| {
+        if (byte >= 0x80) {
+            all_single_byte = false;
+            break;
+        }
+    }
+    if (all_single_byte) {
+        try list.ensureUnusedCapacity(allocator, payload.len);
+        const out = list.addManyAsSliceAssumeCapacity(payload.len);
+        for (payload, out) |byte, *value| value.* = byte != 0;
+        return;
+    }
+
+    if (list.items.len == 0 and list.capacity == 0) {
+        const count = try countPackedVarints(payload);
+        const out = try allocator.alloc(bool, count);
+        errdefer allocator.free(out);
+        var index: usize = 0;
+        for (out) |*value| value.* = (try readVarintAt(payload, &index)) != 0;
+        list.* = std.ArrayList(bool).fromOwnedSlice(out);
+        return;
+    }
+
+    try list.ensureUnusedCapacity(allocator, payload.len);
+    var index: usize = 0;
+    while (index < payload.len) list.appendAssumeCapacity((try readVarintAt(payload, &index)) != 0);
+}
+
+pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (payload.len == 0) return;
+    if (list.items.len == 0 and list.capacity == 0) {
+        const count = try countPackedVarints(payload);
+        const out = try allocator.alloc(u32, count);
+        errdefer allocator.free(out);
+        var index: usize = 0;
+        for (out) |*value| {
+            const raw = try readVarintAt(payload, &index);
+            if (raw > std.math.maxInt(u32)) return error.Overflow;
+            value.* = @intCast(raw);
+        }
+        list.* = std.ArrayList(u32).fromOwnedSlice(out);
+        return;
+    }
+
+    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
+    try list.ensureUnusedCapacity(allocator, required);
+    var index: usize = 0;
+    while (index < payload.len) {
+        const raw = try readVarintAt(payload, &index);
+        if (raw > std.math.maxInt(u32)) return error.Overflow;
+        list.appendAssumeCapacity(@intCast(raw));
+    }
+}
+
+pub inline fn appendPackedUInt64(allocator: std.mem.Allocator, list: *std.ArrayList(u64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (payload.len == 0) return;
+    if (list.items.len == 0 and list.capacity == 0) {
+        const count = try countPackedVarints(payload);
+        const out = try allocator.alloc(u64, count);
+        errdefer allocator.free(out);
+        var index: usize = 0;
+        for (out) |*value| value.* = try readVarintAt(payload, &index);
+        list.* = std.ArrayList(u64).fromOwnedSlice(out);
+        return;
+    }
+
+    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
+    try list.ensureUnusedCapacity(allocator, required);
+    var index: usize = 0;
+    while (index < payload.len) list.appendAssumeCapacity(try readVarintAt(payload, &index));
+}
+
+pub inline fn appendPackedSInt32(allocator: std.mem.Allocator, list: *std.ArrayList(i32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (payload.len == 0) return;
+    if (list.items.len == 0 and list.capacity == 0) {
+        const count = try countPackedVarints(payload);
+        const out = try allocator.alloc(i32, count);
+        errdefer allocator.free(out);
+        var index: usize = 0;
+        for (out) |*value| {
+            const raw = try readVarintAt(payload, &index);
+            if (raw > std.math.maxInt(u32)) return error.Overflow;
+            value.* = zigZagDecode32(@intCast(raw));
+        }
+        list.* = std.ArrayList(i32).fromOwnedSlice(out);
+        return;
+    }
+
+    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
+    try list.ensureUnusedCapacity(allocator, required);
+    var index: usize = 0;
+    while (index < payload.len) {
+        const raw = try readVarintAt(payload, &index);
+        if (raw > std.math.maxInt(u32)) return error.Overflow;
+        list.appendAssumeCapacity(zigZagDecode32(@intCast(raw)));
+    }
+}
+
+pub inline fn appendPackedSInt64(allocator: std.mem.Allocator, list: *std.ArrayList(i64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (payload.len == 0) return;
+    if (list.items.len == 0 and list.capacity == 0) {
+        const count = try countPackedVarints(payload);
+        const out = try allocator.alloc(i64, count);
+        errdefer allocator.free(out);
+        var index: usize = 0;
+        for (out) |*value| value.* = zigZagDecode64(try readVarintAt(payload, &index));
+        list.* = std.ArrayList(i64).fromOwnedSlice(out);
+        return;
+    }
+
+    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
+    try list.ensureUnusedCapacity(allocator, required);
+    var index: usize = 0;
+    while (index < payload.len) list.appendAssumeCapacity(zigZagDecode64(try readVarintAt(payload, &index)));
 }
 
 pub fn fieldRawSlice(input: []const u8, start: usize, reader_after_value: *const Reader) []const u8 {

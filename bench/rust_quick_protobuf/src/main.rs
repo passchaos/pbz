@@ -85,6 +85,154 @@ impl<'a> MessageRead<'a> for Person {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct ScalarMix {
+    pub active: bool,
+    pub count: u32,
+    pub total: u64,
+    pub delta: i32,
+    pub big_delta: i64,
+    pub checksum: u32,
+    pub token: u64,
+    pub signed_fixed: i32,
+    pub signed_big_fixed: i64,
+    pub ratio: f32,
+    pub score: f64,
+    pub kind: i32,
+    pub flags: Vec<bool>,
+    pub ids: Vec<u64>,
+}
+
+fn sizeof_sint32(v: i32) -> usize {
+    sizeofs::sizeof_uint32(((v << 1) ^ (v >> 31)) as u32)
+}
+fn sizeof_sint64(v: i64) -> usize {
+    sizeofs::sizeof_uint64(((v << 1) ^ (v >> 63)) as u64)
+}
+
+impl MessageWrite for ScalarMix {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if self.active {
+            size += 2;
+        }
+        if self.count != 0 {
+            size += 1 + sizeofs::sizeof_uint32(self.count);
+        }
+        if self.total != 0 {
+            size += 1 + sizeofs::sizeof_uint64(self.total);
+        }
+        if self.delta != 0 {
+            size += 1 + sizeof_sint32(self.delta);
+        }
+        if self.big_delta != 0 {
+            size += 1 + sizeof_sint64(self.big_delta);
+        }
+        if self.checksum != 0 {
+            size += 1 + 4;
+        }
+        if self.token != 0 {
+            size += 1 + 8;
+        }
+        if self.signed_fixed != 0 {
+            size += 1 + 4;
+        }
+        if self.signed_big_fixed != 0 {
+            size += 1 + 8;
+        }
+        if self.ratio != 0.0 {
+            size += 1 + 4;
+        }
+        if self.score != 0.0 {
+            size += 1 + 8;
+        }
+        if self.kind != 0 {
+            size += 1 + sizeofs::sizeof_int32(self.kind);
+        }
+        if !self.flags.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.flags.len());
+        }
+        if !self.ids.is_empty() {
+            let len: usize = self.ids.iter().map(|v| sizeofs::sizeof_uint64(*v)).sum();
+            size += 2 + sizeofs::sizeof_len(len);
+        }
+        size
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if self.active {
+            w.write_with_tag(8, |w| w.write_bool(self.active))?;
+        }
+        if self.count != 0 {
+            w.write_with_tag(16, |w| w.write_uint32(self.count))?;
+        }
+        if self.total != 0 {
+            w.write_with_tag(24, |w| w.write_uint64(self.total))?;
+        }
+        if self.delta != 0 {
+            w.write_with_tag(32, |w| w.write_sint32(self.delta))?;
+        }
+        if self.big_delta != 0 {
+            w.write_with_tag(40, |w| w.write_sint64(self.big_delta))?;
+        }
+        if self.checksum != 0 {
+            w.write_with_tag(53, |w| w.write_fixed32(self.checksum))?;
+        }
+        if self.token != 0 {
+            w.write_with_tag(57, |w| w.write_fixed64(self.token))?;
+        }
+        if self.signed_fixed != 0 {
+            w.write_with_tag(69, |w| w.write_sfixed32(self.signed_fixed))?;
+        }
+        if self.signed_big_fixed != 0 {
+            w.write_with_tag(73, |w| w.write_sfixed64(self.signed_big_fixed))?;
+        }
+        if self.ratio != 0.0 {
+            w.write_with_tag(85, |w| w.write_float(self.ratio))?;
+        }
+        if self.score != 0.0 {
+            w.write_with_tag(89, |w| w.write_double(self.score))?;
+        }
+        if self.kind != 0 {
+            w.write_with_tag(96, |w| w.write_int32(self.kind))?;
+        }
+        if !self.flags.is_empty() {
+            w.write_packed_with_tag(106, &self.flags, |w, v| w.write_bool(*v), &|_| 1)?;
+        }
+        if !self.ids.is_empty() {
+            w.write_packed_with_tag(114, &self.ids, |w, v| w.write_uint64(*v), &|v| {
+                sizeofs::sizeof_uint64(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for ScalarMix {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = ScalarMix::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                8 => msg.active = r.read_bool(bytes)?,
+                16 => msg.count = r.read_uint32(bytes)?,
+                24 => msg.total = r.read_uint64(bytes)?,
+                32 => msg.delta = r.read_sint32(bytes)?,
+                40 => msg.big_delta = r.read_sint64(bytes)?,
+                53 => msg.checksum = r.read_fixed32(bytes)?,
+                57 => msg.token = r.read_fixed64(bytes)?,
+                69 => msg.signed_fixed = r.read_sfixed32(bytes)?,
+                73 => msg.signed_big_fixed = r.read_sfixed64(bytes)?,
+                85 => msg.ratio = r.read_float(bytes)?,
+                89 => msg.score = r.read_double(bytes)?,
+                96 => msg.kind = r.read_int32(bytes)?,
+                106 => msg.flags = r.read_packed(bytes, |r, bytes| r.read_bool(bytes))?,
+                114 => msg.ids = r.read_packed(bytes, |r, bytes| r.read_uint64(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct TextBytes {
     pub title: String,
     pub payload: Vec<u8>,
@@ -474,6 +622,25 @@ fn make_person() -> Person {
     }
 }
 
+fn make_scalarmix() -> ScalarMix {
+    ScalarMix {
+        active: true,
+        count: 12345,
+        total: 9_876_543_210,
+        delta: -321,
+        big_delta: -9_876_543,
+        checksum: 0xdead_beef,
+        token: 0x0102_0304_0506_0708,
+        signed_fixed: -123456,
+        signed_big_fixed: -9_876_543_210,
+        ratio: 1.25,
+        score: 9.5,
+        kind: 2,
+        flags: vec![true, false, true, true, false, true, false, false],
+        ids: vec![1, 127, 128, 16_384, 1_048_576, 9_876_543_210],
+    }
+}
+
 fn make_textbytes() -> TextBytes {
     TextBytes {
         title: "ASCII title for protobuf".to_owned(),
@@ -560,6 +727,8 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = encode_to_vec(&person);
+    let scalarmix = make_scalarmix();
+    let scalarmix_bytes = encode_to_vec(&scalarmix);
     let textbytes = make_textbytes();
     let textbytes_bytes = encode_to_vec(&textbytes);
     let complex = make_complex();
@@ -573,6 +742,7 @@ fn main() {
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("scalarmix payload size: {}", scalarmix_bytes.len());
     println!("textbytes payload size: {}", textbytes_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
@@ -614,6 +784,41 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&bytes);
             let decoded = Person::from_reader(&mut reader, &bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf scalarmix encode",
+        iters.binary,
+        scalarmix_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&scalarmix);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+    let mut reused_scalarmix = Vec::with_capacity(scalarmix_bytes.len());
+    run_timed(
+        "quick-protobuf scalarmix encode reuse",
+        iters.binary,
+        scalarmix_bytes.len(),
+        || {
+            reused_scalarmix.clear();
+            let mut writer = Writer::new(&mut reused_scalarmix);
+            scalarmix.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_scalarmix);
+        },
+    )
+    .print();
+    run_timed(
+        "quick-protobuf scalarmix decode",
+        iters.binary,
+        scalarmix_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&scalarmix_bytes);
+            let decoded = ScalarMix::from_reader(&mut reader, &scalarmix_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

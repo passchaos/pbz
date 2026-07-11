@@ -558,7 +558,7 @@ pub const demo = struct {
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
                     self.by_name = if (by_name_list.items.len != 0 and by_name_list.items.len == by_name_list.capacity) by_name_list.toOwnedSliceAssert() else try by_name_list.toOwnedSlice(allocator);
-                    self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
+                    self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                     return self;
                 }
 
