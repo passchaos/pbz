@@ -4546,8 +4546,12 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
             continue;
         }
         if (field.cardinality != .repeated) continue;
-        if (fixedWidthViewScalarType(field.kind.scalar) == null) continue;
         if (!field.resolvedPacked(file)) continue;
+        if (packedVarintIteratorType(field.kind.scalar)) |iterator_type| {
+            try writePackedVarintIteratorMethod(field, iterator_type, writer, depth);
+            continue;
+        }
+        if (fixedWidthViewScalarType(field.kind.scalar) == null) continue;
         const view_type = fixedWidthViewScalarType(field.kind.scalar).?;
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
@@ -4596,6 +4600,45 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
             try writer.writeAll("}\n\n");
         }
     }
+}
+
+fn writePackedVarintIteratorMethod(field: *const schema.FieldDescriptor, iterator_type: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithSuffix(field.name, "PackedIterator", writer);
+    try writer.writeAll("(bytes: []const u8) !?");
+    try writer.writeAll(iterator_type);
+    try writer.writeAll(" {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try pbz.wire.");
+    try writer.writeAll(packedVarintIteratorFunction(field.kind.scalar).?);
+    try writer.print("(bytes, {d});\n", .{field.number});
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn packedVarintIteratorType(scalar: schema.ScalarType) ?[]const u8 {
+    return switch (scalar) {
+        .uint64 => "pbz.wire.PackedUInt64Iterator",
+        .int32 => "pbz.wire.PackedInt32Iterator",
+        .uint32 => "pbz.wire.PackedUInt32Iterator",
+        .int64 => "pbz.wire.PackedInt64Iterator",
+        .sint32 => "pbz.wire.PackedSInt32Iterator",
+        .sint64 => "pbz.wire.PackedSInt64Iterator",
+        else => null,
+    };
+}
+
+fn packedVarintIteratorFunction(scalar: schema.ScalarType) ?[]const u8 {
+    return switch (scalar) {
+        .uint64 => "packedUInt64FieldIterator",
+        .int32 => "packedInt32FieldIterator",
+        .uint32 => "packedUInt32FieldIterator",
+        .int64 => "packedInt64FieldIterator",
+        .sint32 => "packedSInt32FieldIterator",
+        .sint64 => "packedSInt64FieldIterator",
+        else => null,
+    };
 }
 
 fn writeLengthDelimitedBorrowedSlicesMethod(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {

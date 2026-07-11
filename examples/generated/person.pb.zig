@@ -287,6 +287,10 @@ pub const demo = struct {
             return try nameFieldSlices(header, value);
         }
 
+        pub fn scoresPackedIterator(bytes: []const u8) !?pbz.wire.PackedInt32Iterator {
+            return try pbz.wire.packedInt32FieldIterator(bytes, 3);
+        }
+
 
         // no same-file extension accessors
 
@@ -1805,6 +1809,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self._unknown_fields) |raw| allocator.free(raw);
             if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
             self._unknown_fields = &.{};
+        }
+
+        pub fn idsPackedIterator(bytes: []const u8) !?pbz.wire.PackedUInt64Iterator {
+            return try pbz.wire.packedUInt64FieldIterator(bytes, 14);
         }
 
 
@@ -7890,6 +7898,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self._unknown_fields) |raw| allocator.free(raw);
             if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
             self._unknown_fields = &.{};
+        }
+
+        pub fn valuesPackedIterator(bytes: []const u8) !?pbz.wire.PackedInt32Iterator {
+            return try pbz.wire.packedInt32FieldIterator(bytes, 1);
         }
 
 
@@ -15004,6 +15016,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn valuesPackedIterator(bytes: []const u8) !?pbz.wire.PackedUInt64Iterator {
+            return try pbz.wire.packedUInt64FieldIterator(bytes, 1);
+        }
+
 
         // no same-file extension accessors
 
@@ -16028,6 +16044,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self._unknown_fields) |raw| allocator.free(raw);
             if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
             self._unknown_fields = &.{};
+        }
+
+        pub fn valuesPackedIterator(bytes: []const u8) !?pbz.wire.PackedUInt32Iterator {
+            return try pbz.wire.packedUInt32FieldIterator(bytes, 1);
         }
 
 
@@ -17056,6 +17076,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn valuesPackedIterator(bytes: []const u8) !?pbz.wire.PackedInt64Iterator {
+            return try pbz.wire.packedInt64FieldIterator(bytes, 1);
+        }
+
 
         // no same-file extension accessors
 
@@ -18082,6 +18106,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn valuesPackedIterator(bytes: []const u8) !?pbz.wire.PackedSInt32Iterator {
+            return try pbz.wire.packedSInt32FieldIterator(bytes, 1);
+        }
+
 
         // no same-file extension accessors
 
@@ -19106,6 +19134,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self._unknown_fields) |raw| allocator.free(raw);
             if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
             self._unknown_fields = &.{};
+        }
+
+        pub fn valuesPackedIterator(bytes: []const u8) !?pbz.wire.PackedSInt64Iterator {
+            return try pbz.wire.packedSInt64FieldIterator(bytes, 1);
         }
 
 

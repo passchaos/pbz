@@ -1269,7 +1269,7 @@ fn generatedLargeMapDecodeReuse(ctx: GeneratedLargeMapDecodeReuseCtx) !void {
 
 const Int32PackedIteratorCtx = struct { bytes: []const u8 };
 fn int32PackedIteratorDecode(ctx: Int32PackedIteratorCtx) !void {
-    var it = (try pbz.wire.packedInt32FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    var it = (try person_pb.demo.Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
     var sum: i32 = 0;
     while (try it.next()) |value| sum +%= value;
     std.mem.doNotOptimizeAway(sum);
@@ -1277,7 +1277,7 @@ fn int32PackedIteratorDecode(ctx: Int32PackedIteratorCtx) !void {
 
 const UInt64PackedIteratorCtx = struct { bytes: []const u8 };
 fn uint64PackedIteratorDecode(ctx: UInt64PackedIteratorCtx) !void {
-    var it = (try pbz.wire.packedUInt64FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    var it = (try person_pb.demo.UInt64Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
     var sum: u64 = 0;
     while (try it.next()) |value| sum +%= value;
     std.mem.doNotOptimizeAway(sum);
@@ -1285,7 +1285,7 @@ fn uint64PackedIteratorDecode(ctx: UInt64PackedIteratorCtx) !void {
 
 const UInt32PackedIteratorCtx = struct { bytes: []const u8 };
 fn uint32PackedIteratorDecode(ctx: UInt32PackedIteratorCtx) !void {
-    var it = (try pbz.wire.packedUInt32FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    var it = (try person_pb.demo.UInt32Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
     var sum: u32 = 0;
     while (try it.next()) |value| sum +%= value;
     std.mem.doNotOptimizeAway(sum);
@@ -1293,7 +1293,7 @@ fn uint32PackedIteratorDecode(ctx: UInt32PackedIteratorCtx) !void {
 
 const Int64PackedIteratorCtx = struct { bytes: []const u8 };
 fn int64PackedIteratorDecode(ctx: Int64PackedIteratorCtx) !void {
-    var it = (try pbz.wire.packedInt64FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    var it = (try person_pb.demo.Int64Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
     var sum: i64 = 0;
     while (try it.next()) |value| sum +%= value;
     std.mem.doNotOptimizeAway(sum);
@@ -1301,7 +1301,7 @@ fn int64PackedIteratorDecode(ctx: Int64PackedIteratorCtx) !void {
 
 const SInt32PackedIteratorCtx = struct { bytes: []const u8 };
 fn sint32PackedIteratorDecode(ctx: SInt32PackedIteratorCtx) !void {
-    var it = (try pbz.wire.packedSInt32FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    var it = (try person_pb.demo.SInt32Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
     var sum: i32 = 0;
     while (try it.next()) |value| sum +%= value;
     std.mem.doNotOptimizeAway(sum);
@@ -1309,7 +1309,7 @@ fn sint32PackedIteratorDecode(ctx: SInt32PackedIteratorCtx) !void {
 
 const SInt64PackedIteratorCtx = struct { bytes: []const u8 };
 fn sint64PackedIteratorDecode(ctx: SInt64PackedIteratorCtx) !void {
-    var it = (try pbz.wire.packedSInt64FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    var it = (try person_pb.demo.SInt64Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
     var sum: i64 = 0;
     while (try it.next()) |value| sum +%= value;
     std.mem.doNotOptimizeAway(sum);
@@ -2149,7 +2149,7 @@ pub fn main() !void {
         try runTimed(io, "generated packed writeToAssumeCapacity reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedWriteToCtx{ .writer = &reusable_packed_writer, .message = &generated_packed }, generatedPackedWriteToReuse),
         try runTimed(io, "generated packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeIntoCtx{ .buffer = generated_packed_buffer, .message = &generated_packed }, generatedPackedEncodeIntoReuse),
         try runTimed(io, "generated packed decode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_packed_bytes }, generatedPackedDecode),
-        try runTimed(io, "wire int32 packed iterator decode", iters.packed_binary, generated_packed_bytes.len, Int32PackedIteratorCtx{ .bytes = generated_packed_bytes }, int32PackedIteratorDecode),
+        try runTimed(io, "generated int32 packed iterator decode", iters.packed_binary, generated_packed_bytes.len, Int32PackedIteratorCtx{ .bytes = generated_packed_bytes }, int32PackedIteratorDecode),
         try runTimed(io, "dynamic packed encode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedEncodeCtx{ .message = &dynamic_packed, .file = &file }, dynamicPackedEncode),
         try runTimed(io, "dynamic packed decode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedDecodeCtx{ .allocator = allocator, .descriptor = packed_desc, .file = &file, .bytes = dynamic_packed_bytes }, dynamicPackedDecode),
         try runTimed(io, "generated fixed32 packed encode", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedEncodeCtx{ .allocator = allocator, .message = &generated_fixed_packed }, generatedFixedPackedEncode),
@@ -2204,32 +2204,32 @@ pub fn main() !void {
         try runTimed(io, "generated uint64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedEncodeIntoCtx{ .buffer = generated_uint64_packed_buffer, .message = &generated_uint64_packed }, generatedUInt64PackedEncodeIntoReuse),
         try runTimed(io, "generated uint64 packed decode", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_uint64_packed_bytes }, generatedUInt64PackedDecode),
         try runTimed(io, "generated uint64 packed decode reuse", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_uint64_packed_bytes, .message = &generated_uint64_packed_decode_reuse }, generatedUInt64PackedDecodeReuse),
-        try runTimed(io, "wire uint64 packed iterator decode", iters.packed_binary, generated_uint64_packed_bytes.len, UInt64PackedIteratorCtx{ .bytes = generated_uint64_packed_bytes }, uint64PackedIteratorDecode),
+        try runTimed(io, "generated uint64 packed iterator decode", iters.packed_binary, generated_uint64_packed_bytes.len, UInt64PackedIteratorCtx{ .bytes = generated_uint64_packed_bytes }, uint64PackedIteratorDecode),
         try runTimed(io, "dynamic uint64 packed encode", iters.packed_binary, dynamic_uint64_packed_bytes.len, DynamicUInt64PackedEncodeCtx{ .message = &dynamic_uint64_packed, .file = &file }, dynamicUInt64PackedEncode),
         try runTimed(io, "dynamic uint64 packed decode", iters.packed_binary, dynamic_uint64_packed_bytes.len, DynamicUInt64PackedDecodeCtx{ .allocator = allocator, .descriptor = uint64_packed_desc, .file = &file, .bytes = dynamic_uint64_packed_bytes }, dynamicUInt64PackedDecode),
         try runTimed(io, "generated uint32 packed encode", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedEncodeCtx{ .allocator = allocator, .message = &generated_uint32_packed }, generatedUInt32PackedEncode),
         try runTimed(io, "generated uint32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedEncodeIntoCtx{ .buffer = generated_uint32_packed_buffer, .message = &generated_uint32_packed }, generatedUInt32PackedEncodeIntoReuse),
         try runTimed(io, "generated uint32 packed decode", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedDecodeCtx{ .allocator = allocator, .bytes = generated_uint32_packed_bytes }, generatedUInt32PackedDecode),
         try runTimed(io, "generated uint32 packed decode reuse", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_uint32_packed_bytes, .message = &generated_uint32_packed_decode_reuse }, generatedUInt32PackedDecodeReuse),
-        try runTimed(io, "wire uint32 packed iterator decode", iters.packed_binary, generated_uint32_packed_bytes.len, UInt32PackedIteratorCtx{ .bytes = generated_uint32_packed_bytes }, uint32PackedIteratorDecode),
+        try runTimed(io, "generated uint32 packed iterator decode", iters.packed_binary, generated_uint32_packed_bytes.len, UInt32PackedIteratorCtx{ .bytes = generated_uint32_packed_bytes }, uint32PackedIteratorDecode),
         try runTimed(io, "dynamic uint32 packed encode", iters.packed_binary, dynamic_uint32_packed_bytes.len, DynamicUInt32PackedEncodeCtx{ .message = &dynamic_uint32_packed, .file = &file }, dynamicUInt32PackedEncode),
         try runTimed(io, "dynamic uint32 packed decode", iters.packed_binary, dynamic_uint32_packed_bytes.len, DynamicUInt32PackedDecodeCtx{ .allocator = allocator, .descriptor = uint32_packed_desc, .file = &file, .bytes = dynamic_uint32_packed_bytes }, dynamicUInt32PackedDecode),
         try runTimed(io, "generated int64 packed encode", iters.packed_binary, generated_int64_packed_bytes.len, GeneratedInt64PackedEncodeCtx{ .allocator = allocator, .message = &generated_int64_packed }, generatedInt64PackedEncode),
         try runTimed(io, "generated int64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_int64_packed_bytes.len, GeneratedInt64PackedEncodeIntoCtx{ .buffer = generated_int64_packed_buffer, .message = &generated_int64_packed }, generatedInt64PackedEncodeIntoReuse),
         try runTimed(io, "generated int64 packed decode", iters.packed_binary, generated_int64_packed_bytes.len, GeneratedInt64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_int64_packed_bytes }, generatedInt64PackedDecode),
-        try runTimed(io, "wire int64 packed iterator decode", iters.packed_binary, generated_int64_packed_bytes.len, Int64PackedIteratorCtx{ .bytes = generated_int64_packed_bytes }, int64PackedIteratorDecode),
+        try runTimed(io, "generated int64 packed iterator decode", iters.packed_binary, generated_int64_packed_bytes.len, Int64PackedIteratorCtx{ .bytes = generated_int64_packed_bytes }, int64PackedIteratorDecode),
         try runTimed(io, "dynamic int64 packed encode", iters.packed_binary, dynamic_int64_packed_bytes.len, DynamicInt64PackedEncodeCtx{ .message = &dynamic_int64_packed, .file = &file }, dynamicInt64PackedEncode),
         try runTimed(io, "dynamic int64 packed decode", iters.packed_binary, dynamic_int64_packed_bytes.len, DynamicInt64PackedDecodeCtx{ .allocator = allocator, .descriptor = int64_packed_desc, .file = &file, .bytes = dynamic_int64_packed_bytes }, dynamicInt64PackedDecode),
         try runTimed(io, "generated sint32 packed encode", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedEncodeCtx{ .allocator = allocator, .message = &generated_sint32_packed }, generatedSInt32PackedEncode),
         try runTimed(io, "generated sint32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedEncodeIntoCtx{ .buffer = generated_sint32_packed_buffer, .message = &generated_sint32_packed }, generatedSInt32PackedEncodeIntoReuse),
         try runTimed(io, "generated sint32 packed decode", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedDecodeCtx{ .allocator = allocator, .bytes = generated_sint32_packed_bytes }, generatedSInt32PackedDecode),
-        try runTimed(io, "wire sint32 packed iterator decode", iters.packed_binary, generated_sint32_packed_bytes.len, SInt32PackedIteratorCtx{ .bytes = generated_sint32_packed_bytes }, sint32PackedIteratorDecode),
+        try runTimed(io, "generated sint32 packed iterator decode", iters.packed_binary, generated_sint32_packed_bytes.len, SInt32PackedIteratorCtx{ .bytes = generated_sint32_packed_bytes }, sint32PackedIteratorDecode),
         try runTimed(io, "dynamic sint32 packed encode", iters.packed_binary, dynamic_sint32_packed_bytes.len, DynamicSInt32PackedEncodeCtx{ .message = &dynamic_sint32_packed, .file = &file }, dynamicSInt32PackedEncode),
         try runTimed(io, "dynamic sint32 packed decode", iters.packed_binary, dynamic_sint32_packed_bytes.len, DynamicSInt32PackedDecodeCtx{ .allocator = allocator, .descriptor = sint32_packed_desc, .file = &file, .bytes = dynamic_sint32_packed_bytes }, dynamicSInt32PackedDecode),
         try runTimed(io, "generated sint64 packed encode", iters.packed_binary, generated_sint64_packed_bytes.len, GeneratedSInt64PackedEncodeCtx{ .allocator = allocator, .message = &generated_sint64_packed }, generatedSInt64PackedEncode),
         try runTimed(io, "generated sint64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_sint64_packed_bytes.len, GeneratedSInt64PackedEncodeIntoCtx{ .buffer = generated_sint64_packed_buffer, .message = &generated_sint64_packed }, generatedSInt64PackedEncodeIntoReuse),
         try runTimed(io, "generated sint64 packed decode", iters.packed_binary, generated_sint64_packed_bytes.len, GeneratedSInt64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_sint64_packed_bytes }, generatedSInt64PackedDecode),
-        try runTimed(io, "wire sint64 packed iterator decode", iters.packed_binary, generated_sint64_packed_bytes.len, SInt64PackedIteratorCtx{ .bytes = generated_sint64_packed_bytes }, sint64PackedIteratorDecode),
+        try runTimed(io, "generated sint64 packed iterator decode", iters.packed_binary, generated_sint64_packed_bytes.len, SInt64PackedIteratorCtx{ .bytes = generated_sint64_packed_bytes }, sint64PackedIteratorDecode),
         try runTimed(io, "dynamic sint64 packed encode", iters.packed_binary, dynamic_sint64_packed_bytes.len, DynamicSInt64PackedEncodeCtx{ .message = &dynamic_sint64_packed, .file = &file }, dynamicSInt64PackedEncode),
         try runTimed(io, "dynamic sint64 packed decode", iters.packed_binary, dynamic_sint64_packed_bytes.len, DynamicSInt64PackedDecodeCtx{ .allocator = allocator, .descriptor = sint64_packed_desc, .file = &file, .bytes = dynamic_sint64_packed_bytes }, dynamicSInt64PackedDecode),
         try runTimed(io, "generated bool packed encode", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedEncodeCtx{ .allocator = allocator, .message = &generated_bool_packed }, generatedBoolPackedEncode),
