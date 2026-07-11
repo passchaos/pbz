@@ -14,6 +14,9 @@
 
 using Clock = std::chrono::steady_clock;
 constexpr int kBenchmarkSamples = 3;
+constexpr int kLargeMapEntryCount = 1024;
+constexpr int kLargeMapShuffleMultiplier = 257;
+constexpr int kLargeMapShuffleIncrement = 911;
 
 struct BenchResult {
   const char *name;
@@ -169,10 +172,26 @@ demo::EnumPacked MakeEnumPacked() {
 
 demo::LargeMap MakeLargeMap() {
   demo::LargeMap msg;
-  for (int i = 0; i < 1024; ++i) {
+  for (int i = 0; i < kLargeMapEntryCount; ++i) {
     char key[16];
     std::snprintf(key, sizeof(key), "key-%04d", i);
     (*msg.mutable_counts())[key] = (i % 4096) + 1;
+  }
+  return msg;
+}
+
+int ShuffledLargeMapIndex(int i) {
+  return (i * kLargeMapShuffleMultiplier + kLargeMapShuffleIncrement) %
+         kLargeMapEntryCount;
+}
+
+demo::LargeMap MakeShuffledLargeMap() {
+  demo::LargeMap msg;
+  for (int i = 0; i < kLargeMapEntryCount; ++i) {
+    const int key_index = ShuffledLargeMapIndex(i);
+    char key[16];
+    std::snprintf(key, sizeof(key), "key-%04d", key_index);
+    (*msg.mutable_counts())[key] = (key_index % 4096) + 1;
   }
   return msg;
 }
@@ -353,6 +372,9 @@ int main() {
   const demo::LargeMap large_map = MakeLargeMap();
   std::string large_map_bytes;
   large_map.SerializeToString(&large_map_bytes);
+  const demo::LargeMap shuffled_large_map = MakeShuffledLargeMap();
+  std::string shuffled_large_map_bytes;
+  shuffled_large_map.SerializeToString(&shuffled_large_map_bytes);
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
@@ -391,6 +413,8 @@ int main() {
   std::cout << "bool packed payload size: " << bool_packed_bytes.size() << "\n";
   std::cout << "enum packed payload size: " << enum_packed_bytes.size() << "\n";
   std::cout << "large map payload size: " << large_map_bytes.size() << "\n";
+  std::cout << "shuffled large map payload size: "
+            << shuffled_large_map_bytes.size() << "\n";
 
   auto encode =
       RunTimed("c++ protobuf binary encode", kIterations, bytes.size(), [&]() {
@@ -1565,6 +1589,25 @@ int main() {
         asm volatile("" : : "g"(large_map_array_buffer.data()) : "memory");
       });
   large_map_encode_array_reuse.Print();
+
+  std::string shuffled_large_map_deterministic_buffer;
+  shuffled_large_map_deterministic_buffer.resize(shuffled_large_map_bytes.size());
+  auto shuffled_large_map_deterministic_encode = RunTimed(
+      "c++ protobuf shuffled large map deterministic binary encode reuse",
+      kIterations, shuffled_large_map_bytes.size(), [&]() {
+        google::protobuf::io::ArrayOutputStream array_stream(
+            shuffled_large_map_deterministic_buffer.data(),
+            static_cast<int>(shuffled_large_map_deterministic_buffer.size()));
+        google::protobuf::io::CodedOutputStream coded_stream(&array_stream);
+        coded_stream.SetSerializationDeterministic(true);
+        shuffled_large_map.SerializeWithCachedSizes(&coded_stream);
+        coded_stream.Trim();
+        if (coded_stream.HadError())
+          std::abort();
+        asm volatile("" : : "g"(shuffled_large_map_deterministic_buffer.data())
+                     : "memory");
+      });
+  shuffled_large_map_deterministic_encode.Print();
 
   auto large_map_decode =
       RunTimed("c++ protobuf large map decode", kIterations,

@@ -52,7 +52,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 52 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 53 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -78,6 +78,7 @@ The matrix includes:
 - packed fixed32/fixed64/sfixed32/sfixed64/float/double encode/decode
 - packed uint64/uint32/int64/sint32/sint64/bool/enum encode/decode
 - large `map<string, int32>` encode/decode
+- shuffled large `map<string, int32>` deterministic encode against C++/Go
 
 ## Generated performance APIs now used by the matrix
 
@@ -129,9 +130,9 @@ claiming broad superiority beyond the covered workloads:
   has conformance-style helpers and examples, but not an exhaustive upstream
   conformance run.
 - The comparison matrix is intentionally broad but not infinite: additional
-  workloads such as pathological map ordering, deeply nested recursion limits,
-  arena-style ownership patterns, streaming RPC transports, and every
-  well-known-type edge case may deserve separate rows.
+  workloads such as deeply nested recursion limits, arena-style ownership
+  patterns, streaming RPC transports, and every well-known-type edge case may
+  deserve separate rows.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

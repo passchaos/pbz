@@ -39,6 +39,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - large `map<string, int32>` encode/decode
+- shuffled large `map<string, int32>` deterministic encode against C++/Go
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` / `sfixed32` / `sfixed64` / `float` / `double` encode/decode
 - packed `uint32` / `uint64` / `int64` / `sint32` / `sint64` varint, `bool`, and enum encode/decode
@@ -64,7 +65,8 @@ The cross-language binary, JSON, and TextFormat baselines use the same `Person` 
 `SInt64Packed { repeated sint64 values = 1; }` and
 `BoolPacked { repeated bool values = 1; }` and
 `EnumPacked { repeated BenchKind values = 1; }` and
-`LargeMap { map<string, int32> counts = 1; }` payloads. Treat results as
+`LargeMap { map<string, int32> counts = 1; }` payloads, including a shuffled
+insertion-order large map for deterministic map encoding. Treat results as
 local machine baselines; use the same schema, payloads, optimization mode, and
 hardware when comparing.
 

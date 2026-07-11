@@ -718,6 +718,14 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "shuffled large map deterministic binary encode",
+        ("generated shuffled large map deterministic encodeIntoAssumeCapacity buffer reuse",),
+        {
+            "c++ protobuf": ("c++ protobuf shuffled large map deterministic binary encode reuse",),
+            "go protobuf": ("go protobuf shuffled large map deterministic binary encode reuse",),
+        },
+    ),
+    Workload(
         "large map decode",
         ("generated large map decode", "generated large map decode reuse"),
         {

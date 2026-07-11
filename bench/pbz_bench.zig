@@ -15,6 +15,9 @@ const BenchmarkSamples: usize = 3;
 const LargeBytesPayloadLen: usize = 64 * 1024;
 const LargeBytesChunkCount: usize = 16;
 const LargeBytesChunkLen: usize = 4 * 1024;
+const LargeMapEntryCount: usize = 1024;
+const LargeMapShuffleMultiplier: usize = 257;
+const LargeMapShuffleIncrement: usize = 911;
 const UnknownFieldStressCount: usize = 1024;
 const UnknownFieldStressFirstNumber: pbz.FieldNumber = 1000;
 const UnknownFieldStressNumberSpan: pbz.FieldNumber = 16;
@@ -336,12 +339,30 @@ fn makeGeneratedEnumPacked(allocator: std.mem.Allocator) !person_pb.demo.EnumPac
 fn makeGeneratedLargeMap(allocator: std.mem.Allocator) !person_pb.demo.LargeMap {
     var msg = person_pb.demo.LargeMap.init();
     errdefer msg.deinit(allocator);
-    try msg.counts.ensureTotalCapacity(allocator, 1024);
+    try msg.counts.ensureTotalCapacity(allocator, LargeMapEntryCount);
     var key_buf: [32]u8 = undefined;
     var i: usize = 0;
-    while (i < 1024) : (i += 1) {
+    while (i < LargeMapEntryCount) : (i += 1) {
         const key = try std.fmt.bufPrint(&key_buf, "key-{d:0>4}", .{i});
         try msg.counts.put(allocator, try allocator.dupe(u8, key), @intCast((i % 4096) + 1));
+    }
+    return msg;
+}
+
+fn shuffledLargeMapIndex(i: usize) usize {
+    return (i * LargeMapShuffleMultiplier + LargeMapShuffleIncrement) % LargeMapEntryCount;
+}
+
+fn makeGeneratedShuffledLargeMap(allocator: std.mem.Allocator) !person_pb.demo.LargeMap {
+    var msg = person_pb.demo.LargeMap.init();
+    errdefer msg.deinit(allocator);
+    try msg.counts.ensureTotalCapacity(allocator, LargeMapEntryCount);
+    var key_buf: [32]u8 = undefined;
+    var i: usize = 0;
+    while (i < LargeMapEntryCount) : (i += 1) {
+        const key_index = shuffledLargeMapIndex(i);
+        const key = try std.fmt.bufPrint(&key_buf, "key-{d:0>4}", .{key_index});
+        try msg.counts.put(allocator, try allocator.dupe(u8, key), @intCast((key_index % 4096) + 1));
     }
     return msg;
 }
@@ -470,7 +491,7 @@ fn makeDynamicLargeMap(allocator: std.mem.Allocator, desc: *const pbz.MessageDes
     errdefer msg.deinit();
     var key_buf: [32]u8 = undefined;
     var i: usize = 0;
-    while (i < 1024) : (i += 1) {
+    while (i < LargeMapEntryCount) : (i += 1) {
         const key = try std.fmt.bufPrint(&key_buf, "key-{d:0>4}", .{i});
         const entry = try allocator.create(pbz.dynamic.MapEntry);
         entry.* = .{ .key = .{ .string = try allocator.dupe(u8, key) }, .value = .{ .int32 = @intCast((i % 4096) + 1) } };
@@ -1827,6 +1848,8 @@ pub fn main() !void {
     defer dynamic_enum_packed.deinit();
     var generated_large_map = try makeGeneratedLargeMap(allocator);
     defer generated_large_map.deinit(allocator);
+    var generated_shuffled_large_map = try makeGeneratedShuffledLargeMap(allocator);
+    defer generated_shuffled_large_map.deinit(allocator);
     var dynamic_large_map = try makeDynamicLargeMap(allocator, large_map_desc);
     defer dynamic_large_map.deinit();
 
@@ -1991,6 +2014,10 @@ pub fn main() !void {
     try reusable_large_map_writer.bytes.ensureTotalCapacity(allocator, generated_large_map_bytes.len);
     const generated_large_map_buffer = try allocator.alloc(u8, generated_large_map_bytes.len);
     defer allocator.free(generated_large_map_buffer);
+    const generated_shuffled_large_map_bytes = try generated_shuffled_large_map.encode(allocator);
+    defer allocator.free(generated_shuffled_large_map_bytes);
+    const generated_shuffled_large_map_buffer = try allocator.alloc(u8, generated_shuffled_large_map_bytes.len);
+    defer allocator.free(generated_shuffled_large_map_buffer);
     var generated_large_map_decode_reuse = person_pb.demo.LargeMap.init();
     defer generated_large_map_decode_reuse.deinit(allocator);
     const dynamic_large_map_bytes = try dynamic_large_map.encoded(&file);
@@ -2006,7 +2033,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2160,6 +2187,7 @@ pub fn main() !void {
         try runTimed(io, "generated large map writeToAssumeCapacity reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapWriteToCtx{ .writer = &reusable_large_map_writer, .message = &generated_large_map }, generatedLargeMapWriteToReuse),
         try runTimed(io, "generated large map encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapEncodeIntoCtx{ .buffer = generated_large_map_buffer, .message = &generated_large_map }, generatedLargeMapEncodeIntoReuse),
         try runTimed(io, "generated large map deterministic encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_large_map_buffer, .message = &generated_large_map }, generatedLargeMapDeterministicEncodeIntoReuse),
+        try runTimed(io, "generated shuffled large map deterministic encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_shuffled_large_map_bytes.len, GeneratedLargeMapDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_shuffled_large_map_buffer, .message = &generated_shuffled_large_map }, generatedLargeMapDeterministicEncodeIntoReuse),
         try runTimed(io, "generated large map decode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeCtx{ .allocator = allocator, .bytes = generated_large_map_bytes }, generatedLargeMapDecode),
         try runTimed(io, "generated large map decode reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_map_bytes, .message = &generated_large_map_decode_reuse }, generatedLargeMapDecodeReuse),
         try runTimed(io, "dynamic large map encode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapEncodeCtx{ .message = &dynamic_large_map, .file = &file }, dynamicLargeMapEncode),

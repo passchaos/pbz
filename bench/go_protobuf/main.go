@@ -11,6 +11,9 @@ import (
 )
 
 const benchmarkSamples = 3
+const largeMapEntryCount = 1024
+const largeMapShuffleMultiplier = 257
+const largeMapShuffleIncrement = 911
 
 type benchResult struct {
 	name         string
@@ -191,9 +194,22 @@ func makeEnumPacked() *personpb.EnumPacked {
 }
 
 func makeLargeMap() *personpb.LargeMap {
-	counts := make(map[string]int32, 1024)
-	for i := 0; i < 1024; i++ {
+	counts := make(map[string]int32, largeMapEntryCount)
+	for i := 0; i < largeMapEntryCount; i++ {
 		counts[fmt.Sprintf("key-%04d", i)] = int32((i % 4096) + 1)
+	}
+	return &personpb.LargeMap{Counts: counts}
+}
+
+func shuffledLargeMapIndex(i int) int {
+	return (i*largeMapShuffleMultiplier + largeMapShuffleIncrement) % largeMapEntryCount
+}
+
+func makeShuffledLargeMap() *personpb.LargeMap {
+	counts := make(map[string]int32, largeMapEntryCount)
+	for i := 0; i < largeMapEntryCount; i++ {
+		keyIndex := shuffledLargeMapIndex(i)
+		counts[fmt.Sprintf("key-%04d", keyIndex)] = int32((keyIndex % 4096) + 1)
 	}
 	return &personpb.LargeMap{Counts: counts}
 }
@@ -392,6 +408,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	shuffledLargeMap := makeShuffledLargeMap()
+	shuffledLargeMapBytes, err := proto.Marshal(shuffledLargeMap)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
@@ -419,6 +440,7 @@ func main() {
 	fmt.Printf("bool packed payload size: %d\n", len(boolPackedBytes))
 	fmt.Printf("enum packed payload size: %d\n", len(enumPackedBytes))
 	fmt.Printf("large map payload size: %d\n", len(largeMapBytes))
+	fmt.Printf("shuffled large map payload size: %d\n", len(shuffledLargeMapBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -994,6 +1016,15 @@ func main() {
 	runTimed("go protobuf large map encode reuse", iterations, len(largeMapBytes), func() {
 		var err error
 		largeMapBuf, err = marshalOptions.MarshalAppend(largeMapBuf[:0], largeMap)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	shuffledLargeMapDeterministicBuf := make([]byte, 0, len(shuffledLargeMapBytes))
+	runTimed("go protobuf shuffled large map deterministic binary encode reuse", iterations, len(shuffledLargeMapBytes), func() {
+		var err error
+		shuffledLargeMapDeterministicBuf, err = deterministicOptions.MarshalAppend(shuffledLargeMapDeterministicBuf[:0], shuffledLargeMap)
 		if err != nil {
 			panic(err)
 		}
