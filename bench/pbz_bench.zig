@@ -154,6 +154,14 @@ fn generatedFixedPackedEncodeIntoReuse(ctx: GeneratedFixedPackedEncodeIntoCtx) !
     std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
+const GeneratedFixedPackedSlicesCtx = struct { message: *const person_pb.demo.FixedPacked };
+fn generatedFixedPackedBorrowedSlices(ctx: GeneratedFixedPackedSlicesCtx) !void {
+    var header: [20]u8 = undefined;
+    const slices = try person_pb.demo.FixedPacked.valuesPackedFixed32Slices(&header, ctx.message.values);
+    std.mem.doNotOptimizeAway(slices.header.ptr);
+    std.mem.doNotOptimizeAway(slices.payload.ptr);
+}
+
 const GeneratedFixedPackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedFixedPackedDecode(ctx: GeneratedFixedPackedDecodeCtx) !void {
     var decoded = try person_pb.demo.FixedPacked.decode(ctx.allocator, ctx.bytes);
@@ -393,6 +401,7 @@ pub fn main() !void {
         try runTimed(io, "dynamic packed decode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedDecodeCtx{ .allocator = allocator, .descriptor = packed_desc, .file = &file, .bytes = dynamic_packed_bytes }, dynamicPackedDecode),
         try runTimed(io, "generated fixed32 packed encode", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedEncodeCtx{ .allocator = allocator, .message = &generated_fixed_packed }, generatedFixedPackedEncode),
         try runTimed(io, "generated fixed32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedEncodeIntoCtx{ .buffer = generated_fixed_packed_buffer, .message = &generated_fixed_packed }, generatedFixedPackedEncodeIntoReuse),
+        try runTimed(io, "generated fixed32 packed borrowed slices encode", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedSlicesCtx{ .message = &generated_fixed_packed }, generatedFixedPackedBorrowedSlices),
         try runTimed(io, "generated fixed32 packed decode", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_fixed_packed_bytes }, generatedFixedPackedDecode),
         try runTimed(io, "wire fixed32 packed borrowed view decode", iters.packed_binary, generated_fixed_packed_bytes.len, FixedPackedBorrowedViewCtx{ .bytes = generated_fixed_packed_bytes }, fixedPackedBorrowedViewDecode),
         try runTimed(io, "dynamic fixed32 packed encode", iters.packed_binary, dynamic_fixed_packed_bytes.len, DynamicFixedPackedEncodeCtx{ .message = &dynamic_fixed_packed, .file = &file }, dynamicFixedPackedEncode),

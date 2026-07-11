@@ -3512,6 +3512,18 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
         try writer.print(", bytes, {d});\n", .{field.number});
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithSuffix(field.name, "PackedFixedSlices", writer);
+        try writer.writeAll("(header: *[20]u8, values: []const ");
+        try writer.writeAll(view_type);
+        try writer.writeAll(") !pbz.wire.BorrowedFieldSlices {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try pbz.wire.packedFixedWidthFieldSlices(");
+        try writer.writeAll(view_type);
+        try writer.print(", header, {d}, values);\n", .{field.number});
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
         if (field.kind.scalar == .fixed32) {
             try indent(writer, depth);
             try writer.writeAll("pub fn ");
@@ -3521,6 +3533,16 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
             try writer.writeAll("return try ");
             try writeQuotedIdentWithSuffix(field.name, "PackedFixedView", writer);
             try writer.writeAll("(bytes);\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n\n");
+            try indent(writer, depth);
+            try writer.writeAll("pub fn ");
+            try writeQuotedIdentWithSuffix(field.name, "PackedFixed32Slices", writer);
+            try writer.writeAll("(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("return try ");
+            try writeQuotedIdentWithSuffix(field.name, "PackedFixedSlices", writer);
+            try writer.writeAll("(header, values);\n");
             try indent(writer, depth);
             try writer.writeAll("}\n\n");
         }
@@ -11880,8 +11902,12 @@ test "codegen emits packed fixed32 borrowed field view helper" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixedView\"(bytes: []const u8) !?[]align(1) const u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldView(u32, bytes, 1);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixedSlices\"(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldSlices(u32, header, 1, values);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixed32View\"(bytes: []const u8) !?[]align(1) const u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"valuesPackedFixedView\"(bytes);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixed32Slices\"(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"valuesPackedFixedSlices\"(header, values);") != null);
 }
 
 test "codegen emits map duplicate-key last-wins helpers" {

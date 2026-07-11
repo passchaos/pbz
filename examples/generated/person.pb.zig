@@ -2402,8 +2402,16 @@ pub const demo = struct {
             return try pbz.wire.packedFixedWidthFieldView(u32, bytes, 1);
         }
 
+        pub fn valuesPackedFixedSlices(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.packedFixedWidthFieldSlices(u32, header, 1, values);
+        }
+
         pub fn valuesPackedFixed32View(bytes: []const u8) !?[]align(1) const u32 {
             return try valuesPackedFixedView(bytes);
+        }
+
+        pub fn valuesPackedFixed32Slices(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {
+            return try valuesPackedFixedSlices(header, values);
         }
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {

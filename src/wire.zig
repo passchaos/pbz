@@ -105,6 +105,40 @@ pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) 
     }
 }
 
+pub const BorrowedFieldSlices = struct {
+    header: []const u8,
+    payload: []const u8,
+};
+
+fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
+    var v = value;
+    var len: usize = 0;
+    while (v >= 0x80) {
+        buffer[len] = @as(u8, @intCast(v & 0x7f)) | 0x80;
+        len += 1;
+        v >>= 7;
+    }
+    buffer[len] = @intCast(v);
+    return len + 1;
+}
+
+pub fn packedFixedWidthFieldSlices(comptime T: type, header: *[20]u8, number: FieldNumber, values: []const T) Error!BorrowedFieldSlices {
+    if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
+        @compileError("packedFixedWidthFieldSlices requires u32, i32, f32, u64, i64, or f64");
+    }
+    if (comptime @import("builtin").target.cpu.arch.endian() != .little) return error.UnsupportedWireType;
+    const tag = try (Tag{ .number = number, .wire_type = .length_delimited }).encode();
+    const payload = std.mem.sliceAsBytes(values);
+    var header_len: usize = 0;
+    header_len += writeVarintToBuffer(header[header_len..], tag);
+    header_len += writeVarintToBuffer(header[header_len..], @intCast(payload.len));
+    return .{ .header = header[0..header_len], .payload = payload };
+}
+
+pub fn packedFixed32FieldSlices(header: *[20]u8, number: FieldNumber, values: []const u32) Error!BorrowedFieldSlices {
+    return try packedFixedWidthFieldSlices(u32, header, number, values);
+}
+
 pub fn packedFixedWidthView(comptime T: type, payload: []const u8) Error![]align(1) const T {
     if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
         @compileError("packedFixedWidthView requires u32, i32, f32, u64, i64, or f64");
@@ -675,6 +709,12 @@ test "wire exposes borrowed packed fixed32 view" {
     const field_values = (try packedFixed32FieldView(writer.slice(), 1)).?;
     try std.testing.expectEqual(@as(u32, 0x01020304), field_values[1]);
     try std.testing.expect(try packedFixed32FieldView(writer.slice(), 2) == null);
+
+    const aligned_values = [_]u32{ 1, 0x01020304 };
+    var header: [20]u8 = undefined;
+    const slices = try packedFixed32FieldSlices(&header, 1, &aligned_values);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x08 }, slices.header);
+    try std.testing.expectEqual(@intFromPtr(std.mem.sliceAsBytes(&aligned_values).ptr), @intFromPtr(slices.payload.ptr));
 }
 
 test "wire skips nested groups and length-delimited values" {

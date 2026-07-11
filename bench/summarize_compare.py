@@ -92,6 +92,7 @@ WORKLOADS: tuple[Workload, ...] = (
         (
             "generated fixed32 packed encode",
             "generated fixed32 packed encodeIntoAssumeCapacity buffer reuse",
+            "generated fixed32 packed borrowed slices encode",
         ),
         {
             "rust prost": ("prost fixed32 packed encode",),

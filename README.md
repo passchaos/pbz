@@ -299,7 +299,10 @@ direct-imported, or transitive-public imported generated message types.
 Generated repeated packed fixed-width scalar fields also expose field-specific
 borrowed view helpers such as `valuesPackedFixedView(bytes)` for zero-copy
 inspection of wire buffers; `fixed32` fields additionally keep the convenience
-alias `valuesPackedFixed32View(bytes)`.
+alias `valuesPackedFixed32View(bytes)`. For callers with scatter/gather output,
+the companion `valuesPackedFixedSlices(header, values)` helper returns a small
+encoded header slice plus a borrowed payload slice, avoiding the payload copy on
+little-endian targets.
 `pbz.generateZigFileWithRegistry` additionally resolves message and enum fields
 through a `Registry`: direct and transitive-public imported message fields get
 package-namespaced module type refs, direct and transitive-public imported
