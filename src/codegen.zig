@@ -2736,6 +2736,34 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+
+    try writer.writeAll("\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeInto(self: @This(), buffer: []u8) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const size = self.encodedSize();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (buffer.len < size) return error.NoSpaceLeft;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer[0..size]);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeToAssumeCapacity(&w);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return buffer[0..w.slice().len];\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+
+    try writer.writeAll("\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeToAssumeCapacity(&w);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return buffer[0..w.slice().len];\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn writeEncodedSize(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -10806,6 +10834,8 @@ test "codegen emits typed scalar fields and encode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeTo(self: @This(), w: *pbz.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeInto(self: @This(), buffer: []u8) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"id\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; try w.writeString(2, self.@\"name\"); }") != null);
 }

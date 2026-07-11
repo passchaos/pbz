@@ -97,6 +97,10 @@ pub const Writer = struct {
         return .{ .allocator = allocator };
     }
 
+    pub fn initBuffer(allocator: std.mem.Allocator, buffer: []u8) Writer {
+        return .{ .allocator = allocator, .bytes = std.ArrayList(u8).initBuffer(buffer) };
+    }
+
     pub fn deinit(self: *Writer) void {
         self.bytes.deinit(self.allocator);
         self.* = undefined;

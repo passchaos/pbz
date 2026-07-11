@@ -33,6 +33,12 @@ pub fn main() !void {
     const bytes = try person.encodeInitialized(allocator);
     defer allocator.free(bytes);
 
+    var stack_buffer: [128]u8 = undefined;
+    const stack_bytes = try person.encodeInto(&stack_buffer);
+    std.debug.assert(std.mem.eql(u8, stack_bytes, bytes));
+    const fast_stack_bytes = try person.encodeIntoAssumeCapacity(&stack_buffer);
+    std.debug.assert(std.mem.eql(u8, fast_stack_bytes, bytes));
+
     var decoded = try person_pb.demo.Person.decodeOwnedInitialized(allocator, bytes);
     defer decoded.deinit(allocator);
     std.debug.assert(decoded.id == 7);

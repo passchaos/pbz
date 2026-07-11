@@ -111,6 +111,12 @@ fn generatedPackedWriteToReuse(ctx: GeneratedPackedWriteToCtx) !void {
     std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
 }
 
+const GeneratedPackedEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.Packed };
+fn generatedPackedEncodeIntoReuse(ctx: GeneratedPackedEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
 const GeneratedPackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedPackedDecode(ctx: GeneratedPackedDecodeCtx) !void {
     var decoded = try person_pb.demo.Packed.decode(ctx.allocator, ctx.bytes);
@@ -145,6 +151,12 @@ fn generatedWriteToReuse(ctx: GeneratedWriteToCtx) !void {
     ctx.writer.clearRetainingCapacity();
     try ctx.person.writeToAssumeCapacity(ctx.writer);
     std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+const GeneratedEncodeIntoCtx = struct { buffer: []u8, person: *const person_pb.demo.Person };
+fn generatedEncodeIntoReuse(ctx: GeneratedEncodeIntoCtx) !void {
+    const bytes = try ctx.person.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
 const GeneratedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
@@ -261,6 +273,8 @@ pub fn main() !void {
     var reusable_writer = pbz.Writer.init(allocator);
     defer reusable_writer.deinit();
     try reusable_writer.bytes.ensureTotalCapacity(allocator, generated_bytes.len);
+    const generated_buffer = try allocator.alloc(u8, generated_bytes.len);
+    defer allocator.free(generated_buffer);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
     const generated_packed_bytes = try generated_packed.encode(allocator);
@@ -268,6 +282,8 @@ pub fn main() !void {
     var reusable_packed_writer = pbz.Writer.init(allocator);
     defer reusable_packed_writer.deinit();
     try reusable_packed_writer.bytes.ensureTotalCapacity(allocator, generated_packed_bytes.len);
+    const generated_packed_buffer = try allocator.alloc(u8, generated_packed_bytes.len);
+    defer allocator.free(generated_packed_buffer);
     const dynamic_packed_bytes = try dynamic_packed.encoded(&file);
     defer allocator.free(dynamic_packed_bytes);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
@@ -285,11 +301,13 @@ pub fn main() !void {
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
         try runTimed(io, "generated binary writeToAssumeCapacity reuse", iters.generated_binary, generated_bytes.len, GeneratedWriteToCtx{ .writer = &reusable_writer, .person = &generated_person }, generatedWriteToReuse),
+        try runTimed(io, "generated binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedEncodeIntoCtx{ .buffer = generated_buffer, .person = &generated_person }, generatedEncodeIntoReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),
         try runTimed(io, "generated packed encode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeCtx{ .allocator = allocator, .message = &generated_packed }, generatedPackedEncode),
         try runTimed(io, "generated packed writeToAssumeCapacity reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedWriteToCtx{ .writer = &reusable_packed_writer, .message = &generated_packed }, generatedPackedWriteToReuse),
+        try runTimed(io, "generated packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeIntoCtx{ .buffer = generated_packed_buffer, .message = &generated_packed }, generatedPackedEncodeIntoReuse),
         try runTimed(io, "generated packed decode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_packed_bytes }, generatedPackedDecode),
         try runTimed(io, "dynamic packed encode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedEncodeCtx{ .message = &dynamic_packed, .file = &file }, dynamicPackedEncode),
         try runTimed(io, "dynamic packed decode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedDecodeCtx{ .allocator = allocator, .descriptor = packed_desc, .file = &file, .bytes = dynamic_packed_bytes }, dynamicPackedDecode),

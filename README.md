@@ -275,6 +275,10 @@ declarations under a Zig namespace that mirrors the proto package
 (`package demo.user;` becomes `generated.demo.user.Message`). They also expose
 an `imports` namespace that maps imported `.proto` paths to their generated
 `.pb.zig` module aliases while preserving import kind/path metadata.
+Generated message structs provide `encodedSize`, allocating `encode`, checked
+`encodeInto(buffer)`, and fastest-path `encodeIntoAssumeCapacity(buffer)` helpers
+in addition to writer-based `writeTo` / `writeToAssumeCapacity`, so callers can
+choose between owned allocation, caller-provided buffers, and reusable writers.
 Generated message structs also expose per-field metadata structs (`*_field`)
 with protobuf field number, name/json_name, cardinality, kind, raw type_name
 including imported message/enum names, Zig storage type, presence, default text,

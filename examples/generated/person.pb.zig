@@ -330,6 +330,20 @@ pub const demo = struct {
             return try w.toOwnedSlice();
         }
 
+        pub fn encodeInto(self: @This(), buffer: []u8) ![]u8 {
+            const size = self.encodedSize();
+            if (buffer.len < size) return error.NoSpaceLeft;
+            var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer[0..size]);
+            try self.writeToAssumeCapacity(&w);
+            return buffer[0..w.slice().len];
+        }
+
+        pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
+            try self.writeToAssumeCapacity(&w);
+            return buffer[0..w.slice().len];
+        }
+
         pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
@@ -1469,6 +1483,20 @@ pub const demo = struct {
             try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());
             try self.writeToAssumeCapacity(&w);
             return try w.toOwnedSlice();
+        }
+
+        pub fn encodeInto(self: @This(), buffer: []u8) ![]u8 {
+            const size = self.encodedSize();
+            if (buffer.len < size) return error.NoSpaceLeft;
+            var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer[0..size]);
+            try self.writeToAssumeCapacity(&w);
+            return buffer[0..w.slice().len];
+        }
+
+        pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
+            try self.writeToAssumeCapacity(&w);
+            return buffer[0..w.slice().len];
         }
 
         pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
