@@ -22,6 +22,8 @@ message Envelope {
     bytes organization_id = 5;
     Audit audit_subject = 6;
   }
+
+  map<string, Audit> audits = 7;
 }
 
 service Directory {
