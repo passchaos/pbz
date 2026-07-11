@@ -3496,17 +3496,47 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
     for (message.fields.items) |*field| {
         if (field.oneof_name != null) continue;
         if (field.cardinality != .repeated) continue;
-        if (field.kind != .scalar or field.kind.scalar != .fixed32) continue;
+        if (field.kind != .scalar) continue;
+        if (fixedWidthViewScalarType(field.kind.scalar) == null) continue;
         if (!field.resolvedPacked(file)) continue;
+        const view_type = fixedWidthViewScalarType(field.kind.scalar).?;
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
-        try writeQuotedIdentWithSuffix(field.name, "PackedFixed32View", writer);
-        try writer.writeAll("(bytes: []const u8) !?[]align(1) const u32 {\n");
+        try writeQuotedIdentWithSuffix(field.name, "PackedFixedView", writer);
+        try writer.writeAll("(bytes: []const u8) !?[]align(1) const ");
+        try writer.writeAll(view_type);
+        try writer.writeAll(" {\n");
         try indent(writer, depth + 1);
-        try writer.print("return try pbz.wire.packedFixed32FieldView(bytes, {d});\n", .{field.number});
+        try writer.writeAll("return try pbz.wire.packedFixedWidthFieldView(");
+        try writer.writeAll(view_type);
+        try writer.print(", bytes, {d});\n", .{field.number});
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
+        if (field.kind.scalar == .fixed32) {
+            try indent(writer, depth);
+            try writer.writeAll("pub fn ");
+            try writeQuotedIdentWithSuffix(field.name, "PackedFixed32View", writer);
+            try writer.writeAll("(bytes: []const u8) !?[]align(1) const u32 {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("return try ");
+            try writeQuotedIdentWithSuffix(field.name, "PackedFixedView", writer);
+            try writer.writeAll("(bytes);\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n\n");
+        }
     }
+}
+
+fn fixedWidthViewScalarType(scalar: schema.ScalarType) ?[]const u8 {
+    return switch (scalar) {
+        .double => "f64",
+        .float => "f32",
+        .fixed32 => "u32",
+        .fixed64 => "u64",
+        .sfixed32 => "i32",
+        .sfixed64 => "i64",
+        else => null,
+    };
 }
 
 fn writeMessageExtensionAccessors(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -11848,8 +11878,10 @@ test "codegen emits packed fixed32 borrowed field view helper" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixedView\"(bytes: []const u8) !?[]align(1) const u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldView(u32, bytes, 1);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixed32View\"(bytes: []const u8) !?[]align(1) const u32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixed32FieldView(bytes, 1);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"valuesPackedFixedView\"(bytes);") != null);
 }
 
 test "codegen emits map duplicate-key last-wins helpers" {

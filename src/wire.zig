@@ -105,22 +105,33 @@ pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) 
     }
 }
 
-pub fn packedFixed32View(payload: []const u8) Error![]align(1) const u32 {
-    if (payload.len % 4 != 0) return error.InvalidWireType;
+pub fn packedFixedWidthView(comptime T: type, payload: []const u8) Error![]align(1) const T {
+    if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
+        @compileError("packedFixedWidthView requires u32, i32, f32, u64, i64, or f64");
+    }
+    if (payload.len % @sizeOf(T) != 0) return error.InvalidWireType;
     if (comptime @import("builtin").target.cpu.arch.endian() != .little) return error.UnsupportedWireType;
-    return std.mem.bytesAsSlice(u32, payload);
+    return std.mem.bytesAsSlice(T, payload);
 }
 
-pub fn packedFixed32FieldView(bytes: []const u8, number: FieldNumber) Error!?[]align(1) const u32 {
+pub fn packedFixedWidthFieldView(comptime T: type, bytes: []const u8, number: FieldNumber) Error!?[]align(1) const T {
     var reader = Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         if (tag.number == number) {
             if (tag.wire_type != .length_delimited) return error.InvalidWireType;
-            return try packedFixed32View(try reader.readBytes());
+            return try packedFixedWidthView(T, try reader.readBytes());
         }
         try reader.skipValue(tag);
     }
     return null;
+}
+
+pub fn packedFixed32View(payload: []const u8) Error![]align(1) const u32 {
+    return try packedFixedWidthView(u32, payload);
+}
+
+pub fn packedFixed32FieldView(bytes: []const u8, number: FieldNumber) Error!?[]align(1) const u32 {
+    return try packedFixedWidthFieldView(u32, bytes, number);
 }
 
 pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
