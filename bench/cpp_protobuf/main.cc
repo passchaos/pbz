@@ -223,6 +223,23 @@ demo::TextBytes MakeTextBytes() {
   return msg;
 }
 
+demo::LargeBytes MakeLargeBytes() {
+  demo::LargeBytes msg;
+  std::string payload;
+  payload.resize(64 * 1024);
+  for (std::size_t i = 0; i < payload.size(); ++i)
+    payload[i] = static_cast<char>((i * 31 + 7) & 0xff);
+  msg.set_payload(payload);
+  for (int chunk_index = 0; chunk_index < 16; ++chunk_index) {
+    std::string chunk;
+    chunk.resize(4 * 1024);
+    for (std::size_t i = 0; i < chunk.size(); ++i)
+      chunk[i] = static_cast<char>((chunk_index * 17 + i * 13 + 3) & 0xff);
+    msg.add_chunks(chunk);
+  }
+  return msg;
+}
+
 demo::Complex::Audit MakeAudit(const std::string &actor, int64_t at_unix) {
   demo::Complex::Audit audit;
   audit.set_actor(actor);
@@ -247,6 +264,7 @@ int main() {
   const demo::Person person = MakePerson();
   const demo::ScalarMix scalarmix = MakeScalarMix();
   const demo::TextBytes textbytes = MakeTextBytes();
+  const demo::LargeBytes largebytes = MakeLargeBytes();
   const demo::Complex complex = MakeComplex();
   std::string bytes;
   person.SerializeToString(&bytes);
@@ -260,6 +278,8 @@ int main() {
   scalarmix.SerializeToString(&scalarmix_bytes);
   std::string textbytes_bytes;
   textbytes.SerializeToString(&textbytes_bytes);
+  std::string largebytes_bytes;
+  largebytes.SerializeToString(&largebytes_bytes);
   std::string complex_bytes;
   complex.SerializeToString(&complex_bytes);
   std::string complex_json;
@@ -320,6 +340,7 @@ int main() {
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
+  std::cout << "largebytes payload size: " << largebytes_bytes.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
   std::cout << "complex json payload size: " << complex_json.size() << "\n";
   std::cout << "complex text payload size: " << complex_text.size() << "\n";
@@ -513,6 +534,61 @@ int main() {
                  asm volatile("" : : "g"(&reused_textbytes_decoded) : "memory");
                });
   textbytes_decode_reuse.Print();
+
+  auto largebytes_encode =
+      RunTimed("c++ protobuf largebytes encode", kIterations,
+               largebytes_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(largebytes_bytes.size());
+                 largebytes.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  largebytes_encode.Print();
+
+  std::string reused_largebytes;
+  reused_largebytes.reserve(largebytes_bytes.size());
+  auto largebytes_encode_reuse =
+      RunTimed("c++ protobuf largebytes encode reuse", kIterations,
+               largebytes_bytes.size(), [&]() {
+                 reused_largebytes.clear();
+                 largebytes.SerializeToString(&reused_largebytes);
+                 asm volatile("" : : "g"(reused_largebytes.data()) : "memory");
+               });
+  largebytes_encode_reuse.Print();
+
+  std::string largebytes_array_buffer;
+  largebytes_array_buffer.resize(largebytes_bytes.size());
+  auto largebytes_encode_array_reuse = RunTimed(
+      "c++ protobuf largebytes SerializeToArray reuse", kIterations,
+      largebytes_bytes.size(), [&]() {
+        if (!largebytes.SerializeToArray(
+                largebytes_array_buffer.data(),
+                static_cast<int>(largebytes_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(largebytes_array_buffer.data()) : "memory");
+      });
+  largebytes_encode_array_reuse.Print();
+
+  auto largebytes_decode =
+      RunTimed("c++ protobuf largebytes decode", kIterations,
+               largebytes_bytes.size(), [&]() {
+                 demo::LargeBytes decoded;
+                 if (!decoded.ParseFromString(largebytes_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  largebytes_decode.Print();
+
+  demo::LargeBytes reused_largebytes_decoded;
+  auto largebytes_decode_reuse =
+      RunTimed("c++ protobuf largebytes decode reuse", kIterations,
+               largebytes_bytes.size(), [&]() {
+                 reused_largebytes_decoded.Clear();
+                 if (!reused_largebytes_decoded.ParseFromString(largebytes_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&reused_largebytes_decoded) : "memory");
+               });
+  largebytes_decode_reuse.Print();
 
   auto complex_encode = RunTimed(
       "c++ protobuf complex encode", kIterations, complex_bytes.size(), [&]() {

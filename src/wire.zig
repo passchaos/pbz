@@ -134,7 +134,7 @@ pub const BorrowedFieldSlices = struct {
     payload: []const u8,
 };
 
-inline fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
+pub inline fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
     var v = value;
     if (v < 0x80) {
         buffer[0] = @truncate(v);
@@ -410,6 +410,18 @@ pub fn packedSInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?
                 return .{ .payload = bytes[payload_start..reader.position()] };
             }
             return error.InvalidWireType;
+        }
+        try reader.skipValue(tag);
+    }
+    return null;
+}
+
+pub fn bytesFieldView(bytes: []const u8, number: FieldNumber) Error!?[]const u8 {
+    var reader = Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == number) {
+            if (tag.wire_type != .length_delimited) return error.InvalidWireType;
+            return try reader.readBytes();
         }
         try reader.skipValue(tag);
     }
@@ -1274,6 +1286,19 @@ test "wire appends and iterates varint packed payloads" {
     try std.testing.expectEqual(@as(i32, -3), (try sint32_it.next()).?);
     try std.testing.expectEqual(@as(i32, 4), (try sint32_it.next()).?);
     try std.testing.expect((try sint32_it.next()) == null);
+}
+
+test "wire exposes borrowed bytes field view" {
+    var writer = Writer.init(std.testing.allocator);
+    defer writer.deinit();
+    try writer.writeUInt32(9, 7);
+    try writer.writeBytes(1, "payload");
+    try writer.writeBytes(2, "other");
+
+    const payload = (try bytesFieldView(writer.slice(), 1)).?;
+    try std.testing.expectEqualStrings("payload", payload);
+    try std.testing.expectEqual(@intFromPtr(writer.slice().ptr) + 4, @intFromPtr(payload.ptr));
+    try std.testing.expect(try bytesFieldView(writer.slice(), 3) == null);
 }
 
 test "wire skips nested groups and length-delimited values" {

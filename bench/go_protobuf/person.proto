@@ -40,6 +40,11 @@ message TextBytes {
   repeated bytes chunks = 4;
 }
 
+message LargeBytes {
+  bytes payload = 1;
+  repeated bytes chunks = 2;
+}
+
 message Packed {
   repeated int32 values = 1;
 }

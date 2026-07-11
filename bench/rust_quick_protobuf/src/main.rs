@@ -291,6 +291,48 @@ impl<'a> MessageRead<'a> for TextBytes {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct LargeBytes {
+    pub payload: Vec<u8>,
+    pub chunks: Vec<Vec<u8>>,
+}
+
+impl MessageWrite for LargeBytes {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if !self.payload.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.payload.len());
+        }
+        for chunk in &self.chunks {
+            size += 1 + sizeofs::sizeof_len(chunk.len());
+        }
+        size
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.payload.is_empty() {
+            w.write_with_tag(10, |w| w.write_bytes(&self.payload))?;
+        }
+        for chunk in &self.chunks {
+            w.write_with_tag(18, |w| w.write_bytes(chunk))?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for LargeBytes {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = LargeBytes::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.payload = r.read_bytes(bytes)?.to_vec(),
+                18 => msg.chunks.push(r.read_bytes(bytes)?.to_vec()),
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct ComplexAudit {
     pub actor: String,
     pub at_unix: i64,
@@ -1220,6 +1262,20 @@ fn make_textbytes() -> TextBytes {
     }
 }
 
+fn make_largebytes() -> LargeBytes {
+    let payload = (0..64 * 1024)
+        .map(|i| ((i * 31 + 7) & 0xff) as u8)
+        .collect();
+    let chunks = (0..16)
+        .map(|chunk_index| {
+            (0..4 * 1024)
+                .map(|i| ((chunk_index * 17 + i * 13 + 3) & 0xff) as u8)
+                .collect()
+        })
+        .collect();
+    LargeBytes { payload, chunks }
+}
+
 fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
     ComplexAudit {
         actor: actor.to_owned(),
@@ -1292,6 +1348,8 @@ fn main() {
     let scalarmix_bytes = encode_to_vec(&scalarmix);
     let textbytes = make_textbytes();
     let textbytes_bytes = encode_to_vec(&textbytes);
+    let largebytes = make_largebytes();
+    let largebytes_bytes = encode_to_vec(&largebytes);
     let complex = make_complex();
     let complex_bytes = encode_to_vec(&complex);
     let packed = make_packed();
@@ -1329,6 +1387,7 @@ fn main() {
     println!("payload size: {}", bytes.len());
     println!("scalarmix payload size: {}", scalarmix_bytes.len());
     println!("textbytes payload size: {}", textbytes_bytes.len());
+    println!("largebytes payload size: {}", largebytes_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
@@ -1459,6 +1518,43 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&textbytes_bytes);
             let decoded = TextBytes::from_reader(&mut reader, &textbytes_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf largebytes encode",
+        iters.binary,
+        largebytes_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&largebytes);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_largebytes = Vec::with_capacity(largebytes_bytes.len());
+    run_timed(
+        "quick-protobuf largebytes encode reuse",
+        iters.binary,
+        largebytes_bytes.len(),
+        || {
+            reused_largebytes.clear();
+            let mut writer = Writer::new(&mut reused_largebytes);
+            largebytes.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_largebytes);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf largebytes decode",
+        iters.binary,
+        largebytes_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&largebytes_bytes);
+            let decoded = LargeBytes::from_reader(&mut reader, &largebytes_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

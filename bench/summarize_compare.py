@@ -129,6 +129,35 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "largebytes encode",
+        (
+            "generated largebytes encode",
+            "generated largebytes writeToAssumeCapacity reuse",
+            "generated largebytes encodeIntoAssumeCapacity buffer reuse",
+            "generated largebytes borrowed slices encode",
+        ),
+        {
+            "rust prost": ("prost largebytes encode",),
+            "rust quick-protobuf": ("quick-protobuf largebytes encode", "quick-protobuf largebytes encode reuse"),
+            "c++ protobuf": (
+                "c++ protobuf largebytes encode",
+                "c++ protobuf largebytes encode reuse",
+                "c++ protobuf largebytes SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf largebytes encode", "go protobuf largebytes encode reuse"),
+        },
+    ),
+    Workload(
+        "largebytes decode",
+        ("generated largebytes decode", "generated largebytes decode reuse", "wire largebytes borrowed view decode"),
+        {
+            "rust prost": ("prost largebytes decode",),
+            "rust quick-protobuf": ("quick-protobuf largebytes decode",),
+            "c++ protobuf": ("c++ protobuf largebytes decode", "c++ protobuf largebytes decode reuse"),
+            "go protobuf": ("go protobuf largebytes decode",),
+        },
+    ),
+    Workload(
         "complex encode",
         (
             "generated complex encode",

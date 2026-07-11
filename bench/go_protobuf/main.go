@@ -220,6 +220,22 @@ func makeTextBytes() *personpb.TextBytes {
 	}
 }
 
+func makeLargeBytes() *personpb.LargeBytes {
+	payload := make([]byte, 64*1024)
+	for i := range payload {
+		payload[i] = byte((i*31 + 7) & 0xff)
+	}
+	chunks := make([][]byte, 16)
+	for chunkIndex := range chunks {
+		chunk := make([]byte, 4*1024)
+		for i := range chunk {
+			chunk[i] = byte((chunkIndex*17 + i*13 + 3) & 0xff)
+		}
+		chunks[chunkIndex] = chunk
+	}
+	return &personpb.LargeBytes{Payload: payload, Chunks: chunks}
+}
+
 func audit(actor string, atUnix int64) *personpb.Complex_Audit {
 	return &personpb.Complex_Audit{Actor: actor, AtUnix: atUnix}
 }
@@ -242,6 +258,7 @@ func main() {
 	person := makePerson()
 	scalarmix := makeScalarMix()
 	textbytes := makeTextBytes()
+	largebytes := makeLargeBytes()
 	complex := makeComplex()
 	bytes, err := proto.Marshal(person)
 	if err != nil {
@@ -260,6 +277,10 @@ func main() {
 		panic(err)
 	}
 	textbytesBytes, err := proto.Marshal(textbytes)
+	if err != nil {
+		panic(err)
+	}
+	largebytesBytes, err := proto.Marshal(largebytes)
 	if err != nil {
 		panic(err)
 	}
@@ -357,6 +378,7 @@ func main() {
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
+	fmt.Printf("largebytes payload size: %d\n", len(largebytesBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
 	fmt.Printf("complex json payload size: %d\n", len(complexJSONBytes))
 	fmt.Printf("complex text payload size: %d\n", len(complexTextBytes))
@@ -454,6 +476,30 @@ func main() {
 	runTimed("go protobuf textbytes decode", iterations, len(textbytesBytes), func() {
 		var decoded personpb.TextBytes
 		if err := unmarshalOptions.Unmarshal(textbytesBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf largebytes encode", iterations, len(largebytesBytes), func() {
+		out, err := proto.Marshal(largebytes)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	largebytesBuf := make([]byte, 0, len(largebytesBytes))
+	runTimed("go protobuf largebytes encode reuse", iterations, len(largebytesBytes), func() {
+		var err error
+		largebytesBuf, err = marshalOptions.MarshalAppend(largebytesBuf[:0], largebytes)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf largebytes decode", iterations, len(largebytesBytes), func() {
+		var decoded personpb.LargeBytes
+		if err := unmarshalOptions.Unmarshal(largebytesBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

@@ -69,6 +69,14 @@ pub struct TextBytes {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct LargeBytes {
+    #[prost(bytes, tag = "1")]
+    pub payload: Vec<u8>,
+    #[prost(bytes, repeated, tag = "2")]
+    pub chunks: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct ComplexAudit {
     #[prost(string, tag = "1")]
     pub actor: String,
@@ -419,6 +427,20 @@ fn make_textbytes() -> TextBytes {
     }
 }
 
+fn make_largebytes() -> LargeBytes {
+    let payload = (0..64 * 1024)
+        .map(|i| ((i * 31 + 7) & 0xff) as u8)
+        .collect();
+    let chunks = (0..16)
+        .map(|chunk_index| {
+            (0..4 * 1024)
+                .map(|i| ((chunk_index * 17 + i * 13 + 3) & 0xff) as u8)
+                .collect()
+        })
+        .collect();
+    LargeBytes { payload, chunks }
+}
+
 fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
     ComplexAudit {
         actor: actor.to_string(),
@@ -483,6 +505,8 @@ fn main() {
     let scalarmix_bytes = scalarmix.encode_to_vec();
     let textbytes = make_textbytes();
     let textbytes_bytes = textbytes.encode_to_vec();
+    let largebytes = make_largebytes();
+    let largebytes_bytes = largebytes.encode_to_vec();
     let complex = make_complex();
     let complex_bytes = complex.encode_to_vec();
     let packed = make_packed();
@@ -520,6 +544,7 @@ fn main() {
     println!("payload size: {}", bytes.len());
     println!("scalarmix payload size: {}", scalarmix_bytes.len());
     println!("textbytes payload size: {}", textbytes_bytes.len());
+    println!("largebytes payload size: {}", largebytes_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
@@ -597,6 +622,28 @@ fn main() {
         textbytes_bytes.len(),
         || {
             let decoded = TextBytes::decode(textbytes_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost largebytes encode",
+        iters.binary,
+        largebytes_bytes.len(),
+        || {
+            let encoded = largebytes.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost largebytes decode",
+        iters.binary,
+        largebytes_bytes.len(),
+        || {
+            let decoded = LargeBytes::decode(largebytes_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

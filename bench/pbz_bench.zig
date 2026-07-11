@@ -12,6 +12,9 @@ const Iterations = struct {
 };
 
 const BenchmarkSamples: usize = 3;
+const LargeBytesPayloadLen: usize = 64 * 1024;
+const LargeBytesChunkCount: usize = 16;
+const LargeBytesChunkLen: usize = 4 * 1024;
 
 const BenchResult = struct {
     name: []const u8,
@@ -106,6 +109,23 @@ fn makeGeneratedTextBytes(allocator: std.mem.Allocator) !person_pb.demo.TextByte
     msg.payload = "0123456789abcdef0123456789abcdef";
     msg.tags = try allocator.dupe([]const u8, &.{ "alpha", "beta", "gamma", "delta" });
     msg.chunks = try allocator.dupe([]const u8, &.{ "chunk-one", "chunk-two", "chunk-three", "chunk-four" });
+    return msg;
+}
+
+fn makeGeneratedLargeBytes(allocator: std.mem.Allocator) !person_pb.demo.LargeBytes {
+    var msg = person_pb.demo.LargeBytes.init();
+    errdefer msg.deinit(allocator);
+    const payload = try allocator.alloc(u8, LargeBytesPayloadLen);
+    for (payload, 0..) |*byte, i| byte.* = @intCast((i * 31 + 7) & 0xff);
+    msg.payload = payload;
+    const chunks = try allocator.alloc([]const u8, LargeBytesChunkCount);
+    errdefer allocator.free(chunks);
+    for (chunks, 0..) |*chunk, chunk_index| {
+        const data = try allocator.alloc(u8, LargeBytesChunkLen);
+        for (data, 0..) |*byte, i| byte.* = @intCast((chunk_index * 17 + i * 13 + 3) & 0xff);
+        chunk.* = data;
+    }
+    msg.chunks = chunks;
     return msg;
 }
 
@@ -608,6 +628,81 @@ const GeneratedTextBytesDecodeReuseCtx = struct { allocator: std.mem.Allocator, 
 fn generatedTextBytesDecodeReuse(ctx: GeneratedTextBytesDecodeReuseCtx) !void {
     try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const GeneratedLargeBytesEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.LargeBytes };
+fn generatedLargeBytesEncode(ctx: GeneratedLargeBytesEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedLargeBytesWriteToCtx = struct { writer: *pbz.Writer, message: *const person_pb.demo.LargeBytes };
+fn generatedLargeBytesWriteToReuse(ctx: GeneratedLargeBytesWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.message.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+const GeneratedLargeBytesEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.LargeBytes };
+fn generatedLargeBytesEncodeIntoReuse(ctx: GeneratedLargeBytesEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedLargeBytesBorrowedSlicesCtx = struct { message: *const person_pb.demo.LargeBytes };
+fn generatedLargeBytesBorrowedSlices(ctx: GeneratedLargeBytesBorrowedSlicesCtx) !void {
+    var header: [LargeBytesChunkCount + 1][20]u8 = undefined;
+    const msg = ctx.message;
+    var total_len: usize = 0;
+    if (msg.payload.len != 0) {
+        var header_len: usize = 0;
+        header_len += pbz.wire.writeVarintToBuffer(header[0][header_len..], try (pbz.wire.Tag{ .number = 1, .wire_type = .length_delimited }).encode());
+        header_len += pbz.wire.writeVarintToBuffer(header[0][header_len..], msg.payload.len);
+        total_len += header_len + msg.payload.len;
+        std.mem.doNotOptimizeAway(header[0][0..header_len].ptr);
+        std.mem.doNotOptimizeAway(msg.payload.ptr);
+    }
+    for (msg.chunks, 0..) |chunk, i| {
+        var header_len: usize = 0;
+        header_len += pbz.wire.writeVarintToBuffer(header[i + 1][header_len..], try (pbz.wire.Tag{ .number = 2, .wire_type = .length_delimited }).encode());
+        header_len += pbz.wire.writeVarintToBuffer(header[i + 1][header_len..], chunk.len);
+        total_len += header_len + chunk.len;
+        std.mem.doNotOptimizeAway(header[i + 1][0..header_len].ptr);
+        std.mem.doNotOptimizeAway(chunk.ptr);
+    }
+    std.mem.doNotOptimizeAway(total_len);
+}
+
+const GeneratedLargeBytesDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedLargeBytesDecode(ctx: GeneratedLargeBytesDecodeCtx) !void {
+    var decoded = try person_pb.demo.LargeBytes.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
+const GeneratedLargeBytesDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.LargeBytes };
+fn generatedLargeBytesDecodeReuse(ctx: GeneratedLargeBytesDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const LargeBytesBorrowedViewCtx = struct { bytes: []const u8 };
+fn largeBytesBorrowedViewDecode(ctx: LargeBytesBorrowedViewCtx) !void {
+    const payload = (try pbz.wire.bytesFieldView(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    std.mem.doNotOptimizeAway(payload.ptr);
+    var reader = pbz.Reader.init(ctx.bytes);
+    var total_chunks: usize = 0;
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == 2) {
+            if (tag.wire_type != .length_delimited) return error.InvalidWireType;
+            const chunk = try reader.readBytes();
+            total_chunks += chunk.len;
+        } else {
+            try reader.skipValue(tag);
+        }
+    }
+    std.mem.doNotOptimizeAway(total_chunks);
 }
 
 const GeneratedComplexEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Complex };
@@ -1691,6 +1786,10 @@ pub fn main() !void {
         \\    Audit audit_subject = 7;
         \\  }
         \\}
+        \\message LargeBytes {
+        \\  bytes payload = 1;
+        \\  repeated bytes chunks = 2;
+        \\}
         \\message Packed {
         \\  repeated int32 values = 1;
         \\}
@@ -1763,6 +1862,8 @@ pub fn main() !void {
     defer generated_scalar_mix.deinit(allocator);
     var generated_text_bytes = try makeGeneratedTextBytes(allocator);
     defer generated_text_bytes.deinit(allocator);
+    var generated_large_bytes = try makeGeneratedLargeBytes(allocator);
+    defer generated_large_bytes.deinit(allocator);
     var generated_complex = try makeGeneratedComplex(allocator);
     defer generated_complex.deinit(allocator);
     var generated_packed = try makeGeneratedPacked(allocator);
@@ -1865,6 +1966,15 @@ pub fn main() !void {
     defer allocator.free(generated_text_bytes_buffer);
     var generated_text_bytes_decode_reuse = person_pb.demo.TextBytes.init();
     defer generated_text_bytes_decode_reuse.deinit(allocator);
+    const generated_large_bytes_bytes = try generated_large_bytes.encode(allocator);
+    defer allocator.free(generated_large_bytes_bytes);
+    var reusable_large_bytes_writer = pbz.Writer.init(allocator);
+    defer reusable_large_bytes_writer.deinit();
+    try reusable_large_bytes_writer.bytes.ensureTotalCapacity(allocator, generated_large_bytes_bytes.len);
+    const generated_large_bytes_buffer = try allocator.alloc(u8, generated_large_bytes_bytes.len);
+    defer allocator.free(generated_large_bytes_buffer);
+    var generated_large_bytes_decode_reuse = person_pb.demo.LargeBytes.init();
+    defer generated_large_bytes_decode_reuse.deinit(allocator);
     const generated_complex_bytes = try generated_complex.encode(allocator);
     defer allocator.free(generated_complex_bytes);
     var reusable_complex_writer = pbz.Writer.init(allocator);
@@ -1991,7 +2101,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2014,6 +2124,13 @@ pub fn main() !void {
         try runTimed(io, "generated textbytes trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeIntoCtx{ .buffer = generated_text_bytes_buffer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8EncodeIntoReuse),
         try runTimed(io, "generated textbytes decode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes }, generatedTextBytesDecode),
         try runTimed(io, "generated textbytes decode reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes, .message = &generated_text_bytes_decode_reuse }, generatedTextBytesDecodeReuse),
+        try runTimed(io, "generated largebytes encode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesEncodeCtx{ .allocator = allocator, .message = &generated_large_bytes }, generatedLargeBytesEncode),
+        try runTimed(io, "generated largebytes writeToAssumeCapacity reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesWriteToCtx{ .writer = &reusable_large_bytes_writer, .message = &generated_large_bytes }, generatedLargeBytesWriteToReuse),
+        try runTimed(io, "generated largebytes encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesEncodeIntoCtx{ .buffer = generated_large_bytes_buffer, .message = &generated_large_bytes }, generatedLargeBytesEncodeIntoReuse),
+        try runTimed(io, "generated largebytes borrowed slices encode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesBorrowedSlicesCtx{ .message = &generated_large_bytes }, generatedLargeBytesBorrowedSlices),
+        try runTimed(io, "generated largebytes decode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes }, generatedLargeBytesDecode),
+        try runTimed(io, "generated largebytes decode reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes, .message = &generated_large_bytes_decode_reuse }, generatedLargeBytesDecodeReuse),
+        try runTimed(io, "wire largebytes borrowed view decode", iters.generated_binary, generated_large_bytes_bytes.len, LargeBytesBorrowedViewCtx{ .bytes = generated_large_bytes_bytes }, largeBytesBorrowedViewDecode),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),
