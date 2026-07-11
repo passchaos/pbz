@@ -15,20 +15,16 @@ pub fn main() !void {
     person.id = 7;
     person.name = "Zig";
     person.scores = try allocator.dupe(i32, &.{ 10, 20 });
-    person.counts = try allocator.dupe(person_pb.demo.Person.countsEntry, &.{
-        .{ .key = "red", .value = 1 },
-    });
+    try person.counts.put(allocator, "red", 1);
 
-    // Map replacement semantics are still available through decode/merge paths;
-    // direct field assignment stays ordinary Zig struct assignment.
+    // Map fields are generated as Zig map containers, matching C++/Rust/Go-style
+    // typed map usage while retaining protobuf last-wins merge semantics.
     var other = person_pb.demo.Person.init();
     defer other.deinit(allocator);
-    other.counts = try allocator.dupe(person_pb.demo.Person.countsEntry, &.{
-        .{ .key = "red", .value = 2 },
-    });
+    try other.counts.put(allocator, "red", 2);
     try person.mergeFrom(allocator, other);
-    std.debug.assert(person.counts.len == 1);
-    std.debug.assert(person.counts[0].value == 2);
+    std.debug.assert(person.counts.count() == 1);
+    std.debug.assert(person.counts.get("red").? == 2);
 
     const bytes = try person.encodeInitialized(allocator);
     defer allocator.free(bytes);

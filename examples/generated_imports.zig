@@ -48,10 +48,16 @@ pub fn main() !void {
 
     // Direct struct fields stay natural Zig fields, while generated storage is
     // typed across imports for singular, repeated, map values, and oneof arms.
-    const by_name = try allocator.alloc(app.Request.by_nameEntry, 2);
-    by_name[0] = .{ .key = "selected", .value = try old_named.cloneOwned(allocator) };
-    by_name[1] = .{ .key = "selected", .value = try final_named.cloneOwned(allocator) };
-    request.by_name = by_name;
+    try request.by_name.put(allocator, "selected", try old_named.cloneOwned(allocator));
+    {
+        var owned = try final_named.cloneOwned(allocator);
+        errdefer owned.deinit(allocator);
+        const old = try request.by_name.fetchPut(allocator, "selected", owned);
+        if (old) |entry| {
+            var old_value = entry.value;
+            old_value.deinit(allocator);
+        }
+    }
     request.selected = .{ .chosen = try chosen.cloneOwned(allocator) };
 
     const bytes = try request.encodeInitialized(allocator);
@@ -62,9 +68,8 @@ pub fn main() !void {
     std.debug.assert(decoded.primary.?.id == 1);
     std.debug.assert(decoded.history.len == 1);
     std.debug.assert(std.mem.eql(u8, decoded.history[0].name, "first"));
-    std.debug.assert(decoded.by_name.len == 1);
-    std.debug.assert(std.mem.eql(u8, decoded.by_name[0].key, "selected"));
-    std.debug.assert(std.mem.eql(u8, decoded.by_name[0].value.name, "final-named"));
+    std.debug.assert(decoded.by_name.count() == 1);
+    std.debug.assert(std.mem.eql(u8, (decoded.by_name.get("selected") orelse return error.MissingByName).name, "final-named"));
     switch (decoded.selected) {
         .chosen => |selected| std.debug.assert(std.mem.eql(u8, selected.name, "chosen")),
         else => return error.UnexpectedOneof,
@@ -77,8 +82,8 @@ pub fn main() !void {
     std.debug.assert(std.mem.indexOf(u8, json, "\"chosen\":") != null);
     var json_roundtrip = try app.Request.jsonParseInitialized(allocator, json);
     defer json_roundtrip.deinit(allocator);
-    std.debug.assert(json_roundtrip.by_name.len == 1);
-    std.debug.assert(std.mem.eql(u8, json_roundtrip.by_name[0].value.name, "final-named"));
+    std.debug.assert(json_roundtrip.by_name.count() == 1);
+    std.debug.assert(std.mem.eql(u8, (json_roundtrip.by_name.get("selected") orelse return error.MissingByName).name, "final-named"));
 
     const text = try decoded.formatTextAlloc(allocator);
     defer allocator.free(text);

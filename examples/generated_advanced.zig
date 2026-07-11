@@ -30,10 +30,11 @@ pub fn main() !void {
     envelope.kind = adv.Kind.KIND_PERSON.toInt();
     envelope.audit = audit;
     envelope.subject = .{ .user_name = "ziggy" };
-    const audit_entries = try allocator.alloc(adv.Envelope.auditsEntry, 2);
-    audit_entries[0] = .{ .key = "latest", .value = try audit.cloneOwned(allocator) };
-    audit_entries[1] = .{ .key = "latest", .value = try review.cloneOwned(allocator) };
-    envelope.audits = audit_entries;
+    try envelope.audits.put(allocator, "latest", try audit.cloneOwned(allocator));
+    {
+        var old = envelope.audits.fetchPut(allocator, "latest", try review.cloneOwned(allocator)) catch |err| return err;
+        if (old) |*entry| entry.value.deinit(allocator);
+    }
 
     const bytes = try envelope.encodeInitialized(allocator);
     defer allocator.free(bytes);
@@ -54,9 +55,8 @@ pub fn main() !void {
     std.debug.assert(std.mem.eql(u8, decoded_audit.actor, "tester"));
     std.debug.assert(adv.Envelope.audits_field.map_value_has_type_ref);
     const MapAuditRef = adv.Envelope.audits_field.map_value_type_ref;
-    std.debug.assert(decoded.audits.len == 1);
-    std.debug.assert(std.mem.eql(u8, decoded.audits[0].key, "latest"));
-    const decoded_map_audit: MapAuditRef = decoded.audits[0].value;
+    std.debug.assert(decoded.audits.count() == 1);
+    const decoded_map_audit: MapAuditRef = decoded.audits.get("latest") orelse return error.MissingAudit;
     std.debug.assert(std.mem.eql(u8, decoded_map_audit.actor, "reviewer"));
 
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{ .preserve_proto_field_names = true });
@@ -66,8 +66,8 @@ pub fn main() !void {
     std.debug.assert(std.mem.indexOf(u8, json, "\"reviewer\"") != null);
     var json_roundtrip = try adv.Envelope.jsonParseInitialized(allocator, json);
     defer json_roundtrip.deinit(allocator);
-    std.debug.assert(json_roundtrip.audits.len == 1);
-    std.debug.assert(std.mem.eql(u8, json_roundtrip.audits[0].value.actor, "reviewer"));
+    std.debug.assert(json_roundtrip.audits.count() == 1);
+    std.debug.assert(std.mem.eql(u8, (json_roundtrip.audits.get("latest") orelse return error.MissingAudit).actor, "reviewer"));
 
     const text = try decoded.formatTextAlloc(allocator);
     defer allocator.free(text);
@@ -75,8 +75,8 @@ pub fn main() !void {
     std.debug.assert(std.mem.indexOf(u8, text, "reviewer") != null);
     var text_roundtrip = try adv.Envelope.parseTextInitialized(allocator, text);
     defer text_roundtrip.deinit(allocator);
-    std.debug.assert(text_roundtrip.audits.len == 1);
-    std.debug.assert(std.mem.eql(u8, text_roundtrip.audits[0].value.actor, "reviewer"));
+    std.debug.assert(text_roundtrip.audits.count() == 1);
+    std.debug.assert(std.mem.eql(u8, (text_roundtrip.audits.get("latest") orelse return error.MissingAudit).actor, "reviewer"));
 
     var audit_subject_envelope = adv.Envelope.init();
     defer audit_subject_envelope.deinit(allocator);

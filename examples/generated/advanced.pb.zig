@@ -166,7 +166,7 @@ pub const demo = struct {
                 pub const cardinality = "repeated";
                 pub const kind = "map";
                 pub const type_name = "";
-                pub const zig_type = "[]const auditsEntry";
+                pub const zig_type = "auditsMap";
                 pub const has_type_ref = false;
                 pub const type_ref = void;
                 pub const has_enum_ref = false;
@@ -183,6 +183,8 @@ pub const demo = struct {
                 pub const map_value_enum_ref = void;
             };
 
+            pub const auditsMap = std.StringArrayHashMapUnmanaged(Audit);
+
             pub const auditsEntry = struct {
                 key: []const u8 = "",
                 value: Audit = .{},
@@ -195,6 +197,18 @@ pub const demo = struct {
                 try list.append(allocator, entry);
             }
 
+            fn putMapEntry_audits(allocator: std.mem.Allocator, map: *auditsMap, entry: auditsEntry) !void {
+                if (map.getEntry(entry.key)) |existing| { existing.value_ptr.deinit(allocator); existing.value_ptr.* = entry.value; return; }
+                try map.put(allocator, entry.key, entry.value);
+            }
+
+            fn deinitMap_audits(allocator: std.mem.Allocator, map: *auditsMap) void {
+                var it = map.iterator();
+                while (it.next()) |entry| entry.value_ptr.deinit(allocator);
+                map.deinit(allocator);
+                map.* = .empty;
+            }
+
             pub const subjectOneof = union(enum) {
                 none,
                 user_name: []const u8,
@@ -205,7 +219,7 @@ pub const demo = struct {
             id: i32 = 0,
             kind: i32 = 0,
             audit: ?Audit = null,
-            audits: []const auditsEntry = &.{},
+            audits: auditsMap = .empty,
             subject: subjectOneof = .none,
             _json_arena: ?*std.heap.ArenaAllocator = null,
             _unknown_fields: []const []const u8 = &.{},
@@ -216,8 +230,7 @@ pub const demo = struct {
 
             pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
                 if (self.audit) |*value| value.deinit(allocator);
-                for (self.audits) |entry| { var old_value = entry.value; old_value.deinit(allocator); }
-                allocator.free(self.audits);
+                @This().deinitMap_audits(allocator, &self.audits);
                 switch (self.subject) {
                     .audit_subject => |*value| value.deinit(allocator),
                     else => {},
@@ -235,10 +248,10 @@ pub const demo = struct {
                 out.id = self.id;
                 out.kind = self.kind;
                 if (self.audit) |value| out.audit = try value.cloneOwned(allocator);
-                if (self.audits.len != 0) {
-                    const cloned = try allocator.alloc(auditsEntry, self.audits.len);
-                    for (self.audits, 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try entry.value.cloneOwned(allocator) };
-                    out.audits = cloned;
+                if (self.audits.count() != 0) {
+                    try out.audits.ensureUnusedCapacity(allocator, self.audits.count());
+                    var map_it = self.audits.iterator();
+                    while (map_it.next()) |entry| try @This().putMapEntry_audits(allocator, &out.audits, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = try entry.value_ptr.cloneOwned(allocator) });
                 }
                 out.subject = switch (self.subject) {
                     .none => .none,
@@ -343,16 +356,9 @@ pub const demo = struct {
                 if (other.audit) |other_value| {
                     if (self.audit) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.audit = try other_value.cloneOwned(allocator); }
                 }
-                if (other.audits.len != 0) {
-                    var list: std.ArrayList(auditsEntry) = .empty;
-                    errdefer { for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); } list.deinit(allocator); }
-                    for (self.audits) |entry| try list.append(allocator, .{ .key = entry.key, .value = try entry.value.cloneOwned(allocator) });
-                    for (other.audits) |entry| { var cloned_entry = entry; cloned_entry.value = try entry.value.cloneOwned(allocator); errdefer cloned_entry.value.deinit(allocator); try @This().appendOrReplaceMapEntry_audits(allocator, &list, cloned_entry); }
-                    const old = self.audits;
-                    const owned = try list.toOwnedSlice(allocator);
-                    self.audits = owned;
-                    for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); }
-                    if (old.len != 0) allocator.free(old);
+                if (other.audits.count() != 0) {
+                    var other_it = other.audits.iterator();
+                    while (other_it.next()) |entry| try @This().putMapEntry_audits(allocator, &self.audits, .{ .key = entry.key_ptr.*, .value = try entry.value_ptr.cloneOwned(allocator) });
                 }
                 switch (other.subject) {
                     .none => {},
@@ -368,10 +374,11 @@ pub const demo = struct {
                 if (self.id != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.id))));
                 if (self.kind != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.kind))));
                 if (self.audit) |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
-                for (self.audits) |entry| {
-                    const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
+                { var map_it = self.audits.iterator(); while (map_it.next()) |entry| {
+                    const key = entry.key_ptr.*; const value = entry.value_ptr.*;
+                    const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + blk: { const value_len = value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     size += 1 + pbz.wire.encodedVarintSize(entry_len) + entry_len;
-                }
+                } }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
@@ -386,14 +393,15 @@ pub const demo = struct {
                 if (self.id != 0) try w.writeInt32(1, self.id);
                 if (self.kind != 0) try w.writeInt32(2, self.kind);
                 if (self.audit) |value| { const payload_len = value.encodedSize(); try w.writeTag(3, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
-                for (self.audits) |entry| {
+                { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
+                    const entry = auditsEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     try w.writeTag(7, .length_delimited);
                     try w.writeVarint(entry_len);
                     try w.writeString(1, entry.key);
                     { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeTo(w); }
-                }
+                } }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); },
@@ -407,14 +415,15 @@ pub const demo = struct {
                 if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
                 if (self.kind != 0) w.writeInt32AssumeCapacity(2, self.kind);
                 if (self.audit) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(3, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
-                for (self.audits) |entry| {
+                { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
+                    const entry = auditsEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     w.writeTagAssumeCapacity(7, .length_delimited);
                     w.writeVarintAssumeCapacity(entry_len);
                     w.writeStringAssumeCapacity(1, entry.key);
                     { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeToAssumeCapacity(w); }
-                }
+                } }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(4, value); },
@@ -462,10 +471,10 @@ pub const demo = struct {
                     .audit_subject => |value| { const payload_len = value.encodedSize(); try w.writeTag(6, .length_delimited); try w.writeVarint(payload_len); try value.writeDeterministicTo(allocator, w); },
                     else => {},
                 }
-                if (self.audits.len != 0) {
+                if (self.audits.count() != 0) {
                     var stack_entries: [32]auditsEntry = undefined;
-                    const use_stack_entries = self.audits.len <= stack_entries.len;
-                    const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.audits.len], self.audits); break :blk stack_entries[0..self.audits.len]; } else try allocator.dupe(auditsEntry, self.audits);
+                    const use_stack_entries = self.audits.count() <= stack_entries.len;
+                    const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                     defer if (!use_stack_entries) allocator.free(entries);
                     if (use_stack_entries) {
                         var sort_i: usize = 1;
@@ -484,7 +493,7 @@ pub const demo = struct {
                         try w.writeTag(7, .length_delimited);
                         try w.writeVarint(entry_len);
                         try w.writeString(1, entry.key);
-                        { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeDeterministicTo(allocator, w); }
+                        { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeTo(w); }
                     }
                 }
                 if (self._unknown_fields.len != 0) {
@@ -525,10 +534,10 @@ pub const demo = struct {
                     .audit_subject => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(6, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeDeterministicToAssumeCapacity(allocator, w); },
                     else => {},
                 }
-                if (self.audits.len != 0) {
+                if (self.audits.count() != 0) {
                     var stack_entries: [32]auditsEntry = undefined;
-                    const use_stack_entries = self.audits.len <= stack_entries.len;
-                    const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.audits.len], self.audits); break :blk stack_entries[0..self.audits.len]; } else try allocator.dupe(auditsEntry, self.audits);
+                    const use_stack_entries = self.audits.count() <= stack_entries.len;
+                    const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                     defer if (!use_stack_entries) allocator.free(entries);
                     if (use_stack_entries) {
                         var sort_i: usize = 1;
@@ -547,7 +556,7 @@ pub const demo = struct {
                         w.writeTagAssumeCapacity(7, .length_delimited);
                         w.writeVarintAssumeCapacity(entry_len);
                         w.writeStringAssumeCapacity(1, entry.key);
-                        { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeDeterministicToAssumeCapacity(allocator, w); }
+                        { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeToAssumeCapacity(w); }
                     }
                 }
                 if (self._unknown_fields.len != 0) {
@@ -639,7 +648,9 @@ pub const demo = struct {
                         else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
                     }
                 }
-                self.audits = if (audits_list.items.len != 0 and audits_list.items.len == audits_list.capacity) audits_list.toOwnedSliceAssert() else try audits_list.toOwnedSlice(allocator);
+                self.audits = .empty;
+                try self.audits.ensureUnusedCapacity(allocator, audits_list.items.len);
+                for (audits_list.items) |entry| try @This().putMapEntry_audits(allocator, &self.audits, entry);
                 self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                 return self;
             }
@@ -673,9 +684,9 @@ pub const demo = struct {
                 if (self.audit) |nested| {
                     if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "audit.{s}", .{suffix}); }
                 }
-                for (self.audits) |entry| {
-                    if (try entry.value.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "audits.{s}", .{suffix}); }
-                }
+                { var map_it = self.audits.iterator(); while (map_it.next()) |entry| {
+                    if (try entry.value_ptr.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "audits.{s}", .{suffix}); }
+                } }
                 switch (self.subject) {
                     .none => {},
                     .audit_subject => |nested| {
@@ -693,9 +704,9 @@ pub const demo = struct {
             pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                 try self.validateRequired();
                 if (self.audit) |nested| try nested.validateRequiredRecursive(allocator);
-                for (self.audits) |entry| {
-                    try entry.value.validateRequiredRecursive(allocator);
-                }
+                { var map_it = self.audits.iterator(); while (map_it.next()) |entry| {
+                    try entry.value_ptr.validateRequiredRecursive(allocator);
+                } }
                 switch (self.subject) {
                     .none => {},
                     .audit_subject => |nested| try nested.validateRequiredRecursive(allocator),
@@ -744,11 +755,14 @@ pub const demo = struct {
                     try writer.writeAll(if (options.preserve_proto_field_names) "\"audit\":" else "\"audit\":");
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
-                if (self.audits.len != 0 or options.always_print_primitive_fields) {
+                if (self.audits.count() != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
                     try writer.writeAll(if (options.preserve_proto_field_names) "\"audits\":" else "\"audits\":");
                     try writer.writeAll("{");
-                    for (self.audits, 0..) |entry, i| {
+                    var map_it = self.audits.iterator();
+                    var i: usize = 0;
+                    while (map_it.next()) |map_entry| : (i += 1) {
+                        const entry = auditsEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                         if (i != 0) try writer.writeAll(",");
                         try @This().jsonWriteString(writer, entry.key);
                         try writer.writeAll(":");
@@ -830,7 +844,7 @@ pub const demo = struct {
                             continue;
                         }
                         if (std.mem.eql(u8, key, "audits") or std.mem.eql(u8, key, "audits")) {
-                            const old = self.audits; self.audits = &.{}; for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old);
+                            @This().deinitMap_audits(allocator, &self.audits);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) { self.subject = .none; continue; }
@@ -856,12 +870,15 @@ pub const demo = struct {
                     if (std.mem.eql(u8, key, "audits") or std.mem.eql(u8, key, "audits")) {
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         var list: std.ArrayList(auditsEntry) = .empty;
-                        errdefer { for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); } list.deinit(allocator); }
+                        defer list.deinit(allocator);
+                        errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                         var map_it = object_value.iterator();
                         while (map_it.next()) |map_entry| {
                             try @This().appendOrReplaceMapEntry_audits(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } });
                         }
-                        self.audits = blk: { const old = self.audits; const owned = try list.toOwnedSlice(allocator); for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old); break :blk owned; };
+                        @This().deinitMap_audits(allocator, &self.audits);
+                        try self.audits.ensureUnusedCapacity(allocator, list.items.len);
+                        for (list.items) |list_entry| try @This().putMapEntry_audits(allocator, &self.audits, list_entry);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
@@ -1338,14 +1355,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
-                for (self.audits) |entry| {
+                { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
+                    const entry = auditsEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                     try writer.writeAll("audits {\n");
                     try writer.writeAll("key: "); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
                     try writer.writeAll("value {\n");
                     try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                     try writer.writeAll("}\n");
-                }
+                } }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| {
@@ -1440,7 +1458,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                self.audits = if (audits_list.items.len != 0 and audits_list.items.len == audits_list.capacity) audits_list.toOwnedSliceAssert() else try audits_list.toOwnedSlice(allocator);
+                self.audits = .empty;
+                try self.audits.ensureUnusedCapacity(allocator, audits_list.items.len);
+                for (audits_list.items) |entry| try @This().putMapEntry_audits(allocator, &self.audits, entry);
                 self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
                 return self;
             }

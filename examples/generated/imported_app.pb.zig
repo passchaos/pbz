@@ -59,7 +59,7 @@ pub const demo = struct {
                     pub const cardinality = "repeated";
                     pub const kind = "map";
                     pub const type_name = "";
-                    pub const zig_type = "[]const by_nameEntry";
+                    pub const zig_type = "by_nameMap";
                     pub const has_type_ref = false;
                     pub const type_ref = void;
                     pub const has_enum_ref = false;
@@ -108,6 +108,8 @@ pub const demo = struct {
                     pub const is_packed = false;
                 };
 
+                pub const by_nameMap = std.StringArrayHashMapUnmanaged(pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile);
+
                 pub const by_nameEntry = struct {
                     key: []const u8 = "",
                     value: pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile = .{},
@@ -120,6 +122,18 @@ pub const demo = struct {
                     try list.append(allocator, entry);
                 }
 
+                fn putMapEntry_by_name(allocator: std.mem.Allocator, map: *by_nameMap, entry: by_nameEntry) !void {
+                    if (map.getEntry(entry.key)) |existing| { existing.value_ptr.deinit(allocator); existing.value_ptr.* = entry.value; return; }
+                    try map.put(allocator, entry.key, entry.value);
+                }
+
+                fn deinitMap_by_name(allocator: std.mem.Allocator, map: *by_nameMap) void {
+                    var it = map.iterator();
+                    while (it.next()) |entry| entry.value_ptr.deinit(allocator);
+                    map.deinit(allocator);
+                    map.* = .empty;
+                }
+
                 pub const selectedOneof = union(enum) {
                     none,
                     chosen: pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile,
@@ -128,7 +142,7 @@ pub const demo = struct {
 
                 primary: ?pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile = null,
                 history: []const pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile = &.{},
-                by_name: []const by_nameEntry = &.{},
+                by_name: by_nameMap = .empty,
                 selected: selectedOneof = .none,
                 _json_arena: ?*std.heap.ArenaAllocator = null,
                 _unknown_fields: []const []const u8 = &.{},
@@ -141,8 +155,7 @@ pub const demo = struct {
                     if (self.primary) |*value| value.deinit(allocator);
                     for (self.history) |value| { var mutable = value; mutable.deinit(allocator); }
                     allocator.free(self.history);
-                    for (self.by_name) |entry| { var old_value = entry.value; old_value.deinit(allocator); }
-                    allocator.free(self.by_name);
+                    @This().deinitMap_by_name(allocator, &self.by_name);
                     switch (self.selected) {
                         .chosen => |*value| value.deinit(allocator),
                         else => {},
@@ -163,10 +176,10 @@ pub const demo = struct {
                         for (self.history, 0..) |item, i| cloned[i] = try item.cloneOwned(allocator);
                         out.history = cloned;
                     }
-                    if (self.by_name.len != 0) {
-                        const cloned = try allocator.alloc(by_nameEntry, self.by_name.len);
-                        for (self.by_name, 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try entry.value.cloneOwned(allocator) };
-                        out.by_name = cloned;
+                    if (self.by_name.count() != 0) {
+                        try out.by_name.ensureUnusedCapacity(allocator, self.by_name.count());
+                        var map_it = self.by_name.iterator();
+                        while (map_it.next()) |entry| try @This().putMapEntry_by_name(allocator, &out.by_name, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = try entry.value_ptr.cloneOwned(allocator) });
                     }
                     out.selected = switch (self.selected) {
                         .none => .none,
@@ -276,16 +289,9 @@ pub const demo = struct {
                         self.history = merged;
                         if (old.len != 0) allocator.free(old);
                     }
-                    if (other.by_name.len != 0) {
-                        var list: std.ArrayList(by_nameEntry) = .empty;
-                        errdefer { for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); } list.deinit(allocator); }
-                        for (self.by_name) |entry| try list.append(allocator, .{ .key = entry.key, .value = try entry.value.cloneOwned(allocator) });
-                        for (other.by_name) |entry| { var cloned_entry = entry; cloned_entry.value = try entry.value.cloneOwned(allocator); errdefer cloned_entry.value.deinit(allocator); try @This().appendOrReplaceMapEntry_by_name(allocator, &list, cloned_entry); }
-                        const old = self.by_name;
-                        const owned = try list.toOwnedSlice(allocator);
-                        self.by_name = owned;
-                        for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); }
-                        if (old.len != 0) allocator.free(old);
+                    if (other.by_name.count() != 0) {
+                        var other_it = other.by_name.iterator();
+                        while (other_it.next()) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, .{ .key = entry.key_ptr.*, .value = try entry.value_ptr.cloneOwned(allocator) });
                     }
                     switch (other.selected) {
                         .none => {},
@@ -299,10 +305,11 @@ pub const demo = struct {
                     var size: usize = 0;
                     if (self.primary) |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
                     for (self.history) |item| { const payload_len = item.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
-                    for (self.by_name) |entry| {
-                        const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
+                    { var map_it = self.by_name.iterator(); while (map_it.next()) |entry| {
+                        const key = entry.key_ptr.*; const value = entry.value_ptr.*;
+                        const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + blk: { const value_len = value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         size += 1 + pbz.wire.encodedVarintSize(entry_len) + entry_len;
-                    }
+                    } }
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; },
@@ -315,14 +322,15 @@ pub const demo = struct {
                 pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
                     if (self.primary) |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
-                    for (self.by_name) |entry| {
+                    { var map_it = self.by_name.iterator(); while (map_it.next()) |map_entry| {
+                        const entry = by_nameEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                         if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         try w.writeTag(3, .length_delimited);
                         try w.writeVarint(entry_len);
                         try w.writeString(1, entry.key);
                         { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeTo(w); }
-                    }
+                    } }
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
@@ -334,14 +342,15 @@ pub const demo = struct {
                 pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
                     if (self.primary) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(1, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeToAssumeCapacity(w); }
-                    for (self.by_name) |entry| {
+                    { var map_it = self.by_name.iterator(); while (map_it.next()) |map_entry| {
+                        const entry = by_nameEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                         if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         w.writeTagAssumeCapacity(3, .length_delimited);
                         w.writeVarintAssumeCapacity(entry_len);
                         w.writeStringAssumeCapacity(1, entry.key);
                         { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeToAssumeCapacity(w); }
-                    }
+                    } }
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(4, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
@@ -375,10 +384,10 @@ pub const demo = struct {
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.primary) |item| { const payload_len = item.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
-                    if (self.by_name.len != 0) {
+                    if (self.by_name.count() != 0) {
                         var stack_entries: [32]by_nameEntry = undefined;
-                        const use_stack_entries = self.by_name.len <= stack_entries.len;
-                        const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.by_name.len], self.by_name); break :blk stack_entries[0..self.by_name.len]; } else try allocator.dupe(by_nameEntry, self.by_name);
+                        const use_stack_entries = self.by_name.count() <= stack_entries.len;
+                        const entries = if (use_stack_entries) blk: { var map_it = self.by_name.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.by_name.count()]; } else blk: { const owned = try allocator.alloc(by_nameEntry, self.by_name.count()); var map_it = self.by_name.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                         defer if (!use_stack_entries) allocator.free(entries);
                         if (use_stack_entries) {
                             var sort_i: usize = 1;
@@ -397,7 +406,7 @@ pub const demo = struct {
                             try w.writeTag(3, .length_delimited);
                             try w.writeVarint(entry_len);
                             try w.writeString(1, entry.key);
-                            { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeDeterministicTo(allocator, w); }
+                            { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeTo(w); }
                         }
                     }
                     switch (self.selected) {
@@ -433,10 +442,10 @@ pub const demo = struct {
                 pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.primary) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(1, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
-                    if (self.by_name.len != 0) {
+                    if (self.by_name.count() != 0) {
                         var stack_entries: [32]by_nameEntry = undefined;
-                        const use_stack_entries = self.by_name.len <= stack_entries.len;
-                        const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.by_name.len], self.by_name); break :blk stack_entries[0..self.by_name.len]; } else try allocator.dupe(by_nameEntry, self.by_name);
+                        const use_stack_entries = self.by_name.count() <= stack_entries.len;
+                        const entries = if (use_stack_entries) blk: { var map_it = self.by_name.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.by_name.count()]; } else blk: { const owned = try allocator.alloc(by_nameEntry, self.by_name.count()); var map_it = self.by_name.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                         defer if (!use_stack_entries) allocator.free(entries);
                         if (use_stack_entries) {
                             var sort_i: usize = 1;
@@ -455,7 +464,7 @@ pub const demo = struct {
                             w.writeTagAssumeCapacity(3, .length_delimited);
                             w.writeVarintAssumeCapacity(entry_len);
                             w.writeStringAssumeCapacity(1, entry.key);
-                            { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeDeterministicToAssumeCapacity(allocator, w); }
+                            { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeToAssumeCapacity(w); }
                         }
                     }
                     switch (self.selected) {
@@ -557,7 +566,9 @@ pub const demo = struct {
                         }
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
-                    self.by_name = if (by_name_list.items.len != 0 and by_name_list.items.len == by_name_list.capacity) by_name_list.toOwnedSliceAssert() else try by_name_list.toOwnedSlice(allocator);
+                    self.by_name = .empty;
+                    try self.by_name.ensureUnusedCapacity(allocator, by_name_list.items.len);
+                    for (by_name_list.items) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                     self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                     return self;
                 }
@@ -594,9 +605,9 @@ pub const demo = struct {
                     for (self.history) |nested| {
                         if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "history.{s}", .{suffix}); }
                     }
-                    for (self.by_name) |entry| {
-                        if (try entry.value.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "by_name.{s}", .{suffix}); }
-                    }
+                    { var map_it = self.by_name.iterator(); while (map_it.next()) |entry| {
+                        if (try entry.value_ptr.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "by_name.{s}", .{suffix}); }
+                    } }
                     switch (self.selected) {
                         .none => {},
                         .chosen => |nested| {
@@ -615,9 +626,9 @@ pub const demo = struct {
                     try self.validateRequired();
                     if (self.primary) |nested| try nested.validateRequiredRecursive(allocator);
                     for (self.history) |nested| try nested.validateRequiredRecursive(allocator);
-                    for (self.by_name) |entry| {
-                        try entry.value.validateRequiredRecursive(allocator);
-                    }
+                    { var map_it = self.by_name.iterator(); while (map_it.next()) |entry| {
+                        try entry.value_ptr.validateRequiredRecursive(allocator);
+                    } }
                     switch (self.selected) {
                         .none => {},
                         .chosen => |nested| try nested.validateRequiredRecursive(allocator),
@@ -664,11 +675,14 @@ pub const demo = struct {
                         }
                         try writer.writeAll("]");
                     }
-                    if (self.by_name.len != 0 or options.always_print_primitive_fields) {
+                    if (self.by_name.count() != 0 or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
                         try writer.writeAll(if (options.preserve_proto_field_names) "\"by_name\":" else "\"byName\":");
                         try writer.writeAll("{");
-                        for (self.by_name, 0..) |entry, i| {
+                        var map_it = self.by_name.iterator();
+                        var i: usize = 0;
+                        while (map_it.next()) |map_entry| : (i += 1) {
+                            const entry = by_nameEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                             if (i != 0) try writer.writeAll(",");
                             try @This().jsonWriteString(writer, entry.key);
                             try writer.writeAll(":");
@@ -741,7 +755,7 @@ pub const demo = struct {
                                 continue;
                             }
                             if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
-                                const old = self.by_name; self.by_name = &.{}; for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old);
+                                @This().deinitMap_by_name(allocator, &self.by_name);
                                 continue;
                             }
                             if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) { self.selected = .none; continue; }
@@ -770,12 +784,15 @@ pub const demo = struct {
                         if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
                             const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                             var list: std.ArrayList(by_nameEntry) = .empty;
-                            errdefer { for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); } list.deinit(allocator); }
+                            defer list.deinit(allocator);
+                            errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                             var map_it = object_value.iterator();
                             while (map_it.next()) |map_entry| {
                                 try @This().appendOrReplaceMapEntry_by_name(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } });
                             }
-                            self.by_name = blk: { const old = self.by_name; const owned = try list.toOwnedSlice(allocator); for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old); break :blk owned; };
+                            @This().deinitMap_by_name(allocator, &self.by_name);
+                            try self.by_name.ensureUnusedCapacity(allocator, list.items.len);
+                            for (list.items) |list_entry| try @This().putMapEntry_by_name(allocator, &self.by_name, list_entry);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) {
@@ -1251,14 +1268,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                         try writer.writeAll("}\n");
                     }
-                    for (self.by_name) |entry| {
+                    { var map_it = self.by_name.iterator(); while (map_it.next()) |map_entry| {
+                        const entry = by_nameEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
                         try writer.writeAll("by_name {\n");
                         try writer.writeAll("key: "); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
                         try writer.writeAll("value {\n");
                         try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                         try writer.writeAll("}\n");
                         try writer.writeAll("}\n");
-                    }
+                    } }
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| {
@@ -1353,7 +1371,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         return error.UnknownField;
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
-                    self.by_name = if (by_name_list.items.len != 0 and by_name_list.items.len == by_name_list.capacity) by_name_list.toOwnedSliceAssert() else try by_name_list.toOwnedSlice(allocator);
+                    self.by_name = .empty;
+                    try self.by_name.ensureUnusedCapacity(allocator, by_name_list.items.len);
+                    for (by_name_list.items) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                     self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
                     return self;
                 }

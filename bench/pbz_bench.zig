@@ -58,11 +58,9 @@ fn makeGeneratedPerson(allocator: std.mem.Allocator) !person_pb.demo.Person {
     person.id = 7;
     person.name = "Zig";
     person.scores = try allocator.dupe(i32, &.{ 10, 20, 30, 40, 50, 60, 70, 80 });
-    person.counts = try allocator.dupe(person_pb.demo.Person.countsEntry, &.{
-        .{ .key = "red", .value = 1 },
-        .{ .key = "green", .value = 2 },
-        .{ .key = "blue", .value = 3 },
-    });
+    try person.counts.put(allocator, "red", 1);
+    try person.counts.put(allocator, "green", 2);
+    try person.counts.put(allocator, "blue", 3);
     return person;
 }
 
@@ -126,10 +124,8 @@ fn makeGeneratedComplex(allocator: std.mem.Allocator) !person_pb.demo.Complex {
     history[0] = try audit("creator", 12345).cloneOwned(allocator);
     history[1] = try audit("reviewer", 67890).cloneOwned(allocator);
     complex.history = history;
-    const audits = try allocator.alloc(person_pb.demo.Complex.auditsEntry, 2);
-    audits[0] = .{ .key = "latest", .value = try audit("reviewer", 67890).cloneOwned(allocator) };
-    audits[1] = .{ .key = "created", .value = try audit("creator", 12345).cloneOwned(allocator) };
-    complex.audits = audits;
+    try complex.audits.put(allocator, "latest", try audit("reviewer", 67890).cloneOwned(allocator));
+    try complex.audits.put(allocator, "created", try audit("creator", 12345).cloneOwned(allocator));
     complex.subject = .{ .audit_subject = try audit("subject", 777).cloneOwned(allocator) };
     return complex;
 }
