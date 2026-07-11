@@ -198,17 +198,20 @@ pub fn packedFixed32FieldView(bytes: []const u8, number: FieldNumber) Error!?[]a
     return try packedFixedWidthFieldView(u32, bytes, number);
 }
 
-pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
-    if (payload.len % 4 != 0) return error.InvalidWireType;
-    const count = payload.len / 4;
+pub fn appendPackedFixedWidth(comptime T: type, allocator: std.mem.Allocator, list: *std.ArrayList(T), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
+        @compileError("appendPackedFixedWidth requires u32, i32, f32, u64, i64, or f64");
+    }
+    if (payload.len % @sizeOf(T) != 0) return error.InvalidWireType;
+    const count = payload.len / @sizeOf(T);
     if (count == 0) return;
     if (list.items.len == 0 and list.capacity == 0) {
-        const out = try allocator.alloc(u32, count);
-        list.* = std.ArrayList(u32).fromOwnedSlice(out);
+        const out = try allocator.alloc(T, count);
+        list.* = std.ArrayList(T).fromOwnedSlice(out);
         if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
             @memcpy(std.mem.sliceAsBytes(out), payload);
         } else {
-            for (out, 0..) |*value, i| value.* = std.mem.readInt(u32, payload[i * 4 ..][0..4], .little);
+            readFixedWidthPayload(T, out, payload);
         }
         return;
     }
@@ -217,8 +220,46 @@ pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u3
     if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
         @memcpy(std.mem.sliceAsBytes(out), payload);
     } else {
-        for (out, 0..) |*value, i| value.* = std.mem.readInt(u32, payload[i * 4 ..][0..4], .little);
+        readFixedWidthPayload(T, out, payload);
     }
+}
+
+fn readFixedWidthPayload(comptime T: type, out: []T, payload: []const u8) void {
+    const width = @sizeOf(T);
+    for (out, 0..) |*value, i| {
+        const raw = payload[i * width ..][0..width];
+        if (T == f32) {
+            value.* = @bitCast(std.mem.readInt(u32, raw, .little));
+        } else if (T == f64) {
+            value.* = @bitCast(std.mem.readInt(u64, raw, .little));
+        } else {
+            value.* = std.mem.readInt(T, raw, .little);
+        }
+    }
+}
+
+pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendPackedFixedWidth(u32, allocator, list, payload);
+}
+
+pub fn appendPackedFixed64(allocator: std.mem.Allocator, list: *std.ArrayList(u64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendPackedFixedWidth(u64, allocator, list, payload);
+}
+
+pub fn appendPackedSFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(i32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendPackedFixedWidth(i32, allocator, list, payload);
+}
+
+pub fn appendPackedSFixed64(allocator: std.mem.Allocator, list: *std.ArrayList(i64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendPackedFixedWidth(i64, allocator, list, payload);
+}
+
+pub fn appendPackedFloat(allocator: std.mem.Allocator, list: *std.ArrayList(f32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendPackedFixedWidth(f32, allocator, list, payload);
+}
+
+pub fn appendPackedDouble(allocator: std.mem.Allocator, list: *std.ArrayList(f64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendPackedFixedWidth(f64, allocator, list, payload);
 }
 
 pub const Writer = struct {
@@ -750,6 +791,30 @@ test "wire exposes borrowed packed fixed32 view" {
     defer packed_writer.deinit();
     try writePackedFixedWidthPayload(u64, &packed_writer, &.{ 1, 0x0102030405060708 });
     try std.testing.expectEqualSlices(u8, &.{ 1, 0, 0, 0, 0, 0, 0, 0, 8, 7, 6, 5, 4, 3, 2, 1 }, packed_writer.slice());
+}
+
+test "wire appends fixed-width packed payloads in bulk" {
+    const allocator = std.testing.allocator;
+
+    var u64_list: std.ArrayList(u64) = .empty;
+    defer u64_list.deinit(allocator);
+    try appendPackedFixed64(allocator, &u64_list, &.{ 1, 0, 0, 0, 0, 0, 0, 0, 8, 7, 6, 5, 4, 3, 2, 1 });
+    try std.testing.expectEqualSlices(u64, &.{ 1, 0x0102030405060708 }, u64_list.items);
+
+    var i32_list: std.ArrayList(i32) = .empty;
+    defer i32_list.deinit(allocator);
+    try appendPackedSFixed32(allocator, &i32_list, &.{ 0xfe, 0xff, 0xff, 0xff, 0x04, 0x03, 0x02, 0x01 });
+    try std.testing.expectEqualSlices(i32, &.{ -2, 0x01020304 }, i32_list.items);
+
+    var f32_list: std.ArrayList(f32) = .empty;
+    defer f32_list.deinit(allocator);
+    try appendPackedFloat(allocator, &f32_list, std.mem.asBytes(&[_]u32{ @bitCast(@as(f32, 1.5)), @bitCast(@as(f32, -2.25)) }));
+    try std.testing.expectEqual(@as(f32, 1.5), f32_list.items[0]);
+    try std.testing.expectEqual(@as(f32, -2.25), f32_list.items[1]);
+
+    var f64_list: std.ArrayList(f64) = .empty;
+    defer f64_list.deinit(allocator);
+    try std.testing.expectError(error.InvalidWireType, appendPackedDouble(allocator, &f64_list, &.{ 1, 2, 3 }));
 }
 
 test "wire skips nested groups and length-delimited values" {

@@ -3260,9 +3260,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
                             const payload = try r.readBytes();
-                            try values_list.ensureUnusedCapacity(allocator, payload.len / 8);
-                            var packed_reader = pbz.Reader.init(payload);
-                            while (!packed_reader.eof()) values_list.appendAssumeCapacity(try packed_reader.readFixed64());
+                            try pbz.wire.appendPackedFixed64(allocator, &values_list, payload);
                         } else {
                             try values_list.append(allocator, try r.readFixed64());
                         }

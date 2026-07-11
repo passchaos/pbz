@@ -5697,6 +5697,11 @@ fn packedScalarAppendHelperName(scalar: schema.ScalarType) ?[]const u8 {
     return switch (scalar) {
         .int32 => "appendPackedInt32",
         .fixed32 => "appendPackedFixed32",
+        .fixed64 => "appendPackedFixed64",
+        .sfixed32 => "appendPackedSFixed32",
+        .sfixed64 => "appendPackedSFixed64",
+        .float => "appendPackedFloat",
+        .double => "appendPackedDouble",
         else => null,
     };
 }
@@ -12193,6 +12198,7 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
         \\message M {
         \\  repeated int32 ids = 1 [packed = true];
         \\  repeated Kind kinds = 2 [packed = true];
+        \\  repeated fixed64 big_values = 3 [packed = true];
         \\}
     );
     defer file.deinit();
@@ -12206,6 +12212,7 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedInt32(allocator, &ids_list, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedFixed64(allocator, &big_values_list, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.writeTag(2, .varint); try unknown_writer.appendSlice(payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try ids_list.append(allocator, try r.readInt32())") != null);
