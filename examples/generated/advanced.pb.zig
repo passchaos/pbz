@@ -60,6 +60,7 @@ pub const demo = struct {
             pub const audit_number = 3;
             pub const user_name_number = 4;
             pub const organization_id_number = 5;
+            pub const audit_subject_number = 6;
 
             pub const id_field = struct {
                 pub const number = 1;
@@ -141,11 +142,28 @@ pub const demo = struct {
                 pub const default_value = "";
                 pub const is_packed = false;
             };
+            pub const audit_subject_field = struct {
+                pub const number = 6;
+                pub const name = "audit_subject";
+                pub const json_name = "auditSubject";
+                pub const cardinality = "implicit";
+                pub const kind = "message";
+                pub const type_name = "Audit";
+                pub const zig_type = "[]const u8";
+                pub const has_type_ref = true;
+                pub const type_ref = Audit;
+                pub const has_enum_ref = false;
+                pub const enum_ref = void;
+                pub const has_presence = true;
+                pub const default_value = "";
+                pub const is_packed = false;
+            };
 
             pub const subjectOneof = union(enum) {
                 none,
                 user_name: []const u8,
                 organization_id: []const u8,
+                audit_subject: Audit,
             };
 
             id: i32 = 0,
@@ -161,6 +179,10 @@ pub const demo = struct {
 
             pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
                 if (self.audit) |*value| value.deinit(allocator);
+                switch (self.subject) {
+                    .audit_subject => |*value| value.deinit(allocator),
+                    else => {},
+                }
                 for (self._unknown_fields) |raw| allocator.free(raw);
                 allocator.free(self._unknown_fields);
                 if (self._json_arena) |arena| {
@@ -182,6 +204,7 @@ pub const demo = struct {
                     .none => .none,
                     .user_name => |value| .{ .user_name = try owned_allocator.dupe(u8, value) },
                     .organization_id => |value| .{ .organization_id = try owned_allocator.dupe(u8, value) },
+                    .audit_subject => |value| .{ .audit_subject = try value.cloneOwned(allocator) },
                 };
                 if (self._unknown_fields.len != 0) {
                     const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);
@@ -293,6 +316,7 @@ pub const demo = struct {
                     .none => {},
                     .user_name => |value| self.subject = .{ .user_name = value },
                     .organization_id => |value| self.subject = .{ .organization_id = value },
+                    .audit_subject => |value| self.subject = .{ .audit_subject = try value.cloneOwned(allocator) },
                 }
                 for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
             }
@@ -309,6 +333,10 @@ pub const demo = struct {
                     .none => {},
                     .user_name => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
                     .organization_id => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
+                    .audit_subject => |value| {
+                        const payload_len = value.encodedSize();
+                        size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len;
+                    },
                 }
                 for (self._unknown_fields) |raw| size += raw.len;
                 return size;
@@ -330,6 +358,12 @@ pub const demo = struct {
                         try w.writeString(4, value);
                     },
                     .organization_id => |value| try w.writeBytes(5, value),
+                    .audit_subject => |value| {
+                        const payload_len = value.encodedSize();
+                        try w.writeTag(6, .length_delimited);
+                        try w.writeVarint(payload_len);
+                        try value.writeTo(w);
+                    },
                 }
                 for (self._unknown_fields) |raw| try w.appendSlice(raw);
             }
@@ -350,6 +384,12 @@ pub const demo = struct {
                         try w.writeString(4, value);
                     },
                     .organization_id => |value| try w.writeBytes(5, value),
+                    .audit_subject => |value| {
+                        const payload_len = value.encodedSize();
+                        try w.writeTag(6, .length_delimited);
+                        try w.writeVarint(payload_len);
+                        try value.writeTo(w);
+                    },
                 }
                 for (self._unknown_fields) |raw| w.appendSliceAssumeCapacity(raw);
             }
@@ -398,6 +438,16 @@ pub const demo = struct {
                 }
                 switch (self.subject) {
                     .organization_id => |value| try w.writeBytes(5, value),
+                    else => {},
+                }
+                switch (self.subject) {
+                    .audit_subject => |value| {
+                        var nested = try Audit.decode(allocator, value);
+                        defer nested.deinit(allocator);
+                        const payload = try nested.encodeDeterministic(allocator);
+                        defer allocator.free(payload);
+                        try w.writeMessage(6, payload);
+                    },
                     else => {},
                 }
                 if (self._unknown_fields.len != 0) {
@@ -468,6 +518,10 @@ pub const demo = struct {
                             self.subject = .{ .user_name = value };
                         },
                         5 => self.subject = .{ .organization_id = try r.readBytes() },
+                        6 => {
+                            const payload = try r.readBytes();
+                            self.subject = .{ .audit_subject = try Audit.decode(allocator, payload) };
+                        },
                         else => {
                             const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                             try r.skipValue(tag);
@@ -513,6 +567,16 @@ pub const demo = struct {
                         return try std.fmt.allocPrint(allocator, "audit.{s}", .{suffix});
                     }
                 }
+                switch (self.subject) {
+                    .none => {},
+                    .audit_subject => |nested| {
+                        if (try nested.missingRequiredFieldPath(allocator)) |suffix| {
+                            defer allocator.free(suffix);
+                            return try std.fmt.allocPrint(allocator, "audit_subject.{s}", .{suffix});
+                        }
+                    },
+                    else => {},
+                }
                 return null;
             }
 
@@ -523,6 +587,11 @@ pub const demo = struct {
             pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                 try self.validateRequired();
                 if (self.audit) |nested| try nested.validateRequiredRecursive(allocator);
+                switch (self.subject) {
+                    .none => {},
+                    .audit_subject => |nested| try nested.validateRequiredRecursive(allocator),
+                    else => {},
+                }
             }
 
             pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };
@@ -584,6 +653,12 @@ pub const demo = struct {
                         try writer.writeByte('"');
                         try std.base64.standard.Encoder.encodeWriter(writer, value);
                         try writer.writeByte('"');
+                    },
+                    .audit_subject => |value| {
+                        if (!first) try writer.writeAll(",");
+                        first = false;
+                        try writer.writeAll(if (options.preserve_proto_field_names) "\"audit_subject\":" else "\"auditSubject\":");
+                        try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                     },
                 }
                 try writer.writeAll("}");
@@ -653,6 +728,10 @@ pub const demo = struct {
                             self.subject = .none;
                             continue;
                         }
+                        if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                            self.subject = .none;
+                            continue;
+                        }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
@@ -684,6 +763,14 @@ pub const demo = struct {
                     }
                     if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
                         self.subject = .{ .organization_id = try @This().jsonBytes(arena_allocator, value) };
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                        self.subject = .{ .audit_subject = blk: {
+                            var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            defer nested.deinit(arena_allocator);
+                            break :blk try nested.encode(arena_allocator);
+                        } };
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -1173,6 +1260,11 @@ pub const demo = struct {
                         try @This().textWriteQuotedBytes(value, writer);
                         try writer.writeByte('\n');
                     },
+                    .audit_subject => |value| {
+                        try writer.writeAll("audit_subject {\n");
+                        try value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                        try writer.writeAll("}\n");
+                    },
                 }
                 for (self._unknown_fields) |raw| {
                     try @This().textWriteUnknownRaw(raw, writer);
@@ -1234,6 +1326,14 @@ pub const demo = struct {
                     }
                     if (@This().textFieldValue(line, "organization_id") orelse @This().textFieldValue(line, "organizationId")) |raw_value| {
                         self.subject = .{ .organization_id = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) };
+                        continue;
+                    }
+                    if (@This().textBlockField(line, "audit_subject") or @This().textBlockField(line, "auditSubject")) {
+                        const block = try @This().textBlock(allocator, &lines);
+                        defer allocator.free(block);
+                        var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        defer nested.deinit(allocator);
+                        self.subject = .{ .audit_subject = try nested.cloneOwned(allocator) };
                         continue;
                     }
                     if (try @This().textUnknownField(allocator, line)) |raw| {

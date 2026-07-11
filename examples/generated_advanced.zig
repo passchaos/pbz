@@ -48,6 +48,19 @@ pub fn main() !void {
     defer allocator.free(json);
     std.debug.assert(std.mem.indexOf(u8, json, "\"user_name\":\"ziggy\"") != null);
 
+    var audit_subject_envelope = adv.Envelope.init();
+    defer audit_subject_envelope.deinit(allocator);
+    audit_subject_envelope.id = 43;
+    audit_subject_envelope.subject = .{ .audit_subject = audit };
+    const audit_subject_bytes = try audit_subject_envelope.encodeInitialized(allocator);
+    defer allocator.free(audit_subject_bytes);
+    var decoded_audit_subject = try adv.Envelope.decodeOwnedInitialized(allocator, audit_subject_bytes);
+    defer decoded_audit_subject.deinit(allocator);
+    switch (decoded_audit_subject.subject) {
+        .audit_subject => |subject_audit| std.debug.assert(std.mem.eql(u8, subject_audit.actor, "tester")),
+        else => return error.UnexpectedOneof,
+    }
+
     // Service metadata is generated without imposing an RPC runtime.
     std.debug.assert(std.mem.eql(u8, adv.services.Directory.name, "Directory"));
     std.debug.assert(adv.services.Directory.Get.input_has_type_ref);

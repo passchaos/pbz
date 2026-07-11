@@ -20,6 +20,7 @@ message Envelope {
   oneof subject {
     string user_name = 4;
     bytes organization_id = 5;
+    Audit audit_subject = 6;
   }
 }
 
