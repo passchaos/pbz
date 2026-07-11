@@ -23,6 +23,17 @@ func (r benchResult) print() {
 }
 
 func runTimed(name string, iterations int, bytesPerIter int, f func()) benchResult {
+	warmupIterations := iterations / 10
+	if warmupIterations < 1 {
+		warmupIterations = 1
+	}
+	if warmupIterations > 1000 {
+		warmupIterations = 1000
+	}
+	for i := 0; i < warmupIterations; i++ {
+		f()
+	}
+
 	start := time.Now()
 	for i := 0; i < iterations; i++ {
 		f()

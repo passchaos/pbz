@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <algorithm>
 #include <string>
 
 #include "person.pb.h"
@@ -26,6 +27,9 @@ struct BenchResult {
 
 template <class F>
 BenchResult RunTimed(const char* name, int iterations, std::size_t bytes_per_iter, F&& f) {
+  const int warmup_iterations = std::max(1, std::min(iterations / 10, 1000));
+  for (int i = 0; i < warmup_iterations; ++i) f();
+
   const auto start = Clock::now();
   for (int i = 0; i < iterations; ++i) f();
   const auto end = Clock::now();

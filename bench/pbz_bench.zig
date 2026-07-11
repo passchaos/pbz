@@ -33,6 +33,10 @@ fn nowNs(io: std.Io) i96 {
 }
 
 fn runTimed(io: std.Io, name: []const u8, iterations: usize, bytes_per_iter: usize, context: anytype, comptime func: anytype) !BenchResult {
+    const warmup_iterations = @max(@as(usize, 1), @min(iterations / 10, @as(usize, 1_000)));
+    var warmup_i: usize = 0;
+    while (warmup_i < warmup_iterations) : (warmup_i += 1) try func(context);
+
     const start = nowNs(io);
     var i: usize = 0;
     while (i < iterations) : (i += 1) try func(context);

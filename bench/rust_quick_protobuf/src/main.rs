@@ -182,6 +182,11 @@ fn run_timed<F>(
 where
     F: FnMut(),
 {
+    let warmup_iterations = (iterations / 10).clamp(1, 1_000);
+    for _ in 0..warmup_iterations {
+        f();
+    }
+
     let start = Instant::now();
     for _ in 0..iterations {
         f();
