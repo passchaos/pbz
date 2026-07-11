@@ -295,6 +295,17 @@ pub const DynamicMessage = struct {
         try self.add(field, cloned);
     }
 
+    fn addPackedInt32(self: *DynamicMessage, field: *const schema.FieldDescriptor, payload: []const u8) (std.mem.Allocator.Error || wire.Error)!void {
+        if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
+        var entry = try self.getOrCreateMutable(field);
+        try entry.values.ensureUnusedCapacity(self.allocator, payload.len);
+        var index: usize = 0;
+        while (index < payload.len) {
+            const raw = try wire.readVarintAt(payload, &index);
+            entry.values.appendAssumeCapacity(.{ .int32 = @truncate(@as(i64, @bitCast(raw))) });
+        }
+    }
+
     pub fn mergeFrom(self: *DynamicMessage, other: *const DynamicMessage) std.mem.Allocator.Error!void {
         for (other.fields.items) |*entry| {
             for (entry.values.items) |value| try self.mergeFieldFrom(entry.descriptor, value);
@@ -666,6 +677,11 @@ pub const DynamicMessage = struct {
             // fields regardless of whether the schema currently emits packed
             // or expanded encoding. This is especially important across
             // proto2 options, proto3 defaults, and editions features.
+            if (tag.wire_type == .length_delimited and field.kind == .scalar and field.kind.scalar == .int32 and field.isPackable()) {
+                const payload = try reader.readBytes();
+                try self.addPackedInt32(field, payload);
+                continue;
+            }
             if (tag.wire_type == .length_delimited and field.isPackable()) {
                 const payload = try reader.readBytes();
                 var packed_reader = wire.Reader.init(payload);
