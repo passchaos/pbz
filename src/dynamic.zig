@@ -70,6 +70,11 @@ pub const FieldValue = struct {
         self.values.deinit(allocator);
         self.* = undefined;
     }
+
+    pub fn clearRetainingCapacity(self: *FieldValue, allocator: std.mem.Allocator) void {
+        for (self.values.items) |*value| deinitValue(value, allocator);
+        self.values.clearRetainingCapacity();
+    }
 };
 
 pub const UnknownField = struct {
@@ -102,8 +107,7 @@ pub const DynamicMessage = struct {
     }
 
     pub fn clear(self: *DynamicMessage) void {
-        for (self.fields.items) |*field| field.deinit(self.allocator);
-        self.fields.clearRetainingCapacity();
+        for (self.fields.items) |*field| field.clearRetainingCapacity(self.allocator);
         for (self.unknown_fields.items) |*field| field.deinit(self.allocator);
         self.unknown_fields.clearRetainingCapacity();
     }
@@ -463,6 +467,7 @@ pub const DynamicMessage = struct {
     pub fn encodeWithRegistry(self: *const DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
         if (self.descriptor.messageSetWireFormat()) return try self.encodeMessageSet(file, registry, writer, false);
         for (self.fields.items) |*entry| {
+            if (entry.values.items.len == 0) continue;
             try validateFieldTargetsMessage(file, registry, self.descriptor, entry.descriptor);
             if (!entry.descriptor.isRepeatedLike() and !fieldHasPresenceForEncoding(file, registry, self.descriptor, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValueForEncoding(file, registry, self.descriptor, entry.descriptor, entry.values.items[0])) continue;
             if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
@@ -499,6 +504,7 @@ pub const DynamicMessage = struct {
         }.lessThan);
         for (indexes) |index| {
             const entry = &self.fields.items[index];
+            if (entry.values.items.len == 0) continue;
             try validateFieldTargetsMessage(file, registry, self.descriptor, entry.descriptor);
             if (!entry.descriptor.isRepeatedLike() and !fieldHasPresenceForEncoding(file, registry, self.descriptor, entry.descriptor) and entry.values.items.len == 1 and isDefaultSingularValueForEncoding(file, registry, self.descriptor, entry.descriptor, entry.values.items[0])) continue;
             if (resolvedPackedForEncoding(file, registry, self.descriptor, entry.descriptor)) {
