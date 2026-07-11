@@ -100,7 +100,7 @@ pub const demo = struct {
                 pub const cardinality = "implicit";
                 pub const kind = "message";
                 pub const type_name = "Audit";
-                pub const zig_type = "[]const u8";
+                pub const zig_type = "?@\"Audit\"";
                 pub const has_type_ref = true;
                 pub const type_ref = Audit;
                 pub const has_enum_ref = false;
@@ -150,8 +150,7 @@ pub const demo = struct {
 
             id: i32 = 0,
             kind: i32 = 0,
-            audit: []const u8 = "",
-            has_audit: bool = false,
+            audit: ?Audit = null,
             subject: subjectOneof = .none,
             _json_arena: ?*std.heap.ArenaAllocator = null,
             _unknown_fields: []const []const u8 = &.{},
@@ -161,6 +160,7 @@ pub const demo = struct {
             }
 
             pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+                if (self.audit) |*value| value.deinit(allocator);
                 for (self._unknown_fields) |raw| allocator.free(raw);
                 allocator.free(self._unknown_fields);
                 if (self._json_arena) |arena| {
@@ -177,8 +177,7 @@ pub const demo = struct {
                 const owned_allocator = try out._pbzOwnedAllocator(allocator);
                 out.id = self.id;
                 out.kind = self.kind;
-                out.audit = try owned_allocator.dupe(u8, self.audit);
-                out.has_audit = self.has_audit;
+                if (self.audit) |value| out.audit = try value.cloneOwned(allocator);
                 out.subject = switch (self.subject) {
                     .none => .none,
                     .user_name => |value| .{ .user_name = try owned_allocator.dupe(u8, value) },
@@ -283,17 +282,12 @@ pub const demo = struct {
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 if (other.id != 0) self.id = other.id;
                 if (other.kind != 0) self.kind = other.kind;
-                if (other.has_audit) {
-                    if (self.has_audit and self.audit.len != 0 and other.audit.len != 0) {
-                        const owned_allocator = try self._pbzOwnedAllocator(allocator);
-                        const merged = try owned_allocator.alloc(u8, self.audit.len + other.audit.len);
-                        @memcpy(merged[0..self.audit.len], self.audit);
-                        @memcpy(merged[self.audit.len..], other.audit);
-                        self.audit = merged;
-                    } else if (!self.has_audit or self.audit.len == 0) {
-                        self.audit = other.audit;
+                if (other.audit) |other_value| {
+                    if (self.audit) |*self_value| {
+                        try self_value.mergeFrom(allocator, other_value);
+                    } else {
+                        self.audit = try other_value.cloneOwned(allocator);
                     }
-                    self.has_audit = true;
                 }
                 switch (other.subject) {
                     .none => {},
@@ -307,7 +301,10 @@ pub const demo = struct {
                 var size: usize = 0;
                 if (self.id != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.id))));
                 if (self.kind != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.kind))));
-                if (self.has_audit) size += 1 + pbz.wire.encodedVarintSize(self.audit.len) + self.audit.len;
+                if (self.audit) |value| {
+                    const payload_len = value.encodedSize();
+                    size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len;
+                }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
@@ -320,7 +317,12 @@ pub const demo = struct {
             pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
                 if (self.id != 0) try w.writeInt32(1, self.id);
                 if (self.kind != 0) try w.writeInt32(2, self.kind);
-                if (self.has_audit) try w.writeMessage(3, self.audit);
+                if (self.audit) |value| {
+                    const payload_len = value.encodedSize();
+                    try w.writeTag(3, .length_delimited);
+                    try w.writeVarint(payload_len);
+                    try value.writeTo(w);
+                }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| {
@@ -335,7 +337,12 @@ pub const demo = struct {
             pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
                 if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
                 if (self.kind != 0) w.writeInt32AssumeCapacity(2, self.kind);
-                if (self.has_audit) try w.writeMessage(3, self.audit);
+                if (self.audit) |value| {
+                    const payload_len = value.encodedSize();
+                    try w.writeTag(3, .length_delimited);
+                    try w.writeVarint(payload_len);
+                    try value.writeTo(w);
+                }
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| {
@@ -446,16 +453,14 @@ pub const demo = struct {
                         },
                         3 => {
                             const payload = try r.readBytes();
-                            if (self.has_audit and self.audit.len != 0 and payload.len != 0) {
-                                const owned_allocator = try self._pbzOwnedAllocator(allocator);
-                                const merged = try owned_allocator.alloc(u8, self.audit.len + payload.len);
-                                @memcpy(merged[0..self.audit.len], self.audit);
-                                @memcpy(merged[self.audit.len..], payload);
-                                self.audit = merged;
-                            } else if (!self.has_audit or self.audit.len == 0) {
-                                self.audit = payload;
+                            var nested = try Audit.decode(allocator, payload);
+                            errdefer nested.deinit(allocator);
+                            if (self.audit) |*existing| {
+                                try existing.mergeFrom(allocator, nested);
+                                nested.deinit(allocator);
+                            } else {
+                                self.audit = nested;
                             }
-                            self.has_audit = true;
                         },
                         4 => {
                             const value = try r.readBytes();
@@ -502,9 +507,7 @@ pub const demo = struct {
             }
 
             pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {
-                if (self.audit.len != 0) {
-                    var nested = try Audit.decode(allocator, self.audit);
-                    defer nested.deinit(allocator);
+                if (self.audit) |nested| {
                     if (try nested.missingRequiredFieldPath(allocator)) |suffix| {
                         defer allocator.free(suffix);
                         return try std.fmt.allocPrint(allocator, "audit.{s}", .{suffix});
@@ -519,11 +522,7 @@ pub const demo = struct {
 
             pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                 try self.validateRequired();
-                if (self.audit.len != 0) {
-                    var nested = try Audit.decode(allocator, self.audit);
-                    defer nested.deinit(allocator);
-                    try nested.validateRequiredRecursive(allocator);
-                }
+                if (self.audit) |nested| try nested.validateRequiredRecursive(allocator);
             }
 
             pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };
@@ -564,12 +563,10 @@ pub const demo = struct {
                     const value = self.kind;
                     try @This().jsonWriteEnum(writer, value, &.{ "KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG" }, &.{ 0, 1, 2 }, options.enum_as_name);
                 }
-                if (self.audit.len != 0) {
+                if (self.audit) |nested| {
                     if (!first) try writer.writeAll(",");
                     first = false;
                     try writer.writeAll(if (options.preserve_proto_field_names) "\"audit\":" else "\"audit\":");
-                    var nested = try Audit.decode(allocator, self.audit);
-                    defer nested.deinit(allocator);
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 switch (self.subject) {
@@ -626,7 +623,6 @@ pub const demo = struct {
             }
 
             fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void {
-                _ = allocator;
                 const object = switch (json_value) {
                     .object => |object| object,
                     else => return error.TypeMismatch,
@@ -673,9 +669,13 @@ pub const demo = struct {
                     }
                     if (std.mem.eql(u8, key, "audit") or std.mem.eql(u8, key, "audit")) {
                         var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(arena_allocator);
-                        self.audit = try nested.encode(arena_allocator);
-                        self.has_audit = true;
+                        errdefer nested.deinit(arena_allocator);
+                        if (self.audit) |*existing| {
+                            try existing.mergeFrom(allocator, nested);
+                            nested.deinit(arena_allocator);
+                        } else {
+                            self.audit = nested;
+                        }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
@@ -1156,10 +1156,8 @@ pub const demo = struct {
                     try @This().textWriteEnum(writer, value, &.{ "KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG" }, &.{ 0, 1, 2 }, options.enum_as_name);
                     try writer.writeByte('\n');
                 }
-                if (self.audit.len != 0) {
+                if (self.audit) |nested| {
                     try writer.writeAll("audit {\n");
-                    var nested = try Audit.decode(allocator, self.audit);
-                    defer nested.deinit(allocator);
                     try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
@@ -1219,17 +1217,11 @@ pub const demo = struct {
                         defer allocator.free(block);
                         var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(allocator);
-                        const owned_allocator = try self._pbzOwnedAllocator(allocator);
-                        const payload = try nested.encode(owned_allocator);
-                        if (self.has_audit and self.audit.len != 0 and payload.len != 0) {
-                            const merged = try owned_allocator.alloc(u8, self.audit.len + payload.len);
-                            @memcpy(merged[0..self.audit.len], self.audit);
-                            @memcpy(merged[self.audit.len..], payload);
-                            self.audit = merged;
+                        if (self.audit) |*existing| {
+                            try existing.mergeFrom(allocator, nested);
                         } else {
-                            self.audit = payload;
+                            self.audit = try nested.cloneOwned(allocator);
                         }
-                        self.has_audit = true;
                         continue;
                     }
                     if (@This().textFieldValue(line, "user_name") orelse @This().textFieldValue(line, "userName")) |raw_value| {

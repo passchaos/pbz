@@ -626,7 +626,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeInit(writer, depth + 1);
     try writer.writeAll("\n");
-    try writeDeinit(message, writer, depth + 1);
+    try writeDeinit(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeCloneOwned(file, message, writer, depth + 1);
     try writer.writeAll("\n");
@@ -736,7 +736,15 @@ fn writeFieldMetadataDecl(ctx: *const CodegenContext, field: *const schema.Field
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
     try writer.writeAll("pub const zig_type = ");
-    try writeZigStringLiteral(fieldType(field.*), writer);
+    if (typedSingularMessageField(file, field)) |type_name| {
+        var type_buf: std.Io.Writer.Allocating = .init(ctx.allocator);
+        defer type_buf.deinit();
+        try type_buf.writer.writeByte('?');
+        try writeMessageTypeReference(type_name, &type_buf.writer);
+        try writeZigStringLiteral(type_buf.written(), writer);
+    } else {
+        try writeZigStringLiteral(fieldType(field.*), writer);
+    }
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
     try writer.writeAll("pub const has_type_ref = ");
@@ -1154,6 +1162,15 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
     try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
+    if (typedSingularMessageField(ctx.file, field)) |_| {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, nested); } else { self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try nested.cloneOwned(allocator); }\n");
+        return;
+    }
     try indent(writer, depth);
     try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
     try indent(writer, depth);
@@ -1535,10 +1552,27 @@ fn writeOneofValueEncode(file: *const schema.FileDescriptor, field: *const schem
     }
 }
 
+fn typedSingularMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+    if (field.oneof_name != null or field.cardinality == .repeated) return null;
+    if (field.kind != .message) return null;
+    if (fieldMessageEncoding(file, field) != .length_prefixed) return null;
+    return if (codegenCanReferenceMessage(file, field.kind.message)) field.kind.message else null;
+}
+
+fn writeTypedMessageType(type_name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeByte('?');
+    try writeMessageTypeReference(type_name, writer);
+}
+
 fn writeFieldDecl(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(": ");
+    if (typedSingularMessageField(file, field)) |type_name| {
+        try writeTypedMessageType(type_name, writer);
+        try writer.writeAll(" = null,\n");
+        return;
+    }
     try writeFieldType(field.*, writer);
     try writer.writeAll(" = ");
     try writeFieldDefault(file, field.*, writer);
@@ -2787,6 +2821,15 @@ fn writeEncodedSizeField(file: *const schema.FileDescriptor, field: *const schem
     if (field.kind == .map) return try writeEncodedSizeMapField(field, receiver, writer, depth);
     if (field.cardinality == .repeated) return try writeEncodedSizeRepeatedField(file, field, receiver, writer, depth);
     try indent(writer, depth);
+    if (typedSingularMessageField(file, field)) |_| {
+        try writer.writeAll("if (");
+        try writer.writeAll(receiver);
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |value| { const payload_len = value.encodedSize(); size += ");
+        try writer.print("{d}", .{wire.tagSize(field.number, .length_delimited) catch unreachable});
+        try writer.writeAll(" + pbz.wire.encodedVarintSize(payload_len) + payload_len; }\n");
+        return;
+    }
     if (hasPresence(file, field.*)) {
         try writer.writeAll("if (");
         try writer.writeAll(receiver);
@@ -3755,7 +3798,7 @@ fn writeMergeField(file: *const schema.FileDescriptor, field: *const schema.Fiel
     if (field.kind == .map) return try writeMergeMapField(field, writer, depth);
     if (field.cardinality == .repeated) return try writeMergeRepeatedField(field, writer, depth);
     switch (field.kind) {
-        .message, .group => try writeMergeSingularMessageField(field, writer, depth),
+        .message, .group => try writeMergeSingularMessageField(file, field, writer, depth),
         .scalar => |scalar| try writeMergeSingularScalarField(file, field, scalar, writer, depth),
         .enumeration => try writeMergeSingularEnumField(file, field, writer, depth),
         else => {},
@@ -3830,7 +3873,22 @@ fn writeMergeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writ
     try writer.writeAll("}\n");
 }
 
-fn writeMergeSingularMessageField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMergeSingularMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (typedSingularMessageField(file, field)) |_| {
+        try indent(writer, depth);
+        try writer.writeAll("if (other.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |other_value| {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try other_value.cloneOwned(allocator); }\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+        return;
+    }
     try indent(writer, depth);
     try writer.writeAll("if (other.");
     try writePresenceIdent(field.name, writer);
@@ -3961,11 +4019,16 @@ fn writeMergeOneof(message: *const schema.MessageDescriptor, oneof: schema.Oneof
     try writer.writeAll("}\n");
 }
 
-fn writeDeinit(message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDeinit(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
     for (message.fields.items) |*field| {
-        if (field.cardinality == .repeated or field.kind == .map) {
+        if (typedSingularMessageField(file, field)) |_| {
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |*value| value.deinit(allocator);\n");
+        } else if (field.cardinality == .repeated or field.kind == .map) {
             try indent(writer, depth + 1);
             try writer.writeAll("allocator.free(self.");
             try writeQuotedIdent(field.name, writer);
@@ -4039,6 +4102,15 @@ fn cloneKindUsesOwnedAllocator(kind: schema.FieldKind) bool {
 fn writeCloneField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.kind == .map) return try writeCloneMapField(field, writer, depth);
     if (field.cardinality == .repeated) return try writeCloneRepeatedField(field, writer, depth);
+    if (typedSingularMessageField(file, field)) |_| {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |value| out.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try value.cloneOwned(allocator);\n");
+        return;
+    }
     try indent(writer, depth);
     try writer.writeAll("out.");
     try writeQuotedIdent(field.name, writer);
@@ -4319,6 +4391,19 @@ fn writeMissingRequiredPathField(ctx: *const CodegenContext, field: *const schem
         try indent(writer, depth);
         try writer.writeAll("}\n");
     } else {
+        if (typedSingularMessageField(ctx.file, field)) |_| {
+            try indent(writer, depth);
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |nested| {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
+            try writeEscapedStringContents(field.name, writer);
+            try writer.writeAll(".{s}\", .{suffix}); }\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n");
+            return true;
+        }
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
@@ -4505,6 +4590,13 @@ fn writeValidateMessagePayloadField(ctx: *const CodegenContext, field: *const sc
         try indent(writer, depth);
         try writer.writeAll("}\n");
     } else {
+        if (typedSingularMessageField(ctx.file, field)) |_| {
+            try indent(writer, depth);
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |nested| try nested.validateRequiredRecursive(allocator);\n");
+            return;
+        }
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
@@ -5022,6 +5114,16 @@ fn writeDecodeMessageField(file: *const schema.FileDescriptor, field: *const sch
         try writer.writeAll("),\n");
     } else if (field.oneof_name != null) {
         try writeOneofMessageDecodeAssign(file, field, writer);
+    } else if (typedSingularMessageField(file, field)) |type_name| {
+        try writer.writeAll("{ const payload = ");
+        try writeMessagePayloadRead(file, field, "r", writer);
+        try writer.writeAll("; var nested = try ");
+        try writeMessageTypeReference(type_name, writer);
+        try writer.writeAll(".decode(allocator, payload); errdefer nested.deinit(allocator); if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = nested; } },\n");
     } else {
         try writer.writeAll("{ const payload = ");
         try writeMessagePayloadRead(file, field, "r", writer);
@@ -5717,6 +5819,14 @@ fn writeEncodeMessageField(file: *const schema.FileDescriptor, field: *const sch
         }
     } else {
         try indent(writer, depth);
+        if (typedSingularMessageField(file, field)) |_| {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |value| { const payload_len = value.encodedSize(); try w.writeTag(");
+            try writer.print("{d}", .{field.number});
+            try writer.writeAll(", .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }\n");
+            return;
+        }
         if (fieldMessageEncoding(file, field) == .delimited) {
             try writer.writeAll("if (self.");
             if (hasPresence(file, field.*)) {
@@ -6608,6 +6718,22 @@ fn writeTextMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         try writer.writeAll("}\n");
     } else {
         try indent(writer, depth);
+        if (typedSingularMessageField(ctx.file, field)) |_| {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |nested| {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try writer.writeAll(\"");
+            try writeEscapedStringContents(field.name, writer);
+            try writer.writeAll(" {\\n\");\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n");
+            return;
+        }
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(".len != 0) {\n");
@@ -7198,7 +7324,7 @@ fn messageJsonParseUsesArenaAllocator(ctx: *const CodegenContext, message: *cons
 }
 
 fn fieldJsonParseUsesAllocator(field: schema.FieldDescriptor) bool {
-    return field.kind == .map or (field.cardinality == .repeated and (field.kind == .scalar or field.kind == .enumeration or field.kind == .message or field.kind == .group));
+    return field.kind == .map or field.kind == .message or field.kind == .group or (field.cardinality == .repeated and (field.kind == .scalar or field.kind == .enumeration));
 }
 
 fn messageHasJsonExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
@@ -7472,6 +7598,25 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll("; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };\n");
     } else {
+        if (typedSingularMessageField(ctx.file, field)) |_| {
+            try indent(writer, depth + 1);
+            try writer.writeAll("var nested = try ");
+            try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+            try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("errdefer nested.deinit(arena_allocator);\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(arena_allocator); } else { self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" = nested; }\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("continue;\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n");
+            return;
+        }
         try indent(writer, depth + 1);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
@@ -8450,6 +8595,17 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         try writer.writeAll("}\n");
     } else {
         try indent(writer, depth);
+        if (typedSingularMessageField(ctx.file, field)) |_| {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |nested| {\n");
+            try writeJsonPrefix(field, writer, depth + 1);
+            try indent(writer, depth + 1);
+            try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
+            try indent(writer, depth);
+            try writer.writeAll("}\n");
+            return;
+        }
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(".len != 0) {\n");
@@ -9934,7 +10090,7 @@ test "codegen emits direct fields for presence repeated map message and oneof fi
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_id\": bool = false,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"anon\",") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"nums\": []const i32 = &.{},") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": []const u8 = \"\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": ?@\"Child\" = null,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{},") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"keyed\": []const @\"keyedEntry\" = &.{},") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"pick\": @\"pickOneof\" = .none,") != null);
@@ -10018,7 +10174,7 @@ test "codegen emits owned clone helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const cloned = try allocator.alloc([]const u8, self.@\"tags\".len);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\", 0..) |item, i| cloned[i] = try owned_allocator.dupe(u8, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"tags\" = cloned;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"child\" = try owned_allocator.dupe(u8, self.@\"child\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |value| out.@\"child\" = try value.cloneOwned(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |item, i| cloned[i] = try owned_allocator.dupe(u8, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"blobs\", 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try owned_allocator.dupe(u8, entry.value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"alias\" => |value| .{ .@\"alias\" = try owned_allocator.dupe(u8, value) },") != null);
@@ -10963,13 +11119,13 @@ test "codegen emits message payload fields and encoders" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": []const u8 = \"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": ?@\"Child\" = null") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_child\": bool = false") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\") try w.writeMessage(1, self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_child\": bool") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"children\".len != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |payload, i|") != null);
@@ -11101,8 +11257,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |*existing| { try existing.mergeFrom(allocator, nested); } else { self.@\"child\" = try nested.cloneOwned(allocator); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \">\")") != null);
@@ -11583,7 +11739,7 @@ test "codegen emits recursive required validation for message payloads" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |payload|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"keyed\") |entry|") != null);
@@ -11628,16 +11784,16 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (other.@\"nums\".len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try allocator.alloc(i32, old.len + other.@\"nums\".len)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (other.@\"has_child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (other.@\"child\") |other_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try owned_allocator.alloc(u8, self.@\"child\".len + other.@\"child\".len)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.@\"child\" = try other_value.cloneOwned(allocator); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (other.@\"has_box\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try owned_allocator.alloc(u8, self.@\"box\".len + other.@\"box\".len)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (other.@\"pick\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| self.@\"pick\" = .{ .@\"picked\" = value }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); if (self.@\"has_child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); var nested = try @\"Child\".decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); if (self.@\"has_box\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_box\") { try w.writeTag(4, .start_group); try w.appendSlice(self.@\"box\"); try w.writeTag(4, .end_group); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".decode(allocator, self.@\"box\")") != null);
@@ -12126,12 +12282,12 @@ test "codegen honors editions message encoding features" {
     defer allocator.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .start_group); try w.appendSlice(self.@\"delimited\"); try w.writeTag(1, .end_group);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(2, self.@\"length_prefixed\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"length_prefixed\") |value| { const payload_len = value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(3, .start_group); try w.appendSlice(value); try w.writeTag(3, .end_group)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readGroupBytes(1); if (self.@\"has_delimited\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"has_delimited\" = true;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readBytes(); if (self.@\"has_length_prefixed\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"has_length_prefixed\" = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"length_prefixed\" = nested;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try r.readGroupBytes(3) }") != null);
 
     const source = try allocator.dupeZ(u8, content);

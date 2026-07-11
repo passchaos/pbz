@@ -19,15 +19,11 @@ pub fn main() !void {
     defer audit.deinit(allocator);
     audit.actor = "tester";
     audit.at_unix = 12345;
-    const audit_bytes = try audit.encode(allocator);
-    defer allocator.free(audit_bytes);
-
     var envelope = adv.Envelope.init();
     defer envelope.deinit(allocator);
     envelope.id = 42;
     envelope.kind = adv.Kind.KIND_PERSON.toInt();
-    envelope.audit = audit_bytes;
-    envelope.has_audit = true;
+    envelope.audit = audit;
     envelope.subject = .{ .user_name = "ziggy" };
 
     const bytes = try envelope.encodeInitialized(allocator);
@@ -45,8 +41,7 @@ pub fn main() !void {
     // Same-file generated message metadata exposes type refs for nested payloads.
     std.debug.assert(adv.Envelope.audit_field.has_type_ref);
     const AuditRef = adv.Envelope.audit_field.type_ref;
-    var decoded_audit = try AuditRef.decodeOwned(allocator, decoded.audit);
-    defer decoded_audit.deinit(allocator);
+    const decoded_audit: AuditRef = decoded.audit orelse return error.MissingAudit;
     std.debug.assert(std.mem.eql(u8, decoded_audit.actor, "tester"));
 
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{ .preserve_proto_field_names = true });
