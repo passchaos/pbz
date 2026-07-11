@@ -3185,20 +3185,24 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
 }
 
 fn messageCanFastDirectEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
-    if (message.fields.items.len < 8) return false;
     if (message.oneofs.items.len != 0) return false;
+    var has_packed_repeated = false;
     for (message.fields.items) |field| {
         if (hasPresence(file, field)) return false;
         switch (field.kind) {
             .scalar => |scalar| switch (scalar) {
                 .string, .bytes => return false,
-                else => {},
+                else => {
+                    if (field.cardinality == .repeated and field.resolvedPacked(file)) has_packed_repeated = true;
+                },
             },
-            .enumeration => {},
+            .enumeration => {
+                if (field.cardinality == .repeated and field.resolvedPacked(file)) has_packed_repeated = true;
+            },
             .message, .group, .map => return false,
         }
     }
-    return true;
+    return has_packed_repeated or message.fields.items.len >= 8;
 }
 
 fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -3278,47 +3282,71 @@ fn writeFastDirectPackedScalarEncode(field: *const schema.FieldDescriptor, scala
     try writer.writeAll("if (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
-    try indent(writer, depth + 1);
     if (fixedPackedScalarWidth(scalar)) |width| {
+        try indent(writer, depth + 1);
         try writer.writeAll("const packed_len = self.");
         try writeQuotedIdent(field.name, writer);
         try writer.print(".len * {d};\n", .{width});
-    } else {
-        try writer.writeAll("var packed_len: usize = 0;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |item| packed_len += ");
-        try writePackedScalarSizeExpr(scalar, "item", writer);
-        try writer.writeAll(";\n");
-    }
-    try indent(writer, depth + 1);
-    try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
-    try writer.writeAll("\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, packed_len);\n");
-    if (fixedWidthViewScalarType(scalar)) |_| {
+        try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
+        try writer.writeAll("\n");
         try indent(writer, depth + 1);
-        if (scalar == .double) {
-            try writer.writeAll("for (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(item));\n");
-        } else if (scalar == .float) {
-            try writer.writeAll("for (self.");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(item));\n");
+        try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, packed_len);\n");
+        if (fixedWidthViewScalarType(scalar)) |_| {
+            try indent(writer, depth + 1);
+            if (scalar == .double) {
+                try writer.writeAll("for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(item));\n");
+            } else if (scalar == .float) {
+                try writer.writeAll("for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(item));\n");
+            } else {
+                try writer.writeAll("const payload = std.mem.sliceAsBytes(self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;\n");
+            }
         } else {
-            try writer.writeAll("const payload = std.mem.sliceAsBytes(self.");
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;\n");
+            try writer.writeAll(") |item| ");
+            try writeFastDirectPackedScalarPayload("item", scalar, writer);
+            try writer.writeAll("\n");
         }
     } else {
+        try indent(writer, depth + 1);
+        try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
+        try writer.writeAll("\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const packed_len_reserved = pbz.wire.encodedVarintSize(self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(".len * {d});\n", .{maxPackedScalarWidth(scalar)});
+        try indent(writer, depth + 1);
+        try writer.writeAll("const packed_len_index = index; index += packed_len_reserved;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const payload_start = index;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(") |item| ");
         try writeFastDirectPackedScalarPayload("item", scalar, writer);
         try writer.writeAll("\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const packed_len = index - payload_start;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const packed_len_size = pbz.wire.encodedVarintSize(packed_len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (packed_len_size != packed_len_reserved) {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);\n");
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
@@ -3403,6 +3431,17 @@ fn writeFastDirectPackedScalarPayload(value_expr: []const u8, scalar: schema.Sca
         .bool => try writer.print("{{ buffer[index] = if ({s}) 1 else 0; index += 1; }}", .{value_expr}),
         else => try writer.writeAll("@compileError(\"unsupported packed direct payload\")"),
     }
+}
+
+fn maxPackedScalarWidth(scalar: schema.ScalarType) usize {
+    return switch (scalar) {
+        .bool => 1,
+        .uint32, .sint32 => 5,
+        .int32, .int64, .uint64, .sint64 => 10,
+        .double, .fixed64, .sfixed64 => 8,
+        .float, .fixed32, .sfixed32 => 4,
+        .string, .bytes => unreachable,
+    };
 }
 
 fn writeEncodedSize(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {

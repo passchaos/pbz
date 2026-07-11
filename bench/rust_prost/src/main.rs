@@ -157,6 +157,12 @@ pub struct Fixed64Packed {
     pub values: Vec<u64>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct UInt64Packed {
+    #[prost(uint64, repeated, tag = "1")]
+    pub values: Vec<u64>,
+}
+
 fn make_packed() -> Packed {
     Packed {
         values: (0..1024).map(|i| (i % 4096) as i32).collect(),
@@ -172,6 +178,14 @@ fn make_fixed_packed() -> FixedPacked {
 fn make_fixed64_packed() -> Fixed64Packed {
     Fixed64Packed {
         values: (0..1024).map(|i| (i * 5 + 1) as u64).collect(),
+    }
+}
+
+fn make_uint64_packed() -> UInt64Packed {
+    UInt64Packed {
+        values: (0..1024)
+            .map(|i| ((i as u64) << 21) + (i as u64) * 17 + 1)
+            .collect(),
     }
 }
 
@@ -297,6 +311,8 @@ fn main() {
     let fixed_packed_bytes = fixed_packed.encode_to_vec();
     let fixed64_packed = make_fixed64_packed();
     let fixed64_packed_bytes = fixed64_packed.encode_to_vec();
+    let uint64_packed = make_uint64_packed();
+    let uint64_packed_bytes = uint64_packed.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -309,6 +325,7 @@ fn main() {
         "fixed64 packed payload size: {}",
         fixed64_packed_bytes.len()
     );
+    println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -449,6 +466,28 @@ fn main() {
         fixed64_packed_bytes.len(),
         || {
             let decoded = Fixed64Packed::decode(fixed64_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost uint64 packed encode",
+        iters.binary,
+        uint64_packed_bytes.len(),
+        || {
+            let encoded = uint64_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost uint64 packed decode",
+        iters.binary,
+        uint64_packed_bytes.len(),
+        || {
+            let decoded = UInt64Packed::decode(uint64_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

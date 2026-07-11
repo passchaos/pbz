@@ -52,6 +52,10 @@ message Fixed64Packed {
   repeated fixed64 values = 1;
 }
 
+message UInt64Packed {
+  repeated uint64 values = 1;
+}
+
 message Complex {
   message Audit {
     string actor = 1;

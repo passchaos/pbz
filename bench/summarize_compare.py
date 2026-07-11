@@ -319,6 +319,35 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf fixed64 packed decode",),
         },
     ),
+    Workload(
+        "packed uint64 encode",
+        (
+            "generated uint64 packed encode",
+            "generated uint64 packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost uint64 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf uint64 packed encode",
+                "quick-protobuf uint64 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf uint64 packed encode",
+                "c++ protobuf uint64 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf uint64 packed encode", "go protobuf uint64 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed uint64 decode",
+        ("generated uint64 packed decode", "generated uint64 packed decode reuse", "wire uint64 packed iterator decode"),
+        {
+            "rust prost": ("prost uint64 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf uint64 packed decode",),
+            "c++ protobuf": ("c++ protobuf uint64 packed decode", "c++ protobuf uint64 packed decode reuse"),
+            "go protobuf": ("go protobuf uint64 packed decode",),
+        },
+    ),
 )
 
 

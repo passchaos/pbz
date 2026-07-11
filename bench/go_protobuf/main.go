@@ -77,6 +77,14 @@ func makeFixed64Packed() *personpb.Fixed64Packed {
 	return &personpb.Fixed64Packed{Values: values}
 }
 
+func makeUInt64Packed() *personpb.UInt64Packed {
+	values := make([]uint64, 1024)
+	for i := range values {
+		values[i] = (uint64(i) << 21) + uint64(i)*17 + 1
+	}
+	return &personpb.UInt64Packed{Values: values}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -169,6 +177,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	uint64Packed := makeUInt64Packed()
+	uint64PackedBytes, err := proto.Marshal(uint64Packed)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
@@ -182,6 +195,7 @@ func main() {
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
+	fmt.Printf("uint64 packed payload size: %d\n", len(uint64PackedBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -429,6 +443,30 @@ func main() {
 	runTimed("go protobuf fixed64 packed decode", iterations, len(fixed64PackedBytes), func() {
 		var decoded personpb.Fixed64Packed
 		if err := unmarshalOptions.Unmarshal(fixed64PackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf uint64 packed encode", iterations, len(uint64PackedBytes), func() {
+		out, err := proto.Marshal(uint64Packed)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	uint64PackedBuf := make([]byte, 0, len(uint64PackedBytes))
+	runTimed("go protobuf uint64 packed encode reuse", iterations, len(uint64PackedBytes), func() {
+		var err error
+		uint64PackedBuf, err = marshalOptions.MarshalAppend(uint64PackedBuf[:0], uint64Packed)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf uint64 packed decode", iterations, len(uint64PackedBytes), func() {
+		var decoded personpb.UInt64Packed
+		if err := unmarshalOptions.Unmarshal(uint64PackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

@@ -32,6 +32,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` encode/decode
+- packed `uint64` varint encode/decode
 - a zero-copy borrowed payload view for packed fixed-width `fixed32` when the
   caller only needs to inspect the wire buffer
 - JSON stringify/parse
@@ -40,7 +41,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and
 `FixedPacked { repeated fixed32 values = 1; }` and
-`Fixed64Packed { repeated fixed64 values = 1; }` payloads. Treat results as
+`Fixed64Packed { repeated fixed64 values = 1; }` and
+`UInt64Packed { repeated uint64 values = 1; }` payloads. Treat results as
 local machine baselines; use the same schema, payloads, optimization mode, and
 hardware when comparing.
 

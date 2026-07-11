@@ -72,17 +72,11 @@ pub fn zigZagDecode64(value: u64) i64 {
     return half ^ sign;
 }
 
-pub fn encodedVarintSize(value: u64) usize {
+pub inline fn encodedVarintSize(value: u64) usize {
     if (value < (1 << 7)) return 1;
     if (value < (1 << 14)) return 2;
     if (value < (1 << 21)) return 3;
-    if (value < (1 << 28)) return 4;
-    if (value < (1 << 35)) return 5;
-    if (value < (1 << 42)) return 6;
-    if (value < (1 << 49)) return 7;
-    if (value < (1 << 56)) return 8;
-    if (value < (1 << 63)) return 9;
-    return 10;
+    return (@as(usize, 64 - @clz(value)) + 6) / 7;
 }
 
 pub fn tagSize(number: FieldNumber, wire_type: WireType) Error!usize {
@@ -140,7 +134,7 @@ pub const BorrowedFieldSlices = struct {
     payload: []const u8,
 };
 
-fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
+inline fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
     var v = value;
     var len: usize = 0;
     while (v >= 0x80) {
@@ -206,6 +200,33 @@ pub fn packedFixed32View(payload: []const u8) Error![]align(1) const u32 {
 
 pub fn packedFixed32FieldView(bytes: []const u8, number: FieldNumber) Error!?[]align(1) const u32 {
     return try packedFixedWidthFieldView(u32, bytes, number);
+}
+
+pub const PackedUInt64Iterator = struct {
+    payload: []const u8,
+    index: usize = 0,
+
+    pub fn next(self: *PackedUInt64Iterator) Error!?u64 {
+        if (self.index >= self.payload.len) return null;
+        return try readVarintAt(self.payload, &self.index);
+    }
+};
+
+pub fn packedUInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedUInt64Iterator {
+    var reader = Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == number) {
+            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
+            if (tag.wire_type == .varint) {
+                const payload_start = reader.position();
+                _ = try reader.readUInt64();
+                return .{ .payload = bytes[payload_start..reader.position()] };
+            }
+            return error.InvalidWireType;
+        }
+        try reader.skipValue(tag);
+    }
+    return null;
 }
 
 pub fn appendPackedFixedWidth(comptime T: type, allocator: std.mem.Allocator, list: *std.ArrayList(T), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
@@ -805,18 +826,7 @@ pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayL
 
 pub inline fn appendPackedUInt64(allocator: std.mem.Allocator, list: *std.ArrayList(u64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len == 0) return;
-    if (list.items.len == 0 and list.capacity == 0) {
-        const count = try countPackedVarints(payload);
-        const out = try allocator.alloc(u64, count);
-        errdefer allocator.free(out);
-        var index: usize = 0;
-        for (out) |*value| value.* = try readVarintAt(payload, &index);
-        list.* = std.ArrayList(u64).fromOwnedSlice(out);
-        return;
-    }
-
-    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
-    try list.ensureUnusedCapacity(allocator, required);
+    try list.ensureUnusedCapacity(allocator, payload.len);
     var index: usize = 0;
     while (index < payload.len) list.appendAssumeCapacity(try readVarintAt(payload, &index));
 }
