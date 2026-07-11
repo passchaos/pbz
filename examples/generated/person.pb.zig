@@ -2251,7 +2251,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len = self.@"values".len * 4;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                try pbz.wire.writePackedFixed32Payload(w, self.@"values");
+                try pbz.wire.writePackedFixedWidthPayload(u32, w, self.@"values");
             }
             for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
         }
@@ -2261,7 +2261,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len = self.@"values".len * 4;
                 w.writeTagAssumeCapacity(1, .length_delimited);
                 w.writeVarintAssumeCapacity(packed_len);
-                pbz.wire.writePackedFixed32PayloadAssumeCapacity(w, self.@"values");
+                pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u32, w, self.@"values");
             }
             for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
         }
@@ -2295,7 +2295,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len = self.@"values".len * 4;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                try pbz.wire.writePackedFixed32Payload(w, self.@"values");
+                try pbz.wire.writePackedFixedWidthPayload(u32, w, self.@"values");
             }
             if (self.@"_unknown_fields".len != 0) {
                 const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
@@ -3168,7 +3168,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len = self.@"values".len * 8;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                for (self.@"values") |item| try w.writeRawLittle(u64, item);
+                try pbz.wire.writePackedFixedWidthPayload(u64, w, self.@"values");
             }
             for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
         }
@@ -3178,7 +3178,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len = self.@"values".len * 8;
                 w.writeTagAssumeCapacity(1, .length_delimited);
                 w.writeVarintAssumeCapacity(packed_len);
-                for (self.@"values") |item| w.writeRawLittleAssumeCapacity(u64, item);
+                pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u64, w, self.@"values");
             }
             for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
         }
@@ -3212,7 +3212,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len = self.@"values".len * 8;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                for (self.@"values") |item| try w.writeRawLittle(u64, item);
+                try pbz.wire.writePackedFixedWidthPayload(u64, w, self.@"values");
             }
             if (self.@"_unknown_fields".len != 0) {
                 const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);

@@ -89,20 +89,50 @@ pub fn tagSize(number: FieldNumber, wire_type: WireType) Error!usize {
     return encodedVarintSize(try (Tag{ .number = number, .wire_type = wire_type }).encode());
 }
 
-pub fn writePackedFixed32Payload(w: *Writer, values: []const u32) std.mem.Allocator.Error!void {
+pub fn writePackedFixedWidthPayload(comptime T: type, w: *Writer, values: []const T) std.mem.Allocator.Error!void {
+    if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
+        @compileError("writePackedFixedWidthPayload requires u32, i32, f32, u64, i64, or f64");
+    }
     if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
         try w.appendSlice(std.mem.sliceAsBytes(values));
     } else {
-        for (values) |value| try w.writeRawLittle(u32, value);
+        for (values) |value| {
+            if (T == f32) {
+                try w.writeRawLittle(u32, @bitCast(value));
+            } else if (T == f64) {
+                try w.writeRawLittle(u64, @bitCast(value));
+            } else {
+                try w.writeRawLittle(T, value);
+            }
+        }
     }
 }
 
-pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) void {
+pub fn writePackedFixedWidthPayloadAssumeCapacity(comptime T: type, w: *Writer, values: []const T) void {
+    if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
+        @compileError("writePackedFixedWidthPayloadAssumeCapacity requires u32, i32, f32, u64, i64, or f64");
+    }
     if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
         w.appendSliceAssumeCapacity(std.mem.sliceAsBytes(values));
     } else {
-        for (values) |value| w.writeRawLittleAssumeCapacity(u32, value);
+        for (values) |value| {
+            if (T == f32) {
+                w.writeRawLittleAssumeCapacity(u32, @bitCast(value));
+            } else if (T == f64) {
+                w.writeRawLittleAssumeCapacity(u64, @bitCast(value));
+            } else {
+                w.writeRawLittleAssumeCapacity(T, value);
+            }
+        }
     }
+}
+
+pub fn writePackedFixed32Payload(w: *Writer, values: []const u32) std.mem.Allocator.Error!void {
+    try writePackedFixedWidthPayload(u32, w, values);
+}
+
+pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) void {
+    writePackedFixedWidthPayloadAssumeCapacity(u32, w, values);
 }
 
 pub const BorrowedFieldSlices = struct {
@@ -715,6 +745,11 @@ test "wire exposes borrowed packed fixed32 view" {
     const slices = try packedFixed32FieldSlices(&header, 1, &aligned_values);
     try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x08 }, slices.header);
     try std.testing.expectEqual(@intFromPtr(std.mem.sliceAsBytes(&aligned_values).ptr), @intFromPtr(slices.payload.ptr));
+
+    var packed_writer = Writer.init(std.testing.allocator);
+    defer packed_writer.deinit();
+    try writePackedFixedWidthPayload(u64, &packed_writer, &.{ 1, 0x0102030405060708 });
+    try std.testing.expectEqualSlices(u8, &.{ 1, 0, 0, 0, 0, 0, 0, 0, 8, 7, 6, 5, 4, 3, 2, 1 }, packed_writer.slice());
 }
 
 test "wire skips nested groups and length-delimited values" {

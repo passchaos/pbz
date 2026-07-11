@@ -6100,8 +6100,10 @@ fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
     }
     try writeEncodePackedLength(field, writer, depth);
     try indent(writer, depth + 1);
-    if (scalar == .fixed32) {
-        try writer.writeAll("try pbz.wire.writePackedFixed32Payload(w, self.");
+    if (fixedWidthViewScalarType(scalar)) |payload_type| {
+        try writer.writeAll("try pbz.wire.writePackedFixedWidthPayload(");
+        try writer.writeAll(payload_type);
+        try writer.writeAll(", w, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     } else {
@@ -6150,8 +6152,10 @@ fn writeEncodePackedScalarFieldAssumeCapacity(field: *const schema.FieldDescript
     }
     try writeEncodePackedLengthAssumeCapacity(field, writer, depth);
     try indent(writer, depth + 1);
-    if (scalar == .fixed32) {
-        try writer.writeAll("pbz.wire.writePackedFixed32PayloadAssumeCapacity(w, self.");
+    if (fixedWidthViewScalarType(scalar)) |payload_type| {
+        try writer.writeAll("pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(");
+        try writer.writeAll(payload_type);
+        try writer.writeAll(", w, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     } else {
@@ -11982,15 +11986,22 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
 }
 
-test "codegen emits packed fixed32 borrowed field view helper" {
+test "codegen emits packed fixed-width borrowed field helpers" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
-        \\message M { repeated fixed32 values = 1; }
+        \\message M {
+        \\  repeated fixed32 values = 1;
+        \\  repeated fixed64 big_values = 2;
+        \\}
     );
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.writePackedFixedWidthPayload(u32, w, self.@\"values\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u32, w, self.@\"values\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.writePackedFixedWidthPayload(u64, w, self.@\"big_values\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u64, w, self.@\"big_values\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixedView\"(bytes: []const u8) !?[]align(1) const u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldView(u32, bytes, 1);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixedSlices\"(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices") != null);
@@ -11999,6 +12010,10 @@ test "codegen emits packed fixed32 borrowed field view helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"valuesPackedFixedView\"(bytes);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixed32Slices\"(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try @\"valuesPackedFixedSlices\"(header, values);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"big_valuesPackedFixedView\"(bytes: []const u8) !?[]align(1) const u64") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldView(u64, bytes, 2);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"big_valuesPackedFixedSlices\"(header: *[20]u8, values: []const u64) !pbz.wire.BorrowedFieldSlices") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldSlices(u64, header, 2, values);") != null);
 }
 
 test "codegen emits map duplicate-key last-wins helpers" {
