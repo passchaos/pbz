@@ -473,8 +473,8 @@ pub const demo = struct {
                     },
                 }
             }
-            self.scores = try scores_list.toOwnedSlice(allocator);
-            self.counts = try counts_list.toOwnedSlice(allocator);
+            self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
+            self.counts = if (counts_list.items.len != 0 and counts_list.items.len == counts_list.capacity) counts_list.toOwnedSliceAssert() else try counts_list.toOwnedSlice(allocator);
             self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
         }
@@ -1267,8 +1267,8 @@ pub const demo = struct {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.scores = try scores_list.toOwnedSlice(allocator);
-            self.counts = try counts_list.toOwnedSlice(allocator);
+            self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
+            self.counts = if (counts_list.items.len != 0 and counts_list.items.len == counts_list.capacity) counts_list.toOwnedSliceAssert() else try counts_list.toOwnedSlice(allocator);
             self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
         }
@@ -1572,7 +1572,7 @@ pub const demo = struct {
                     },
                 }
             }
-            self.values = try values_list.toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
         }
@@ -2234,7 +2234,7 @@ pub const demo = struct {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.values = try values_list.toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
         }
@@ -2534,7 +2534,7 @@ pub const demo = struct {
                     },
                 }
             }
-            self.values = try values_list.toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
         }
@@ -3196,7 +3196,7 @@ pub const demo = struct {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.values = try values_list.toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
         }

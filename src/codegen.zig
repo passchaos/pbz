@@ -4926,7 +4926,15 @@ fn writeRepeatedAssign(field: *const schema.FieldDescriptor, writer: *std.Io.Wri
     try indent(writer, depth);
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" = try ");
+    try writer.writeAll(" = if (");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".items.len != 0 and ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".items.len == ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".capacity) ");
+    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+    try writer.writeAll(".toOwnedSliceAssert() else try ");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
     try writer.writeAll(".toOwnedSlice(allocator);\n");
 }
@@ -11326,7 +11334,7 @@ test "codegen decodes repeated scalar enum and message payload fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); try @\"kinds_list\".append(allocator, value); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"children_list\".append(allocator, try r.readBytes())") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ids\" = try @\"ids_list\".toOwnedSlice(allocator)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"ids\" = if (@\"ids_list\".items.len != 0 and @\"ids_list\".items.len == @\"ids_list\".capacity) @\"ids_list\".toOwnedSliceAssert() else try @\"ids_list\".toOwnedSlice(allocator)") != null);
 }
 
 test "codegen decodes map fields into entry slices" {
@@ -11343,7 +11351,7 @@ test "codegen decodes map fields into entry slices" {
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &@\"counts_list\", entry)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = try @\"counts_list\".toOwnedSlice(allocator)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = if (@\"counts_list\".items.len != 0 and @\"counts_list\".items.len == @\"counts_list\".capacity) @\"counts_list\".toOwnedSliceAssert() else try @\"counts_list\".toOwnedSlice(allocator)") != null);
 }
 
 test "codegen emits presence flags for optional required and proto3 optional fields" {
