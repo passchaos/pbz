@@ -6701,6 +6701,7 @@ fn writeDecodePackedScalarPayload(field: *const schema.FieldDescriptor, scalar: 
 fn packedScalarAppendHelperName(scalar: schema.ScalarType) ?[]const u8 {
     return switch (scalar) {
         .int32 => "appendPackedInt32",
+        .int64 => "appendPackedInt64",
         .uint32 => "appendPackedUInt32",
         .uint64 => "appendPackedUInt64",
         .sint32 => "appendPackedSInt32",

@@ -72,6 +72,18 @@ message UInt64Packed {
   repeated uint64 values = 1;
 }
 
+message UInt32Packed {
+  repeated uint32 values = 1;
+}
+
+message Int64Packed {
+  repeated int64 values = 1;
+}
+
+message SInt32Packed {
+  repeated sint32 values = 1;
+}
+
 message SInt64Packed {
   repeated sint64 values = 1;
 }

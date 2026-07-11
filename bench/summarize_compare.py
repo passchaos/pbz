@@ -105,6 +105,7 @@ WORKLOADS: tuple[Workload, ...] = (
             "generated textbytes writeToAssumeCapacity reuse",
             "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse",
             "generated textbytes encodeIntoAssumeCapacity buffer reuse",
+            "generated textbytes trusted UTF-8 encodeIntoAssumeCapacity buffer reuse",
         ),
         {
             "rust prost": ("prost textbytes encode",),
@@ -221,7 +222,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed int32 decode",
-        ("generated packed decode",),
+        ("generated packed decode", "wire int32 packed iterator decode"),
         {
             "rust prost": ("prost packed decode",),
             "rust quick-protobuf": ("quick-protobuf packed decode",),
@@ -468,6 +469,93 @@ WORKLOADS: tuple[Workload, ...] = (
             "rust quick-protobuf": ("quick-protobuf uint64 packed decode",),
             "c++ protobuf": ("c++ protobuf uint64 packed decode", "c++ protobuf uint64 packed decode reuse"),
             "go protobuf": ("go protobuf uint64 packed decode",),
+        },
+    ),
+    Workload(
+        "packed uint32 encode",
+        (
+            "generated uint32 packed encode",
+            "generated uint32 packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost uint32 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf uint32 packed encode",
+                "quick-protobuf uint32 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf uint32 packed encode",
+                "c++ protobuf uint32 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf uint32 packed encode", "go protobuf uint32 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed uint32 decode",
+        ("generated uint32 packed decode", "generated uint32 packed decode reuse", "wire uint32 packed iterator decode"),
+        {
+            "rust prost": ("prost uint32 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf uint32 packed decode",),
+            "c++ protobuf": ("c++ protobuf uint32 packed decode", "c++ protobuf uint32 packed decode reuse"),
+            "go protobuf": ("go protobuf uint32 packed decode",),
+        },
+    ),
+    Workload(
+        "packed int64 encode",
+        (
+            "generated int64 packed encode",
+            "generated int64 packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost int64 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf int64 packed encode",
+                "quick-protobuf int64 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf int64 packed encode",
+                "c++ protobuf int64 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf int64 packed encode", "go protobuf int64 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed int64 decode",
+        ("generated int64 packed decode", "wire int64 packed iterator decode"),
+        {
+            "rust prost": ("prost int64 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf int64 packed decode",),
+            "c++ protobuf": ("c++ protobuf int64 packed decode", "c++ protobuf int64 packed decode reuse"),
+            "go protobuf": ("go protobuf int64 packed decode",),
+        },
+    ),
+    Workload(
+        "packed sint32 encode",
+        (
+            "generated sint32 packed encode",
+            "generated sint32 packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost sint32 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf sint32 packed encode",
+                "quick-protobuf sint32 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf sint32 packed encode",
+                "c++ protobuf sint32 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf sint32 packed encode", "go protobuf sint32 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed sint32 decode",
+        ("generated sint32 packed decode", "wire sint32 packed iterator decode"),
+        {
+            "rust prost": ("prost sint32 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf sint32 packed decode",),
+            "c++ protobuf": ("c++ protobuf sint32 packed decode", "c++ protobuf sint32 packed decode reuse"),
+            "go protobuf": ("go protobuf sint32 packed decode",),
         },
     ),
     Workload(

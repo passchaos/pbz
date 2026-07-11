@@ -33,7 +33,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - large `map<string, int32>` encode/decode
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` / `sfixed32` / `sfixed64` / `float` / `double` encode/decode
-- packed `uint64` / `sint64` varint, `bool`, and enum encode/decode
+- packed `uint32` / `uint64` / `int64` / `sint32` / `sint64` varint, `bool`, and enum encode/decode
 - zero-copy borrowed payload views for packed fixed-width fields when the
   caller only needs to inspect the wire buffer
 - JSON stringify/parse
@@ -48,6 +48,9 @@ The cross-language binary, JSON, and TextFormat baselines use the same `Person` 
 `FloatPacked { repeated float values = 1; }` and
 `DoublePacked { repeated double values = 1; }` and
 `UInt64Packed { repeated uint64 values = 1; }` and
+`UInt32Packed { repeated uint32 values = 1; }` and
+`Int64Packed { repeated int64 values = 1; }` and
+`SInt32Packed { repeated sint32 values = 1; }` and
 `SInt64Packed { repeated sint64 values = 1; }` and
 `BoolPacked { repeated bool values = 1; }` and
 `EnumPacked { repeated BenchKind values = 1; }` and

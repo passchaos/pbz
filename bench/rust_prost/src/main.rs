@@ -188,6 +188,24 @@ pub struct UInt64Packed {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct UInt32Packed {
+    #[prost(uint32, repeated, tag = "1")]
+    pub values: Vec<u32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Int64Packed {
+    #[prost(int64, repeated, tag = "1")]
+    pub values: Vec<i64>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct SInt32Packed {
+    #[prost(sint32, repeated, tag = "1")]
+    pub values: Vec<i32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct SInt64Packed {
     #[prost(sint64, repeated, tag = "1")]
     pub values: Vec<i64>,
@@ -275,6 +293,42 @@ fn make_uint64_packed() -> UInt64Packed {
     UInt64Packed {
         values: (0..1024)
             .map(|i| ((i as u64) << 21) + (i as u64) * 17 + 1)
+            .collect(),
+    }
+}
+
+fn make_uint32_packed() -> UInt32Packed {
+    UInt32Packed {
+        values: (0..1024).map(|i| ((i << 12) + i * 3 + 1) as u32).collect(),
+    }
+}
+
+fn make_int64_packed() -> Int64Packed {
+    Int64Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = ((i as i64) << 20) + (i as i64) * 7 + 1;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
+            .collect(),
+    }
+}
+
+fn make_sint32_packed() -> SInt32Packed {
+    SInt32Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = (i * 5 + 1) as i32;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
             .collect(),
     }
 }
@@ -447,6 +501,12 @@ fn main() {
     let double_packed_bytes = double_packed.encode_to_vec();
     let uint64_packed = make_uint64_packed();
     let uint64_packed_bytes = uint64_packed.encode_to_vec();
+    let uint32_packed = make_uint32_packed();
+    let uint32_packed_bytes = uint32_packed.encode_to_vec();
+    let int64_packed = make_int64_packed();
+    let int64_packed_bytes = int64_packed.encode_to_vec();
+    let sint32_packed = make_sint32_packed();
+    let sint32_packed_bytes = sint32_packed.encode_to_vec();
     let sint64_packed = make_sint64_packed();
     let sint64_packed_bytes = sint64_packed.encode_to_vec();
     let bool_packed = make_bool_packed();
@@ -478,6 +538,9 @@ fn main() {
     println!("float packed payload size: {}", float_packed_bytes.len());
     println!("double packed payload size: {}", double_packed_bytes.len());
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
+    println!("uint32 packed payload size: {}", uint32_packed_bytes.len());
+    println!("int64 packed payload size: {}", int64_packed_bytes.len());
+    println!("sint32 packed payload size: {}", sint32_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
     println!("enum packed payload size: {}", enum_packed_bytes.len());
@@ -732,6 +795,72 @@ fn main() {
         uint64_packed_bytes.len(),
         || {
             let decoded = UInt64Packed::decode(uint64_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost uint32 packed encode",
+        iters.binary,
+        uint32_packed_bytes.len(),
+        || {
+            let encoded = uint32_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost uint32 packed decode",
+        iters.binary,
+        uint32_packed_bytes.len(),
+        || {
+            let decoded = UInt32Packed::decode(uint32_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost int64 packed encode",
+        iters.binary,
+        int64_packed_bytes.len(),
+        || {
+            let encoded = int64_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost int64 packed decode",
+        iters.binary,
+        int64_packed_bytes.len(),
+        || {
+            let decoded = Int64Packed::decode(int64_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sint32 packed encode",
+        iters.binary,
+        sint32_packed_bytes.len(),
+        || {
+            let encoded = sint32_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sint32 packed decode",
+        iters.binary,
+        sint32_packed_bytes.len(),
+        || {
+            let decoded = SInt32Packed::decode(sint32_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

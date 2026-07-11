@@ -565,6 +565,21 @@ pub struct UInt64Packed {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct UInt32Packed {
+    pub values: Vec<u32>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Int64Packed {
+    pub values: Vec<i64>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SInt32Packed {
+    pub values: Vec<i32>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SInt64Packed {
     pub values: Vec<i64>,
 }
@@ -847,6 +862,135 @@ fn make_uint64_packed() -> UInt64Packed {
     UInt64Packed {
         values: (0..1024)
             .map(|i| ((i as u64) << 21) + (i as u64) * 17 + 1)
+            .collect(),
+    }
+}
+
+impl MessageWrite for UInt32Packed {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len: usize = self.values.iter().map(|v| sizeofs::sizeof_uint32(*v)).sum();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_uint32(*v), &|v| {
+                sizeofs::sizeof_uint32(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for UInt32Packed {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = UInt32Packed::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_uint32(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_uint32_packed() -> UInt32Packed {
+    UInt32Packed {
+        values: (0..1024).map(|i| ((i << 12) + i * 3 + 1) as u32).collect(),
+    }
+}
+
+impl MessageWrite for Int64Packed {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len: usize = self.values.iter().map(|v| sizeofs::sizeof_int64(*v)).sum();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_int64(*v), &|v| {
+                sizeofs::sizeof_int64(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for Int64Packed {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Int64Packed::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_int64(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_int64_packed() -> Int64Packed {
+    Int64Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = ((i as i64) << 20) + (i as i64) * 7 + 1;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
+            .collect(),
+    }
+}
+
+impl MessageWrite for SInt32Packed {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len: usize = self.values.iter().map(|v| sizeof_sint32(*v)).sum();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_sint32(*v), &|v| {
+                sizeof_sint32(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for SInt32Packed {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = SInt32Packed::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_sint32(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_sint32_packed() -> SInt32Packed {
+    SInt32Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = (i * 5 + 1) as i32;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
             .collect(),
     }
 }
@@ -1166,6 +1310,12 @@ fn main() {
     let double_packed_bytes = encode_to_vec(&double_packed);
     let uint64_packed = make_uint64_packed();
     let uint64_packed_bytes = encode_to_vec(&uint64_packed);
+    let uint32_packed = make_uint32_packed();
+    let uint32_packed_bytes = encode_to_vec(&uint32_packed);
+    let int64_packed = make_int64_packed();
+    let int64_packed_bytes = encode_to_vec(&int64_packed);
+    let sint32_packed = make_sint32_packed();
+    let sint32_packed_bytes = encode_to_vec(&sint32_packed);
     let sint64_packed = make_sint64_packed();
     let sint64_packed_bytes = encode_to_vec(&sint64_packed);
     let bool_packed = make_bool_packed();
@@ -1197,6 +1347,9 @@ fn main() {
     println!("float packed payload size: {}", float_packed_bytes.len());
     println!("double packed payload size: {}", double_packed_bytes.len());
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
+    println!("uint32 packed payload size: {}", uint32_packed_bytes.len());
+    println!("int64 packed payload size: {}", int64_packed_bytes.len());
+    println!("sint32 packed payload size: {}", sint32_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
     println!("enum packed payload size: {}", enum_packed_bytes.len());
@@ -1646,6 +1799,120 @@ fn main() {
             let mut reader = BytesReader::from_bytes(&uint64_packed_bytes);
             let decoded =
                 UInt64Packed::from_reader(&mut reader, &uint64_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf uint32 packed encode",
+        iters.binary,
+        uint32_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&uint32_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_uint32_packed = Vec::with_capacity(uint32_packed_bytes.len());
+    run_timed(
+        "quick-protobuf uint32 packed encode reuse",
+        iters.binary,
+        uint32_packed_bytes.len(),
+        || {
+            reused_uint32_packed.clear();
+            let mut writer = Writer::new(&mut reused_uint32_packed);
+            uint32_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_uint32_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf uint32 packed decode",
+        iters.binary,
+        uint32_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&uint32_packed_bytes);
+            let decoded =
+                UInt32Packed::from_reader(&mut reader, &uint32_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf int64 packed encode",
+        iters.binary,
+        int64_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&int64_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_int64_packed = Vec::with_capacity(int64_packed_bytes.len());
+    run_timed(
+        "quick-protobuf int64 packed encode reuse",
+        iters.binary,
+        int64_packed_bytes.len(),
+        || {
+            reused_int64_packed.clear();
+            let mut writer = Writer::new(&mut reused_int64_packed);
+            int64_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_int64_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf int64 packed decode",
+        iters.binary,
+        int64_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&int64_packed_bytes);
+            let decoded =
+                Int64Packed::from_reader(&mut reader, &int64_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf sint32 packed encode",
+        iters.binary,
+        sint32_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&sint32_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_sint32_packed = Vec::with_capacity(sint32_packed_bytes.len());
+    run_timed(
+        "quick-protobuf sint32 packed encode reuse",
+        iters.binary,
+        sint32_packed_bytes.len(),
+        || {
+            reused_sint32_packed.clear();
+            let mut writer = Writer::new(&mut reused_sint32_packed);
+            sint32_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_sint32_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf sint32 packed decode",
+        iters.binary,
+        sint32_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&sint32_packed_bytes);
+            let decoded =
+                SInt32Packed::from_reader(&mut reader, &sint32_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )
