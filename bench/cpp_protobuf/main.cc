@@ -89,6 +89,14 @@ int main() {
   });
   encode_reuse.Print();
 
+  std::string array_buffer;
+  array_buffer.resize(bytes.size());
+  auto encode_array_reuse = RunTimed("c++ protobuf binary SerializeToArray reuse", kIterations, bytes.size(), [&]() {
+    if (!person.SerializeToArray(array_buffer.data(), static_cast<int>(array_buffer.size()))) std::abort();
+    asm volatile("" : : "g"(array_buffer.data()) : "memory");
+  });
+  encode_array_reuse.Print();
+
   auto decode = RunTimed("c++ protobuf binary decode", kIterations, bytes.size(), [&]() {
     demo::Person decoded;
     if (!decoded.ParseFromString(bytes)) std::abort();
@@ -112,6 +120,14 @@ int main() {
     asm volatile("" : : "g"(reused_packed.data()) : "memory");
   });
   packed_encode_reuse.Print();
+
+  std::string packed_array_buffer;
+  packed_array_buffer.resize(packed_bytes.size());
+  auto packed_encode_array_reuse = RunTimed("c++ protobuf packed SerializeToArray reuse", kIterations, packed_bytes.size(), [&]() {
+    if (!packed.SerializeToArray(packed_array_buffer.data(), static_cast<int>(packed_array_buffer.size()))) std::abort();
+    asm volatile("" : : "g"(packed_array_buffer.data()) : "memory");
+  });
+  packed_encode_array_reuse.Print();
 
   auto packed_decode = RunTimed("c++ protobuf packed decode", kIterations, packed_bytes.size(), [&]() {
     demo::Packed decoded;
