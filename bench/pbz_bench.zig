@@ -92,6 +92,7 @@ fn makeDynamicPacked(allocator: std.mem.Allocator, desc: *const pbz.MessageDescr
 const GeneratedPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Packed };
 fn generatedPackedEncode(ctx: GeneratedPackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
     ctx.allocator.free(bytes);
 }
 
@@ -99,17 +100,20 @@ const GeneratedPackedWriteToCtx = struct { writer: *pbz.Writer, message: *const 
 fn generatedPackedWriteToReuse(ctx: GeneratedPackedWriteToCtx) !void {
     ctx.writer.clearRetainingCapacity();
     try ctx.message.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
 }
 
 const GeneratedPackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedPackedDecode(ctx: GeneratedPackedDecodeCtx) !void {
     var decoded = try person_pb.demo.Packed.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
 }
 
 const DynamicPackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
 fn dynamicPackedEncode(ctx: DynamicPackedEncodeCtx) !void {
     const bytes = try ctx.message.encoded(ctx.file);
+    std.mem.doNotOptimizeAway(bytes.ptr);
     ctx.message.allocator.free(bytes);
 }
 
@@ -118,11 +122,13 @@ fn dynamicPackedDecode(ctx: DynamicPackedDecodeCtx) !void {
     var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
     defer msg.deinit();
     try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
 }
 
 const GeneratedEncodeCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
 fn generatedEncode(ctx: GeneratedEncodeCtx) !void {
     const bytes = try ctx.person.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
     ctx.allocator.free(bytes);
 }
 
@@ -130,17 +136,20 @@ const GeneratedWriteToCtx = struct { writer: *pbz.Writer, person: *const person_
 fn generatedWriteToReuse(ctx: GeneratedWriteToCtx) !void {
     ctx.writer.clearRetainingCapacity();
     try ctx.person.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
 }
 
 const GeneratedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedDecode(ctx: GeneratedDecodeCtx) !void {
     var decoded = try person_pb.demo.Person.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
 }
 
 const DynamicEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
 fn dynamicEncode(ctx: DynamicEncodeCtx) !void {
     const bytes = try ctx.message.encoded(ctx.file);
+    std.mem.doNotOptimizeAway(bytes.ptr);
     ctx.message.allocator.free(bytes);
 }
 
@@ -149,53 +158,62 @@ fn dynamicDecode(ctx: DynamicDecodeCtx) !void {
     var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
     defer msg.deinit();
     try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
 }
 
 const GeneratedJsonStringifyCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
 fn generatedJsonStringify(ctx: GeneratedJsonStringifyCtx) !void {
     const json = try ctx.person.jsonStringifyAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(json.ptr);
     ctx.allocator.free(json);
 }
 
 const GeneratedJsonParseCtx = struct { allocator: std.mem.Allocator, json: []const u8 };
 fn generatedJsonParse(ctx: GeneratedJsonParseCtx) !void {
     var decoded = try person_pb.demo.Person.jsonParse(ctx.allocator, ctx.json);
+    std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
 }
 
 const DynamicJsonStringifyCtx = struct { allocator: std.mem.Allocator, file: *const pbz.FileDescriptor, message: *const pbz.DynamicMessage };
 fn dynamicJsonStringify(ctx: DynamicJsonStringifyCtx) !void {
     const json = try pbz.stringifyJsonAlloc(ctx.allocator, ctx.file, ctx.message, .{});
+    std.mem.doNotOptimizeAway(json.ptr);
     ctx.allocator.free(json);
 }
 
 const DynamicJsonParseCtx = struct { allocator: std.mem.Allocator, file: *const pbz.FileDescriptor, descriptor: *const pbz.MessageDescriptor, json: []const u8 };
 fn dynamicJsonParse(ctx: DynamicJsonParseCtx) !void {
     var msg = try pbz.parseJsonAlloc(ctx.allocator, ctx.file, ctx.descriptor, ctx.json, .{});
+    std.mem.doNotOptimizeAway(&msg);
     msg.deinit();
 }
 
 const GeneratedTextFormatCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
 fn generatedTextFormat(ctx: GeneratedTextFormatCtx) !void {
     const text = try ctx.person.formatTextAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(text.ptr);
     ctx.allocator.free(text);
 }
 
 const GeneratedTextParseCtx = struct { allocator: std.mem.Allocator, text: []const u8 };
 fn generatedTextParse(ctx: GeneratedTextParseCtx) !void {
     var decoded = try person_pb.demo.Person.parseText(ctx.allocator, ctx.text);
+    std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
 }
 
 const DynamicTextFormatCtx = struct { allocator: std.mem.Allocator, file: *const pbz.FileDescriptor, message: *const pbz.DynamicMessage };
 fn dynamicTextFormat(ctx: DynamicTextFormatCtx) !void {
     const text = try pbz.formatTextAlloc(ctx.allocator, ctx.file, ctx.message, .{});
+    std.mem.doNotOptimizeAway(text.ptr);
     ctx.allocator.free(text);
 }
 
 const DynamicTextParseCtx = struct { allocator: std.mem.Allocator, file: *const pbz.FileDescriptor, descriptor: *const pbz.MessageDescriptor, text: []const u8 };
 fn dynamicTextParse(ctx: DynamicTextParseCtx) !void {
     var msg = try pbz.parseTextAlloc(ctx.allocator, ctx.file, ctx.descriptor, ctx.text);
+    std.mem.doNotOptimizeAway(&msg);
     msg.deinit();
 }
 
