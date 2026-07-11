@@ -175,6 +175,12 @@ pub struct BoolPacked {
     pub values: Vec<bool>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct EnumPacked {
+    #[prost(enumeration = "BenchKind", repeated, tag = "1")]
+    pub values: Vec<i32>,
+}
+
 fn make_packed() -> Packed {
     Packed {
         values: (0..1024).map(|i| (i % 4096) as i32).collect(),
@@ -219,6 +225,12 @@ fn make_sint64_packed() -> SInt64Packed {
 fn make_bool_packed() -> BoolPacked {
     BoolPacked {
         values: (0..1024).map(|i| i % 3 != 0).collect(),
+    }
+}
+
+fn make_enum_packed() -> EnumPacked {
+    EnumPacked {
+        values: (0..1024).map(|i| (i % 3) as i32).collect(),
     }
 }
 
@@ -350,6 +362,8 @@ fn main() {
     let sint64_packed_bytes = sint64_packed.encode_to_vec();
     let bool_packed = make_bool_packed();
     let bool_packed_bytes = bool_packed.encode_to_vec();
+    let enum_packed = make_enum_packed();
+    let enum_packed_bytes = enum_packed.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -365,6 +379,7 @@ fn main() {
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
+    println!("enum packed payload size: {}", enum_packed_bytes.len());
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -571,6 +586,28 @@ fn main() {
         bool_packed_bytes.len(),
         || {
             let decoded = BoolPacked::decode(bool_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost enum packed encode",
+        iters.binary,
+        enum_packed_bytes.len(),
+        || {
+            let encoded = enum_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost enum packed decode",
+        iters.binary,
+        enum_packed_bytes.len(),
+        || {
+            let decoded = EnumPacked::decode(enum_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

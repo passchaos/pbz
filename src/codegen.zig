@@ -3363,20 +3363,34 @@ fn writeFastDirectPackedEnumEncode(field: *const schema.FieldDescriptor, writer:
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var packed_len: usize = 0;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("for (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));\n");
-    try indent(writer, depth + 1);
     try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
     try writer.writeAll("\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, packed_len);\n");
+    try writer.writeAll("const packed_len_reserved = pbz.wire.encodedVarintSize(self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len * 10);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const packed_len_index = index; index += packed_len_reserved;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payload_start = index;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |item| pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, item))));\n");
+    try writer.writeAll(") |item| { if (item >= 0 and item < 0x80) { buffer[index] = @intCast(item); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, item)))); }\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const packed_len = index - payload_start;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const packed_len_size = pbz.wire.encodedVarintSize(packed_len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (packed_len_size != packed_len_reserved) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -6113,7 +6127,7 @@ fn writeRawTagDecodeFieldCases(ctx: *const CodegenContext, field: *const schema.
         },
         .enumeration => {
             if (field.cardinality == .repeated) {
-                if (field.resolvedPacked(ctx.file)) try writeRawTagDecodePackedEnumCase(field, writer, depth);
+                if (field.resolvedPacked(ctx.file)) try writeRawTagDecodePackedEnumCase(ctx.file, field, writer, depth);
                 try writeRawTagDecodeUnpackedEnumCase(field, writer, depth);
             } else {
                 try writeRawTagDecodeSingularEnumCase(field, writer, depth);
@@ -6160,21 +6174,28 @@ fn writeRawTagDecodeUnpackedEnumCase(field: *const schema.FieldDescriptor, write
     try writer.writeAll("try r.readInt32()),\n");
 }
 
-fn writeRawTagDecodePackedEnumCase(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeRawTagDecodePackedEnumCase(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.print("{d} => {{\n", .{rawTagValue(field.number, .length_delimited)});
     try indent(writer, depth + 1);
     try writer.writeAll("const payload = try r.readBytes();\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try ");
-    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".ensureUnusedCapacity(allocator, payload.len);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("while (!packed_reader.eof()) ");
-    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".appendAssumeCapacity(try packed_reader.readInt32());\n");
+    if (field.kind == .enumeration and !enumIsClosed(file, field.kind.enumeration)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("try pbz.wire.appendPackedInt32(allocator, &");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(", payload);\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".ensureUnusedCapacity(allocator, payload.len);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("while (!packed_reader.eof()) ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".appendAssumeCapacity(try packed_reader.readInt32());\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("},\n");
 }
@@ -6609,22 +6630,25 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("const payload = try r.readBytes();\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();");
-    if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
+    if (field.kind == .enumeration and !enumIsClosed(file, field.kind.enumeration)) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("try pbz.wire.appendPackedInt32(allocator, &");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(", payload);\n");
+    } else {
+        try indent(writer, depth + 2);
+        try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();");
         try writer.writeAll(" if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
         try writer.writeAll(")) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(");
         try writer.print("{d}", .{field.number});
         try writer.writeAll(", .varint); try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }");
-    } else {
-        try writeEnumClosedCheck(file, field, "value", writer);
+        try writer.writeAll(" try ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".append(allocator, value); }\n");
     }
-    try writer.writeAll(" try ");
-    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".append(allocator, value); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("} else {\n");
     try indent(writer, depth + 2);

@@ -554,6 +554,11 @@ pub struct BoolPacked {
     pub values: Vec<bool>,
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct EnumPacked {
+    pub values: Vec<i32>,
+}
+
 impl MessageWrite for FixedPacked {
     fn get_size(&self) -> usize {
         if self.values.is_empty() {
@@ -744,6 +749,43 @@ fn make_bool_packed() -> BoolPacked {
     }
 }
 
+impl MessageWrite for EnumPacked {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len: usize = self.values.iter().map(|v| sizeofs::sizeof_enum(*v)).sum();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_enum(*v), &|v| {
+                sizeofs::sizeof_enum(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for EnumPacked {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = EnumPacked::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_int32(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_enum_packed() -> EnumPacked {
+    EnumPacked {
+        values: (0..1024).map(|i| i % 3).collect(),
+    }
+}
+
 fn make_person() -> Person {
     let mut counts = HashMap::new();
     counts.insert("red".to_owned(), 1);
@@ -880,6 +922,8 @@ fn main() {
     let sint64_packed_bytes = encode_to_vec(&sint64_packed);
     let bool_packed = make_bool_packed();
     let bool_packed_bytes = encode_to_vec(&bool_packed);
+    let enum_packed = make_enum_packed();
+    let enum_packed_bytes = encode_to_vec(&enum_packed);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -895,6 +939,7 @@ fn main() {
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
+    println!("enum packed payload size: {}", enum_packed_bytes.len());
 
     run_timed(
         "quick-protobuf binary encode",
@@ -1263,6 +1308,43 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&bool_packed_bytes);
             let decoded = BoolPacked::from_reader(&mut reader, &bool_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf enum packed encode",
+        iters.binary,
+        enum_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&enum_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_enum_packed = Vec::with_capacity(enum_packed_bytes.len());
+    run_timed(
+        "quick-protobuf enum packed encode reuse",
+        iters.binary,
+        enum_packed_bytes.len(),
+        || {
+            reused_enum_packed.clear();
+            let mut writer = Writer::new(&mut reused_enum_packed);
+            enum_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_enum_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf enum packed decode",
+        iters.binary,
+        enum_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&enum_packed_bytes);
+            let decoded = EnumPacked::from_reader(&mut reader, &enum_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

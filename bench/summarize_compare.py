@@ -406,6 +406,35 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf bool packed decode",),
         },
     ),
+    Workload(
+        "packed enum encode",
+        (
+            "generated enum packed encode",
+            "generated enum packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost enum packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf enum packed encode",
+                "quick-protobuf enum packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf enum packed encode",
+                "c++ protobuf enum packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf enum packed encode", "go protobuf enum packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed enum decode",
+        ("generated enum packed decode", "generated enum packed decode reuse"),
+        {
+            "rust prost": ("prost enum packed decode",),
+            "rust quick-protobuf": ("quick-protobuf enum packed decode",),
+            "c++ protobuf": ("c++ protobuf enum packed decode", "c++ protobuf enum packed decode reuse"),
+            "go protobuf": ("go protobuf enum packed decode",),
+        },
+    ),
 )
 
 

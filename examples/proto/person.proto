@@ -63,6 +63,10 @@ message BoolPacked {
   repeated bool values = 1;
 }
 
+message EnumPacked {
+  repeated BenchKind values = 1;
+}
+
 message Complex {
   message Audit {
     string actor = 1;

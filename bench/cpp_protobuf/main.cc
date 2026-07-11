@@ -100,6 +100,13 @@ demo::BoolPacked MakeBoolPacked() {
   return packed;
 }
 
+demo::EnumPacked MakeEnumPacked() {
+  demo::EnumPacked packed;
+  for (int i = 0; i < 1024; ++i)
+    packed.add_values(static_cast<demo::BenchKind>(i % 3));
+  return packed;
+}
+
 demo::Person MakePerson() {
   demo::Person person;
   person.set_id(7);
@@ -209,6 +216,9 @@ int main() {
   const demo::BoolPacked bool_packed = MakeBoolPacked();
   std::string bool_packed_bytes;
   bool_packed.SerializeToString(&bool_packed_bytes);
+  const demo::EnumPacked enum_packed = MakeEnumPacked();
+  std::string enum_packed_bytes;
+  enum_packed.SerializeToString(&enum_packed_bytes);
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
@@ -229,6 +239,7 @@ int main() {
   std::cout << "sint64 packed payload size: " << sint64_packed_bytes.size()
             << "\n";
   std::cout << "bool packed payload size: " << bool_packed_bytes.size() << "\n";
+  std::cout << "enum packed payload size: " << enum_packed_bytes.size() << "\n";
 
   auto encode =
       RunTimed("c++ protobuf binary encode", kIterations, bytes.size(), [&]() {
@@ -917,6 +928,50 @@ int main() {
         asm volatile("" : : "g"(&reused_bool_packed_decoded) : "memory");
       });
   bool_packed_decode_reuse.Print();
+
+  auto enum_packed_encode =
+      RunTimed("c++ protobuf enum packed encode", kIterations,
+               enum_packed_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(enum_packed_bytes.size());
+                 enum_packed.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  enum_packed_encode.Print();
+
+  std::string enum_packed_array_buffer;
+  enum_packed_array_buffer.resize(enum_packed_bytes.size());
+  auto enum_packed_encode_array_reuse = RunTimed(
+      "c++ protobuf enum packed SerializeToArray reuse", kIterations,
+      enum_packed_bytes.size(), [&]() {
+        if (!enum_packed.SerializeToArray(
+                enum_packed_array_buffer.data(),
+                static_cast<int>(enum_packed_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(enum_packed_array_buffer.data()) : "memory");
+      });
+  enum_packed_encode_array_reuse.Print();
+
+  auto enum_packed_decode =
+      RunTimed("c++ protobuf enum packed decode", kIterations,
+               enum_packed_bytes.size(), [&]() {
+                 demo::EnumPacked decoded;
+                 if (!decoded.ParseFromString(enum_packed_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  enum_packed_decode.Print();
+
+  demo::EnumPacked reused_enum_packed_decoded;
+  auto enum_packed_decode_reuse = RunTimed(
+      "c++ protobuf enum packed decode reuse", kIterations,
+      enum_packed_bytes.size(), [&]() {
+        reused_enum_packed_decoded.Clear();
+        if (!reused_enum_packed_decoded.ParseFromString(enum_packed_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_enum_packed_decoded) : "memory");
+      });
+  enum_packed_decode_reuse.Print();
 
   return 0;
 }

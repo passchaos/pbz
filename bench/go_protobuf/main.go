@@ -106,6 +106,14 @@ func makeBoolPacked() *personpb.BoolPacked {
 	return &personpb.BoolPacked{Values: values}
 }
 
+func makeEnumPacked() *personpb.EnumPacked {
+	values := make([]personpb.BenchKind, 1024)
+	for i := range values {
+		values[i] = personpb.BenchKind(i % 3)
+	}
+	return &personpb.EnumPacked{Values: values}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -213,6 +221,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	enumPacked := makeEnumPacked()
+	enumPackedBytes, err := proto.Marshal(enumPacked)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
@@ -229,6 +242,7 @@ func main() {
 	fmt.Printf("uint64 packed payload size: %d\n", len(uint64PackedBytes))
 	fmt.Printf("sint64 packed payload size: %d\n", len(sint64PackedBytes))
 	fmt.Printf("bool packed payload size: %d\n", len(boolPackedBytes))
+	fmt.Printf("enum packed payload size: %d\n", len(enumPackedBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -548,6 +562,30 @@ func main() {
 	runTimed("go protobuf bool packed decode", iterations, len(boolPackedBytes), func() {
 		var decoded personpb.BoolPacked
 		if err := unmarshalOptions.Unmarshal(boolPackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf enum packed encode", iterations, len(enumPackedBytes), func() {
+		out, err := proto.Marshal(enumPacked)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	enumPackedBuf := make([]byte, 0, len(enumPackedBytes))
+	runTimed("go protobuf enum packed encode reuse", iterations, len(enumPackedBytes), func() {
+		var err error
+		enumPackedBuf, err = marshalOptions.MarshalAppend(enumPackedBuf[:0], enumPacked)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf enum packed decode", iterations, len(enumPackedBytes), func() {
+		var decoded personpb.EnumPacked
+		if err := unmarshalOptions.Unmarshal(enumPackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
