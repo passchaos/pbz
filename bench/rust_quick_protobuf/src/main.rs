@@ -3,6 +3,8 @@ use quick_protobuf::{BytesReader, MessageRead, MessageWrite, Result, Writer, Wri
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+const BENCHMARK_SAMPLES: usize = 3;
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Person {
     pub id: i32,
@@ -90,6 +92,7 @@ struct Iterations {
 struct BenchResult {
     name: &'static str,
     iterations: usize,
+    samples: usize,
     elapsed: Duration,
     bytes_per_iter: usize,
 }
@@ -103,8 +106,14 @@ impl BenchResult {
             / elapsed_ns
             / (1024.0 * 1024.0);
         println!(
-            "{}: {} iters, {} bytes/iter, {:.2} ns/op, {:.2} ops/s, {:.2} MiB/s",
-            self.name, self.iterations, self.bytes_per_iter, ns_per_iter, ops_per_sec, mib_per_sec
+            "{}: best of {} x {} iters, {} bytes/iter, {:.2} ns/op, {:.2} ops/s, {:.2} MiB/s",
+            self.name,
+            self.samples,
+            self.iterations,
+            self.bytes_per_iter,
+            ns_per_iter,
+            ops_per_sec,
+            mib_per_sec
         );
     }
 }
@@ -187,14 +196,22 @@ where
         f();
     }
 
-    let start = Instant::now();
-    for _ in 0..iterations {
-        f();
+    let mut best: Option<Duration> = None;
+    for _ in 0..BENCHMARK_SAMPLES {
+        let start = Instant::now();
+        for _ in 0..iterations {
+            f();
+        }
+        let elapsed = start.elapsed();
+        if best.map_or(true, |current| elapsed < current) {
+            best = Some(elapsed);
+        }
     }
     BenchResult {
         name,
         iterations,
-        elapsed: start.elapsed(),
+        samples: BENCHMARK_SAMPLES,
+        elapsed: best.expect("at least one benchmark sample"),
         bytes_per_iter,
     }
 }

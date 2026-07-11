@@ -1,16 +1,18 @@
 #include <chrono>
 #include <cstdint>
-#include <iostream>
 #include <algorithm>
+#include <iostream>
 #include <string>
 
 #include "person.pb.h"
 
 using Clock = std::chrono::steady_clock;
+constexpr int kBenchmarkSamples = 3;
 
 struct BenchResult {
   const char* name;
   int iterations;
+  int samples;
   std::chrono::nanoseconds elapsed;
   std::size_t bytes_per_iter;
 
@@ -19,7 +21,7 @@ struct BenchResult {
     const double ns_per_iter = elapsed_ns / static_cast<double>(iterations);
     const double ops_per_sec = static_cast<double>(iterations) * 1000000000.0 / elapsed_ns;
     const double mib_per_sec = static_cast<double>(bytes_per_iter * iterations) * 1000000000.0 / elapsed_ns / (1024.0 * 1024.0);
-    std::cout << name << ": " << iterations << " iters, " << bytes_per_iter
+    std::cout << name << ": best of " << samples << " x " << iterations << " iters, " << bytes_per_iter
               << " bytes/iter, " << ns_per_iter << " ns/op, " << ops_per_sec
               << " ops/s, " << mib_per_sec << " MiB/s\n";
   }
@@ -30,10 +32,14 @@ BenchResult RunTimed(const char* name, int iterations, std::size_t bytes_per_ite
   const int warmup_iterations = std::max(1, std::min(iterations / 10, 1000));
   for (int i = 0; i < warmup_iterations; ++i) f();
 
-  const auto start = Clock::now();
-  for (int i = 0; i < iterations; ++i) f();
-  const auto end = Clock::now();
-  return BenchResult{name, iterations, std::chrono::duration_cast<std::chrono::nanoseconds>(end - start), bytes_per_iter};
+  auto best = std::chrono::nanoseconds::max();
+  for (int sample = 0; sample < kBenchmarkSamples; ++sample) {
+    const auto start = Clock::now();
+    for (int i = 0; i < iterations; ++i) f();
+    const auto end = Clock::now();
+    best = std::min(best, std::chrono::duration_cast<std::chrono::nanoseconds>(end - start));
+  }
+  return BenchResult{name, iterations, kBenchmarkSamples, best, bytes_per_iter};
 }
 
 demo::Packed MakePacked() {

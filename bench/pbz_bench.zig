@@ -10,9 +10,12 @@ const Iterations = struct {
     packed_binary: usize = 5_000,
 };
 
+const BenchmarkSamples: usize = 3;
+
 const BenchResult = struct {
     name: []const u8,
     iterations: usize,
+    samples: usize,
     elapsed_ns: i96,
     bytes_per_iter: usize = 0,
 
@@ -21,9 +24,9 @@ const BenchResult = struct {
         const ops_per_sec = @as(f64, @floatFromInt(self.iterations)) * @as(f64, @floatFromInt(std.time.ns_per_s)) / @as(f64, @floatFromInt(self.elapsed_ns));
         if (self.bytes_per_iter != 0) {
             const mb_per_sec = @as(f64, @floatFromInt(self.bytes_per_iter * self.iterations)) * @as(f64, @floatFromInt(std.time.ns_per_s)) / @as(f64, @floatFromInt(self.elapsed_ns)) / (1024.0 * 1024.0);
-            std.debug.print("{s}: {d} iters, {d} bytes/iter, {d:.2} ns/op, {d:.2} ops/s, {d:.2} MiB/s\n", .{ self.name, self.iterations, self.bytes_per_iter, ns_per_iter, ops_per_sec, mb_per_sec });
+            std.debug.print("{s}: best of {d} x {d} iters, {d} bytes/iter, {d:.2} ns/op, {d:.2} ops/s, {d:.2} MiB/s\n", .{ self.name, self.samples, self.iterations, self.bytes_per_iter, ns_per_iter, ops_per_sec, mb_per_sec });
         } else {
-            std.debug.print("{s}: {d} iters, {d:.2} ns/op, {d:.2} ops/s\n", .{ self.name, self.iterations, ns_per_iter, ops_per_sec });
+            std.debug.print("{s}: best of {d} x {d} iters, {d:.2} ns/op, {d:.2} ops/s\n", .{ self.name, self.samples, self.iterations, ns_per_iter, ops_per_sec });
         }
     }
 };
@@ -37,11 +40,16 @@ fn runTimed(io: std.Io, name: []const u8, iterations: usize, bytes_per_iter: usi
     var warmup_i: usize = 0;
     while (warmup_i < warmup_iterations) : (warmup_i += 1) try func(context);
 
-    const start = nowNs(io);
-    var i: usize = 0;
-    while (i < iterations) : (i += 1) try func(context);
-    const elapsed = nowNs(io) - start;
-    return .{ .name = name, .iterations = iterations, .elapsed_ns = elapsed, .bytes_per_iter = bytes_per_iter };
+    var best: i96 = std.math.maxInt(i96);
+    var sample: usize = 0;
+    while (sample < BenchmarkSamples) : (sample += 1) {
+        const start = nowNs(io);
+        var i: usize = 0;
+        while (i < iterations) : (i += 1) try func(context);
+        const elapsed = nowNs(io) - start;
+        if (elapsed < best) best = elapsed;
+    }
+    return .{ .name = name, .iterations = iterations, .samples = BenchmarkSamples, .elapsed_ns = best, .bytes_per_iter = bytes_per_iter };
 }
 
 fn makeGeneratedPerson(allocator: std.mem.Allocator) !person_pb.demo.Person {

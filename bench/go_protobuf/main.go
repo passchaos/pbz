@@ -8,9 +8,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const benchmarkSamples = 3
+
 type benchResult struct {
 	name         string
 	iterations   int
+	samples      int
 	elapsed      time.Duration
 	bytesPerIter int
 }
@@ -19,7 +22,7 @@ func (r benchResult) print() {
 	nsPerIter := float64(r.elapsed.Nanoseconds()) / float64(r.iterations)
 	opsPerSec := float64(r.iterations) * 1_000_000_000.0 / float64(r.elapsed.Nanoseconds())
 	mibPerSec := float64(r.bytesPerIter*r.iterations) * 1_000_000_000.0 / float64(r.elapsed.Nanoseconds()) / (1024.0 * 1024.0)
-	fmt.Printf("%s: %d iters, %d bytes/iter, %.2f ns/op, %.2f ops/s, %.2f MiB/s\n", r.name, r.iterations, r.bytesPerIter, nsPerIter, opsPerSec, mibPerSec)
+	fmt.Printf("%s: best of %d x %d iters, %d bytes/iter, %.2f ns/op, %.2f ops/s, %.2f MiB/s\n", r.name, r.samples, r.iterations, r.bytesPerIter, nsPerIter, opsPerSec, mibPerSec)
 }
 
 func runTimed(name string, iterations int, bytesPerIter int, f func()) benchResult {
@@ -34,11 +37,18 @@ func runTimed(name string, iterations int, bytesPerIter int, f func()) benchResu
 		f()
 	}
 
-	start := time.Now()
-	for i := 0; i < iterations; i++ {
-		f()
+	var best time.Duration
+	for sample := 0; sample < benchmarkSamples; sample++ {
+		start := time.Now()
+		for i := 0; i < iterations; i++ {
+			f()
+		}
+		elapsed := time.Since(start)
+		if sample == 0 || elapsed < best {
+			best = elapsed
+		}
 	}
-	return benchResult{name: name, iterations: iterations, elapsed: time.Since(start), bytesPerIter: bytesPerIter}
+	return benchResult{name: name, iterations: iterations, samples: benchmarkSamples, elapsed: best, bytesPerIter: bytesPerIter}
 }
 
 func makePacked() *personpb.Packed {
