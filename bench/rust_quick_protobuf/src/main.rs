@@ -559,6 +559,11 @@ pub struct EnumPacked {
     pub values: Vec<i32>,
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct LargeMap {
+    pub counts: HashMap<String, i32>,
+}
+
 impl MessageWrite for FixedPacked {
     fn get_size(&self) -> usize {
         if self.values.is_empty() {
@@ -786,6 +791,62 @@ fn make_enum_packed() -> EnumPacked {
     }
 }
 
+impl MessageWrite for LargeMap {
+    fn get_size(&self) -> usize {
+        self.counts
+            .iter()
+            .map(|(key, value)| {
+                let entry_len =
+                    1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_int32(*value);
+                1 + sizeofs::sizeof_len(entry_len)
+            })
+            .sum()
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        for (key, value) in &self.counts {
+            let entry_len = 1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_int32(*value);
+            w.write_with_tag(10, |w| {
+                w.write_map(
+                    entry_len,
+                    10,
+                    |w| w.write_string(key),
+                    16,
+                    |w| w.write_int32(*value),
+                )
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for LargeMap {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = LargeMap::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => {
+                    let (key, value) = r.read_map(
+                        bytes,
+                        |r, bytes| Ok(r.read_string(bytes)?.to_owned()),
+                        |r, bytes| r.read_int32(bytes),
+                    )?;
+                    msg.counts.insert(key, value);
+                }
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_large_map() -> LargeMap {
+    LargeMap {
+        counts: (0..1024)
+            .map(|i| (format!("key-{i:04}"), ((i % 4096) + 1) as i32))
+            .collect(),
+    }
+}
+
 fn make_person() -> Person {
     let mut counts = HashMap::new();
     counts.insert("red".to_owned(), 1);
@@ -902,6 +963,7 @@ where
 
 fn main() {
     let iters = Iterations { binary: 20_000 };
+    let large_map_iterations = 1_000;
     let person = make_person();
     let bytes = encode_to_vec(&person);
     let scalarmix = make_scalarmix();
@@ -924,6 +986,8 @@ fn main() {
     let bool_packed_bytes = encode_to_vec(&bool_packed);
     let enum_packed = make_enum_packed();
     let enum_packed_bytes = encode_to_vec(&enum_packed);
+    let large_map = make_large_map();
+    let large_map_bytes = encode_to_vec(&large_map);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -940,6 +1004,7 @@ fn main() {
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
     println!("enum packed payload size: {}", enum_packed_bytes.len());
+    println!("large map payload size: {}", large_map_bytes.len());
 
     run_timed(
         "quick-protobuf binary encode",
@@ -1345,6 +1410,43 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&enum_packed_bytes);
             let decoded = EnumPacked::from_reader(&mut reader, &enum_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf large map encode",
+        large_map_iterations,
+        large_map_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&large_map);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_large_map = Vec::with_capacity(large_map_bytes.len());
+    run_timed(
+        "quick-protobuf large map encode reuse",
+        large_map_iterations,
+        large_map_bytes.len(),
+        || {
+            reused_large_map.clear();
+            let mut writer = Writer::new(&mut reused_large_map);
+            large_map.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_large_map);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf large map decode",
+        large_map_iterations,
+        large_map_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&large_map_bytes);
+            let decoded = LargeMap::from_reader(&mut reader, &large_map_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

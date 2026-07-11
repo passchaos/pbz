@@ -114,6 +114,14 @@ func makeEnumPacked() *personpb.EnumPacked {
 	return &personpb.EnumPacked{Values: values}
 }
 
+func makeLargeMap() *personpb.LargeMap {
+	counts := make(map[string]int32, 1024)
+	for i := 0; i < 1024; i++ {
+		counts[fmt.Sprintf("key-%04d", i)] = int32((i % 4096) + 1)
+	}
+	return &personpb.LargeMap{Counts: counts}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -226,6 +234,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	largeMap := makeLargeMap()
+	largeMapBytes, err := proto.Marshal(largeMap)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
@@ -243,6 +256,7 @@ func main() {
 	fmt.Printf("sint64 packed payload size: %d\n", len(sint64PackedBytes))
 	fmt.Printf("bool packed payload size: %d\n", len(boolPackedBytes))
 	fmt.Printf("enum packed payload size: %d\n", len(enumPackedBytes))
+	fmt.Printf("large map payload size: %d\n", len(largeMapBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -586,6 +600,30 @@ func main() {
 	runTimed("go protobuf enum packed decode", iterations, len(enumPackedBytes), func() {
 		var decoded personpb.EnumPacked
 		if err := unmarshalOptions.Unmarshal(enumPackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf large map encode", iterations, len(largeMapBytes), func() {
+		out, err := proto.Marshal(largeMap)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	largeMapBuf := make([]byte, 0, len(largeMapBytes))
+	runTimed("go protobuf large map encode reuse", iterations, len(largeMapBytes), func() {
+		var err error
+		largeMapBuf, err = marshalOptions.MarshalAppend(largeMapBuf[:0], largeMap)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf large map decode", iterations, len(largeMapBytes), func() {
+		var decoded personpb.LargeMap
+		if err := unmarshalOptions.Unmarshal(largeMapBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -105,6 +106,16 @@ demo::EnumPacked MakeEnumPacked() {
   for (int i = 0; i < 1024; ++i)
     packed.add_values(static_cast<demo::BenchKind>(i % 3));
   return packed;
+}
+
+demo::LargeMap MakeLargeMap() {
+  demo::LargeMap msg;
+  for (int i = 0; i < 1024; ++i) {
+    char key[16];
+    std::snprintf(key, sizeof(key), "key-%04d", i);
+    (*msg.mutable_counts())[key] = (i % 4096) + 1;
+  }
+  return msg;
 }
 
 demo::Person MakePerson() {
@@ -219,6 +230,9 @@ int main() {
   const demo::EnumPacked enum_packed = MakeEnumPacked();
   std::string enum_packed_bytes;
   enum_packed.SerializeToString(&enum_packed_bytes);
+  const demo::LargeMap large_map = MakeLargeMap();
+  std::string large_map_bytes;
+  large_map.SerializeToString(&large_map_bytes);
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
@@ -240,6 +254,7 @@ int main() {
             << "\n";
   std::cout << "bool packed payload size: " << bool_packed_bytes.size() << "\n";
   std::cout << "enum packed payload size: " << enum_packed_bytes.size() << "\n";
+  std::cout << "large map payload size: " << large_map_bytes.size() << "\n";
 
   auto encode =
       RunTimed("c++ protobuf binary encode", kIterations, bytes.size(), [&]() {
@@ -972,6 +987,50 @@ int main() {
         asm volatile("" : : "g"(&reused_enum_packed_decoded) : "memory");
       });
   enum_packed_decode_reuse.Print();
+
+  auto large_map_encode =
+      RunTimed("c++ protobuf large map encode", kIterations,
+               large_map_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(large_map_bytes.size());
+                 large_map.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  large_map_encode.Print();
+
+  std::string large_map_array_buffer;
+  large_map_array_buffer.resize(large_map_bytes.size());
+  auto large_map_encode_array_reuse = RunTimed(
+      "c++ protobuf large map SerializeToArray reuse", kIterations,
+      large_map_bytes.size(), [&]() {
+        if (!large_map.SerializeToArray(
+                large_map_array_buffer.data(),
+                static_cast<int>(large_map_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(large_map_array_buffer.data()) : "memory");
+      });
+  large_map_encode_array_reuse.Print();
+
+  auto large_map_decode =
+      RunTimed("c++ protobuf large map decode", kIterations,
+               large_map_bytes.size(), [&]() {
+                 demo::LargeMap decoded;
+                 if (!decoded.ParseFromString(large_map_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  large_map_decode.Print();
+
+  demo::LargeMap reused_large_map_decoded;
+  auto large_map_decode_reuse = RunTimed(
+      "c++ protobuf large map decode reuse", kIterations,
+      large_map_bytes.size(), [&]() {
+        reused_large_map_decoded.Clear();
+        if (!reused_large_map_decoded.ParseFromString(large_map_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_large_map_decoded) : "memory");
+      });
+  large_map_decode_reuse.Print();
 
   return 0;
 }

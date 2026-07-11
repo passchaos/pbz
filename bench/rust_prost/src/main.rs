@@ -181,6 +181,12 @@ pub struct EnumPacked {
     pub values: Vec<i32>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct LargeMap {
+    #[prost(map = "string, int32", tag = "1")]
+    pub counts: HashMap<String, i32>,
+}
+
 fn make_packed() -> Packed {
     Packed {
         values: (0..1024).map(|i| (i % 4096) as i32).collect(),
@@ -231,6 +237,14 @@ fn make_bool_packed() -> BoolPacked {
 fn make_enum_packed() -> EnumPacked {
     EnumPacked {
         values: (0..1024).map(|i| (i % 3) as i32).collect(),
+    }
+}
+
+fn make_large_map() -> LargeMap {
+    LargeMap {
+        counts: (0..1024)
+            .map(|i| (format!("key-{i:04}"), ((i % 4096) + 1) as i32))
+            .collect(),
     }
 }
 
@@ -342,6 +356,7 @@ where
 
 fn main() {
     let iters = Iterations { binary: 20_000 };
+    let large_map_iterations = 1_000;
     let person = make_person();
     let bytes = person.encode_to_vec();
     let scalarmix = make_scalarmix();
@@ -364,6 +379,8 @@ fn main() {
     let bool_packed_bytes = bool_packed.encode_to_vec();
     let enum_packed = make_enum_packed();
     let enum_packed_bytes = enum_packed.encode_to_vec();
+    let large_map = make_large_map();
+    let large_map_bytes = large_map.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -380,6 +397,7 @@ fn main() {
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
     println!("enum packed payload size: {}", enum_packed_bytes.len());
+    println!("large map payload size: {}", large_map_bytes.len());
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -608,6 +626,28 @@ fn main() {
         enum_packed_bytes.len(),
         || {
             let decoded = EnumPacked::decode(enum_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost large map encode",
+        large_map_iterations,
+        large_map_bytes.len(),
+        || {
+            let encoded = large_map.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost large map decode",
+        large_map_iterations,
+        large_map_bytes.len(),
+        || {
+            let decoded = LargeMap::decode(large_map_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

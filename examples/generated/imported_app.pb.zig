@@ -535,9 +535,6 @@ pub const demo = struct {
                     var history_list: std.ArrayList(pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile) = .empty;
                     defer history_list.deinit(allocator);
                     errdefer for (history_list.items) |item| { var mutable = item; mutable.deinit(allocator); };
-                    var by_name_list: std.ArrayList(by_nameEntry) = .empty;
-                    defer by_name_list.deinit(allocator);
-                    errdefer for (by_name_list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                     errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
                     var r = pbz.Reader.init(bytes);
@@ -558,7 +555,7 @@ pub const demo = struct {
                                         else => try entry_reader.skipValue(entry_tag),
                                     }
                                 }
-                                if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else try @This().appendOrReplaceMapEntry_by_name(allocator, &by_name_list, entry);
+                                if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                             },
                             4 => { const payload = try r.readBytes(); self.selected = .{ .chosen = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decode(allocator, payload) }; },
                             5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
@@ -566,9 +563,6 @@ pub const demo = struct {
                         }
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
-                    self.by_name = .empty;
-                    try self.by_name.ensureUnusedCapacity(allocator, by_name_list.items.len);
-                    for (by_name_list.items) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                     self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                     return self;
                 }

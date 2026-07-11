@@ -30,6 +30,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
+- large `map<string, int32>` encode/decode
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` encode/decode
 - packed `uint64` / `sint64` varint, `bool`, and enum encode/decode
@@ -45,7 +46,8 @@ The cross-language binary, JSON, and TextFormat baselines use the same `Person` 
 `UInt64Packed { repeated uint64 values = 1; }` and
 `SInt64Packed { repeated sint64 values = 1; }` and
 `BoolPacked { repeated bool values = 1; }` and
-`EnumPacked { repeated BenchKind values = 1; }` payloads. Treat results as
+`EnumPacked { repeated BenchKind values = 1; }` and
+`LargeMap { map<string, int32> counts = 1; }` payloads. Treat results as
 local machine baselines; use the same schema, payloads, optimization mode, and
 hardware when comparing.
 

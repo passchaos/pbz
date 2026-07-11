@@ -118,7 +118,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "textbytes decode",
-        ("generated textbytes decode",),
+        ("generated textbytes decode", "generated textbytes decode reuse"),
         {
             "rust prost": ("prost textbytes decode",),
             "rust quick-protobuf": ("quick-protobuf textbytes decode",),
@@ -433,6 +433,30 @@ WORKLOADS: tuple[Workload, ...] = (
             "rust quick-protobuf": ("quick-protobuf enum packed decode",),
             "c++ protobuf": ("c++ protobuf enum packed decode", "c++ protobuf enum packed decode reuse"),
             "go protobuf": ("go protobuf enum packed decode",),
+        },
+    ),
+    Workload(
+        "large map encode",
+        (
+            "generated large map encode",
+            "generated large map writeToAssumeCapacity reuse",
+            "generated large map encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost large map encode",),
+            "rust quick-protobuf": ("quick-protobuf large map encode", "quick-protobuf large map encode reuse"),
+            "c++ protobuf": ("c++ protobuf large map encode", "c++ protobuf large map SerializeToArray reuse"),
+            "go protobuf": ("go protobuf large map encode", "go protobuf large map encode reuse"),
+        },
+    ),
+    Workload(
+        "large map decode",
+        ("generated large map decode",),
+        {
+            "rust prost": ("prost large map decode",),
+            "rust quick-protobuf": ("quick-protobuf large map decode",),
+            "c++ protobuf": ("c++ protobuf large map decode", "c++ protobuf large map decode reuse"),
+            "go protobuf": ("go protobuf large map decode",),
         },
     ),
 )

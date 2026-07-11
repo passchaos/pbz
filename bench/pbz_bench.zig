@@ -8,6 +8,7 @@ const Iterations = struct {
     json: usize = 2_000,
     text: usize = 1_000,
     packed_binary: usize = 5_000,
+    large_map: usize = 1_000,
 };
 
 const BenchmarkSamples: usize = 3;
@@ -204,6 +205,19 @@ fn makeGeneratedEnumPacked(allocator: std.mem.Allocator) !person_pb.demo.EnumPac
     return packed_msg;
 }
 
+fn makeGeneratedLargeMap(allocator: std.mem.Allocator) !person_pb.demo.LargeMap {
+    var msg = person_pb.demo.LargeMap.init();
+    errdefer msg.deinit(allocator);
+    try msg.counts.ensureTotalCapacity(allocator, 1024);
+    var key_buf: [32]u8 = undefined;
+    var i: usize = 0;
+    while (i < 1024) : (i += 1) {
+        const key = try std.fmt.bufPrint(&key_buf, "key-{d:0>4}", .{i});
+        try msg.counts.put(allocator, try allocator.dupe(u8, key), @intCast((i % 4096) + 1));
+    }
+    return msg;
+}
+
 fn makeDynamicFixedPacked(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
     var msg = pbz.DynamicMessage.init(allocator, desc);
     errdefer msg.deinit();
@@ -252,6 +266,20 @@ fn makeDynamicEnumPacked(allocator: std.mem.Allocator, desc: *const pbz.MessageD
     errdefer msg.deinit();
     var i: usize = 0;
     while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .enumeration = @intCast(i % 3) });
+    return msg;
+}
+
+fn makeDynamicLargeMap(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
+    var msg = pbz.DynamicMessage.init(allocator, desc);
+    errdefer msg.deinit();
+    var key_buf: [32]u8 = undefined;
+    var i: usize = 0;
+    while (i < 1024) : (i += 1) {
+        const key = try std.fmt.bufPrint(&key_buf, "key-{d:0>4}", .{i});
+        const entry = try allocator.create(pbz.dynamic.MapEntry);
+        entry.* = .{ .key = .{ .string = try allocator.dupe(u8, key) }, .value = .{ .int32 = @intCast((i % 4096) + 1) } };
+        try msg.add(desc.findField("counts").?, .{ .map_entry = entry });
+    }
     return msg;
 }
 
@@ -323,6 +351,12 @@ fn generatedTextBytesDecode(ctx: GeneratedTextBytesDecodeCtx) !void {
     var decoded = try person_pb.demo.TextBytes.decode(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
+}
+
+const GeneratedTextBytesDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.TextBytes };
+fn generatedTextBytesDecodeReuse(ctx: GeneratedTextBytesDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
 }
 
 const GeneratedComplexEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Complex };
@@ -574,6 +608,39 @@ fn generatedEnumPackedDecodeReuse(ctx: GeneratedEnumPackedDecodeReuseCtx) !void 
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+const GeneratedLargeMapEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.LargeMap };
+fn generatedLargeMapEncode(ctx: GeneratedLargeMapEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedLargeMapWriteToCtx = struct { writer: *pbz.Writer, message: *const person_pb.demo.LargeMap };
+fn generatedLargeMapWriteToReuse(ctx: GeneratedLargeMapWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.message.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+const GeneratedLargeMapEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.LargeMap };
+fn generatedLargeMapEncodeIntoReuse(ctx: GeneratedLargeMapEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedLargeMapDeterministicEncodeIntoCtx = struct { allocator: std.mem.Allocator, buffer: []u8, message: *const person_pb.demo.LargeMap };
+fn generatedLargeMapDeterministicEncodeIntoReuse(ctx: GeneratedLargeMapDeterministicEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeDeterministicIntoAssumeCapacity(ctx.allocator, ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedLargeMapDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedLargeMapDecode(ctx: GeneratedLargeMapDecodeCtx) !void {
+    var decoded = try person_pb.demo.LargeMap.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
 const UInt64PackedIteratorCtx = struct { bytes: []const u8 };
 fn uint64PackedIteratorDecode(ctx: UInt64PackedIteratorCtx) !void {
     var it = (try pbz.wire.packedUInt64FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
@@ -707,6 +774,21 @@ fn dynamicEnumPackedEncode(ctx: DynamicEnumPackedEncodeCtx) !void {
 
 const DynamicEnumPackedDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
 fn dynamicEnumPackedDecode(ctx: DynamicEnumPackedDecodeCtx) !void {
+    var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
+    defer msg.deinit();
+    try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
+}
+
+const DynamicLargeMapEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
+fn dynamicLargeMapEncode(ctx: DynamicLargeMapEncodeCtx) !void {
+    const bytes = try ctx.message.encoded(ctx.file);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.message.allocator.free(bytes);
+}
+
+const DynamicLargeMapDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicLargeMapDecode(ctx: DynamicLargeMapDecodeCtx) !void {
     var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
     defer msg.deinit();
     try msg.decode(ctx.file, ctx.bytes);
@@ -879,6 +961,9 @@ pub fn main() !void {
         \\message EnumPacked {
         \\  repeated BenchKind values = 1;
         \\}
+        \\message LargeMap {
+        \\  map<string, int32> counts = 1;
+        \\}
     );
     defer file.deinit();
     const desc = file.findMessage("Person").?;
@@ -889,6 +974,7 @@ pub fn main() !void {
     const sint64_packed_desc = file.findMessage("SInt64Packed").?;
     const bool_packed_desc = file.findMessage("BoolPacked").?;
     const enum_packed_desc = file.findMessage("EnumPacked").?;
+    const large_map_desc = file.findMessage("LargeMap").?;
 
     var generated_person = try makeGeneratedPerson(allocator);
     defer generated_person.deinit(allocator);
@@ -932,6 +1018,10 @@ pub fn main() !void {
     defer generated_enum_packed.deinit(allocator);
     var dynamic_enum_packed = try makeDynamicEnumPacked(allocator, enum_packed_desc);
     defer dynamic_enum_packed.deinit();
+    var generated_large_map = try makeGeneratedLargeMap(allocator);
+    defer generated_large_map.deinit(allocator);
+    var dynamic_large_map = try makeDynamicLargeMap(allocator, large_map_desc);
+    defer dynamic_large_map.deinit();
 
     const generated_bytes = try generated_person.encode(allocator);
     defer allocator.free(generated_bytes);
@@ -958,6 +1048,8 @@ pub fn main() !void {
     try reusable_text_bytes_writer.bytes.ensureTotalCapacity(allocator, generated_text_bytes_bytes.len);
     const generated_text_bytes_buffer = try allocator.alloc(u8, generated_text_bytes_bytes.len);
     defer allocator.free(generated_text_bytes_buffer);
+    var generated_text_bytes_decode_reuse = person_pb.demo.TextBytes.init();
+    defer generated_text_bytes_decode_reuse.deinit(allocator);
     const generated_complex_bytes = try generated_complex.encode(allocator);
     defer allocator.free(generated_complex_bytes);
     var reusable_complex_writer = pbz.Writer.init(allocator);
@@ -1018,6 +1110,15 @@ pub fn main() !void {
     defer generated_enum_packed_decode_reuse.deinit(allocator);
     const dynamic_enum_packed_bytes = try dynamic_enum_packed.encoded(&file);
     defer allocator.free(dynamic_enum_packed_bytes);
+    const generated_large_map_bytes = try generated_large_map.encode(allocator);
+    defer allocator.free(generated_large_map_bytes);
+    var reusable_large_map_writer = pbz.Writer.init(allocator);
+    defer reusable_large_map_writer.deinit();
+    try reusable_large_map_writer.bytes.ensureTotalCapacity(allocator, generated_large_map_bytes.len);
+    const generated_large_map_buffer = try allocator.alloc(u8, generated_large_map_bytes.len);
+    defer allocator.free(generated_large_map_buffer);
+    const dynamic_large_map_bytes = try dynamic_large_map.encoded(&file);
+    defer allocator.free(dynamic_large_map_bytes);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
     defer allocator.free(generated_json);
     const dynamic_json = try pbz.stringifyJsonAlloc(allocator, &file, &dynamic_person, .{});
@@ -1028,7 +1129,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} scalar_mix={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d} scalar_mix={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len, generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -1047,6 +1148,7 @@ pub fn main() !void {
         try runTimed(io, "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8WriteToReuse),
         try runTimed(io, "generated textbytes encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeIntoCtx{ .buffer = generated_text_bytes_buffer, .message = &generated_text_bytes }, generatedTextBytesEncodeIntoReuse),
         try runTimed(io, "generated textbytes decode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes }, generatedTextBytesDecode),
+        try runTimed(io, "generated textbytes decode reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes, .message = &generated_text_bytes_decode_reuse }, generatedTextBytesDecodeReuse),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),
@@ -1105,6 +1207,13 @@ pub fn main() !void {
         try runTimed(io, "generated enum packed decode reuse", iters.packed_binary, generated_enum_packed_bytes.len, GeneratedEnumPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_enum_packed_bytes, .message = &generated_enum_packed_decode_reuse }, generatedEnumPackedDecodeReuse),
         try runTimed(io, "dynamic enum packed encode", iters.packed_binary, dynamic_enum_packed_bytes.len, DynamicEnumPackedEncodeCtx{ .message = &dynamic_enum_packed, .file = &file }, dynamicEnumPackedEncode),
         try runTimed(io, "dynamic enum packed decode", iters.packed_binary, dynamic_enum_packed_bytes.len, DynamicEnumPackedDecodeCtx{ .allocator = allocator, .descriptor = enum_packed_desc, .file = &file, .bytes = dynamic_enum_packed_bytes }, dynamicEnumPackedDecode),
+        try runTimed(io, "generated large map encode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapEncodeCtx{ .allocator = allocator, .message = &generated_large_map }, generatedLargeMapEncode),
+        try runTimed(io, "generated large map writeToAssumeCapacity reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapWriteToCtx{ .writer = &reusable_large_map_writer, .message = &generated_large_map }, generatedLargeMapWriteToReuse),
+        try runTimed(io, "generated large map encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapEncodeIntoCtx{ .buffer = generated_large_map_buffer, .message = &generated_large_map }, generatedLargeMapEncodeIntoReuse),
+        try runTimed(io, "generated large map deterministic encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_large_map_buffer, .message = &generated_large_map }, generatedLargeMapDeterministicEncodeIntoReuse),
+        try runTimed(io, "generated large map decode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeCtx{ .allocator = allocator, .bytes = generated_large_map_bytes }, generatedLargeMapDecode),
+        try runTimed(io, "dynamic large map encode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapEncodeCtx{ .message = &dynamic_large_map, .file = &file }, dynamicLargeMapEncode),
+        try runTimed(io, "dynamic large map decode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapDecodeCtx{ .allocator = allocator, .descriptor = large_map_desc, .file = &file, .bytes = dynamic_large_map_bytes }, dynamicLargeMapDecode),
         try runTimed(io, "generated JSON stringify", iters.json, generated_json.len, GeneratedJsonStringifyCtx{ .allocator = allocator, .person = &generated_person }, generatedJsonStringify),
         try runTimed(io, "generated JSON parse", iters.json, generated_json.len, GeneratedJsonParseCtx{ .allocator = allocator, .json = generated_json }, generatedJsonParse),
         try runTimed(io, "dynamic JSON stringify", iters.json, dynamic_json.len, DynamicJsonStringifyCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicJsonStringify),

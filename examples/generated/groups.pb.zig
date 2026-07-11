@@ -1465,14 +1465,40 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                     errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
                     var r = pbz.Reader.init(bytes);
-                    while (try r.nextTag()) |tag| {
-                        switch (tag.number) {
-                            3 => { self.label = try r.readBytes(); self.has_label = true; },
-                            else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                    while (!r.eof()) {
+                        const raw_tag_start = r.position();
+                        const first_tag_byte = try r.readByte();
+                        const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                        switch (raw_tag) {
+                            26 => { self.label = try r.readBytes(); self.has_label = true; },
+                            else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
                         }
                     }
                     self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                     return self;
+                }
+
+                pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                    for (self._unknown_fields) |raw| allocator.free(raw);
+                    if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+                    self._unknown_fields = &.{};
+                    if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                    self.label = "";
+                    self.has_label = false;
+                    errdefer self.deinit(allocator);
+                    var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
+                    errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+                    var r = pbz.Reader.init(bytes);
+                    while (!r.eof()) {
+                        const raw_tag_start = r.position();
+                        const first_tag_byte = try r.readByte();
+                        const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                        switch (raw_tag) {
+                            26 => { self.label = try r.readBytes(); self.has_label = true; },
+                            else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                        }
+                    }
+                    self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                 }
 
                 pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {

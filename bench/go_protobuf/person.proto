@@ -68,6 +68,10 @@ message EnumPacked {
   repeated BenchKind values = 1;
 }
 
+message LargeMap {
+  map<string, int32> counts = 1;
+}
+
 message Complex {
   message Audit {
     string actor = 1;

@@ -471,7 +471,7 @@ zig build bench -Doptimize=ReleaseFast
 
 The benchmark source is [`bench/pbz_bench.zig`](bench/pbz_bench.zig). It currently
 measures pbz generated and dynamic binary encode/decode, packed repeated integer,
-fixed-width, varint64, bool, and enum encode/decode, plus JSON and TextFormat
+fixed-width, varint64, bool, enum, and large-map encode/decode, plus JSON and TextFormat
 round-trips. For cross-language binary, JSON, and TextFormat comparisons, run
 [`bench/run_compare.sh`](bench/run_compare.sh), which includes Rust `prost`, Rust
 `quick-protobuf`, C++ protobuf generated code / util JSON / TextFormat, and Go
