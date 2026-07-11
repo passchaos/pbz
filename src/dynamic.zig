@@ -1050,9 +1050,10 @@ fn encodePackedInt32(field: *const schema.FieldDescriptor, values: []const Value
         if (value != .int32) return error.TypeMismatch;
         packed_len += wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value.int32))));
     }
-    try writer.writeTag(field.number, .length_delimited);
-    try writer.writeVarint(packed_len);
-    for (values) |value| try writer.writeVarint(@as(u64, @bitCast(@as(i64, value.int32))));
+    try writer.bytes.ensureUnusedCapacity(writer.allocator, (try wire.tagSize(field.number, .length_delimited)) + wire.encodedVarintSize(packed_len) + packed_len);
+    writer.writeTagAssumeCapacity(field.number, .length_delimited);
+    writer.writeVarintAssumeCapacity(packed_len);
+    for (values) |value| writer.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, value.int32))));
 }
 
 fn encodeScalar(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, number: wire.FieldNumber, scalar: schema.ScalarType, value: Value, writer: *wire.Writer) EncodeError!void {
