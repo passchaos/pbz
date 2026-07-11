@@ -60,6 +60,10 @@ message SInt64Packed {
   repeated sint64 values = 1;
 }
 
+message BoolPacked {
+  repeated bool values = 1;
+}
+
 message Complex {
   message Audit {
     string actor = 1;

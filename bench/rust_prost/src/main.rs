@@ -169,6 +169,12 @@ pub struct SInt64Packed {
     pub values: Vec<i64>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct BoolPacked {
+    #[prost(bool, repeated, tag = "1")]
+    pub values: Vec<bool>,
+}
+
 fn make_packed() -> Packed {
     Packed {
         values: (0..1024).map(|i| (i % 4096) as i32).collect(),
@@ -207,6 +213,12 @@ fn make_sint64_packed() -> SInt64Packed {
                 }
             })
             .collect(),
+    }
+}
+
+fn make_bool_packed() -> BoolPacked {
+    BoolPacked {
+        values: (0..1024).map(|i| i % 3 != 0).collect(),
     }
 }
 
@@ -336,6 +348,8 @@ fn main() {
     let uint64_packed_bytes = uint64_packed.encode_to_vec();
     let sint64_packed = make_sint64_packed();
     let sint64_packed_bytes = sint64_packed.encode_to_vec();
+    let bool_packed = make_bool_packed();
+    let bool_packed_bytes = bool_packed.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -350,6 +364,7 @@ fn main() {
     );
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
+    println!("bool packed payload size: {}", bool_packed_bytes.len());
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -534,6 +549,28 @@ fn main() {
         sint64_packed_bytes.len(),
         || {
             let decoded = SInt64Packed::decode(sint64_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost bool packed encode",
+        iters.binary,
+        bool_packed_bytes.len(),
+        || {
+            let encoded = bool_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost bool packed decode",
+        iters.binary,
+        bool_packed_bytes.len(),
+        || {
+            let decoded = BoolPacked::decode(bool_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

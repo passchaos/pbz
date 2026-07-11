@@ -377,6 +377,35 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf sint64 packed decode",),
         },
     ),
+    Workload(
+        "packed bool encode",
+        (
+            "generated bool packed encode",
+            "generated bool packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost bool packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf bool packed encode",
+                "quick-protobuf bool packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf bool packed encode",
+                "c++ protobuf bool packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf bool packed encode", "go protobuf bool packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed bool decode",
+        ("generated bool packed decode",),
+        {
+            "rust prost": ("prost bool packed decode",),
+            "rust quick-protobuf": ("quick-protobuf bool packed decode",),
+            "c++ protobuf": ("c++ protobuf bool packed decode", "c++ protobuf bool packed decode reuse"),
+            "go protobuf": ("go protobuf bool packed decode",),
+        },
+    ),
 )
 
 

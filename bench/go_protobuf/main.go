@@ -98,6 +98,14 @@ func makeSInt64Packed() *personpb.SInt64Packed {
 	return &personpb.SInt64Packed{Values: values}
 }
 
+func makeBoolPacked() *personpb.BoolPacked {
+	values := make([]bool, 1024)
+	for i := range values {
+		values[i] = i%3 != 0
+	}
+	return &personpb.BoolPacked{Values: values}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -200,6 +208,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	boolPacked := makeBoolPacked()
+	boolPackedBytes, err := proto.Marshal(boolPacked)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
@@ -215,6 +228,7 @@ func main() {
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
 	fmt.Printf("uint64 packed payload size: %d\n", len(uint64PackedBytes))
 	fmt.Printf("sint64 packed payload size: %d\n", len(sint64PackedBytes))
+	fmt.Printf("bool packed payload size: %d\n", len(boolPackedBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -510,6 +524,30 @@ func main() {
 	runTimed("go protobuf sint64 packed decode", iterations, len(sint64PackedBytes), func() {
 		var decoded personpb.SInt64Packed
 		if err := unmarshalOptions.Unmarshal(sint64PackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf bool packed encode", iterations, len(boolPackedBytes), func() {
+		out, err := proto.Marshal(boolPacked)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	boolPackedBuf := make([]byte, 0, len(boolPackedBytes))
+	runTimed("go protobuf bool packed encode reuse", iterations, len(boolPackedBytes), func() {
+		var err error
+		boolPackedBuf, err = marshalOptions.MarshalAppend(boolPackedBuf[:0], boolPacked)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf bool packed decode", iterations, len(boolPackedBytes), func() {
+		var decoded personpb.BoolPacked
+		if err := unmarshalOptions.Unmarshal(boolPackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

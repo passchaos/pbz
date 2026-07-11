@@ -94,6 +94,12 @@ demo::SInt64Packed MakeSInt64Packed() {
   return packed;
 }
 
+demo::BoolPacked MakeBoolPacked() {
+  demo::BoolPacked packed;
+  for (int i = 0; i < 1024; ++i) packed.add_values((i % 3) != 0);
+  return packed;
+}
+
 demo::Person MakePerson() {
   demo::Person person;
   person.set_id(7);
@@ -200,6 +206,9 @@ int main() {
   const demo::SInt64Packed sint64_packed = MakeSInt64Packed();
   std::string sint64_packed_bytes;
   sint64_packed.SerializeToString(&sint64_packed_bytes);
+  const demo::BoolPacked bool_packed = MakeBoolPacked();
+  std::string bool_packed_bytes;
+  bool_packed.SerializeToString(&bool_packed_bytes);
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
@@ -219,6 +228,7 @@ int main() {
             << "\n";
   std::cout << "sint64 packed payload size: " << sint64_packed_bytes.size()
             << "\n";
+  std::cout << "bool packed payload size: " << bool_packed_bytes.size() << "\n";
 
   auto encode =
       RunTimed("c++ protobuf binary encode", kIterations, bytes.size(), [&]() {
@@ -863,6 +873,50 @@ int main() {
         asm volatile("" : : "g"(&reused_sint64_packed_decoded) : "memory");
       });
   sint64_packed_decode_reuse.Print();
+
+  auto bool_packed_encode =
+      RunTimed("c++ protobuf bool packed encode", kIterations,
+               bool_packed_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(bool_packed_bytes.size());
+                 bool_packed.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  bool_packed_encode.Print();
+
+  std::string bool_packed_array_buffer;
+  bool_packed_array_buffer.resize(bool_packed_bytes.size());
+  auto bool_packed_encode_array_reuse = RunTimed(
+      "c++ protobuf bool packed SerializeToArray reuse", kIterations,
+      bool_packed_bytes.size(), [&]() {
+        if (!bool_packed.SerializeToArray(
+                bool_packed_array_buffer.data(),
+                static_cast<int>(bool_packed_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(bool_packed_array_buffer.data()) : "memory");
+      });
+  bool_packed_encode_array_reuse.Print();
+
+  auto bool_packed_decode =
+      RunTimed("c++ protobuf bool packed decode", kIterations,
+               bool_packed_bytes.size(), [&]() {
+                 demo::BoolPacked decoded;
+                 if (!decoded.ParseFromString(bool_packed_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  bool_packed_decode.Print();
+
+  demo::BoolPacked reused_bool_packed_decoded;
+  auto bool_packed_decode_reuse = RunTimed(
+      "c++ protobuf bool packed decode reuse", kIterations,
+      bool_packed_bytes.size(), [&]() {
+        reused_bool_packed_decoded.Clear();
+        if (!reused_bool_packed_decoded.ParseFromString(bool_packed_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_bool_packed_decoded) : "memory");
+      });
+  bool_packed_decode_reuse.Print();
 
   return 0;
 }

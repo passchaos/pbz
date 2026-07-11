@@ -136,14 +136,22 @@ pub const BorrowedFieldSlices = struct {
 
 inline fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
     var v = value;
-    var len: usize = 0;
+    buffer[0] = @truncate(v);
+    if (v < 0x80) return 1;
+    buffer[0] |= 0x80;
+
+    v >>= 7;
+    buffer[1] = @truncate(v);
+    if (v < 0x80) return 2;
+
+    var len: usize = 2;
     while (v >= 0x80) {
-        buffer[len] = @as(u8, @intCast(v & 0x7f)) | 0x80;
-        len += 1;
+        buffer[len - 1] |= 0x80;
         v >>= 7;
+        buffer[len] = @truncate(v);
+        len += 1;
     }
-    buffer[len] = @intCast(v);
-    return len + 1;
+    return len;
 }
 
 pub inline fn writeVarintToSlice(buffer: []u8, index: *usize, value: u64) void {

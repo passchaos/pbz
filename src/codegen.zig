@@ -3307,6 +3307,11 @@ fn writeFastDirectPackedScalarEncode(field: *const schema.FieldDescriptor, scala
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;\n");
             }
+        } else if (scalar == .bool) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("const payload = std.mem.sliceAsBytes(self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;\n");
         } else {
             try indent(writer, depth + 1);
             try writer.writeAll("for (self.");
@@ -7064,6 +7069,10 @@ fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
         try writer.writeAll(", w, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
+    } else if (scalar == .bool) {
+        try writer.writeAll("try w.appendSlice(std.mem.sliceAsBytes(self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll("));\n");
     } else {
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
@@ -7116,6 +7125,10 @@ fn writeEncodePackedScalarFieldAssumeCapacity(field: *const schema.FieldDescript
         try writer.writeAll(", w, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
+    } else if (scalar == .bool) {
+        try writer.writeAll("w.appendSliceAssumeCapacity(std.mem.sliceAsBytes(self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll("));\n");
     } else {
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);

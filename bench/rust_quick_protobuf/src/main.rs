@@ -549,6 +549,11 @@ pub struct SInt64Packed {
     pub values: Vec<i64>,
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct BoolPacked {
+    pub values: Vec<bool>,
+}
+
 impl MessageWrite for FixedPacked {
     fn get_size(&self) -> usize {
         if self.values.is_empty() {
@@ -704,6 +709,41 @@ fn make_sint64_packed() -> SInt64Packed {
     }
 }
 
+impl MessageWrite for BoolPacked {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len = self.values.len();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_bool(*v), &|_| 1)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for BoolPacked {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = BoolPacked::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_bool(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_bool_packed() -> BoolPacked {
+    BoolPacked {
+        values: (0..1024).map(|i| i % 3 != 0).collect(),
+    }
+}
+
 fn make_person() -> Person {
     let mut counts = HashMap::new();
     counts.insert("red".to_owned(), 1);
@@ -838,6 +878,8 @@ fn main() {
     let uint64_packed_bytes = encode_to_vec(&uint64_packed);
     let sint64_packed = make_sint64_packed();
     let sint64_packed_bytes = encode_to_vec(&sint64_packed);
+    let bool_packed = make_bool_packed();
+    let bool_packed_bytes = encode_to_vec(&bool_packed);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -852,6 +894,7 @@ fn main() {
     );
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
+    println!("bool packed payload size: {}", bool_packed_bytes.len());
 
     run_timed(
         "quick-protobuf binary encode",
@@ -1183,6 +1226,43 @@ fn main() {
             let mut reader = BytesReader::from_bytes(&sint64_packed_bytes);
             let decoded =
                 SInt64Packed::from_reader(&mut reader, &sint64_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf bool packed encode",
+        iters.binary,
+        bool_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&bool_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_bool_packed = Vec::with_capacity(bool_packed_bytes.len());
+    run_timed(
+        "quick-protobuf bool packed encode reuse",
+        iters.binary,
+        bool_packed_bytes.len(),
+        || {
+            reused_bool_packed.clear();
+            let mut writer = Writer::new(&mut reused_bool_packed);
+            bool_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_bool_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf bool packed decode",
+        iters.binary,
+        bool_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&bool_packed_bytes);
+            let decoded = BoolPacked::from_reader(&mut reader, &bool_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )
