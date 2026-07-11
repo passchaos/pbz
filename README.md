@@ -52,7 +52,7 @@ validated feature set.
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation, including proto `allow_alias` enum values emitted as Zig enum namespace aliases and generated enum `fromInt` / `fromName` / `toInt` / `protoName` / JSON parse/stringify and TextFormat parse/format helpers
   - generated `proto_package`, `proto_syntax`, package-mirrored Zig namespaces, and import module aliases with import kind/path metadata plus registry-aware generation for same-package unqualified, direct, and transitive-public imported message type references and imported enum field resolution while preserving local/nested enum scope priority
   - generated proto2 extension metadata structs with extension number, registry-normalized extendee names for imported targets, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
-  - generated service metadata with registry-aware method input/output type references; RPC transport, Handler/Client stubs, and dispatch adapters are intentionally out of scope
+  - generated service metadata with registry-aware method input/output type references plus lightweight typed Handler/Client adapters for unary and streaming method shapes while leaving concrete RPC transport ownership to callers
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
   - generated `missingRequiredFieldName` / `missingRequiredFieldPath` helpers report direct and nested proto2 required-field failures
   - generated packed encode/decode for packable repeated scalar/enum fields, including proto2 `[packed = true]`
