@@ -22,3 +22,16 @@ if command -v protoc >/dev/null 2>&1 && command -v c++ >/dev/null 2>&1; then
 else
   echo "protoc or c++ not found; skipping C++ protobuf benchmark" >&2
 fi
+
+
+echo
+if command -v go >/dev/null 2>&1 && command -v protoc >/dev/null 2>&1; then
+  echo "== Go protobuf baseline =="
+  if bench/go_protobuf/build_and_run.sh; then
+    :
+  else
+    echo "Go protobuf benchmark failed; ensure protoc-gen-go is installed" >&2
+  fi
+else
+  echo "go or protoc not found; skipping Go protobuf benchmark" >&2
+fi

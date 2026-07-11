@@ -31,3 +31,7 @@ Cross-language baselines:
   the same schema. It requires `protoc`, a C++ compiler, protobuf headers, and
   libprotobuf. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into
   an ignored `bench/cpp_protobuf/generated/` directory before compiling.
+- `bench/go_protobuf`: Go `google.golang.org/protobuf` generated-code binary
+  encode/decode for the same schema. It requires Go, `protoc`, and
+  `protoc-gen-go`; generated Go protobuf sources are written to the ignored
+  `bench/go_protobuf/personpb/` directory.
