@@ -118,11 +118,17 @@ pub const Writer = struct {
 
     pub fn writeVarint(self: *Writer, value: u64) std.mem.Allocator.Error!void {
         var v = value;
+        if (v < 0x80) return try self.appendByte(@intCast(v));
+        var buf: [10]u8 = undefined;
+        var len: usize = 0;
         while (v >= 0x80) {
-            try self.appendByte(@as(u8, @intCast(v & 0x7f)) | 0x80);
+            buf[len] = @as(u8, @intCast(v & 0x7f)) | 0x80;
+            len += 1;
             v >>= 7;
         }
-        try self.appendByte(@intCast(v));
+        buf[len] = @intCast(v);
+        len += 1;
+        try self.appendSlice(buf[0..len]);
     }
 
     pub fn writeTag(self: *Writer, number: FieldNumber, wire_type: WireType) (std.mem.Allocator.Error || Error)!void {
