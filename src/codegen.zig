@@ -762,7 +762,10 @@ fn writeFieldMetadataDecl(ctx: *const CodegenContext, field: *const schema.Field
         try writeMessageTypeReferenceWithContext(ctx, type_name, &type_buf.writer);
         try writeZigStringLiteral(type_buf.written(), writer);
     } else {
-        try writeZigStringLiteral(fieldType(field.*), writer);
+        var type_buf: std.Io.Writer.Allocating = .init(ctx.allocator);
+        defer type_buf.deinit();
+        try writeFieldType(field.*, &type_buf.writer);
+        try writeZigStringLiteral(type_buf.written(), writer);
     }
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
@@ -10762,6 +10765,7 @@ test "codegen emits field metadata including imported type names" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const json_name = \"shownName\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"roles_field\" = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const kind = \"map\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const @\\\"rolesEntry\\\"\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_key = \"string\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_kind = \"message\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_name = \".demo.common.Role\";") != null);
@@ -10940,6 +10944,7 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"user\": ?imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\" = null") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"profiles\": []const imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\" = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const @\\\"keyedEntry\\\"\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\" = .{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"picked\": imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\",") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"profiles_list\".append(allocator, nested);") != null);
@@ -11049,6 +11054,7 @@ test "codegen with registry resolves same-package imported unqualified refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"demo\".@\"User\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Kind\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"demo\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const @\\\"keyedEntry\\\"\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"user\": ?imports.@\"common.proto\".@\"demo\".@\"User\" = null") != null);

@@ -150,7 +150,7 @@ pub const @"demo" = struct {
                 pub const cardinality = "optional";
                 pub const kind = "message";
                 pub const type_name = "demo.advanced.Envelope.Audit";
-                pub const zig_type = "[]const u8";
+                pub const zig_type = "@\"Audit\"";
                 pub const has_type_ref = true;
                 pub const type_ref = @"Audit";
                 pub const has_enum_ref = false;
@@ -166,7 +166,7 @@ pub const @"demo" = struct {
                 pub const cardinality = "repeated";
                 pub const kind = "map";
                 pub const type_name = "";
-                pub const zig_type = "[]const void";
+                pub const zig_type = "[]const @\"auditsEntry\"";
                 pub const has_type_ref = false;
                 pub const type_ref = void;
                 pub const has_enum_ref = false;
@@ -334,6 +334,7 @@ pub const @"demo" = struct {
                 self.@"_unknown_fields" = &.{};
             }
 
+
             // no same-file extension accessors
 
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
@@ -450,7 +451,7 @@ pub const @"demo" = struct {
                 errdefer w.deinit();
                 if (self.@"id" != 0) try w.writeInt32(1, self.@"id");
                 if (self.@"kind" != 0) try w.writeInt32(2, self.@"kind");
-                if (self.@"has_audit") { const item = self.@"audit"; var nested = try @"Audit".decode(allocator, item); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(3, payload); }
+                if (self.@"audit") |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(3, payload); }
                 switch (self.@"subject") {
                     .@"user_name" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); },
                     else => {},
@@ -1510,6 +1511,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (self.@"_unknown_fields".len != 0) allocator.free(self.@"_unknown_fields");
                     self.@"_unknown_fields" = &.{};
                 }
+
 
                 // no same-file extension accessors
 

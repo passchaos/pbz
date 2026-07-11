@@ -59,7 +59,7 @@ pub const @"demo" = struct {
                     pub const cardinality = "repeated";
                     pub const kind = "map";
                     pub const type_name = "";
-                    pub const zig_type = "[]const void";
+                    pub const zig_type = "[]const @\"by_nameEntry\"";
                     pub const has_type_ref = false;
                     pub const type_ref = void;
                     pub const has_enum_ref = false;
@@ -1290,4 +1290,3 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     };
 
 };
-
