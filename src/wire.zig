@@ -111,6 +111,18 @@ pub fn packedFixed32View(payload: []const u8) Error![]align(1) const u32 {
     return std.mem.bytesAsSlice(u32, payload);
 }
 
+pub fn packedFixed32FieldView(bytes: []const u8, number: FieldNumber) Error!?[]align(1) const u32 {
+    var reader = Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == number) {
+            if (tag.wire_type != .length_delimited) return error.InvalidWireType;
+            return try packedFixed32View(try reader.readBytes());
+        }
+        try reader.skipValue(tag);
+    }
+    return null;
+}
+
 pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len % 4 != 0) return error.InvalidWireType;
     const count = payload.len / 4;
@@ -644,6 +656,14 @@ test "wire exposes borrowed packed fixed32 view" {
     try std.testing.expectEqual(@as(u32, 0x01020304), values[1]);
     try std.testing.expectEqual(@intFromPtr(payload.ptr), @intFromPtr(std.mem.sliceAsBytes(values).ptr));
     try std.testing.expectError(error.InvalidWireType, packedFixed32View(payload[0..7]));
+
+    var writer = Writer.init(std.testing.allocator);
+    defer writer.deinit();
+    try writer.writeUInt32(9, 7);
+    try writer.writeBytes(1, payload);
+    const field_values = (try packedFixed32FieldView(writer.slice(), 1)).?;
+    try std.testing.expectEqual(@as(u32, 0x01020304), field_values[1]);
+    try std.testing.expect(try packedFixed32FieldView(writer.slice(), 2) == null);
 }
 
 test "wire skips nested groups and length-delimited values" {

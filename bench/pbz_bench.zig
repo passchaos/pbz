@@ -163,11 +163,7 @@ fn generatedFixedPackedDecode(ctx: GeneratedFixedPackedDecodeCtx) !void {
 
 const FixedPackedBorrowedViewCtx = struct { bytes: []const u8 };
 fn fixedPackedBorrowedViewDecode(ctx: FixedPackedBorrowedViewCtx) !void {
-    var reader = pbz.Reader.init(ctx.bytes);
-    const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
-    if (tag.number != 1 or tag.wire_type != .length_delimited) return error.InvalidWireType;
-    const payload = try reader.readBytes();
-    const values = try pbz.wire.packedFixed32View(payload);
+    const values = (try pbz.wire.packedFixed32FieldView(ctx.bytes, 1)) orelse return error.InvalidWireType;
     std.mem.doNotOptimizeAway(values.ptr);
 }
 
