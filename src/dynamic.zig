@@ -1035,11 +1035,24 @@ fn encodeMapElement(
 }
 
 fn encodePackedWithRegistry(current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
+    const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
+    if (kind == .scalar and kind.scalar == .int32) return try encodePackedInt32(field, values, writer);
+
     var packed_writer = wire.Writer.init(writer.allocator);
     defer packed_writer.deinit();
-    const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
     for (values) |value| try encodeScalarPayloadWithValidation(file, field, kind, value, &packed_writer);
     try writer.writeBytes(field.number, packed_writer.slice());
+}
+
+fn encodePackedInt32(field: *const schema.FieldDescriptor, values: []const Value, writer: *wire.Writer) EncodeError!void {
+    var packed_len: usize = 0;
+    for (values) |value| {
+        if (value != .int32) return error.TypeMismatch;
+        packed_len += wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value.int32))));
+    }
+    try writer.writeTag(field.number, .length_delimited);
+    try writer.writeVarint(packed_len);
+    for (values) |value| try writer.writeVarint(@as(u64, @bitCast(@as(i64, value.int32))));
 }
 
 fn encodeScalar(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, number: wire.FieldNumber, scalar: schema.ScalarType, value: Value, writer: *wire.Writer) EncodeError!void {
