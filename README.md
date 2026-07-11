@@ -277,13 +277,13 @@ a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton wit
 Generated files expose `proto_package`, `proto_syntax`, and top-level
 declarations under a Zig namespace that mirrors the proto package
 (`package demo.user;` becomes `generated.demo.user.Message`). They also expose
-an `imports` namespace that maps imported `.proto` paths to their generated
-`.pb.zig` module aliases while preserving import kind/path metadata.
-For readability, generated declarations and field accesses use bare Zig
-identifiers (`demo.user.Message.id`) whenever the proto name is a legal Zig
-identifier and does not shadow Zig keywords/primitives; escaped identifiers are
-kept only when needed, such as `.proto` import paths or proto names like
-`struct`.
+an `imports` namespace that maps imported `.proto` paths to sanitized Zig
+module aliases (for example `imported_common_proto`) while preserving the
+original import kind/path metadata.
+For readability, generated declarations, import aliases, and field accesses use
+bare Zig identifiers (`demo.user.Message.id`) whenever the proto-derived name is
+a legal Zig identifier and does not shadow Zig keywords/primitives; escaped
+identifiers are kept only when needed for proto names like `struct`.
 Generated message structs provide `encodedSize`, allocating `encode`, checked
 `encodeInto(buffer)`, and fastest-path `encodeIntoAssumeCapacity(buffer)` helpers
 in addition to writer-based `writeTo` / `writeToAssumeCapacity`, so callers can

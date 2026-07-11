@@ -43,7 +43,120 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     try out.writer.writeAll(");\n\n");
     try writeFileMetadata(&active_ctx, &out.writer, 0);
     try writePackagedFileDecls(&active_ctx, &out.writer, 0);
-    return try out.toOwnedSlice();
+    return try finalizeGeneratedZig(ctx.allocator, try out.toOwnedSlice());
+}
+
+fn finalizeGeneratedZig(allocator: std.mem.Allocator, raw: []u8) Error![]u8 {
+    var raw_owned: ?[]u8 = raw;
+    errdefer if (raw_owned) |buf| allocator.free(buf);
+
+    const input = trimTrailingBlankLines(raw);
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    var changed = input.len != raw.len;
+    var index: usize = 0;
+    while (index < input.len) {
+        if (input[index] == '"') {
+            index = try copyQuotedZigString(input, index, &out.writer);
+        } else if (input[index] == '\'') {
+            index = try copyQuotedZigChar(input, index, &out.writer);
+        } else if (index + 1 < input.len and input[index] == '/' and input[index + 1] == '/') {
+            index = try copyZigLineComment(input, index, &out.writer);
+        } else if (quotedBareIdent(input, index)) |range| {
+            changed = true;
+            try out.writer.writeAll(input[range.ident_begin..range.ident_end]);
+            index = range.end;
+        } else {
+            try out.writer.writeByte(input[index]);
+            index += 1;
+        }
+    }
+
+    if (changed) {
+        const final = try out.toOwnedSlice();
+        allocator.free(raw);
+        raw_owned = null;
+        return final;
+    }
+    out.deinit();
+    return raw;
+}
+
+fn trimTrailingBlankLines(input: []const u8) []const u8 {
+    var end = input.len;
+    while (end >= 2 and input[end - 1] == '\n' and input[end - 2] == '\n') end -= 1;
+    return input[0..end];
+}
+
+fn quotedBareIdent(input: []const u8, start: usize) ?struct { ident_begin: usize, ident_end: usize, end: usize } {
+    if (start + 2 > input.len or input[start] != '@' or input[start + 1] != '"') return null;
+    var index = start + 2;
+    while (index < input.len) : (index += 1) {
+        switch (input[index]) {
+            '\\' => return null,
+            '"' => {
+                const ident_begin = start + 2;
+                const ident_end = index;
+                if (!canWriteBareIdent(input[ident_begin..ident_end])) return null;
+                return .{ .ident_begin = ident_begin, .ident_end = ident_end, .end = index + 1 };
+            },
+            else => {},
+        }
+    }
+    return null;
+}
+
+fn copyQuotedZigString(input: []const u8, start: usize, writer: *std.Io.Writer) Error!usize {
+    var index = start;
+    try writer.writeByte(input[index]);
+    index += 1;
+    while (index < input.len) {
+        const c = input[index];
+        try writer.writeByte(c);
+        index += 1;
+        if (c == '\\') {
+            if (index < input.len) {
+                try writer.writeByte(input[index]);
+                index += 1;
+            }
+        } else if (c == '"') {
+            break;
+        }
+    }
+    return index;
+}
+
+fn copyQuotedZigChar(input: []const u8, start: usize, writer: *std.Io.Writer) Error!usize {
+    var index = start;
+    try writer.writeByte(input[index]);
+    index += 1;
+    while (index < input.len) {
+        const c = input[index];
+        try writer.writeByte(c);
+        index += 1;
+        if (c == '\\') {
+            if (index < input.len) {
+                try writer.writeByte(input[index]);
+                index += 1;
+            }
+        } else if (c == '\'') {
+            break;
+        }
+    }
+    return index;
+}
+
+fn copyZigLineComment(input: []const u8, start: usize, writer: *std.Io.Writer) Error!usize {
+    var index = start;
+    while (index < input.len) : (index += 1) {
+        const c = input[index];
+        try writer.writeByte(c);
+        if (c == '\n') {
+            index += 1;
+            break;
+        }
+    }
+    return index;
 }
 
 fn writePackagedFileDecls(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -566,7 +679,7 @@ fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: 
         try indent(writer, depth);
         try writer.writeAll("};\n");
         try indent(writer, depth);
-        try writer.writeAll("const @\"pbz.generated.file\" = @This();\n");
+        try writer.writeAll("const pbz_generated_file = @This();\n");
     }
     try writer.writeAll("\n");
 }
@@ -575,24 +688,47 @@ fn writeImportDecl(ctx: *const CodegenContext, import: schema.Import, writer: *s
     const allocator = ctx.allocator;
     const module_path = try outputNameWithOptions(allocator, import.path, ctx.output_suffix, ctx.strip_proto_ext);
     defer allocator.free(module_path);
+    const import_alias = try makeImportAlias(allocator, import.path);
+    defer allocator.free(import_alias);
     try indent(writer, depth);
     try writer.writeAll("pub const ");
-    try writeQuotedIdent(import.path, writer);
+    try writer.writeAll(import_alias);
     try writer.writeAll(" = @import(");
     try writeZigStringLiteral(module_path, writer);
     try writer.writeAll(");\n");
     try indent(writer, depth);
     try writer.writeAll("pub const ");
-    try writeQuotedIdentWithSuffix(import.path, "_path", writer);
+    try writer.writeAll(import_alias);
+    try writer.writeAll("_path");
     try writer.writeAll(" = ");
     try writeZigStringLiteral(import.path, writer);
     try writer.writeAll(";\n");
     try indent(writer, depth);
     try writer.writeAll("pub const ");
-    try writeQuotedIdentWithSuffix(import.path, "_kind", writer);
+    try writer.writeAll(import_alias);
+    try writer.writeAll("_kind");
     try writer.writeAll(" = ");
     try writeZigStringLiteral(@tagName(import.kind), writer);
     try writer.writeAll(";\n");
+}
+
+fn makeImportAlias(allocator: std.mem.Allocator, path: []const u8) Error![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+
+    const source = if (path.len == 0) "import" else path;
+    for (source) |c| {
+        if (isBareIdentChar(c, out.written().len == 0)) {
+            try out.writer.writeByte(c);
+        } else if (out.written().len == 0 or out.written()[out.written().len - 1] != '_') {
+            try out.writer.writeByte('_');
+        }
+    }
+
+    if (out.written().len == 0 or std.mem.eql(u8, out.written(), "_") or !canWriteBareIdent(out.written())) {
+        try out.writer.writeAll("_pb");
+    }
+    return try out.toOwnedSlice();
 }
 
 fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -622,9 +758,9 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     }
     for (message.oneofs.items) |oneof| try writeOneofField(oneof, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("@\"_json_arena\": ?*std.heap.ArenaAllocator = null,\n");
+    try writer.writeAll("_json_arena: ?*std.heap.ArenaAllocator = null,\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("@\"_unknown_fields\": []const []const u8 = &.{},\n");
+    try writer.writeAll("_unknown_fields: []const []const u8 = &.{},\n");
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeInit(writer, depth + 1);
     try writer.writeAll("\n");
@@ -915,9 +1051,9 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     for (message.fields.items) |*field| try writeRepeatedListDecl(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("var @\"_unknown_fields_list\": std.ArrayList([]const u8) = .empty;\n");
+    try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer { for (@\"_unknown_fields_list\".items) |raw| allocator.free(raw); @\"_unknown_fields_list\".deinit(allocator); }\n");
+    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const normalized_text = try @This().textNormalizeSeparators(allocator, text);\n");
     try indent(writer, depth + 1);
@@ -942,9 +1078,9 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     }
     try writeTextParseExtensions(ctx, message, writer, depth + 2);
     try indent(writer, depth + 2);
-    try writer.writeAll("if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
+    try writer.writeAll("if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }\n");
+    try writer.writeAll("if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (options.ignore_unknown_fields) continue;\n");
     try indent(writer, depth + 2);
@@ -953,7 +1089,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self.@\"_unknown_fields\" = try @\"_unknown_fields_list\".toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -1091,7 +1227,7 @@ fn writeTextParseExtensionField(ctx: *const CodegenContext, field: *const schema
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer allocator.free(raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try @\"_unknown_fields_list\".append(allocator, raw);\n");
+    try writer.writeAll("try _unknown_fields_list.append(allocator, raw);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
@@ -1115,7 +1251,7 @@ fn writeTextParseMessageExtensionField(ctx: *const CodegenContext, field: *const
     try indent(writer, depth + 1);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const payload = try nested.encode(owned_allocator);\n");
     try indent(writer, depth + 1);
@@ -1125,7 +1261,7 @@ fn writeTextParseMessageExtensionField(ctx: *const CodegenContext, field: *const
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer allocator.free(raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try @\"_unknown_fields_list\".append(allocator, raw);\n");
+    try writer.writeAll("try _unknown_fields_list.append(allocator, raw);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
@@ -1233,7 +1369,7 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         return;
     }
     try indent(writer, depth);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("const payload = try nested.encode(owned_allocator);\n");
     if (field.cardinality == .repeated) {
@@ -1344,7 +1480,7 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
             try writer.writeAll("entry.value = try nested.cloneOwned(allocator);\n");
         } else {
             try indent(writer, depth + 3);
-            try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+            try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
             try indent(writer, depth + 3);
             try writer.writeAll("entry.value = try nested.encode(owned_allocator);\n");
         }
@@ -1567,12 +1703,12 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const sc
             .bool => try writer.print("try @This().textBool({s})", .{value_expr}),
             .string => {
                 if (fieldUtf8ValidationOptional(file, field) == .verify) {
-                    try writer.print("blk: {{ const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s}); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }}", .{value_expr});
+                    try writer.print("blk: {{ const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), {s}); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }}", .{value_expr});
                 } else {
-                    try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr});
+                    try writer.print("try @This().textUnquote(try self._pbzOwnedAllocator(allocator), {s})", .{value_expr});
                 }
             },
-            .bytes => try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr}),
+            .bytes => try writer.print("try @This().textUnquote(try self._pbzOwnedAllocator(allocator), {s})", .{value_expr}),
         },
         .enumeration => |name| {
             try writer.print("try @This().textEnum({s}, ", .{value_expr});
@@ -2016,7 +2152,7 @@ fn writeSingularMessageFieldAccessor(ctx: *const CodegenContext, field: *const s
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("self.");
     try writeQuotedAccessorIdent("set", field.name, writer);
@@ -2338,7 +2474,7 @@ fn writeMapMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema
     } else {
         try writer.writeAll("try self.");
         try writeQuotedAccessorIdent("append", field.name, writer);
-        try writer.writeAll("(allocator, .{ .key = key, .value = try value.encode(try self.@\"_pbzOwnedAllocator\"(allocator)) });\n");
+        try writer.writeAll("(allocator, .{ .key = key, .value = try value.encode(try self._pbzOwnedAllocator(allocator)) });\n");
     }
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
@@ -2357,7 +2493,7 @@ fn writeMapMessageFieldAccessor(ctx: *const CodegenContext, field: *const schema
         try indent(writer, depth + 1);
         try writer.writeAll("errdefer owned_value.deinit(allocator);\n");
     } else {
-        try writer.writeAll("const payload = try value.encode(try self.@\"_pbzOwnedAllocator\"(allocator));\n");
+        try writer.writeAll("const payload = try value.encode(try self._pbzOwnedAllocator(allocator));\n");
     }
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.");
@@ -2684,7 +2820,7 @@ fn writeRepeatedMessageFieldAccessor(ctx: *const CodegenContext, field: *const s
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("try self.");
     try writeQuotedAccessorIdent("append", field.name, writer);
@@ -2728,7 +2864,7 @@ fn writeRepeatedMessageFieldAccessor(ctx: *const CodegenContext, field: *const s
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const owned = try allocator.alloc([]const u8, values.len);\n");
     try indent(writer, depth + 1);
@@ -2886,7 +3022,7 @@ fn writeOneofMessageFieldAccessor(ctx: *const CodegenContext, field: *const sche
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("self.");
     try writeQuotedIdent(oneof.name, writer);
@@ -2992,7 +3128,7 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     }
     for (message.oneofs.items) |oneof| try writeEncodeOneofAssumeCapacity(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| w.appendSliceAssumeCapacity(raw);\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| w.appendSliceAssumeCapacity(raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -3050,7 +3186,7 @@ fn writeEncodedSize(ctx: *const CodegenContext, message: *const schema.MessageDe
     }
     for (message.oneofs.items) |oneof| try writeEncodedSizeOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| size += raw.len;\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| size += raw.len;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return size;\n");
     try indent(writer, depth);
@@ -3398,20 +3534,20 @@ fn writeEncodeDeterministic(ctx: *const CodegenContext, message: *const schema.M
 
 fn writeEncodeUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| try w.appendSlice(raw);\n");
 }
 
 fn writeEncodeUnknownFieldsDeterministic(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
+    try writer.writeAll("if (self._unknown_fields.len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const indexes = try allocator.alloc(usize, self.@\"_unknown_fields\".len);\n");
+    try writer.writeAll("const indexes = try allocator.alloc(usize, self._unknown_fields.len);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer allocator.free(indexes);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("for (indexes, 0..) |*index, i| index.* = i;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("std.mem.sort(usize, indexes, self.@\"_unknown_fields\", struct {\n");
+    try writer.writeAll("std.mem.sort(usize, indexes, self._unknown_fields, struct {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("fn firstTag(raw: []const u8) ?pbz.wire.Tag {\n");
     try indent(writer, depth + 3);
@@ -3439,22 +3575,22 @@ fn writeEncodeUnknownFieldsDeterministic(writer: *std.Io.Writer, depth: usize) E
     try indent(writer, depth + 1);
     try writer.writeAll("}.lessThan);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (indexes) |index| try w.appendSlice(self.@\"_unknown_fields\"[index]);\n");
+    try writer.writeAll("for (indexes) |index| try w.appendSlice(self._unknown_fields[index]);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
 
 fn writeEncodeUnknownFieldsDeterministicAssumeCapacity(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
+    try writer.writeAll("if (self._unknown_fields.len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const indexes = try allocator.alloc(usize, self.@\"_unknown_fields\".len);\n");
+    try writer.writeAll("const indexes = try allocator.alloc(usize, self._unknown_fields.len);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer allocator.free(indexes);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("for (indexes, 0..) |*index, i| index.* = i;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("std.mem.sort(usize, indexes, self.@\"_unknown_fields\", struct {\n");
+    try writer.writeAll("std.mem.sort(usize, indexes, self._unknown_fields, struct {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("fn firstTag(raw: []const u8) ?pbz.wire.Tag {\n");
     try indent(writer, depth + 3);
@@ -3482,7 +3618,7 @@ fn writeEncodeUnknownFieldsDeterministicAssumeCapacity(writer: *std.Io.Writer, d
     try indent(writer, depth + 1);
     try writer.writeAll("}.lessThan);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (indexes) |index| w.appendSliceAssumeCapacity(self.@\"_unknown_fields\"[index]);\n");
+    try writer.writeAll("for (indexes) |index| w.appendSliceAssumeCapacity(self._unknown_fields[index]);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -3634,9 +3770,9 @@ fn writeEncodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
 
 fn writeOwnedAllocator(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("fn @\"_pbzOwnedAllocator\"(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {\n");
+    try writer.writeAll("fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (self.@\"_json_arena\" == null) {\n");
+    try writer.writeAll("if (self._json_arena == null) {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("const arena = try allocator.create(std.heap.ArenaAllocator);\n");
     try indent(writer, depth + 2);
@@ -3644,11 +3780,11 @@ fn writeOwnedAllocator(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 2);
     try writer.writeAll("arena.* = std.heap.ArenaAllocator.init(allocator);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("self.@\"_json_arena\" = arena;\n");
+    try writer.writeAll("self._json_arena = arena;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return self.@\"_json_arena\".?.allocator();\n");
+    try writer.writeAll("return self._json_arena.?.allocator();\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -3657,14 +3793,14 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn unknownFieldCount(self: @This()) usize {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return self.@\"_unknown_fields\".len;\n");
+    try writer.writeAll("return self._unknown_fields.len;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn unknownFields(self: @This()) []const []const u8 {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return self.@\"_unknown_fields\";\n");
+    try writer.writeAll("return self._unknown_fields;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -3673,7 +3809,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
     try writer.writeAll("var count: usize = 0;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("var r = pbz.Reader.init(raw);\n");
     try indent(writer, depth + 2);
@@ -3703,7 +3839,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer list.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("var r = pbz.Reader.init(raw);\n");
     try indent(writer, depth + 2);
@@ -3730,7 +3866,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
     try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const old = self.@\"_unknown_fields\";\n");
+    try writer.writeAll("const old = self._unknown_fields;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const next = try allocator.alloc([]const u8, old.len + 1);\n");
     try indent(writer, depth + 1);
@@ -3744,7 +3880,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
     try writer.writeAll("next[old.len] = owned;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("self.@\"_unknown_fields\" = next;\n");
+    try writer.writeAll("self._unknown_fields = next;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
     try indent(writer, depth);
@@ -3757,7 +3893,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer kept.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| {\n");
     try indent(writer, depth + 2);
     try writer.writeAll("var r = pbz.Reader.init(raw);\n");
     try indent(writer, depth + 2);
@@ -3769,20 +3905,20 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) allocator.free(self.@\"_unknown_fields\");\n");
+    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("self.@\"_unknown_fields\" = try kept.toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try kept.toOwnedSlice(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| allocator.free(raw);\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) allocator.free(self.@\"_unknown_fields\");\n");
+    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("self.@\"_unknown_fields\" = &.{};\n");
+    try writer.writeAll("self._unknown_fields = &.{};\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -4286,7 +4422,7 @@ fn writeMergeFrom(ctx: *const CodegenContext, message: *const schema.MessageDesc
     }
     for (message.oneofs.items) |oneof| try writeMergeOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);\n");
+    try writer.writeAll("for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -4457,7 +4593,7 @@ fn writeMergeSingularMessageField(ctx: *const CodegenContext, field: *const sche
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);\n");
+    try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("const merged = try owned_allocator.alloc(u8, self.");
     try writeQuotedIdent(field.name, writer);
@@ -4641,11 +4777,11 @@ fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescrip
         }
     }
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| allocator.free(raw);\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("allocator.free(self.@\"_unknown_fields\");\n");
+    try writer.writeAll("allocator.free(self._unknown_fields);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (self.@\"_json_arena\") |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }\n");
+    try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("self.* = undefined;\n");
     try indent(writer, depth);
@@ -4661,7 +4797,7 @@ fn writeCloneOwned(ctx: *const CodegenContext, message: *const schema.MessageDes
     try writer.writeAll("errdefer out.deinit(allocator);\n");
     if (cloneUsesOwnedAllocator(message)) {
         try indent(writer, depth + 1);
-        try writer.writeAll("const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);\n");
+        try writer.writeAll("const owned_allocator = try out._pbzOwnedAllocator(allocator);\n");
     }
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeCloneField(ctx, field, writer, depth + 1);
@@ -4833,13 +4969,13 @@ fn writeCloneOneof(ctx: *const CodegenContext, message: *const schema.MessageDes
 
 fn writeCloneUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
+    try writer.writeAll("if (self._unknown_fields.len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const cloned_unknowns = try allocator.alloc([]const u8, self.@\"_unknown_fields\".len);\n");
+    try writer.writeAll("const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\", 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);\n");
+    try writer.writeAll("for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("out.@\"_unknown_fields\" = cloned_unknowns;\n");
+    try writer.writeAll("out._unknown_fields = cloned_unknowns;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -5492,13 +5628,15 @@ fn sameFileForCodegen(a: *const schema.FileDescriptor, b: *const schema.FileDesc
 }
 
 fn writeImportChainPrefix(ctx: *const CodegenContext, paths: []const []const u8, writer: *std.Io.Writer) Error!void {
-    if (packageHasSegment(ctx.file.package, "imports")) try writer.writeAll("@\"pbz.generated.file\".");
+    if (packageHasSegment(ctx.file.package, "imports")) try writer.writeAll("pbz_generated_file.");
     try writer.writeAll("imports.");
     for (paths, 0..) |path, index| {
         if (index != 0) {
             try writer.writeAll(".imports.");
         }
-        try writeQuotedIdent(path, writer);
+        const import_alias = try makeImportAlias(ctx.allocator, path);
+        defer ctx.allocator.free(import_alias);
+        try writer.writeAll(import_alias);
     }
     try writer.writeByte('.');
 }
@@ -5601,9 +5739,9 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     for (message.fields.items) |*field| try writeRepeatedListDecl(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("var @\"_unknown_fields_list\": std.ArrayList([]const u8) = .empty;\n");
+    try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer { for (@\"_unknown_fields_list\".items) |raw| allocator.free(raw); @\"_unknown_fields_list\".deinit(allocator); }\n");
+    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     try indent(writer, depth + 1);
@@ -5612,14 +5750,14 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("switch (tag.number) {\n");
     for (message.fields.items) |*field| try writeDecodeField(ctx, field, writer, depth + 3);
     try indent(writer, depth + 3);
-    try writer.writeAll("else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); },\n");
+    try writer.writeAll("else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },\n");
     try indent(writer, depth + 2);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self.@\"_unknown_fields\" = try @\"_unknown_fields_list\".toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -5789,7 +5927,7 @@ fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema
     } else if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll("{ const value = try r.readInt32(); if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.");
+        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else { self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = value;");
         try writeSetPresence(file, field, writer);
@@ -5842,7 +5980,7 @@ fn writeDecodeMessageField(ctx: *const CodegenContext, field: *const schema.Fiel
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" and self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0 and payload.len != 0) { const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator); const merged = try owned_allocator.alloc(u8, self.");
+        try writer.writeAll(".len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(".len + payload.len); @memcpy(merged[0..self.");
         try writeQuotedIdent(field.name, writer);
@@ -5941,7 +6079,7 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
         try writer.writeAll(")) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(");
         try writer.print("{d}", .{field.number});
-        try writer.writeAll(", .varint); try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }");
+        try writer.writeAll(", .varint); try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }");
     } else {
         try writeEnumClosedCheck(file, field, "value", writer);
     }
@@ -5955,7 +6093,7 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll(" if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { try ");
+        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else { try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
         try writer.writeAll(".append(allocator, value); } }\n");
     } else {
@@ -6007,7 +6145,7 @@ fn writeDecodeMapField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try indent(writer, depth + 1);
     try writer.writeAll("if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(");
     try writer.print("{d}", .{field.number});
-    try writer.writeAll(", payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else try @This().");
+    try writer.writeAll(", payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else try @This().");
     try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
     try writer.writeAll("(allocator, &");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
@@ -6107,7 +6245,7 @@ fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const 
     if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll(" if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else {");
+        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else {");
     } else {
         try writeEnumClosedCheck(file, field, "value", writer);
     }
@@ -7983,7 +8121,7 @@ fn writeTextOneof(ctx: *const CodegenContext, message: *const schema.MessageDesc
 
 fn writeTextUnknownFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| {\n");
+    try writer.writeAll("for (self._unknown_fields) |raw| {\n");
     try writeTextUnknownExtensionFields(ctx, message, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("try @This().textWriteUnknownRaw(raw, writer);\n");
@@ -8268,7 +8406,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth + 1);
     try writer.writeAll("try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("self.@\"_json_arena\" = arena;\n");
+    try writer.writeAll("self._json_arena = arena;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -11056,6 +11194,7 @@ fn writeIdentWithPrefix(name: []const u8, prefix: []const u8, writer: *std.Io.Wr
 }
 
 fn canWriteBareIdent(name: []const u8) bool {
+    if (std.mem.eql(u8, name, "_")) return false;
     if (!canWriteBareIdentParts("", name, "")) return false;
     if (std.zig.Token.getKeyword(name) != null) return false;
     if (isPrimitiveIdent(name)) return false;
@@ -11589,10 +11728,10 @@ test "codegen emits package and import module metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const proto_package = \"demo.app\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const proto_syntax = \"proto2\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const imports = struct") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"common.proto\" = @import(\"common.pb.zig\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"common.proto_kind\" = \"normal\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"public/common.proto\" = @import(\"public/common.pb.zig\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const @\"public/common.proto_kind\" = \"public\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const common_proto = @import(\"common.pb.zig\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const common_proto_kind = \"normal\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const public_common_proto = @import(\"public/common.pb.zig\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const public_common_proto_kind = \"public\";") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
@@ -11742,7 +11881,7 @@ test "codegen emits owned clone helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decoded.cloneOwned(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try out._pbzOwnedAllocator(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.name = try owned_allocator.dupe(u8, self.name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.raw = try owned_allocator.dupe(u8, self.raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const cloned = try allocator.alloc([]const u8, self.tags.len);") != null);
@@ -11754,9 +11893,9 @@ test "codegen emits owned clone helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, ".alias => |value| .{ .alias = try owned_allocator.dupe(u8, value) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| .{ .picked = try value.cloneOwned(allocator) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".id => |value| .{ .id = value },") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const cloned_unknowns = try allocator.alloc([]const u8, self.@\"_unknown_fields\".len);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\", 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"_unknown_fields\" = cloned_unknowns;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out._unknown_fields = cloned_unknowns;") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -11803,35 +11942,35 @@ test "codegen with registry emits imported message type refs and accessors" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".demo.common.User;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".demo.common.User.Profile;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".demo.common.User.Profile;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.@\"common.proto\".demo.common.User = null") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "profiles: []const imports.@\"common.proto\".demo.common.User.Profile = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.common_proto.demo.common.User;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.common_proto.demo.common.User.Profile;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.common_proto.demo.common.User.Profile;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.common_proto.demo.common.User = null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "profiles: []const imports.common_proto.demo.common.User.Profile = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const keyedEntry\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.@\"common.proto\".demo.common.User.Profile = .{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "picked: imports.@\"common.proto\".demo.common.User,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.common_proto.demo.common.User.Profile = .{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "picked: imports.common_proto.demo.common.User,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try profiles_list.append(allocator, nested);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.@\"common.proto\".demo.common.User.Profile.decode(allocator, value_payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readBytes(); self.pick = .{ .picked = try imports.@\"common.proto\".demo.common.User.decode(allocator, payload) }; },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.common_proto.demo.common.User.Profile.decode(allocator, value_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readBytes(); self.pick = .{ .picked = try imports.common_proto.demo.common.User.decode(allocator, payload) }; },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.writeTo(w);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeDeterministicTo(allocator, w); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.validateRequiredRecursive(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |nested| try nested.validateRequiredRecursive(allocator),") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.User.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.User.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try imports.@\"common.proto\".demo.common.User.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = blk: { var nested = try imports.@\"common.proto\".demo.common.User.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try imports.common_proto.demo.common.User.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = blk: { var nested = try imports.common_proto.demo.common.User.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.user) |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.User.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.User.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = try nested.cloneOwned(allocator) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".demo.common.User.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.common_proto.demo.common.User.decode(allocator, payload);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -11915,15 +12054,15 @@ test "codegen with registry resolves same-package imported unqualified refs" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".demo.User;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.common_proto.demo.User;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = Kind;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".demo.User;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.common_proto.demo.User;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const keyedEntry\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "kind: i32 = 7") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.@\"common.proto\".demo.User = null") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.@\"common.proto\".demo.User = .{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.@\"common.proto\".demo.User.decode(allocator, value_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.common_proto.demo.User = null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.common_proto.demo.User = .{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.common_proto.demo.User.decode(allocator, value_payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.validateRequiredRecursive(allocator);") != null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -11968,8 +12107,8 @@ test "codegen with registry follows public import chains for message refs" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"bridge.proto\".imports.@\"leaf.proto\".demo.leaf.User;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.@\"bridge.proto\".imports.@\"leaf.proto\".demo.leaf.User = null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.bridge_proto.imports.leaf_proto.demo.leaf.User;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.bridge_proto.imports.leaf_proto.demo.leaf.User = null") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -12056,7 +12195,7 @@ test "codegen validates imported extension required payloads" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.payload.decodeAllFromUnknown(self, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".common.Payload.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.common.Payload.decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator);") != null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -12101,33 +12240,33 @@ test "codegen with registry emits extension type refs" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \".demo.common.Host\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_has_type_ref = true;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".demo.common.Host;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.common_proto.demo.common.Host;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \".demo.common.Note\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_has_type_ref = true;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.@\"common.proto\".demo.common.Note;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const typed_zig_type = \"imports.@\\\"common.proto\\\".demo.common.Note\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasOn(message: imports.@\"common.proto\".demo.common.Host) !bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getOn(message: imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator) !?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator, value: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setMessageOn(message: *imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator, value: imports.@\"common.proto\".demo.common.Note) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator) !?imports.@\"common.proto\".demo.common.Note") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.common_proto.demo.common.Note;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const typed_zig_type = \"imports.common_proto.demo.common.Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasOn(message: imports.common_proto.demo.common.Host) !bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setMessageOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, value: imports.common_proto.demo.common.Note) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !?imports.common_proto.demo.common.Note") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_enum_ref = @\"demo.common.Role\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOn(message: imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator) !?@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !?@\"demo.common.Role\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return @\"demo.common.Role\".fromInt(raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultOn(message: imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator) !@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !@\"demo.common.Role\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try getEnumOn(message, allocator)) orelse @\"demo.common.Role\".fromInt(default_value_zig) orelse unreachable;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try setOn(message, allocator, value.toInt());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumsOn(message: imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator) ![]@\"demo.common.Role\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn addEnumOn(message: *imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllEnumsOn(message: *imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumsOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) ![]@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn addEnumOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllEnumsOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.@\"common.proto\".demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.Note.decode(allocator, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.Note.jsonParseWithOptions(arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".demo.common.Note.decode(allocator_, payload_);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.jsonParseWithOptions(arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.decode(allocator_, payload_);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -12184,7 +12323,7 @@ test "codegen emits protoc response" {
                         1 => saw_file_name = std.mem.eql(u8, try file_reader.readBytes(), "a.pb.zig"),
                         15 => {
                             const content = try file_reader.readBytes();
-                            saw_registry_import_ref = saw_registry_import_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".demo.common.User;") != null;
+                            saw_registry_import_ref = saw_registry_import_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.common_proto.demo.common.User;") != null;
                         },
                         16 => {
                             var info = try @import("descriptor.zig").decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
@@ -12274,7 +12413,7 @@ test "codegen emits protoc response from request file_to_generate" {
                         },
                         15 => {
                             const content = try file_reader.readBytes();
-                            saw_import_type_ref = saw_import_type_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".demo.common.User;") != null;
+                            saw_import_type_ref = saw_import_type_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.common_proto.demo.common.User;") != null;
                         },
                         else => try file_reader.skipValue(file_tag),
                     }
@@ -12802,9 +12941,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const normalized_text = try @This().textNormalizeSeparators(allocator, text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var lines = std.mem.splitScalar(u8, normalized_text, '\\n');") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); continue; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields) |raw| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteUnknownRaw(raw, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void") != null);
@@ -12821,13 +12960,13 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.ratio = try @This().textFloat(f64, raw_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.kind = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.cloneOwned(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8") != null);
@@ -13072,7 +13211,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); self.kind = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.payload = try r.readBytes(); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "@\"_unknown_fields\": []const []const u8 = &.{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "_unknown_fields: []const []const u8 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCount(self: @This()) usize") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFields(self: @This()) []const []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize") != null);
@@ -13085,7 +13224,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == number) { allocator.free(raw); continue; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_unknown_fields\" = try kept.toOwnedSlice(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self._unknown_fields = try kept.toOwnedSlice(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const tag = (try r.nextTag()) orelse return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try r.skipValue(tag);") != null);
@@ -13093,14 +13232,14 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned = try allocator.dupe(u8, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\") |raw| try w.appendSlice(raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"_unknown_fields\".len != 0)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const indexes = try allocator.alloc(usize, self.@\"_unknown_fields\".len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields) |raw| try w.appendSlice(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self._unknown_fields.len != 0)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const indexes = try allocator.alloc(usize, self._unknown_fields.len);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn firstTag(raw: []const u8) ?pbz.wire.Tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (indexes) |index| try w.appendSlice(self.@\"_unknown_fields\"[index]);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (indexes) |index| try w.appendSlice(self._unknown_fields[index]);") != null);
 }
 
 test "codegen decodes repeated scalar enum and message payload fields" {
@@ -13291,7 +13430,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonParseOptions = struct { ignore_unknown_fields: bool = false };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_json_arena\" = arena") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self._json_arena = arena") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitialized(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().jsonParse(allocator, text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This()") != null);
@@ -13410,7 +13549,7 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn @\"_pbzOwnedAllocator\"(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (other.nums.len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const merged = try allocator.alloc(i32, old.len + other.nums.len)") != null);
@@ -13421,7 +13560,7 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (other.pick)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| self.pick = .{ .picked = try value.cloneOwned(allocator) }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); var nested = try Child.decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); var nested = try Box.decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |value| { try w.writeTag(4, .start_group); try value.writeTo(w); try w.writeTag(4, .end_group); }") != null);
@@ -13542,7 +13681,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.packed_nums]: \"); try writer.print(\"{d}\", .{value});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"Note\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"[demo.tag]\") orelse @This().textFieldValue(line, \"[tag]\")) |raw_value|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.tag.encodeRaw(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.tag.encodeRaw(allocator, try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.nums.encodeRaw(allocator, try @This().textInt(i32, raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.note]\") or @This().textBlockField(line, \"[note]\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
@@ -13728,7 +13867,7 @@ test "codegen with registry normalizes imported extension extendee names" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \".common.Host\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \"common.Host\";") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".common.Host;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.common_proto.common.Host;") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -13846,12 +13985,12 @@ test "codegen emits registry-aware service metadata type references" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type = \"common.Req\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_has_type_ref = true") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type_ref = imports.@\"common.proto\".common.Req;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type_ref = imports.common_proto.common.Req;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_has_type_ref = true") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = imports.@\"common.proto\".common.Res;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Get(self: @This(), allocator: std.mem.Allocator, request: imports.@\"common.proto\".common.Req) !imports.@\"common.proto\".common.Res") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var request = try imports.@\"common.proto\".common.Req.decodeOwned(allocator, request_payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".common.Res.decodeOwned(allocator, response_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = imports.common_proto.common.Res;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Get(self: @This(), allocator: std.mem.Allocator, request: imports.common_proto.common.Req) !imports.common_proto.common.Res") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var request = try imports.common_proto.common.Req.decodeOwned(allocator, request_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.common_proto.common.Res.decodeOwned(allocator, response_payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn GetTyped") == null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -13969,12 +14108,12 @@ test "codegen honors utf8 validation features for wire strings" {
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
     const text_content = content[text_start..];
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.strict = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.relaxed = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.key = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.value = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.strict = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.relaxed = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.key = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.value = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
 }
 
 test "codegen honors editions enum type features in JSON parse" {
@@ -14013,11 +14152,11 @@ test "codegen validates closed enum values in wire decode" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.single = value; self.has_single = true; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else { self.single = value; self.has_single = true; } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1})) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(2, .varint);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { try many_list.append(allocator, value); } }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @\"_unknown_fields_list\".append(allocator, raw); } else { self.pick = .{ .choice = value }; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else { try many_list.append(allocator, value); } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else { self.pick = .{ .choice = value }; } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn enumKnown(value: i32, comptime numbers: []const i32) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.single = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_enum = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
@@ -14039,5 +14178,5 @@ test "codegen validates closed enum map values in wire decode" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var skip_entry = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { skip_entry = true; } else { entry.value = value; } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(1, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @\"_unknown_fields_list\".append(allocator, raw); } else try @This().appendOrReplaceMapEntry_keyed(allocator, &keyed_list, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try _unknown_fields_list.append(allocator, raw); } else try @This().appendOrReplaceMapEntry_keyed(allocator, &keyed_list, entry);") != null);
 }

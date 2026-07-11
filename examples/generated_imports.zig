@@ -3,7 +3,7 @@ const pbz = @import("pbz");
 const app_pb = @import("generated/imported_app.pb.zig");
 
 const app = app_pb.demo.imports.app;
-const common = app_pb.imports.@"imported_common.proto".demo.imports.common;
+const common = app_pb.imports.imported_common_proto.demo.imports.common;
 const Profile = common.Profile;
 
 fn profile(id: i32, name: []const u8) Profile {
@@ -19,9 +19,9 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // The generated app module imports imported_common.pb.zig and exposes the
-    // imported file under app_pb.imports."imported_common.proto".
+    // imported file under app_pb.imports.imported_common_proto.
     std.debug.assert(std.mem.eql(u8, app_pb.proto_package, "demo.imports.app"));
-    std.debug.assert(std.mem.eql(u8, app_pb.imports.@"imported_common.proto_path", "imported_common.proto"));
+    std.debug.assert(std.mem.eql(u8, app_pb.imports.imported_common_proto_path, "imported_common.proto"));
     std.debug.assert(app.Request.primary_field.type_ref == Profile);
     std.debug.assert(app.Request.history_field.type_ref == Profile);
     std.debug.assert(app.Request.by_name_field.map_value_type_ref == Profile);
