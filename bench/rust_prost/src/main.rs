@@ -41,6 +41,18 @@ impl BenchResult {
     }
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct Packed {
+    #[prost(int32, repeated, tag = "1")]
+    pub values: Vec<i32>,
+}
+
+fn make_packed() -> Packed {
+    Packed {
+        values: (0..1024).map(|i| (i % 4096) as i32).collect(),
+    }
+}
+
 fn make_person() -> Person {
     let mut counts = HashMap::new();
     counts.insert("red".to_string(), 1);
@@ -54,7 +66,12 @@ fn make_person() -> Person {
     }
 }
 
-fn run_timed<F>(name: &'static str, iterations: usize, bytes_per_iter: usize, mut f: F) -> BenchResult
+fn run_timed<F>(
+    name: &'static str,
+    iterations: usize,
+    bytes_per_iter: usize,
+    mut f: F,
+) -> BenchResult
 where
     F: FnMut(),
 {
@@ -74,9 +91,12 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = person.encode_to_vec();
+    let packed = make_packed();
+    let packed_bytes = packed.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("packed payload size: {}", packed_bytes.len());
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -89,4 +109,26 @@ fn main() {
         std::hint::black_box(decoded);
     });
     decode.print();
+
+    run_timed(
+        "prost packed encode",
+        iters.binary,
+        packed_bytes.len(),
+        || {
+            let encoded = packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost packed decode",
+        iters.binary,
+        packed_bytes.len(),
+        || {
+            let decoded = Packed::decode(packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
 }

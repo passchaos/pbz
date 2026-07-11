@@ -7,3 +7,7 @@ message Person {
   repeated int32 scores = 3;
   map<string, int32> counts = 4;
 }
+
+message Packed {
+  repeated int32 values = 1;
+}

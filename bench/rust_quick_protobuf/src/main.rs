@@ -1,5 +1,5 @@
-use quick_protobuf::{BytesReader, MessageRead, MessageWrite, Result, Writer, WriterBackend};
 use quick_protobuf::sizeofs;
+use quick_protobuf::{BytesReader, MessageRead, MessageWrite, Result, Writer, WriterBackend};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -39,7 +39,9 @@ impl MessageWrite for Person {
             w.write_with_tag(18, |w| w.write_string(&self.name))?;
         }
         if !self.scores.is_empty() {
-            w.write_packed_with_tag(26, &self.scores, |w, v| w.write_int32(*v), &|v| sizeofs::sizeof_int32(*v))?;
+            w.write_packed_with_tag(26, &self.scores, |w, v| w.write_int32(*v), &|v| {
+                sizeofs::sizeof_int32(*v)
+            })?;
         }
         for (key, value) in &self.counts {
             let entry_len = 1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_int32(*value);
@@ -107,6 +109,48 @@ impl BenchResult {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Packed {
+    pub values: Vec<i32>,
+}
+
+impl MessageWrite for Packed {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len: usize = self.values.iter().map(|v| sizeofs::sizeof_int32(*v)).sum();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_int32(*v), &|v| {
+                sizeofs::sizeof_int32(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for Packed {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Packed::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_int32(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_packed() -> Packed {
+    Packed {
+        values: (0..1024).map(|i| (i % 4096) as i32).collect(),
+    }
+}
+
 fn make_person() -> Person {
     let mut counts = HashMap::new();
     counts.insert("red".to_owned(), 1);
@@ -120,16 +164,21 @@ fn make_person() -> Person {
     }
 }
 
-fn encode_to_vec(person: &Person) -> Vec<u8> {
-    let mut out = Vec::with_capacity(person.get_size());
+fn encode_to_vec<M: MessageWrite>(message: &M) -> Vec<u8> {
+    let mut out = Vec::with_capacity(message.get_size());
     {
         let mut writer = Writer::new(&mut out);
-        person.write_message(&mut writer).expect("encode");
+        message.write_message(&mut writer).expect("encode");
     }
     out
 }
 
-fn run_timed<F>(name: &'static str, iterations: usize, bytes_per_iter: usize, mut f: F) -> BenchResult
+fn run_timed<F>(
+    name: &'static str,
+    iterations: usize,
+    bytes_per_iter: usize,
+    mut f: F,
+) -> BenchResult
 where
     F: FnMut(),
 {
@@ -149,29 +198,84 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = encode_to_vec(&person);
+    let packed = make_packed();
+    let packed_bytes = encode_to_vec(&packed);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("packed payload size: {}", packed_bytes.len());
 
-    run_timed("quick-protobuf binary encode", iters.binary, bytes.len(), || {
-        let encoded = encode_to_vec(&person);
-        std::hint::black_box(encoded);
-    })
+    run_timed(
+        "quick-protobuf binary encode",
+        iters.binary,
+        bytes.len(),
+        || {
+            let encoded = encode_to_vec(&person);
+            std::hint::black_box(encoded);
+        },
+    )
     .print();
 
     let mut reused = Vec::with_capacity(bytes.len());
-    run_timed("quick-protobuf binary encode reuse", iters.binary, bytes.len(), || {
-        reused.clear();
-        let mut writer = Writer::new(&mut reused);
-        person.write_message(&mut writer).expect("encode");
-        std::hint::black_box(&reused);
-    })
+    run_timed(
+        "quick-protobuf binary encode reuse",
+        iters.binary,
+        bytes.len(),
+        || {
+            reused.clear();
+            let mut writer = Writer::new(&mut reused);
+            person.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused);
+        },
+    )
     .print();
 
-    run_timed("quick-protobuf binary decode", iters.binary, bytes.len(), || {
-        let mut reader = BytesReader::from_bytes(&bytes);
-        let decoded = Person::from_reader(&mut reader, &bytes).expect("decode");
-        std::hint::black_box(decoded);
-    })
+    run_timed(
+        "quick-protobuf binary decode",
+        iters.binary,
+        bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&bytes);
+            let decoded = Person::from_reader(&mut reader, &bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf packed encode",
+        iters.binary,
+        packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_packed = Vec::with_capacity(packed_bytes.len());
+    run_timed(
+        "quick-protobuf packed encode reuse",
+        iters.binary,
+        packed_bytes.len(),
+        || {
+            reused_packed.clear();
+            let mut writer = Writer::new(&mut reused_packed);
+            packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf packed decode",
+        iters.binary,
+        packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&packed_bytes);
+            let decoded = Packed::from_reader(&mut reader, &packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
     .print();
 }

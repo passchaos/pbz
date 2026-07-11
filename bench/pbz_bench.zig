@@ -7,6 +7,7 @@ const Iterations = struct {
     dynamic_binary: usize = 10_000,
     json: usize = 2_000,
     text: usize = 1_000,
+    packed_binary: usize = 5_000,
 };
 
 const BenchResult = struct {
@@ -65,6 +66,54 @@ fn makeDynamicPerson(allocator: std.mem.Allocator, desc: *const pbz.MessageDescr
         try msg.add(desc.findField("counts").?, .{ .map_entry = entry });
     }
     return msg;
+}
+
+fn makeGeneratedPacked(allocator: std.mem.Allocator) !person_pb.demo.Packed {
+    var packed_msg = person_pb.demo.Packed.init();
+    errdefer packed_msg.deinit(allocator);
+    const values = try allocator.alloc(i32, 1024);
+    for (values, 0..) |*value, i| value.* = @intCast(i % 4096);
+    packed_msg.values = values;
+    return packed_msg;
+}
+
+fn makeDynamicPacked(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
+    var msg = pbz.DynamicMessage.init(allocator, desc);
+    errdefer msg.deinit();
+    var i: usize = 0;
+    while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .int32 = @intCast(i % 4096) });
+    return msg;
+}
+
+const GeneratedPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Packed };
+fn generatedPackedEncode(ctx: GeneratedPackedEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedPackedWriteToCtx = struct { writer: *pbz.Writer, message: *const person_pb.demo.Packed };
+fn generatedPackedWriteToReuse(ctx: GeneratedPackedWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.message.writeToAssumeCapacity(ctx.writer);
+}
+
+const GeneratedPackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedPackedDecode(ctx: GeneratedPackedDecodeCtx) !void {
+    var decoded = try person_pb.demo.Packed.decode(ctx.allocator, ctx.bytes);
+    decoded.deinit(ctx.allocator);
+}
+
+const DynamicPackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
+fn dynamicPackedEncode(ctx: DynamicPackedEncodeCtx) !void {
+    const bytes = try ctx.message.encoded(ctx.file);
+    ctx.message.allocator.free(bytes);
+}
+
+const DynamicPackedDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicPackedDecode(ctx: DynamicPackedDecodeCtx) !void {
+    var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
+    defer msg.deinit();
+    try msg.decode(ctx.file, ctx.bytes);
 }
 
 const GeneratedEncodeCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
@@ -160,14 +209,22 @@ pub fn main() !void {
         \\  repeated int32 scores = 3;
         \\  map<string, int32> counts = 4;
         \\}
+        \\message Packed {
+        \\  repeated int32 values = 1;
+        \\}
     );
     defer file.deinit();
     const desc = file.findMessage("Person").?;
+    const packed_desc = file.findMessage("Packed").?;
 
     var generated_person = try makeGeneratedPerson(allocator);
     defer generated_person.deinit(allocator);
     var dynamic_person = try makeDynamicPerson(allocator, desc);
     defer dynamic_person.deinit();
+    var generated_packed = try makeGeneratedPacked(allocator);
+    defer generated_packed.deinit(allocator);
+    var dynamic_packed = try makeDynamicPacked(allocator, packed_desc);
+    defer dynamic_packed.deinit();
 
     const generated_bytes = try generated_person.encode(allocator);
     defer allocator.free(generated_bytes);
@@ -176,6 +233,13 @@ pub fn main() !void {
     try reusable_writer.bytes.ensureTotalCapacity(allocator, generated_bytes.len);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
+    const generated_packed_bytes = try generated_packed.encode(allocator);
+    defer allocator.free(generated_packed_bytes);
+    var reusable_packed_writer = pbz.Writer.init(allocator);
+    defer reusable_packed_writer.deinit();
+    try reusable_packed_writer.bytes.ensureTotalCapacity(allocator, generated_packed_bytes.len);
+    const dynamic_packed_bytes = try dynamic_packed.encoded(&file);
+    defer allocator.free(dynamic_packed_bytes);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
     defer allocator.free(generated_json);
     const dynamic_json = try pbz.stringifyJsonAlloc(allocator, &file, &dynamic_person, .{});
@@ -186,7 +250,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: generated={d} dynamic={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -194,6 +258,11 @@ pub fn main() !void {
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),
+        try runTimed(io, "generated packed encode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeCtx{ .allocator = allocator, .message = &generated_packed }, generatedPackedEncode),
+        try runTimed(io, "generated packed writeToAssumeCapacity reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedWriteToCtx{ .writer = &reusable_packed_writer, .message = &generated_packed }, generatedPackedWriteToReuse),
+        try runTimed(io, "generated packed decode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_packed_bytes }, generatedPackedDecode),
+        try runTimed(io, "dynamic packed encode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedEncodeCtx{ .message = &dynamic_packed, .file = &file }, dynamicPackedEncode),
+        try runTimed(io, "dynamic packed decode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedDecodeCtx{ .allocator = allocator, .descriptor = packed_desc, .file = &file, .bytes = dynamic_packed_bytes }, dynamicPackedDecode),
         try runTimed(io, "generated JSON stringify", iters.json, generated_json.len, GeneratedJsonStringifyCtx{ .allocator = allocator, .person = &generated_person }, generatedJsonStringify),
         try runTimed(io, "generated JSON parse", iters.json, generated_json.len, GeneratedJsonParseCtx{ .allocator = allocator, .json = generated_json }, generatedJsonParse),
         try runTimed(io, "dynamic JSON stringify", iters.json, dynamic_json.len, DynamicJsonStringifyCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicJsonStringify),

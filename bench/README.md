@@ -15,22 +15,24 @@ bench/run_compare.sh
 The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
+- packed repeated integer encode/decode
 - JSON stringify/parse
 - TextFormat format/parse
 
-This is the foundation for comparing against C++ protobuf and Rust prost in a
-future cross-language benchmark. Treat results as local machine baselines; use
-the same schema, payloads, optimization mode, and hardware when comparing.
+The cross-language binary baselines use the same `Person` payload and the same
+`Packed { repeated int32 values = 1; }` payload. Treat results as local machine
+baselines; use the same schema, payloads, optimization mode, and hardware when
+comparing.
 
 Cross-language baselines:
 
-- `bench/rust_prost`: Rust `prost` binary encode/decode for the same `Person`
-  schema and payload shape. It does not require `protoc`; the Rust message type
-  is declared directly with `prost` derives.
+- `bench/rust_prost`: Rust `prost` binary encode/decode for the same schema and
+  payload shapes. It does not require `protoc`; the Rust message types are
+  declared directly with `prost` derives.
 - `bench/rust_quick_protobuf`: Rust `quick-protobuf` binary encode/decode for
-  the same schema and payload shape. It hand-writes `MessageRead` /
+  the same schema and payload shapes. It hand-writes `MessageRead` /
   `MessageWrite`, does not require `protoc`, and represents a faster Rust
-  protobuf baseline than `prost` for this workload.
+  protobuf baseline than `prost` for several workloads.
 - `bench/cpp_protobuf`: C++ protobuf generated-code binary encode/decode for
   the same schema. It requires `protoc`, a C++ compiler, protobuf headers, and
   libprotobuf. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into

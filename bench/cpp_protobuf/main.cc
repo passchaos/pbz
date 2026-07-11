@@ -32,6 +32,12 @@ BenchResult RunTimed(const char* name, int iterations, std::size_t bytes_per_ite
   return BenchResult{name, iterations, std::chrono::duration_cast<std::chrono::nanoseconds>(end - start), bytes_per_iter};
 }
 
+demo::Packed MakePacked() {
+  demo::Packed packed;
+  for (int i = 0; i < 1024; ++i) packed.add_values(i % 4096);
+  return packed;
+}
+
 demo::Person MakePerson() {
   demo::Person person;
   person.set_id(7);
@@ -48,9 +54,13 @@ int main() {
   const demo::Person person = MakePerson();
   std::string bytes;
   person.SerializeToString(&bytes);
+  const demo::Packed packed = MakePacked();
+  std::string packed_bytes;
+  packed.SerializeToString(&packed_bytes);
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
+  std::cout << "packed payload size: " << packed_bytes.size() << "\n";
 
   auto encode = RunTimed("c++ protobuf binary encode", kIterations, bytes.size(), [&]() {
     std::string out;
@@ -75,6 +85,30 @@ int main() {
     asm volatile("" : : "g"(&decoded) : "memory");
   });
   decode.Print();
+
+  auto packed_encode = RunTimed("c++ protobuf packed encode", kIterations, packed_bytes.size(), [&]() {
+    std::string out;
+    out.reserve(packed_bytes.size());
+    packed.SerializeToString(&out);
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  packed_encode.Print();
+
+  std::string reused_packed;
+  reused_packed.reserve(packed_bytes.size());
+  auto packed_encode_reuse = RunTimed("c++ protobuf packed encode reuse", kIterations, packed_bytes.size(), [&]() {
+    reused_packed.clear();
+    packed.SerializeToString(&reused_packed);
+    asm volatile("" : : "g"(reused_packed.data()) : "memory");
+  });
+  packed_encode_reuse.Print();
+
+  auto packed_decode = RunTimed("c++ protobuf packed decode", kIterations, packed_bytes.size(), [&]() {
+    demo::Packed decoded;
+    if (!decoded.ParseFromString(packed_bytes)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  packed_decode.Print();
 
   return 0;
 }
