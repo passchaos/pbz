@@ -67,6 +67,14 @@ func makeFixedPacked() *personpb.FixedPacked {
 	return &personpb.FixedPacked{Values: values}
 }
 
+func makeFixed64Packed() *personpb.Fixed64Packed {
+	values := make([]uint64, 1024)
+	for i := range values {
+		values[i] = uint64(i*5 + 1)
+	}
+	return &personpb.Fixed64Packed{Values: values}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -93,11 +101,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fixed64Packed := makeFixed64Packed()
+	fixed64PackedBytes, err := proto.Marshal(fixed64Packed)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
+	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -169,6 +183,30 @@ func main() {
 	runTimed("go protobuf fixed32 packed decode", iterations, len(fixedPackedBytes), func() {
 		var decoded personpb.FixedPacked
 		if err := unmarshalOptions.Unmarshal(fixedPackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf fixed64 packed encode", iterations, len(fixed64PackedBytes), func() {
+		out, err := proto.Marshal(fixed64Packed)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	fixed64PackedBuf := make([]byte, 0, len(fixed64PackedBytes))
+	runTimed("go protobuf fixed64 packed encode reuse", iterations, len(fixed64PackedBytes), func() {
+		var err error
+		fixed64PackedBuf, err = marshalOptions.MarshalAppend(fixed64PackedBuf[:0], fixed64Packed)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf fixed64 packed decode", iterations, len(fixed64PackedBytes), func() {
+		var decoded personpb.Fixed64Packed
+		if err := unmarshalOptions.Unmarshal(fixed64PackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

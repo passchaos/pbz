@@ -54,6 +54,12 @@ demo::FixedPacked MakeFixedPacked() {
   return packed;
 }
 
+demo::Fixed64Packed MakeFixed64Packed() {
+  demo::Fixed64Packed packed;
+  for (int i = 0; i < 1024; ++i) packed.add_values(static_cast<uint64_t>(i) * 5 + 1);
+  return packed;
+}
+
 demo::Person MakePerson() {
   demo::Person person;
   person.set_id(7);
@@ -76,11 +82,15 @@ int main() {
   const demo::FixedPacked fixed_packed = MakeFixedPacked();
   std::string fixed_packed_bytes;
   fixed_packed.SerializeToString(&fixed_packed_bytes);
+  const demo::Fixed64Packed fixed64_packed = MakeFixed64Packed();
+  std::string fixed64_packed_bytes;
+  fixed64_packed.SerializeToString(&fixed64_packed_bytes);
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "packed payload size: " << packed_bytes.size() << "\n";
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size() << "\n";
+  std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size() << "\n";
 
   auto encode = RunTimed("c++ protobuf binary encode", kIterations, bytes.size(), [&]() {
     std::string out;
@@ -192,6 +202,37 @@ int main() {
     asm volatile("" : : "g"(&reused_fixed_packed_decoded) : "memory");
   });
   fixed_packed_decode_reuse.Print();
+
+  auto fixed64_packed_encode = RunTimed("c++ protobuf fixed64 packed encode", kIterations, fixed64_packed_bytes.size(), [&]() {
+    std::string out;
+    out.reserve(fixed64_packed_bytes.size());
+    fixed64_packed.SerializeToString(&out);
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  fixed64_packed_encode.Print();
+
+  std::string fixed64_packed_array_buffer;
+  fixed64_packed_array_buffer.resize(fixed64_packed_bytes.size());
+  auto fixed64_packed_encode_array_reuse = RunTimed("c++ protobuf fixed64 packed SerializeToArray reuse", kIterations, fixed64_packed_bytes.size(), [&]() {
+    if (!fixed64_packed.SerializeToArray(fixed64_packed_array_buffer.data(), static_cast<int>(fixed64_packed_array_buffer.size()))) std::abort();
+    asm volatile("" : : "g"(fixed64_packed_array_buffer.data()) : "memory");
+  });
+  fixed64_packed_encode_array_reuse.Print();
+
+  auto fixed64_packed_decode = RunTimed("c++ protobuf fixed64 packed decode", kIterations, fixed64_packed_bytes.size(), [&]() {
+    demo::Fixed64Packed decoded;
+    if (!decoded.ParseFromString(fixed64_packed_bytes)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  fixed64_packed_decode.Print();
+
+  demo::Fixed64Packed reused_fixed64_packed_decoded;
+  auto fixed64_packed_decode_reuse = RunTimed("c++ protobuf fixed64 packed decode reuse", kIterations, fixed64_packed_bytes.size(), [&]() {
+    reused_fixed64_packed_decoded.Clear();
+    if (!reused_fixed64_packed_decoded.ParseFromString(fixed64_packed_bytes)) std::abort();
+    asm volatile("" : : "g"(&reused_fixed64_packed_decoded) : "memory");
+  });
+  fixed64_packed_decode_reuse.Print();
 
   return 0;
 }

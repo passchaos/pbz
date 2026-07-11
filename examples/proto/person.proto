@@ -15,3 +15,7 @@ message Packed {
 message FixedPacked {
   repeated fixed32 values = 1;
 }
+
+message Fixed64Packed {
+  repeated fixed64 values = 1;
+}

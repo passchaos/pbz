@@ -117,6 +117,36 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf fixed32 packed decode",),
         },
     ),
+    Workload(
+        "packed fixed64 encode",
+        (
+            "generated fixed64 packed encode",
+            "generated fixed64 packed encodeIntoAssumeCapacity buffer reuse",
+            "generated fixed64 packed borrowed slices encode",
+        ),
+        {
+            "rust prost": ("prost fixed64 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf fixed64 packed encode",
+                "quick-protobuf fixed64 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf fixed64 packed encode",
+                "c++ protobuf fixed64 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf fixed64 packed encode", "go protobuf fixed64 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed fixed64 decode",
+        ("generated fixed64 packed decode", "wire fixed64 packed borrowed view decode"),
+        {
+            "rust prost": ("prost fixed64 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf fixed64 packed decode",),
+            "c++ protobuf": ("c++ protobuf fixed64 packed decode", "c++ protobuf fixed64 packed decode reuse"),
+            "go protobuf": ("go protobuf fixed64 packed decode",),
+        },
+    ),
 )
 
 

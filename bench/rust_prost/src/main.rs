@@ -62,6 +62,12 @@ pub struct FixedPacked {
     pub values: Vec<u32>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct Fixed64Packed {
+    #[prost(fixed64, repeated, tag = "1")]
+    pub values: Vec<u64>,
+}
+
 fn make_packed() -> Packed {
     Packed {
         values: (0..1024).map(|i| (i % 4096) as i32).collect(),
@@ -71,6 +77,12 @@ fn make_packed() -> Packed {
 fn make_fixed_packed() -> FixedPacked {
     FixedPacked {
         values: (0..1024).map(|i| (i * 3 + 1) as u32).collect(),
+    }
+}
+
+fn make_fixed64_packed() -> Fixed64Packed {
+    Fixed64Packed {
+        values: (0..1024).map(|i| (i * 5 + 1) as u64).collect(),
     }
 }
 
@@ -129,11 +141,17 @@ fn main() {
     let packed_bytes = packed.encode_to_vec();
     let fixed_packed = make_fixed_packed();
     let fixed_packed_bytes = fixed_packed.encode_to_vec();
+    let fixed64_packed = make_fixed64_packed();
+    let fixed64_packed_bytes = fixed64_packed.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
+    println!(
+        "fixed64 packed payload size: {}",
+        fixed64_packed_bytes.len()
+    );
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -186,6 +204,28 @@ fn main() {
         fixed_packed_bytes.len(),
         || {
             let decoded = FixedPacked::decode(fixed_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost fixed64 packed encode",
+        iters.binary,
+        fixed64_packed_bytes.len(),
+        || {
+            let encoded = fixed64_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost fixed64 packed decode",
+        iters.binary,
+        fixed64_packed_bytes.len(),
+        || {
+            let decoded = Fixed64Packed::decode(fixed64_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

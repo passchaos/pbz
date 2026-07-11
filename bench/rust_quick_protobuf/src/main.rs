@@ -165,6 +165,11 @@ pub struct FixedPacked {
     pub values: Vec<u32>,
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Fixed64Packed {
+    pub values: Vec<u64>,
+}
+
 impl MessageWrite for FixedPacked {
     fn get_size(&self) -> usize {
         if self.values.is_empty() {
@@ -197,6 +202,41 @@ impl<'a> MessageRead<'a> for FixedPacked {
 fn make_fixed_packed() -> FixedPacked {
     FixedPacked {
         values: (0..1024).map(|i| (i * 3 + 1) as u32).collect(),
+    }
+}
+
+impl MessageWrite for Fixed64Packed {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len = self.values.len() * 8;
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_fixed64(*v), &|_| 8)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for Fixed64Packed {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Fixed64Packed::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_fixed64(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_fixed64_packed() -> Fixed64Packed {
+    Fixed64Packed {
+        values: (0..1024).map(|i| (i * 5 + 1) as u64).collect(),
     }
 }
 
@@ -264,11 +304,17 @@ fn main() {
     let packed_bytes = encode_to_vec(&packed);
     let fixed_packed = make_fixed_packed();
     let fixed_packed_bytes = encode_to_vec(&fixed_packed);
+    let fixed64_packed = make_fixed64_packed();
+    let fixed64_packed_bytes = encode_to_vec(&fixed64_packed);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
+    println!(
+        "fixed64 packed payload size: {}",
+        fixed64_packed_bytes.len()
+    );
 
     run_timed(
         "quick-protobuf binary encode",
@@ -377,6 +423,44 @@ fn main() {
             let mut reader = BytesReader::from_bytes(&fixed_packed_bytes);
             let decoded =
                 FixedPacked::from_reader(&mut reader, &fixed_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf fixed64 packed encode",
+        iters.binary,
+        fixed64_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&fixed64_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_fixed64_packed = Vec::with_capacity(fixed64_packed_bytes.len());
+    run_timed(
+        "quick-protobuf fixed64 packed encode reuse",
+        iters.binary,
+        fixed64_packed_bytes.len(),
+        || {
+            reused_fixed64_packed.clear();
+            let mut writer = Writer::new(&mut reused_fixed64_packed);
+            fixed64_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_fixed64_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf fixed64 packed decode",
+        iters.binary,
+        fixed64_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&fixed64_packed_bytes);
+            let decoded =
+                Fixed64Packed::from_reader(&mut reader, &fixed64_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

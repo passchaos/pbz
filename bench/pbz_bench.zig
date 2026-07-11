@@ -106,11 +106,28 @@ fn makeGeneratedFixedPacked(allocator: std.mem.Allocator) !person_pb.demo.FixedP
     return packed_msg;
 }
 
+fn makeGeneratedFixed64Packed(allocator: std.mem.Allocator) !person_pb.demo.Fixed64Packed {
+    var packed_msg = person_pb.demo.Fixed64Packed.init();
+    errdefer packed_msg.deinit(allocator);
+    const values = try allocator.alloc(u64, 1024);
+    for (values, 0..) |*value, i| value.* = @intCast(i * 5 + 1);
+    packed_msg.values = values;
+    return packed_msg;
+}
+
 fn makeDynamicFixedPacked(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
     var msg = pbz.DynamicMessage.init(allocator, desc);
     errdefer msg.deinit();
     var i: usize = 0;
     while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .fixed32 = @intCast(i * 3 + 1) });
+    return msg;
+}
+
+fn makeDynamicFixed64Packed(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
+    var msg = pbz.DynamicMessage.init(allocator, desc);
+    errdefer msg.deinit();
+    var i: usize = 0;
+    while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .fixed64 = @intCast(i * 5 + 1) });
     return msg;
 }
 
@@ -175,6 +192,40 @@ fn fixedPackedBorrowedViewDecode(ctx: FixedPackedBorrowedViewCtx) !void {
     std.mem.doNotOptimizeAway(values.ptr);
 }
 
+const GeneratedFixed64PackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Fixed64Packed };
+fn generatedFixed64PackedEncode(ctx: GeneratedFixed64PackedEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedFixed64PackedEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.Fixed64Packed };
+fn generatedFixed64PackedEncodeIntoReuse(ctx: GeneratedFixed64PackedEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedFixed64PackedSlicesCtx = struct { message: *const person_pb.demo.Fixed64Packed };
+fn generatedFixed64PackedBorrowedSlices(ctx: GeneratedFixed64PackedSlicesCtx) !void {
+    var header: [20]u8 = undefined;
+    const slices = try person_pb.demo.Fixed64Packed.valuesPackedFixedSlices(&header, ctx.message.values);
+    std.mem.doNotOptimizeAway(slices.header.ptr);
+    std.mem.doNotOptimizeAway(slices.payload.ptr);
+}
+
+const GeneratedFixed64PackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedFixed64PackedDecode(ctx: GeneratedFixed64PackedDecodeCtx) !void {
+    var decoded = try person_pb.demo.Fixed64Packed.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
+const Fixed64PackedBorrowedViewCtx = struct { bytes: []const u8 };
+fn fixed64PackedBorrowedViewDecode(ctx: Fixed64PackedBorrowedViewCtx) !void {
+    const values = (try person_pb.demo.Fixed64Packed.valuesPackedFixedView(ctx.bytes)) orelse return error.InvalidWireType;
+    std.mem.doNotOptimizeAway(values.ptr);
+}
+
 const DynamicPackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
 fn dynamicPackedEncode(ctx: DynamicPackedEncodeCtx) !void {
     const bytes = try ctx.message.encoded(ctx.file);
@@ -207,6 +258,27 @@ fn dynamicFixedPackedDecode(ctx: DynamicFixedPackedDecodeCtx) !void {
 
 const DynamicFixedPackedDecodeReuseCtx = struct { message: *pbz.DynamicMessage, file: *const pbz.FileDescriptor, bytes: []const u8 };
 fn dynamicFixedPackedDecodeReuse(ctx: DynamicFixedPackedDecodeReuseCtx) !void {
+    try ctx.message.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const DynamicFixed64PackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
+fn dynamicFixed64PackedEncode(ctx: DynamicFixed64PackedEncodeCtx) !void {
+    const bytes = try ctx.message.encoded(ctx.file);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.message.allocator.free(bytes);
+}
+
+const DynamicFixed64PackedDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicFixed64PackedDecode(ctx: DynamicFixed64PackedDecodeCtx) !void {
+    var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
+    defer msg.deinit();
+    try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
+}
+
+const DynamicFixed64PackedDecodeReuseCtx = struct { message: *pbz.DynamicMessage, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicFixed64PackedDecodeReuse(ctx: DynamicFixed64PackedDecodeReuseCtx) !void {
     try ctx.message.decode(ctx.file, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
 }
@@ -329,11 +401,15 @@ pub fn main() !void {
         \\message FixedPacked {
         \\  repeated fixed32 values = 1;
         \\}
+        \\message Fixed64Packed {
+        \\  repeated fixed64 values = 1;
+        \\}
     );
     defer file.deinit();
     const desc = file.findMessage("Person").?;
     const packed_desc = file.findMessage("Packed").?;
     const fixed_packed_desc = file.findMessage("FixedPacked").?;
+    const fixed64_packed_desc = file.findMessage("Fixed64Packed").?;
 
     var generated_person = try makeGeneratedPerson(allocator);
     defer generated_person.deinit(allocator);
@@ -349,6 +425,12 @@ pub fn main() !void {
     defer dynamic_fixed_packed.deinit();
     var dynamic_fixed_packed_decode_reuse = pbz.DynamicMessage.init(allocator, fixed_packed_desc);
     defer dynamic_fixed_packed_decode_reuse.deinit();
+    var generated_fixed64_packed = try makeGeneratedFixed64Packed(allocator);
+    defer generated_fixed64_packed.deinit(allocator);
+    var dynamic_fixed64_packed = try makeDynamicFixed64Packed(allocator, fixed64_packed_desc);
+    defer dynamic_fixed64_packed.deinit();
+    var dynamic_fixed64_packed_decode_reuse = pbz.DynamicMessage.init(allocator, fixed64_packed_desc);
+    defer dynamic_fixed64_packed_decode_reuse.deinit();
 
     const generated_bytes = try generated_person.encode(allocator);
     defer allocator.free(generated_bytes);
@@ -374,6 +456,12 @@ pub fn main() !void {
     defer allocator.free(generated_fixed_packed_buffer);
     const dynamic_fixed_packed_bytes = try dynamic_fixed_packed.encoded(&file);
     defer allocator.free(dynamic_fixed_packed_bytes);
+    const generated_fixed64_packed_bytes = try generated_fixed64_packed.encode(allocator);
+    defer allocator.free(generated_fixed64_packed_bytes);
+    const generated_fixed64_packed_buffer = try allocator.alloc(u8, generated_fixed64_packed_bytes.len);
+    defer allocator.free(generated_fixed64_packed_buffer);
+    const dynamic_fixed64_packed_bytes = try dynamic_fixed64_packed.encoded(&file);
+    defer allocator.free(dynamic_fixed64_packed_bytes);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
     defer allocator.free(generated_json);
     const dynamic_json = try pbz.stringifyJsonAlloc(allocator, &file, &dynamic_person, .{});
@@ -384,7 +472,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -407,6 +495,14 @@ pub fn main() !void {
         try runTimed(io, "dynamic fixed32 packed encode", iters.packed_binary, dynamic_fixed_packed_bytes.len, DynamicFixedPackedEncodeCtx{ .message = &dynamic_fixed_packed, .file = &file }, dynamicFixedPackedEncode),
         try runTimed(io, "dynamic fixed32 packed decode", iters.packed_binary, dynamic_fixed_packed_bytes.len, DynamicFixedPackedDecodeCtx{ .allocator = allocator, .descriptor = fixed_packed_desc, .file = &file, .bytes = dynamic_fixed_packed_bytes }, dynamicFixedPackedDecode),
         try runTimed(io, "dynamic fixed32 packed decode reuse", iters.packed_binary, dynamic_fixed_packed_bytes.len, DynamicFixedPackedDecodeReuseCtx{ .message = &dynamic_fixed_packed_decode_reuse, .file = &file, .bytes = dynamic_fixed_packed_bytes }, dynamicFixedPackedDecodeReuse),
+        try runTimed(io, "generated fixed64 packed encode", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedEncodeCtx{ .allocator = allocator, .message = &generated_fixed64_packed }, generatedFixed64PackedEncode),
+        try runTimed(io, "generated fixed64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedEncodeIntoCtx{ .buffer = generated_fixed64_packed_buffer, .message = &generated_fixed64_packed }, generatedFixed64PackedEncodeIntoReuse),
+        try runTimed(io, "generated fixed64 packed borrowed slices encode", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedSlicesCtx{ .message = &generated_fixed64_packed }, generatedFixed64PackedBorrowedSlices),
+        try runTimed(io, "generated fixed64 packed decode", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_fixed64_packed_bytes }, generatedFixed64PackedDecode),
+        try runTimed(io, "wire fixed64 packed borrowed view decode", iters.packed_binary, generated_fixed64_packed_bytes.len, Fixed64PackedBorrowedViewCtx{ .bytes = generated_fixed64_packed_bytes }, fixed64PackedBorrowedViewDecode),
+        try runTimed(io, "dynamic fixed64 packed encode", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedEncodeCtx{ .message = &dynamic_fixed64_packed, .file = &file }, dynamicFixed64PackedEncode),
+        try runTimed(io, "dynamic fixed64 packed decode", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedDecodeCtx{ .allocator = allocator, .descriptor = fixed64_packed_desc, .file = &file, .bytes = dynamic_fixed64_packed_bytes }, dynamicFixed64PackedDecode),
+        try runTimed(io, "dynamic fixed64 packed decode reuse", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedDecodeReuseCtx{ .message = &dynamic_fixed64_packed_decode_reuse, .file = &file, .bytes = dynamic_fixed64_packed_bytes }, dynamicFixed64PackedDecodeReuse),
         try runTimed(io, "generated JSON stringify", iters.json, generated_json.len, GeneratedJsonStringifyCtx{ .allocator = allocator, .person = &generated_person }, generatedJsonStringify),
         try runTimed(io, "generated JSON parse", iters.json, generated_json.len, GeneratedJsonParseCtx{ .allocator = allocator, .json = generated_json }, generatedJsonParse),
         try runTimed(io, "dynamic JSON stringify", iters.json, dynamic_json.len, DynamicJsonStringifyCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicJsonStringify),
