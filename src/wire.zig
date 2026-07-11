@@ -112,8 +112,17 @@ pub const Writer = struct {
         try self.bytes.append(self.allocator, byte);
     }
 
+    pub fn appendByteAssumeCapacity(self: *Writer, byte: u8) void {
+        self.bytes.appendAssumeCapacity(byte);
+    }
+
     pub fn appendSlice(self: *Writer, data: []const u8) std.mem.Allocator.Error!void {
         try self.bytes.appendSlice(self.allocator, data);
+    }
+
+    pub fn appendSliceAssumeCapacity(self: *Writer, data: []const u8) void {
+        const out = self.bytes.addManyAsSliceAssumeCapacity(data.len);
+        @memcpy(out, data);
     }
 
     pub fn writeVarint(self: *Writer, value: u64) std.mem.Allocator.Error!void {
@@ -131,8 +140,21 @@ pub const Writer = struct {
         try self.appendSlice(buf[0..len]);
     }
 
+    pub fn writeVarintAssumeCapacity(self: *Writer, value: u64) void {
+        var v = value;
+        while (v >= 0x80) {
+            self.appendByteAssumeCapacity(@as(u8, @intCast(v & 0x7f)) | 0x80);
+            v >>= 7;
+        }
+        self.appendByteAssumeCapacity(@intCast(v));
+    }
+
     pub fn writeTag(self: *Writer, number: FieldNumber, wire_type: WireType) (std.mem.Allocator.Error || Error)!void {
         try self.writeVarint(try (Tag{ .number = number, .wire_type = wire_type }).encode());
+    }
+
+    pub fn writeTagAssumeCapacity(self: *Writer, number: FieldNumber, wire_type: WireType) void {
+        self.writeVarintAssumeCapacity((@as(u64, number) << 3) | @intFromEnum(wire_type));
     }
 
     pub fn writeUInt32(self: *Writer, number: FieldNumber, value: u32) !void {
@@ -140,9 +162,19 @@ pub const Writer = struct {
         try self.writeVarint(value);
     }
 
+    pub fn writeUInt32AssumeCapacity(self: *Writer, number: FieldNumber, value: u32) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(value);
+    }
+
     pub fn writeUInt64(self: *Writer, number: FieldNumber, value: u64) !void {
         try self.writeTag(number, .varint);
         try self.writeVarint(value);
+    }
+
+    pub fn writeUInt64AssumeCapacity(self: *Writer, number: FieldNumber, value: u64) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(value);
     }
 
     pub fn writeInt32(self: *Writer, number: FieldNumber, value: i32) !void {
@@ -150,9 +182,19 @@ pub const Writer = struct {
         try self.writeVarint(@as(u64, @bitCast(@as(i64, value))));
     }
 
+    pub fn writeInt32AssumeCapacity(self: *Writer, number: FieldNumber, value: i32) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, value))));
+    }
+
     pub fn writeInt64(self: *Writer, number: FieldNumber, value: i64) !void {
         try self.writeTag(number, .varint);
         try self.writeVarint(@as(u64, @bitCast(value)));
+    }
+
+    pub fn writeInt64AssumeCapacity(self: *Writer, number: FieldNumber, value: i64) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(@as(u64, @bitCast(value)));
     }
 
     pub fn writeSInt32(self: *Writer, number: FieldNumber, value: i32) !void {
@@ -160,9 +202,19 @@ pub const Writer = struct {
         try self.writeVarint(zigZagEncode32(value));
     }
 
+    pub fn writeSInt32AssumeCapacity(self: *Writer, number: FieldNumber, value: i32) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(zigZagEncode32(value));
+    }
+
     pub fn writeSInt64(self: *Writer, number: FieldNumber, value: i64) !void {
         try self.writeTag(number, .varint);
         try self.writeVarint(zigZagEncode64(value));
+    }
+
+    pub fn writeSInt64AssumeCapacity(self: *Writer, number: FieldNumber, value: i64) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(zigZagEncode64(value));
     }
 
     pub fn writeBool(self: *Writer, number: FieldNumber, value: bool) !void {
@@ -170,13 +222,27 @@ pub const Writer = struct {
         try self.writeVarint(if (value) 1 else 0);
     }
 
+    pub fn writeBoolAssumeCapacity(self: *Writer, number: FieldNumber, value: bool) void {
+        self.writeTagAssumeCapacity(number, .varint);
+        self.writeVarintAssumeCapacity(if (value) 1 else 0);
+    }
+
     pub fn writeFixed32(self: *Writer, number: FieldNumber, value: u32) !void {
         try self.writeTag(number, .fixed32);
         try self.writeRawLittle(u32, value);
     }
 
+    pub fn writeFixed32AssumeCapacity(self: *Writer, number: FieldNumber, value: u32) void {
+        self.writeTagAssumeCapacity(number, .fixed32);
+        self.writeRawLittleAssumeCapacity(u32, value);
+    }
+
     pub fn writeSFixed32(self: *Writer, number: FieldNumber, value: i32) !void {
         try self.writeFixed32(number, @bitCast(value));
+    }
+
+    pub fn writeSFixed32AssumeCapacity(self: *Writer, number: FieldNumber, value: i32) void {
+        self.writeFixed32AssumeCapacity(number, @bitCast(value));
     }
 
     pub fn writeFixed64(self: *Writer, number: FieldNumber, value: u64) !void {
@@ -184,16 +250,33 @@ pub const Writer = struct {
         try self.writeRawLittle(u64, value);
     }
 
+    pub fn writeFixed64AssumeCapacity(self: *Writer, number: FieldNumber, value: u64) void {
+        self.writeTagAssumeCapacity(number, .fixed64);
+        self.writeRawLittleAssumeCapacity(u64, value);
+    }
+
     pub fn writeSFixed64(self: *Writer, number: FieldNumber, value: i64) !void {
         try self.writeFixed64(number, @bitCast(value));
+    }
+
+    pub fn writeSFixed64AssumeCapacity(self: *Writer, number: FieldNumber, value: i64) void {
+        self.writeFixed64AssumeCapacity(number, @bitCast(value));
     }
 
     pub fn writeFloat(self: *Writer, number: FieldNumber, value: f32) !void {
         try self.writeFixed32(number, @bitCast(value));
     }
 
+    pub fn writeFloatAssumeCapacity(self: *Writer, number: FieldNumber, value: f32) void {
+        self.writeFixed32AssumeCapacity(number, @bitCast(value));
+    }
+
     pub fn writeDouble(self: *Writer, number: FieldNumber, value: f64) !void {
         try self.writeFixed64(number, @bitCast(value));
+    }
+
+    pub fn writeDoubleAssumeCapacity(self: *Writer, number: FieldNumber, value: f64) void {
+        self.writeFixed64AssumeCapacity(number, @bitCast(value));
     }
 
     pub fn writeBytes(self: *Writer, number: FieldNumber, value: []const u8) !void {
@@ -202,12 +285,26 @@ pub const Writer = struct {
         try self.appendSlice(value);
     }
 
+    pub fn writeBytesAssumeCapacity(self: *Writer, number: FieldNumber, value: []const u8) void {
+        self.writeTagAssumeCapacity(number, .length_delimited);
+        self.writeVarintAssumeCapacity(value.len);
+        self.appendSliceAssumeCapacity(value);
+    }
+
     pub fn writeString(self: *Writer, number: FieldNumber, value: []const u8) !void {
         try self.writeBytes(number, value);
     }
 
+    pub fn writeStringAssumeCapacity(self: *Writer, number: FieldNumber, value: []const u8) void {
+        self.writeBytesAssumeCapacity(number, value);
+    }
+
     pub fn writeMessage(self: *Writer, number: FieldNumber, encoded_message: []const u8) !void {
         try self.writeBytes(number, encoded_message);
+    }
+
+    pub fn writeMessageAssumeCapacity(self: *Writer, number: FieldNumber, encoded_message: []const u8) void {
+        self.writeBytesAssumeCapacity(number, encoded_message);
     }
 
     pub fn writePackedVarints(self: *Writer, number: FieldNumber, values: []const u64) !void {
@@ -221,6 +318,12 @@ pub const Writer = struct {
         var buf: [@sizeOf(T)]u8 = undefined;
         std.mem.writeInt(T, &buf, value, .little);
         try self.appendSlice(&buf);
+    }
+
+    pub fn writeRawLittleAssumeCapacity(self: *Writer, comptime T: type, value: T) void {
+        var buf: [@sizeOf(T)]u8 = undefined;
+        std.mem.writeInt(T, &buf, value, .little);
+        self.appendSliceAssumeCapacity(&buf);
     }
 };
 

@@ -2712,6 +2712,17 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeEncodeFieldAssumeCapacity(file, field, writer, depth + 1);
+    }
+    for (message.oneofs.items) |oneof| try writeEncodeOneof(file, message, oneof, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| w.appendSliceAssumeCapacity(raw);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
@@ -2720,7 +2731,7 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try indent(writer, depth + 1);
     try writer.writeAll("try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.writeTo(&w);\n");
+    try writer.writeAll("try self.writeToAssumeCapacity(&w);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -5248,6 +5259,15 @@ fn writeEncodeField(file: *const schema.FileDescriptor, field: *const schema.Fie
     }
 }
 
+fn writeEncodeFieldAssumeCapacity(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    switch (field.kind) {
+        .scalar => |scalar| try writeEncodeScalarFieldAssumeCapacity(file, field, scalar, writer, depth),
+        .enumeration => try writeEncodeEnumFieldAssumeCapacity(file, field, writer, depth),
+        .message, .group => try writeEncodeField(file, field, writer, depth),
+        .map => try writeEncodeMapFieldAssumeCapacity(file, field, writer, depth),
+    }
+}
+
 fn writeEncodeFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     switch (field.kind) {
@@ -5333,6 +5353,76 @@ fn writeEncodeEnumField(file: *const schema.FileDescriptor, field: *const schema
     }
 }
 
+fn writeEncodeScalarFieldAssumeCapacity(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        if (field.resolvedPacked(file)) {
+            try writeEncodePackedScalarFieldAssumeCapacity(field, scalar, writer, depth);
+        } else {
+            try indent(writer, depth);
+            if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+                try writer.writeAll("for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; ");
+                try writeScalarWriteCallAssumeCapacity(field.number, scalar, "item", writer);
+                try writer.writeAll("); }\n");
+            } else {
+                try writer.writeAll("for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| ");
+                try writeScalarWriteCallAssumeCapacity(field.number, scalar, "item", writer);
+                try writer.writeAll(");\n");
+            }
+        }
+    } else {
+        try indent(writer, depth);
+        if (hasPresence(file, field.*)) {
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") ");
+        } else if (shouldSkipDefault(scalar)) {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(defaultSkipCondition(scalar));
+        }
+        if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+            try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(")) return error.InvalidUtf8; ");
+        }
+        try writeScalarWriteCallAssumeCapacity(field.number, scalar, "self.", writer);
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(")");
+        if (scalar == .string and fieldUtf8Validation(file, field) == .verify) try writer.writeAll("; }\n") else try writer.writeAll(";\n");
+    }
+}
+
+fn writeEncodeEnumFieldAssumeCapacity(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        if (field.resolvedPacked(file)) {
+            try writeEncodePackedEnumFieldAssumeCapacity(field, writer, depth);
+        } else {
+            try indent(writer, depth);
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |item| w.writeInt32AssumeCapacity({d}, item);\n", .{field.number});
+        }
+    } else {
+        try indent(writer, depth);
+        if (hasPresence(file, field.*)) {
+            try writer.writeAll("if (self.");
+            try writePresenceIdent(field.name, writer);
+            try writer.writeAll(") ");
+        } else {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" != 0) ");
+        }
+        try writer.print("w.writeInt32AssumeCapacity({d}, self.", .{field.number});
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+    }
+}
+
 fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     try writeEncodePackedPrefix(field, writer, depth);
     try indent(writer, depth + 1);
@@ -5371,6 +5461,44 @@ fn writeEncodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std
     try writeEncodePackedSuffix(field, writer, depth);
 }
 
+fn writeEncodePackedScalarFieldAssumeCapacity(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writeEncodePackedPrefix(field, writer, depth);
+    try indent(writer, depth + 1);
+    try writer.writeAll("var packed_len: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| packed_len += ");
+    try writePackedScalarSizeExpr(scalar, "item", writer);
+    try writer.writeAll(";\n");
+    try writeEncodePackedLengthAssumeCapacity(field, writer, depth);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| ");
+    try writePackedScalarPayloadAssumeCapacity(scalar, "item", "w", writer);
+    try writer.writeAll(";\n");
+    try writeEncodePackedSuffix(field, writer, depth);
+}
+
+fn writeEncodePackedEnumFieldAssumeCapacity(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writeEncodePackedPrefix(field, writer, depth);
+    try indent(writer, depth + 1);
+    try writer.writeAll("var packed_len: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));\n");
+    try writeEncodePackedLengthAssumeCapacity(field, writer, depth);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| ");
+    try writePackedEnumPayloadAssumeCapacity("item", "w", writer);
+    try writer.writeAll(";\n");
+    try writeEncodePackedSuffix(field, writer, depth);
+}
+
 fn writeEncodePackedPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("if (self.");
@@ -5383,6 +5511,13 @@ fn writeEncodePackedLength(field: *const schema.FieldDescriptor, writer: *std.Io
     try writer.print("try w.writeTag({d}, .length_delimited);\n", .{field.number});
     try indent(writer, depth + 1);
     try writer.writeAll("try w.writeVarint(packed_len);\n");
+}
+
+fn writeEncodePackedLengthAssumeCapacity(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth + 1);
+    try writer.print("w.writeTagAssumeCapacity({d}, .length_delimited);\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("w.writeVarintAssumeCapacity(packed_len);\n");
 }
 
 fn writeEncodePackedSuffix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -5426,6 +5561,29 @@ fn writePackedScalarPayload(scalar: schema.ScalarType, value_expr: []const u8, w
 
 fn writePackedEnumPayload(value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.print("try {s}.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{ writer_name, value_expr });
+}
+
+fn writePackedScalarPayloadAssumeCapacity(scalar: schema.ScalarType, value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double => try writer.print("{s}.writeRawLittleAssumeCapacity(u64, @bitCast({s}))", .{ writer_name, value_expr }),
+        .float => try writer.print("{s}.writeRawLittleAssumeCapacity(u32, @bitCast({s}))", .{ writer_name, value_expr }),
+        .int32 => try writer.print("{s}.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, {s}))))", .{ writer_name, value_expr }),
+        .int64 => try writer.print("{s}.writeVarintAssumeCapacity(@as(u64, @bitCast({s})))", .{ writer_name, value_expr }),
+        .uint32 => try writer.print("{s}.writeVarintAssumeCapacity({s})", .{ writer_name, value_expr }),
+        .uint64 => try writer.print("{s}.writeVarintAssumeCapacity({s})", .{ writer_name, value_expr }),
+        .sint32 => try writer.print("{s}.writeVarintAssumeCapacity(pbz.wire.zigZagEncode32({s}))", .{ writer_name, value_expr }),
+        .sint64 => try writer.print("{s}.writeVarintAssumeCapacity(pbz.wire.zigZagEncode64({s}))", .{ writer_name, value_expr }),
+        .fixed32 => try writer.print("{s}.writeRawLittleAssumeCapacity(u32, {s})", .{ writer_name, value_expr }),
+        .fixed64 => try writer.print("{s}.writeRawLittleAssumeCapacity(u64, {s})", .{ writer_name, value_expr }),
+        .sfixed32 => try writer.print("{s}.writeRawLittleAssumeCapacity(i32, {s})", .{ writer_name, value_expr }),
+        .sfixed64 => try writer.print("{s}.writeRawLittleAssumeCapacity(i64, {s})", .{ writer_name, value_expr }),
+        .bool => try writer.print("{s}.writeVarintAssumeCapacity(@as(u64, if ({s}) 1 else 0))", .{ writer_name, value_expr }),
+        .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
+    }
+}
+
+fn writePackedEnumPayloadAssumeCapacity(value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("{s}.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, {s}))))", .{ writer_name, value_expr });
 }
 
 fn writePackedKindPayload(kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
@@ -5585,6 +5743,37 @@ fn writeEncodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try writer.writeAll("}\n");
 }
 
+fn writeEncodeMapFieldAssumeCapacity(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.key", .{ .scalar = map_type.key }, writer, depth + 1);
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("const entry_len = ");
+    try writeMapEntryFieldSizeExpr(1, .{ .scalar = map_type.key }, "entry.key", writer);
+    try writer.writeAll(" + ");
+    try writeMapEntryFieldSizeExpr(2, map_type.value.*, "entry.value", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.print("w.writeTagAssumeCapacity({d}, .length_delimited);\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("w.writeVarintAssumeCapacity(entry_len);\n");
+    try indent(writer, depth + 1);
+    try writeKindWriteCallAssumeCapacity(1, .{ .scalar = map_type.key }, "entry.key", "w", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writeKindWriteCallAssumeCapacity(2, map_type.value.*, "entry.value", "w", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeEncodeMapFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     const map_type = switch (field.kind) {
@@ -5694,6 +5883,15 @@ fn writeKindWriteCall(number: u29, kind: schema.FieldKind, value_expr: []const u
     }
 }
 
+fn writeKindWriteCallAssumeCapacity(number: u29, kind: schema.FieldKind, value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writer.print("{s}.{s}AssumeCapacity({d}, {s})", .{ writer_name, scalarWriterName(scalar), number, value_expr }),
+        .enumeration => try writer.print("{s}.writeInt32AssumeCapacity({d}, {s})", .{ writer_name, number, value_expr }),
+        .message => try writer.print("{s}.writeMessageAssumeCapacity({d}, {s})", .{ writer_name, number, value_expr }),
+        else => try writer.writeAll("@compileError(\"unsupported map field kind\")"),
+    }
+}
+
 fn writeMessagePayloadRead(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, reader_name: []const u8, writer: *std.Io.Writer) Error!void {
     if (field.kind == .group) {
         try writer.print("try {s}.readGroupBytes({d})", .{ reader_name, field.number });
@@ -5723,6 +5921,10 @@ fn fieldUtf8ValidationOptional(file: *const schema.FileDescriptor, field: ?*cons
 
 fn writeScalarWriteCall(number: u29, scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.print("try w.{s}({d}, {s}", .{ scalarWriterName(scalar), number, prefix });
+}
+
+fn writeScalarWriteCallAssumeCapacity(number: u29, scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("w.{s}AssumeCapacity({d}, {s}", .{ scalarWriterName(scalar), number, prefix });
 }
 
 fn shouldSkipDefault(scalar: schema.ScalarType) bool {

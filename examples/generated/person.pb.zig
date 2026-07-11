@@ -298,11 +298,35 @@ pub const demo = struct {
             for (self._unknown_fields) |raw| try w.appendSlice(raw);
         }
 
+        pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
+            if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
+            if (self.name.len != 0) {
+                if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8;
+                w.writeStringAssumeCapacity(2, self.name);
+            }
+            if (self.scores.len != 0) {
+                var packed_len: usize = 0;
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                w.writeTagAssumeCapacity(3, .length_delimited);
+                w.writeVarintAssumeCapacity(packed_len);
+                for (self.scores) |item| w.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, item))));
+            }
+            for (self.counts) |entry| {
+                if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
+                w.writeTagAssumeCapacity(4, .length_delimited);
+                w.writeVarintAssumeCapacity(entry_len);
+                w.writeStringAssumeCapacity(1, entry.key);
+                w.writeInt32AssumeCapacity(2, entry.value);
+            }
+            for (self._unknown_fields) |raw| w.appendSliceAssumeCapacity(raw);
+        }
+
         pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
             try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());
-            try self.writeTo(&w);
+            try self.writeToAssumeCapacity(&w);
             return try w.toOwnedSlice();
         }
 

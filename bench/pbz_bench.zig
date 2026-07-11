@@ -76,7 +76,7 @@ fn generatedEncode(ctx: GeneratedEncodeCtx) !void {
 const GeneratedWriteToCtx = struct { writer: *pbz.Writer, person: *const person_pb.demo.Person };
 fn generatedWriteToReuse(ctx: GeneratedWriteToCtx) !void {
     ctx.writer.clearRetainingCapacity();
-    try ctx.person.writeTo(ctx.writer);
+    try ctx.person.writeToAssumeCapacity(ctx.writer);
 }
 
 const GeneratedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
@@ -190,7 +190,7 @@ pub fn main() !void {
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
-        try runTimed(io, "generated binary writeTo reuse", iters.generated_binary, generated_bytes.len, GeneratedWriteToCtx{ .writer = &reusable_writer, .person = &generated_person }, generatedWriteToReuse),
+        try runTimed(io, "generated binary writeToAssumeCapacity reuse", iters.generated_binary, generated_bytes.len, GeneratedWriteToCtx{ .writer = &reusable_writer, .person = &generated_person }, generatedWriteToReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),
