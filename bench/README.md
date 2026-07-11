@@ -12,6 +12,17 @@ Run pbz plus every available cross-language baseline with:
 bench/run_compare.sh
 ```
 
+Summarize a full comparison log with:
+
+```sh
+bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
+python3 bench/summarize_compare.py /tmp/pbz-compare.log
+```
+
+Use `--fail-on-loss` when a CI-style non-zero exit is desired for any parsed
+row where the fastest pbz generated path is still slower than the fastest
+baseline path for the same workload.
+
 The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
