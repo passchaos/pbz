@@ -5016,11 +5016,28 @@ fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
     try indent(writer, depth + 1);
     try writer.writeAll("if (tag.wire_type == .length_delimited) {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("while (!packed_reader.eof()) try ");
-    try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.print(".append(allocator, try packed_reader.{s}());\n", .{scalarReaderName(scalar)});
+    try writer.writeAll("const payload = try r.readBytes();\n");
+    if (packedScalarAppendHelperName(scalar)) |helper_name| {
+        try indent(writer, depth + 2);
+        try writer.writeAll("try pbz.wire.");
+        try writer.writeAll(helper_name);
+        try writer.writeAll("(allocator, &");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(", payload);\n");
+    } else {
+        try indent(writer, depth + 2);
+        try writer.writeAll("try ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".ensureUnusedCapacity(allocator, ");
+        try writePackedScalarDecodeCapacityExpr(scalar, "payload", writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("var packed_reader = pbz.Reader.init(payload);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("while (!packed_reader.eof()) ");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.print(".appendAssumeCapacity(try packed_reader.{s}());\n", .{scalarReaderName(scalar)});
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("} else {\n");
     try indent(writer, depth + 2);
@@ -5030,6 +5047,22 @@ fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
     try writer.writeAll("}\n");
     try indent(writer, depth);
     try writer.writeAll("},\n");
+}
+
+fn packedScalarAppendHelperName(scalar: schema.ScalarType) ?[]const u8 {
+    return switch (scalar) {
+        .int32 => "appendPackedInt32",
+        else => null,
+    };
+}
+
+fn writePackedScalarDecodeCapacityExpr(scalar: schema.ScalarType, payload_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double, .fixed64, .sfixed64 => try writer.print("{s}.len / 8", .{payload_expr}),
+        .float, .fixed32, .sfixed32 => try writer.print("{s}.len / 4", .{payload_expr}),
+        .int32, .int64, .uint32, .uint64, .sint32, .sint64, .bool => try writer.print("{s}.len", .{payload_expr}),
+        .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
+    }
 }
 
 fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -10827,8 +10860,7 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(2, .length_delimited);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readBytes();") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_reader = pbz.Reader.init(payload)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try @\"ids_list\".append(allocator, try packed_reader.readInt32())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedInt32(allocator, &@\"ids_list\", payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.writeTag(2, .varint); try unknown_writer.appendSlice(payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"ids_list\".append(allocator, try r.readInt32())") != null);

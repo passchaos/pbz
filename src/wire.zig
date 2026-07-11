@@ -73,10 +73,16 @@ pub fn zigZagDecode64(value: u64) i64 {
 }
 
 pub fn encodedVarintSize(value: u64) usize {
-    var v = value;
-    var n: usize = 1;
-    while (v >= 0x80) : (n += 1) v >>= 7;
-    return n;
+    if (value < (1 << 7)) return 1;
+    if (value < (1 << 14)) return 2;
+    if (value < (1 << 21)) return 3;
+    if (value < (1 << 28)) return 4;
+    if (value < (1 << 35)) return 5;
+    if (value < (1 << 42)) return 6;
+    if (value < (1 << 49)) return 7;
+    if (value < (1 << 56)) return 8;
+    if (value < (1 << 63)) return 9;
+    return 10;
 }
 
 pub fn tagSize(number: FieldNumber, wire_type: WireType) Error!usize {
@@ -357,17 +363,7 @@ pub const Reader = struct {
     }
 
     pub fn readVarint(self: *Reader) Error!u64 {
-        var result: u64 = 0;
-        var shift: u6 = 0;
-        var count: usize = 0;
-        while (count < 10) : (count += 1) {
-            const byte = try self.readByte();
-            result |= (@as(u64, byte & 0x7f) << shift);
-            if ((byte & 0x80) == 0) return result;
-            if (shift == 63) return error.MalformedVarint;
-            shift += 7;
-        }
-        return error.MalformedVarint;
+        return try readVarintAt(self.input, &self.index);
     }
 
     pub fn nextTag(self: *Reader) Error!?Tag {
@@ -500,6 +496,62 @@ pub const Reader = struct {
         }
     }
 };
+
+pub inline fn readVarintAt(input: []const u8, index_ptr: *usize) Error!u64 {
+    var index = index_ptr.*;
+
+    if (index >= input.len) return error.TruncatedInput;
+    const first = input[index];
+    index += 1;
+    if (first < 0x80) {
+        index_ptr.* = index;
+        return first;
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const second = input[index];
+    index += 1;
+    var result = @as(u64, first & 0x7f) | (@as(u64, second & 0x7f) << 7);
+    if (second < 0x80) {
+        index_ptr.* = index;
+        return result;
+    }
+
+    var shift: u6 = 14;
+    var count: usize = 2;
+    while (count < 10) : (count += 1) {
+        if (index >= input.len) {
+            index_ptr.* = index;
+            return error.TruncatedInput;
+        }
+        const byte = input[index];
+        index += 1;
+        result |= (@as(u64, byte & 0x7f) << shift);
+        if ((byte & 0x80) == 0) {
+            index_ptr.* = index;
+            return result;
+        }
+        if (shift == 63) {
+            index_ptr.* = index;
+            return error.MalformedVarint;
+        }
+        shift += 7;
+    }
+    index_ptr.* = index;
+    return error.MalformedVarint;
+}
+
+pub inline fn appendPackedInt32(allocator: std.mem.Allocator, list: *std.ArrayList(i32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try list.ensureUnusedCapacity(allocator, payload.len);
+    var index: usize = 0;
+    while (index < payload.len) {
+        const value = try readVarintAt(payload, &index);
+        list.appendAssumeCapacity(@truncate(@as(i64, @bitCast(value))));
+    }
+}
 
 pub fn fieldRawSlice(input: []const u8, start: usize, reader_after_value: *const Reader) []const u8 {
     return input[start..reader_after_value.index];

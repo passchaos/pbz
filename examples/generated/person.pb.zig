@@ -420,8 +420,8 @@ pub const demo = struct {
                     },
                     3 => {
                         if (tag.wire_type == .length_delimited) {
-                            var packed_reader = pbz.Reader.init(try r.readBytes());
-                            while (!packed_reader.eof()) try scores_list.append(allocator, try packed_reader.readInt32());
+                            const payload = try r.readBytes();
+                            try pbz.wire.appendPackedInt32(allocator, &scores_list, payload);
                         } else {
                             try scores_list.append(allocator, try r.readInt32());
                         }
@@ -1530,8 +1530,8 @@ pub const demo = struct {
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
-                            var packed_reader = pbz.Reader.init(try r.readBytes());
-                            while (!packed_reader.eof()) try values_list.append(allocator, try packed_reader.readInt32());
+                            const payload = try r.readBytes();
+                            try pbz.wire.appendPackedInt32(allocator, &values_list, payload);
                         } else {
                             try values_list.append(allocator, try r.readInt32());
                         }
