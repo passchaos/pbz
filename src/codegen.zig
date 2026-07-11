@@ -2699,7 +2699,7 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
 
 fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("pub fn writeTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {\n");
+    try writer.writeAll("pub fn writeTo(self: @This(), w: *pbz.Writer) !void {\n");
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodeField(file, field, writer, depth + 1);
     }
@@ -2715,7 +2715,7 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try self.writeTo(allocator, &w);\n");
+    try writer.writeAll("try self.writeTo(&w);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -5094,10 +5094,19 @@ fn writeEncodeEnumField(file: *const schema.FileDescriptor, field: *const schema
 fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     try writeEncodePackedPrefix(field, writer, depth);
     try indent(writer, depth + 1);
+    try writer.writeAll("var packed_len: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| packed_len += ");
+    try writePackedScalarSizeExpr(scalar, "item", writer);
+    try writer.writeAll(";\n");
+    try writeEncodePackedLength(field, writer, depth);
+    try indent(writer, depth + 1);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |item| ");
-    try writePackedScalarPayload(scalar, "item", writer);
+    try writePackedScalarPayload(scalar, "item", "w", writer);
     try writer.writeAll(";\n");
     try writeEncodePackedSuffix(field, writer, depth);
 }
@@ -5105,10 +5114,17 @@ fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
 fn writeEncodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try writeEncodePackedPrefix(field, writer, depth);
     try indent(writer, depth + 1);
+    try writer.writeAll("var packed_len: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));\n");
+    try writeEncodePackedLength(field, writer, depth);
+    try indent(writer, depth + 1);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |item| ");
-    try writePackedEnumPayload("item", writer);
+    try writePackedEnumPayload("item", "w", writer);
     try writer.writeAll(";\n");
     try writeEncodePackedSuffix(field, writer, depth);
 }
@@ -5118,46 +5134,62 @@ fn writeEncodePackedPrefix(field: *const schema.FieldDescriptor, writer: *std.Io
     try writer.writeAll("if (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
+}
+
+fn writeEncodePackedLength(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth + 1);
-    try writer.writeAll("var packed_writer = pbz.Writer.init(allocator);\n");
+    try writer.print("try w.writeTag({d}, .length_delimited);\n", .{field.number});
     try indent(writer, depth + 1);
-    try writer.writeAll("defer packed_writer.deinit();\n");
+    try writer.writeAll("try w.writeVarint(packed_len);\n");
 }
 
 fn writeEncodePackedSuffix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    try indent(writer, depth + 1);
-    try writer.print("try w.writeBytes({d}, packed_writer.slice());\n", .{field.number});
+    _ = field;
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
 
-fn writePackedScalarPayload(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+fn writePackedScalarSizeExpr(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
-        .double => try writer.print("try packed_writer.writeRawLittle(u64, @bitCast({s}))", .{value_expr}),
-        .float => try writer.print("try packed_writer.writeRawLittle(u32, @bitCast({s}))", .{value_expr}),
-        .int32 => try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr}),
-        .int64 => try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast({s})))", .{value_expr}),
-        .uint32 => try writer.print("try packed_writer.writeVarint({s})", .{value_expr}),
-        .uint64 => try writer.print("try packed_writer.writeVarint({s})", .{value_expr}),
-        .sint32 => try writer.print("try packed_writer.writeVarint(pbz.wire.zigZagEncode32({s}))", .{value_expr}),
-        .sint64 => try writer.print("try packed_writer.writeVarint(pbz.wire.zigZagEncode64({s}))", .{value_expr}),
-        .fixed32 => try writer.print("try packed_writer.writeRawLittle(u32, {s})", .{value_expr}),
-        .fixed64 => try writer.print("try packed_writer.writeRawLittle(u64, {s})", .{value_expr}),
-        .sfixed32 => try writer.print("try packed_writer.writeRawLittle(i32, {s})", .{value_expr}),
-        .sfixed64 => try writer.print("try packed_writer.writeRawLittle(i64, {s})", .{value_expr}),
-        .bool => try writer.print("try packed_writer.writeVarint(@as(u64, if ({s}) 1 else 0))", .{value_expr}),
+        .double, .fixed64, .sfixed64 => try writer.writeAll("8"),
+        .float, .fixed32, .sfixed32 => try writer.writeAll("4"),
+        .int32 => try writer.print("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr}),
+        .int64 => try writer.print("pbz.wire.encodedVarintSize(@as(u64, @bitCast({s})))", .{value_expr}),
+        .uint32, .uint64 => try writer.print("pbz.wire.encodedVarintSize({s})", .{value_expr}),
+        .sint32 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode32({s}))", .{value_expr}),
+        .sint64 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode64({s}))", .{value_expr}),
+        .bool => try writer.writeAll("1"),
         .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
     }
 }
 
-fn writePackedEnumPayload(value_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.print("try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr});
+fn writePackedScalarPayload(scalar: schema.ScalarType, value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double => try writer.print("try {s}.writeRawLittle(u64, @bitCast({s}))", .{ writer_name, value_expr }),
+        .float => try writer.print("try {s}.writeRawLittle(u32, @bitCast({s}))", .{ writer_name, value_expr }),
+        .int32 => try writer.print("try {s}.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{ writer_name, value_expr }),
+        .int64 => try writer.print("try {s}.writeVarint(@as(u64, @bitCast({s})))", .{ writer_name, value_expr }),
+        .uint32 => try writer.print("try {s}.writeVarint({s})", .{ writer_name, value_expr }),
+        .uint64 => try writer.print("try {s}.writeVarint({s})", .{ writer_name, value_expr }),
+        .sint32 => try writer.print("try {s}.writeVarint(pbz.wire.zigZagEncode32({s}))", .{ writer_name, value_expr }),
+        .sint64 => try writer.print("try {s}.writeVarint(pbz.wire.zigZagEncode64({s}))", .{ writer_name, value_expr }),
+        .fixed32 => try writer.print("try {s}.writeRawLittle(u32, {s})", .{ writer_name, value_expr }),
+        .fixed64 => try writer.print("try {s}.writeRawLittle(u64, {s})", .{ writer_name, value_expr }),
+        .sfixed32 => try writer.print("try {s}.writeRawLittle(i32, {s})", .{ writer_name, value_expr }),
+        .sfixed64 => try writer.print("try {s}.writeRawLittle(i64, {s})", .{ writer_name, value_expr }),
+        .bool => try writer.print("try {s}.writeVarint(@as(u64, if ({s}) 1 else 0))", .{ writer_name, value_expr }),
+        .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
+    }
+}
+
+fn writePackedEnumPayload(value_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.print("try {s}.writeVarint(@as(u64, @bitCast(@as(i64, {s}))))", .{ writer_name, value_expr });
 }
 
 fn writePackedKindPayload(kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (kind) {
-        .scalar => |scalar| try writePackedScalarPayload(scalar, value_expr, writer),
-        .enumeration => try writePackedEnumPayload(value_expr, writer),
+        .scalar => |scalar| try writePackedScalarPayload(scalar, value_expr, "packed_writer", writer),
+        .enumeration => try writePackedEnumPayload(value_expr, "packed_writer", writer),
         else => try writer.writeAll("@compileError(\"non-packable extension\")"),
     }
 }
@@ -5289,20 +5321,24 @@ fn writeEncodeMapField(file: *const schema.FileDescriptor, field: *const schema.
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |entry| {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var entry_writer = pbz.Writer.init(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("defer entry_writer.deinit();\n");
     try writeMapEntryEncodeUtf8Check(file, field, "entry.key", .{ .scalar = map_type.key }, writer, depth + 1);
-    try indent(writer, depth + 1);
-    try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "entry_writer", writer);
-    try writer.writeAll(");\n");
     try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writeKindWriteCall(2, map_type.value.*, "entry.value", "entry_writer", writer);
+    try writer.writeAll("const entry_len = ");
+    try writeMapEntryFieldSizeExpr(1, .{ .scalar = map_type.key }, "entry.key", writer);
+    try writer.writeAll(" + ");
+    try writeMapEntryFieldSizeExpr(2, map_type.value.*, "entry.value", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.print("try w.writeTag({d}, .length_delimited);\n", .{field.number});
+    try indent(writer, depth + 1);
+    try writer.writeAll("try w.writeVarint(entry_len);\n");
+    try indent(writer, depth + 1);
+    try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "w", writer);
     try writer.writeAll(");\n");
     try indent(writer, depth + 1);
-    try writer.print("try w.writeMessage({d}, entry_writer.slice());\n", .{field.number});
+    try writeKindWriteCall(2, map_type.value.*, "entry.value", "w", writer);
+    try writer.writeAll(");\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -5375,6 +5411,35 @@ fn writeMapKeyLessExpr(scalar: schema.ScalarType, a: []const u8, b: []const u8, 
         .bool => try writer.print("!{s} and {s}", .{ a, b }),
         .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("{s} < {s}", .{ a, b }),
         .double, .float, .bytes => try writer.writeAll("false"),
+    }
+}
+
+fn writeMapEntryFieldSizeExpr(number: u29, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    const tag_size = wire.tagSize(number, kind.wireType()) catch unreachable;
+    try writer.print("{d} + ", .{tag_size});
+    try writeKindPayloadSizeExpr(kind, value_expr, writer);
+}
+
+fn writeKindPayloadSizeExpr(kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writeScalarPayloadSizeExpr(scalar, value_expr, writer),
+        .enumeration => try writer.print("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr}),
+        .message => try writer.print("pbz.wire.encodedVarintSize({s}.len) + {s}.len", .{ value_expr, value_expr }),
+        else => try writer.writeAll("@compileError(\"unsupported map field kind\")"),
+    }
+}
+
+fn writeScalarPayloadSizeExpr(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double, .fixed64, .sfixed64 => try writer.writeAll("8"),
+        .float, .fixed32, .sfixed32 => try writer.writeAll("4"),
+        .int32 => try writer.print("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, {s}))))", .{value_expr}),
+        .int64 => try writer.print("pbz.wire.encodedVarintSize(@as(u64, @bitCast({s})))", .{value_expr}),
+        .uint32, .uint64 => try writer.print("pbz.wire.encodedVarintSize({s})", .{value_expr}),
+        .sint32 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode32({s}))", .{value_expr}),
+        .sint64 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode64({s}))", .{value_expr}),
+        .bool => try writer.writeAll("1"),
+        .string, .bytes => try writer.print("pbz.wire.encodedVarintSize({s}.len) + {s}.len", .{ value_expr, value_expr }),
     }
 }
 
@@ -10262,7 +10327,7 @@ test "codegen emits typed scalar fields and encode method" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"id\": i32 = 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeTo(self: @This(), w: *pbz.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"id\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; try w.writeString(2, self.@\"name\"); }") != null);
@@ -10295,7 +10360,7 @@ test "codegen encodes enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"kind\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(2, packed_writer.slice())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(2, .length_delimited);") != null);
 }
 
 test "codegen encodes and decodes packed repeated scalar and enum fields" {
@@ -10311,10 +10376,11 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_writer = pbz.Writer.init(allocator)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, item))))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(1, packed_writer.slice())") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(2, packed_writer.slice())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var packed_len: usize = 0;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .length_delimited);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeVarint(packed_len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(2, .length_delimited);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var packed_reader = pbz.Reader.init(payload)") != null);

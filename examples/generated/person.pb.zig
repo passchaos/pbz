@@ -257,25 +257,26 @@ pub const demo = struct {
             for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
         }
 
-        pub fn writeTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
+        pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
             if (self.id != 0) try w.writeInt32(1, self.id);
             if (self.name.len != 0) {
                 if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8;
                 try w.writeString(2, self.name);
             }
             if (self.scores.len != 0) {
-                var packed_writer = pbz.Writer.init(allocator);
-                defer packed_writer.deinit();
-                for (self.scores) |item| try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, item))));
-                try w.writeBytes(3, packed_writer.slice());
+                var packed_len: usize = 0;
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                try w.writeTag(3, .length_delimited);
+                try w.writeVarint(packed_len);
+                for (self.scores) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
             for (self.counts) |entry| {
-                var entry_writer = pbz.Writer.init(allocator);
-                defer entry_writer.deinit();
                 if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
-                try entry_writer.writeString(1, entry.key);
-                try entry_writer.writeInt32(2, entry.value);
-                try w.writeMessage(4, entry_writer.slice());
+                const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
+                try w.writeTag(4, .length_delimited);
+                try w.writeVarint(entry_len);
+                try w.writeString(1, entry.key);
+                try w.writeInt32(2, entry.value);
             }
             for (self._unknown_fields) |raw| try w.appendSlice(raw);
         }
@@ -283,7 +284,7 @@ pub const demo = struct {
         pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
-            try self.writeTo(allocator, &w);
+            try self.writeTo(&w);
             return try w.toOwnedSlice();
         }
 
@@ -296,10 +297,11 @@ pub const demo = struct {
                 try w.writeString(2, self.name);
             }
             if (self.scores.len != 0) {
-                var packed_writer = pbz.Writer.init(allocator);
-                defer packed_writer.deinit();
-                for (self.scores) |item| try packed_writer.writeVarint(@as(u64, @bitCast(@as(i64, item))));
-                try w.writeBytes(3, packed_writer.slice());
+                var packed_len: usize = 0;
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                try w.writeTag(3, .length_delimited);
+                try w.writeVarint(packed_len);
+                for (self.scores) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
             if (self.counts.len != 0) {
                 const entries = try allocator.dupe(countsEntry, self.counts);
