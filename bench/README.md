@@ -30,6 +30,7 @@ checklist and the remaining non-goal/open-audit items.
 The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
+- generated/dynamic unknown-field stress decode and count-by-number query
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode

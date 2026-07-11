@@ -63,6 +63,7 @@ include:
 The matrix includes:
 
 - binary encode/decode
+- generated/dynamic unknown-field stress decode and count-by-number query
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
@@ -128,9 +129,9 @@ claiming broad superiority beyond the covered workloads:
   has conformance-style helpers and examples, but not an exhaustive upstream
   conformance run.
 - The comparison matrix is intentionally broad but not infinite: additional
-  workloads such as very large unknown-field sets, pathological map ordering,
-  deeply nested recursion limits, arena-style ownership patterns, streaming RPC
-  transports, and every well-known-type edge case may deserve separate rows.
+  workloads such as pathological map ordering, deeply nested recursion limits,
+  arena-style ownership patterns, streaming RPC transports, and every
+  well-known-type edge case may deserve separate rows.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

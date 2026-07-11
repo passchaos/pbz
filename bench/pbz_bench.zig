@@ -15,6 +15,9 @@ const BenchmarkSamples: usize = 3;
 const LargeBytesPayloadLen: usize = 64 * 1024;
 const LargeBytesChunkCount: usize = 16;
 const LargeBytesChunkLen: usize = 4 * 1024;
+const UnknownFieldStressCount: usize = 1024;
+const UnknownFieldStressFirstNumber: pbz.FieldNumber = 1000;
+const UnknownFieldStressNumberSpan: pbz.FieldNumber = 16;
 
 const BenchResult = struct {
     name: []const u8,
@@ -66,6 +69,18 @@ fn makeGeneratedPerson(allocator: std.mem.Allocator) !person_pb.demo.Person {
     try person.counts.put(allocator, "green", 2);
     try person.counts.put(allocator, "blue", 3);
     return person;
+}
+
+fn makeUnknownFieldPayload(allocator: std.mem.Allocator, base: []const u8, count: usize) ![]u8 {
+    var writer = pbz.Writer.init(allocator);
+    errdefer writer.deinit();
+    try writer.appendSlice(base);
+    var i: usize = 0;
+    while (i < count) : (i += 1) {
+        const number: pbz.FieldNumber = @intCast(UnknownFieldStressFirstNumber + (i % UnknownFieldStressNumberSpan));
+        try writer.writeUInt32(number, @intCast(i + 1));
+    }
+    return try writer.toOwnedSlice();
 }
 
 fn makeDynamicPerson(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
@@ -1510,6 +1525,20 @@ fn generatedDecode(ctx: GeneratedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedUnknownDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedUnknownDecode(ctx: GeneratedUnknownDecodeCtx) !void {
+    var decoded = try person_pb.demo.Person.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    if (decoded.unknownFieldCount() != UnknownFieldStressCount) return error.InvalidWireType;
+    decoded.deinit(ctx.allocator);
+}
+
+const GeneratedUnknownQueryCtx = struct { message: *const person_pb.demo.Person, number: pbz.FieldNumber };
+fn generatedUnknownCountByNumber(ctx: GeneratedUnknownQueryCtx) !void {
+    const count = try ctx.message.unknownFieldCountByNumber(ctx.number);
+    std.mem.doNotOptimizeAway(count);
+}
+
 const DynamicEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
 fn dynamicEncode(ctx: DynamicEncodeCtx) !void {
     const bytes = try ctx.message.encoded(ctx.file);
@@ -1523,6 +1552,21 @@ fn dynamicDecode(ctx: DynamicDecodeCtx) !void {
     defer msg.deinit();
     try msg.decode(ctx.file, ctx.bytes);
     std.mem.doNotOptimizeAway(&msg);
+}
+
+const DynamicUnknownDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicUnknownDecode(ctx: DynamicUnknownDecodeCtx) !void {
+    var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
+    defer msg.deinit();
+    try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
+    if (msg.unknownCount() != UnknownFieldStressCount) return error.InvalidWireType;
+}
+
+const DynamicUnknownQueryCtx = struct { message: *const pbz.DynamicMessage, number: pbz.FieldNumber };
+fn dynamicUnknownCountByNumber(ctx: DynamicUnknownQueryCtx) !void {
+    const count = ctx.message.unknownFieldCountByNumber(ctx.number);
+    std.mem.doNotOptimizeAway(count);
 }
 
 const GeneratedJsonStringifyCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
@@ -1795,6 +1839,13 @@ pub fn main() !void {
     defer allocator.free(generated_buffer);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
+    const generated_unknown_bytes = try makeUnknownFieldPayload(allocator, generated_bytes, UnknownFieldStressCount);
+    defer allocator.free(generated_unknown_bytes);
+    var generated_unknown_person = try person_pb.demo.Person.decode(allocator, generated_unknown_bytes);
+    defer generated_unknown_person.deinit(allocator);
+    var dynamic_unknown_person = pbz.DynamicMessage.init(allocator, desc);
+    defer dynamic_unknown_person.deinit();
+    try dynamic_unknown_person.decode(&file, generated_unknown_bytes);
     const generated_scalar_mix_bytes = try generated_scalar_mix.encode(allocator);
     defer allocator.free(generated_scalar_mix_bytes);
     var reusable_scalar_mix_writer = pbz.Writer.init(allocator);
@@ -1955,7 +2006,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -1965,6 +2016,8 @@ pub fn main() !void {
         try runTimed(io, "generated deterministic binary encode", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedDeterministicEncode),
         try runTimed(io, "generated deterministic binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_buffer, .person = &generated_person }, generatedDeterministicEncodeIntoReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
+        try runTimed(io, "generated unknown fields decode", iters.large_map, generated_unknown_bytes.len, GeneratedUnknownDecodeCtx{ .allocator = allocator, .bytes = generated_unknown_bytes }, generatedUnknownDecode),
+        try runTimed(io, "generated unknown fields count by number", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownQueryCtx{ .message = &generated_unknown_person, .number = UnknownFieldStressFirstNumber }, generatedUnknownCountByNumber),
         try runTimed(io, "generated scalarmix encode", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeCtx{ .allocator = allocator, .message = &generated_scalar_mix }, generatedScalarMixEncode),
         try runTimed(io, "generated scalarmix writeToAssumeCapacity reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixWriteToCtx{ .writer = &reusable_scalar_mix_writer, .message = &generated_scalar_mix }, generatedScalarMixWriteToReuse),
         try runTimed(io, "generated scalarmix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeIntoCtx{ .buffer = generated_scalar_mix_buffer, .message = &generated_scalar_mix }, generatedScalarMixEncodeIntoReuse),
@@ -2003,6 +2056,8 @@ pub fn main() !void {
         try runTimed(io, "generated complex deterministic binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexDeterministicEncodeIntoReuse),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),
+        try runTimed(io, "dynamic unknown fields decode", iters.large_map, generated_unknown_bytes.len, DynamicUnknownDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = generated_unknown_bytes }, dynamicUnknownDecode),
+        try runTimed(io, "dynamic unknown fields count by number", iters.generated_binary, generated_unknown_bytes.len, DynamicUnknownQueryCtx{ .message = &dynamic_unknown_person, .number = UnknownFieldStressFirstNumber }, dynamicUnknownCountByNumber),
         try runTimed(io, "generated packed encode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeCtx{ .allocator = allocator, .message = &generated_packed }, generatedPackedEncode),
         try runTimed(io, "generated packed writeToAssumeCapacity reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedWriteToCtx{ .writer = &reusable_packed_writer, .message = &generated_packed }, generatedPackedWriteToReuse),
         try runTimed(io, "generated packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeIntoCtx{ .buffer = generated_packed_buffer, .message = &generated_packed }, generatedPackedEncodeIntoReuse),
