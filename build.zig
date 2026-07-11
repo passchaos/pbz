@@ -60,6 +60,27 @@ pub fn build(b: *std.Build) void {
         examples_step.dependOn(&run_example.step);
     }
 
+    const bench_exe = b.addExecutable(.{
+        .name = "pbz-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/pbz_bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "pbz", .module = mod },
+                .{ .name = "person_pb", .module = b.createModule(.{
+                    .root_source_file = b.path("examples/generated/person.pb.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{.{ .name = "pbz", .module = mod }},
+                }) },
+            },
+        }),
+    });
+    const run_bench = b.addRunArtifact(bench_exe);
+    const bench_step = b.step("bench", "Run pbz benchmark baseline");
+    bench_step.dependOn(&run_bench.step);
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(examples_step);

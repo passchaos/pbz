@@ -430,6 +430,21 @@ structured SourceCodeInfo location path/span/comments including parser-generated
 declarations/verification/features with parser-side consistency checks,
 structured GeneratedCodeInfo annotations, and edition feature metadata.
 
+
+## Benchmarks
+
+Run the local pbz performance baseline with:
+
+```sh
+zig build bench -Doptimize=ReleaseFast
+```
+
+The benchmark source is [`bench/pbz_bench.zig`](bench/pbz_bench.zig). It currently
+measures pbz generated and dynamic binary encode/decode plus JSON and TextFormat
+round-trips. These numbers are the baseline for future C++ protobuf / Rust prost
+comparisons and optimization work; use the same schema, payloads, hardware, and
+optimization mode for fair comparisons.
+
 ## Build and test
 
 ```sh
