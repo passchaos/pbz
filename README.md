@@ -290,8 +290,8 @@ fields/map enum values when `generateZigFileWithRegistry` is used. Generated
 message structs keep protobuf fields as public Zig struct fields for natural
 direct access, store registry-resolved singular/repeated length-prefixed message
 fields and same-file/direct-import/transitive-public imported map message
-values as typed message values, store same-file length-prefixed oneof message
-alternatives as typed message values, keep oneof storage as a Zig
+values plus same-file/direct-import/transitive-public imported length-prefixed
+oneof message alternatives as typed message values, keep oneof storage as a Zig
 `union(enum)`, and provide
 `cloneOwned` / `decodeOwned` / `decodeOwnedInitialized` for deep-copying
 strings/bytes/message payloads/maps/unknowns into owned storage. When generated

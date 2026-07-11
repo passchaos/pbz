@@ -614,7 +614,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
             try writeMapEntryHelpers(ctx, field, writer, depth + 1);
         }
     }
-    for (message.oneofs.items) |oneof| try writeOneofUnion(file, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeOneofUnion(ctx, message, oneof, writer, depth + 1);
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeFieldDecl(ctx, field, writer, depth + 1);
     }
@@ -670,7 +670,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("};\n\n");
 }
 
-fn writeOneofUnion(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeOneofUnion(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeOneofTypeName(oneof.name, writer);
@@ -683,8 +683,8 @@ fn writeOneofUnion(file: *const schema.FileDescriptor, message: *const schema.Me
                 try indent(writer, depth + 1);
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(": ");
-                if (typedOneofMessageField(file, field)) |type_name| {
-                    try writeMessageTypeReference(type_name, writer);
+                if (typedOneofMessageFieldWithContext(ctx, field)) |type_name| {
+                    try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
                 } else {
                     try writeFieldType(field.*, writer);
                 }
@@ -840,7 +840,7 @@ fn fieldTypeName(kind: schema.FieldKind) []const u8 {
     };
 }
 
-fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodeOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof.name, writer);
@@ -854,7 +854,7 @@ fn writeEncodeOneof(file: *const schema.FileDescriptor, message: *const schema.M
                 try writer.writeAll(".");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |value| ");
-                try writeOneofValueEncode(file, field, "value", writer);
+                try writeOneofValueEncode(ctx, field, "value", writer);
                 try writer.writeAll(",\n");
             }
         }
@@ -1189,7 +1189,7 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try writer.writeAll(" = try nested.cloneOwned(allocator); }\n");
         return;
     }
-    if (typedOneofMessageField(ctx.file, field)) |_| {
+    if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
         const oneof_name = field.oneof_name orelse return;
         try indent(writer, depth);
         try writer.writeAll("self.");
@@ -1564,7 +1564,8 @@ fn writeTextParseEnumExpr(file: *const schema.FileDescriptor, enum_name: []const
     try writer.writeAll(")");
 }
 
-fn writeOneofValueEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+fn writeOneofValueEncode(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    const file = ctx.file;
     switch (field.kind) {
         .scalar => |scalar| {
             if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
@@ -1580,7 +1581,7 @@ fn writeOneofValueEncode(file: *const schema.FileDescriptor, field: *const schem
         },
         .enumeration => try writer.print("try w.writeInt32({d}, {s})", .{ field.number, value_expr }),
         .message => {
-            if (typedOneofMessageField(file, field)) |_| {
+            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                 try writer.print("{{ const payload_len = {s}.encodedSize(); try w.writeTag({d}, .length_delimited); try w.writeVarint(payload_len); try {s}.writeTo(w); }}", .{ value_expr, field.number, value_expr });
             } else if (fieldMessageEncoding(file, field) == .delimited) {
                 try writer.print("{{ try w.writeTag({d}, .start_group); try w.appendSlice({s}); try w.writeTag({d}, .end_group); }}", .{ field.number, value_expr, field.number });
@@ -1621,10 +1622,10 @@ fn typedRepeatedMessageFieldWithContext(ctx: *const CodegenContext, field: *cons
     return if (codegenCanReferenceMessageWithContext(ctx, field.kind.message)) field.kind.message else null;
 }
 
-fn typedOneofMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+fn typedOneofMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
     if (field.oneof_name == null or field.kind != .message) return null;
-    if (fieldMessageEncoding(file, field) != .length_prefixed) return null;
-    return if (codegenCanReferenceMessage(file, field.kind.message)) field.kind.message else null;
+    if (fieldMessageEncoding(ctx.file, field) != .length_prefixed) return null;
+    return if (codegenCanReferenceMessageWithContext(ctx, field.kind.message)) field.kind.message else null;
 }
 
 fn typedMapMessageValueWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
@@ -2889,7 +2890,6 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
 }
 
 fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try writeEncodedSize(ctx, message, writer, depth);
     try writer.writeAll("\n");
 
@@ -2898,7 +2898,7 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodeField(ctx, field, writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeEncodeOneof(file, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeEncodeOneof(ctx, message, oneof, writer, depth + 1);
     try writeEncodeUnknownFields(writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
@@ -2908,7 +2908,7 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodeFieldAssumeCapacity(ctx, field, writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeEncodeOneof(file, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeEncodeOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.@\"_unknown_fields\") |raw| w.appendSliceAssumeCapacity(raw);\n");
     try indent(writer, depth);
@@ -2959,7 +2959,6 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
 }
 
 fn writeEncodedSize(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub fn encodedSize(self: @This()) usize {\n");
     try indent(writer, depth + 1);
@@ -2967,7 +2966,7 @@ fn writeEncodedSize(ctx: *const CodegenContext, message: *const schema.MessageDe
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodedSizeField(ctx, field, "self.", writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeEncodedSizeOneof(file, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeEncodedSizeOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.@\"_unknown_fields\") |raw| size += raw.len;\n");
     try indent(writer, depth + 1);
@@ -3103,7 +3102,7 @@ fn writeEncodedSizeMapField(ctx: *const CodegenContext, field: *const schema.Fie
     try writer.writeAll("}\n");
 }
 
-fn writeEncodedSizeOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeEncodedSizeOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (self.");
     try writeQuotedIdent(oneof.name, writer);
@@ -3116,7 +3115,7 @@ fn writeEncodedSizeOneof(file: *const schema.FileDescriptor, message: *const sch
             try indent(writer, depth + 1);
             try writer.writeAll(".");
             try writeQuotedIdent(field.name, writer);
-            if (typedOneofMessageField(file, field)) |_| {
+            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                 try writer.writeAll(" => |value| { const payload_len = value.encodedSize(); size += ");
                 try writer.print("{d}", .{wire.tagSize(field.number, .length_delimited) catch unreachable});
                 try writer.writeAll(" + pbz.wire.encodedVarintSize(payload_len) + payload_len; },\n");
@@ -3346,23 +3345,23 @@ fn writeOneofValueEncodeDeterministic(ctx: *const CodegenContext, field: *const 
     switch (field.kind) {
         .message => |type_name| {
             if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
-                if (typedOneofMessageField(file, field)) |_| {
+                if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                     try writer.print("{{ const payload = try {s}.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage({d}, payload); }}", .{ value_expr, field.number });
                 } else {
                     try writer.writeAll("{ ");
                     try writeEncodeMessagePayloadDeterministic(ctx, field.number, fieldMessageEncoding(file, field) == .delimited, type_name, value_expr, "w", writer);
                     try writer.writeAll(" }");
                 }
-            } else try writeOneofValueEncode(file, field, value_expr, writer);
+            } else try writeOneofValueEncode(ctx, field, value_expr, writer);
         },
         .group => |type_name| {
             if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
                 try writer.writeAll("{ ");
                 try writeEncodeMessagePayloadDeterministic(ctx, field.number, true, type_name, value_expr, "w", writer);
                 try writer.writeAll(" }");
-            } else try writeOneofValueEncode(file, field, value_expr, writer);
+            } else try writeOneofValueEncode(ctx, field, value_expr, writer);
         },
-        else => try writeOneofValueEncode(file, field, value_expr, writer),
+        else => try writeOneofValueEncode(ctx, field, value_expr, writer),
     }
 }
 
@@ -4024,13 +4023,12 @@ fn writeMessageExtensionTypedAccessor(ctx: *const CodegenContext, field: *const 
 }
 
 fn writeMergeFrom(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {\n");
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeMergeField(ctx, field, writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeMergeOneof(file, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeMergeOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("for (other.@\"_unknown_fields\") |raw| try self.appendUnknownRaw(allocator, raw);\n");
     try indent(writer, depth);
@@ -4295,7 +4293,7 @@ fn writeMergeSingularEnumField(file: *const schema.FileDescriptor, field: *const
     }
 }
 
-fn writeMergeOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMergeOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("switch (other.");
     try writeQuotedIdent(oneof.name, writer);
@@ -4313,7 +4311,7 @@ fn writeMergeOneof(file: *const schema.FileDescriptor, message: *const schema.Me
                 try writer.writeAll(" = .{ .");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" = ");
-                if (typedOneofMessageField(file, field)) |_| {
+                if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                     try writer.writeAll("try value.cloneOwned(allocator)");
                 } else {
                     try writer.writeAll("value");
@@ -4327,7 +4325,6 @@ fn writeMergeOneof(file: *const schema.FileDescriptor, message: *const schema.Me
 }
 
 fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {\n");
     for (message.fields.items) |*field| {
@@ -4365,7 +4362,7 @@ fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescrip
         var wrote_switch = false;
         for (message.fields.items) |*field| {
             if (field.oneof_name) |name| {
-                if (std.mem.eql(u8, name, oneof.name) and typedOneofMessageField(file, field) != null) {
+                if (std.mem.eql(u8, name, oneof.name) and typedOneofMessageFieldWithContext(ctx, field) != null) {
                     if (!wrote_switch) {
                         try indent(writer, depth + 1);
                         try writer.writeAll("switch (self.");
@@ -4400,7 +4397,6 @@ fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescrip
 }
 
 fn writeCloneOwned(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {\n");
     try indent(writer, depth + 1);
@@ -4414,7 +4410,7 @@ fn writeCloneOwned(ctx: *const CodegenContext, message: *const schema.MessageDes
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeCloneField(ctx, field, writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeCloneOneof(file, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeCloneOneof(ctx, message, oneof, writer, depth + 1);
     try writeCloneUnknownFields(writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("return out;\n");
@@ -4549,7 +4545,7 @@ fn writeCloneMapField(ctx: *const CodegenContext, field: *const schema.FieldDesc
     try writer.writeAll("}\n");
 }
 
-fn writeCloneOneof(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeCloneOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("out.");
     try writeQuotedIdent(oneof.name, writer);
@@ -4567,7 +4563,7 @@ fn writeCloneOneof(file: *const schema.FileDescriptor, message: *const schema.Me
             try writer.writeAll(" => |value| .{ .");
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(" = ");
-            if (typedOneofMessageField(file, field)) |_| {
+            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                 try writer.writeAll("try value.cloneOwned(allocator)");
             } else {
                 try writeCloneValueExpr(field.kind, "value", writer);
@@ -4844,7 +4840,7 @@ fn writeMissingRequiredPathOneof(ctx: *const CodegenContext, message: *const sch
                 try writer.writeAll(".");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |");
-                if (typedOneofMessageField(ctx.file, field)) |_| {
+                if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                     try writer.writeAll("nested| {\n");
                     try indent(writer, depth + 2);
                     try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
@@ -5072,7 +5068,7 @@ fn writeValidateMessagePayloadOneof(ctx: *const CodegenContext, message: *const 
                 try writer.writeAll(".");
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |");
-                if (typedOneofMessageField(ctx.file, field)) |_| {
+                if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                     try writer.writeAll("nested| try nested.validateRequiredRecursive(allocator),\n");
                     continue;
                 } else {
@@ -5563,7 +5559,7 @@ fn writeDecodeMessageField(ctx: *const CodegenContext, field: *const schema.Fiel
             try writer.writeAll("),\n");
         }
     } else if (field.oneof_name != null) {
-        try writeOneofMessageDecodeAssign(file, field, writer);
+        try writeOneofMessageDecodeAssign(ctx, field, writer);
     } else if (typedSingularMessageFieldWithContext(ctx, field)) |type_name| {
         try writer.writeAll("{ const payload = ");
         try writeMessagePayloadRead(file, field, "r", writer);
@@ -5811,9 +5807,10 @@ fn writeOneofDecodeAssign(file: *const schema.FileDescriptor, field: *const sche
     try writer.print(" = try r.{s}() }},\n", .{reader_method});
 }
 
-fn writeOneofMessageDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+fn writeOneofMessageDecodeAssign(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    const file = ctx.file;
     const oneof_name = field.oneof_name orelse return;
-    if (typedOneofMessageField(file, field)) |type_name| {
+    if (typedOneofMessageFieldWithContext(ctx, field)) |type_name| {
         try writer.writeAll("{ const payload = ");
         try writeMessagePayloadRead(file, field, "r", writer);
         try writer.writeAll("; self.");
@@ -5821,7 +5818,7 @@ fn writeOneofMessageDecodeAssign(file: *const schema.FileDescriptor, field: *con
         try writer.writeAll(" = .{ .");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = try ");
-        try writeMessageTypeReference(type_name, writer);
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".decode(allocator, payload) }; },\n");
         return;
     }
@@ -7382,7 +7379,7 @@ fn writeTextOneof(ctx: *const CodegenContext, message: *const schema.MessageDesc
                     try writer.writeAll("; try writer.writeByte('\\n');\n");
                 },
                 .message, .group => |type_name| {
-                    if (typedOneofMessageField(file, field)) |_| {
+                    if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                         try indent(writer, depth + 2);
                         try writer.writeAll("try writer.writeAll(\"");
                         try writeEscapedStringContents(field.name, writer);
@@ -8211,7 +8208,7 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll("; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };\n");
     } else {
-        if (typedOneofMessageField(ctx.file, field)) |_| {
+        if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
             const oneof_name = field.oneof_name orelse return;
             try indent(writer, depth + 1);
             try writer.writeAll("var nested = try ");
@@ -8494,7 +8491,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
     };
     if (maybe_message_type) |type_name| {
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
-            if (typedOneofMessageField(file, field)) |_| {
+            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                 try writer.writeAll("blk: { var nested = try ");
                 try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
                 try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; }");
@@ -9367,7 +9364,7 @@ fn writeJsonOneof(ctx: *const CodegenContext, message: *const schema.MessageDesc
                     .message, .group => |type_name| {
                         if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
                             try writeJsonPrefix(field, writer, depth + 2);
-                            if (typedOneofMessageField(file, field)) |_| {
+                            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                                 try indent(writer, depth + 2);
                                 try writer.writeAll("try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
                             } else {
@@ -10905,18 +10902,27 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"user\": ?imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\" = null") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"profiles\": []const imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\" = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\" = .{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"picked\": imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\",") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @\"profiles_list\".append(allocator, nested);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".decode(allocator, value_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readBytes(); self.@\"pick\" = .{ .@\"picked\" = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, payload) }; },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.writeTo(w);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(4, payload); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.validateRequiredRecursive(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |nested| try nested.validateRequiredRecursive(allocator),") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = blk: { var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"user\") |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = try nested.cloneOwned(allocator) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, payload);") != null);
 
     const source = try allocator.dupeZ(u8, content);
