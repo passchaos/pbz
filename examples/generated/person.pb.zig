@@ -257,6 +257,23 @@ pub const demo = struct {
             for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
         }
 
+        pub fn encodedSize(self: @This()) usize {
+            var size: usize = 0;
+            if (self.id != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.id))));
+            if (self.name.len != 0) size += 1 + pbz.wire.encodedVarintSize(self.name.len) + self.name.len;
+            if (self.scores.len != 0) {
+                var packed_len: usize = 0;
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                size += 1 + pbz.wire.encodedVarintSize(packed_len) + packed_len;
+            }
+            for (self.counts) |entry| {
+                const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
+                size += 1 + pbz.wire.encodedVarintSize(entry_len) + entry_len;
+            }
+            for (self._unknown_fields) |raw| size += raw.len;
+            return size;
+        }
+
         pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
             if (self.id != 0) try w.writeInt32(1, self.id);
             if (self.name.len != 0) {
@@ -284,6 +301,7 @@ pub const demo = struct {
         pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
+            try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());
             try self.writeTo(&w);
             return try w.toOwnedSlice();
         }

@@ -2698,6 +2698,9 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
 }
 
 fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try writeEncodedSize(file, message, writer, depth);
+    try writer.writeAll("\n");
+
     try indent(writer, depth);
     try writer.writeAll("pub fn writeTo(self: @This(), w: *pbz.Writer) !void {\n");
     for (message.fields.items) |*field| {
@@ -2715,11 +2718,250 @@ fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.Messag
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("try self.writeTo(&w);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeEncodedSize(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodedSize(self: @This()) usize {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var size: usize = 0;\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeEncodedSizeField(file, field, "self.", writer, depth + 1);
+    }
+    for (message.oneofs.items) |oneof| try writeEncodedSizeOneof(message, oneof, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self.@\"_unknown_fields\") |raw| size += raw.len;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return size;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncodedSizeField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, receiver: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind == .map) return try writeEncodedSizeMapField(field, receiver, writer, depth);
+    if (field.cardinality == .repeated) return try writeEncodedSizeRepeatedField(file, field, receiver, writer, depth);
+    try indent(writer, depth);
+    if (hasPresence(file, field.*)) {
+        try writer.writeAll("if (");
+        try writer.writeAll(receiver);
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(") size += ");
+        try writeSingleFieldEncodedSizeExpr(field.number, field.kind, receiver, field.name, writer);
+        try writer.writeAll(";\n");
+    } else {
+        switch (field.kind) {
+            .scalar => |scalar| {
+                try writer.writeAll("if (");
+                try writer.writeAll(receiver);
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(defaultSkipCondition(scalar));
+                try writer.writeAll("size += ");
+                try writeSingleFieldEncodedSizeExpr(field.number, field.kind, receiver, field.name, writer);
+                try writer.writeAll(";\n");
+            },
+            .enumeration => {
+                try writer.writeAll("if (");
+                try writer.writeAll(receiver);
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" != 0) size += ");
+                try writeSingleFieldEncodedSizeExpr(field.number, field.kind, receiver, field.name, writer);
+                try writer.writeAll(";\n");
+            },
+            .message, .group => {
+                try writer.writeAll("if (");
+                try writer.writeAll(receiver);
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(".len != 0) size += ");
+                try writeSingleFieldEncodedSizeExpr(field.number, field.kind, receiver, field.name, writer);
+                try writer.writeAll(";\n");
+            },
+            .map => unreachable,
+        }
+    }
+}
+
+fn writeEncodedSizeRepeatedField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, receiver: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if ((field.kind == .scalar or field.kind == .enumeration) and field.resolvedPacked(file)) {
+        try indent(writer, depth);
+        try writer.writeAll("if (");
+        try writer.writeAll(receiver);
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".len != 0) {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var packed_len: usize = 0;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (");
+        try writer.writeAll(receiver);
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| packed_len += ");
+        if (field.kind == .scalar) {
+            try writeScalarPayloadSizeExpr(field.kind.scalar, "item", writer);
+        } else {
+            try writer.writeAll("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))))");
+        }
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 1);
+        try writer.print("size += {d} + pbz.wire.encodedVarintSize(packed_len) + packed_len;\n", .{wire.tagSize(field.number, .length_delimited) catch unreachable});
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+        return;
+    }
+
+    try indent(writer, depth);
+    try writer.writeAll("for (");
+    try writer.writeAll(receiver);
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| size += ");
+    try writeSingleFieldEncodedSizeExprForValue(field.number, field.kind, "item", writer);
+    try writer.writeAll(";\n");
+}
+
+fn writeEncodedSizeMapField(field: *const schema.FieldDescriptor, receiver: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = field.kind.map;
+    try indent(writer, depth);
+    try writer.writeAll("for (");
+    try writer.writeAll(receiver);
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |entry| {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const entry_len = ");
+    try writeMapEntryFieldSizeExpr(1, .{ .scalar = map_type.key }, "entry.key", writer);
+    try writer.writeAll(" + ");
+    try writeMapEntryFieldSizeExpr(2, map_type.value.*, "entry.value", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.print("size += {d} + pbz.wire.encodedVarintSize(entry_len) + entry_len;\n", .{wire.tagSize(field.number, .length_delimited) catch unreachable});
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncodedSizeOneof(message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".none => {},\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            if (!std.mem.eql(u8, name, oneof.name)) continue;
+            try indent(writer, depth + 1);
+            try writer.writeAll(".");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" => |value| size += ");
+            try writeSingleFieldEncodedSizeExprForValue(field.number, field.kind, "value", writer);
+            try writer.writeAll(",\n");
+        }
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeSingleFieldEncodedSizeExpr(number: u29, kind: schema.FieldKind, receiver: []const u8, field_name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writeSingleFieldEncodedSizePrefix(number, kind, writer);
+    try writer.writeAll(" + ");
+    try writeKindPayloadSizeExprForField(kind, receiver, field_name, writer);
+}
+
+fn writeSingleFieldEncodedSizeExprForValue(number: u29, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writeSingleFieldEncodedSizePrefix(number, kind, writer);
+    try writer.writeAll(" + ");
+    try writeKindPayloadSizeExpr(kind, value_expr, writer);
+}
+
+fn writeSingleFieldEncodedSizePrefix(number: u29, kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .group => {
+            const start = wire.tagSize(number, .start_group) catch unreachable;
+            const end = wire.tagSize(number, .end_group) catch unreachable;
+            try writer.print("{d} + {d}", .{ start, end });
+        },
+        else => {
+            const tag = wire.tagSize(number, kind.wireType()) catch unreachable;
+            try writer.print("{d}", .{tag});
+        },
+    }
+}
+
+fn writeKindPayloadSizeExprForField(kind: schema.FieldKind, receiver: []const u8, field_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (kind) {
+        .scalar => |scalar| try writeScalarPayloadSizeExprForField(scalar, receiver, field_name, writer),
+        .enumeration => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, ");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll("))))");
+        },
+        .message => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(".len) + ");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(".len");
+        },
+        .group => {
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(".len");
+        },
+        .map => unreachable,
+    }
+}
+
+fn writeScalarPayloadSizeExprForField(scalar: schema.ScalarType, receiver: []const u8, field_name: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double, .fixed64, .sfixed64 => try writer.writeAll("8"),
+        .float, .fixed32, .sfixed32 => try writer.writeAll("4"),
+        .int32 => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, ");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll("))))");
+        },
+        .int64 => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(@as(u64, @bitCast(");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(")))");
+        },
+        .uint32, .uint64 => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(")");
+        },
+        .sint32 => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode32(");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll("))");
+        },
+        .sint64 => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode64(");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll("))");
+        },
+        .bool => try writer.writeAll("1"),
+        .string, .bytes => {
+            try writer.writeAll("pbz.wire.encodedVarintSize(");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(".len) + ");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(".len");
+        },
+    }
 }
 
 fn writeEncodeDeterministic(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
