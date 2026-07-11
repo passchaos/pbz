@@ -1567,7 +1567,7 @@ fn writeTextParseValueExpr(file: *const schema.FileDescriptor, field: ?*const sc
             .bool => try writer.print("try @This().textBool({s})", .{value_expr}),
             .string => {
                 if (fieldUtf8ValidationOptional(file, field) == .verify) {
-                    try writer.print("blk: {{ const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s}); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; }}", .{value_expr});
+                    try writer.print("blk: {{ const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s}); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }}", .{value_expr});
                 } else {
                     try writer.print("try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), {s})", .{value_expr});
                 }
@@ -1602,7 +1602,7 @@ fn writeOneofValueEncode(ctx: *const CodegenContext, field: *const schema.FieldD
     switch (field.kind) {
         .scalar => |scalar| {
             if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-                try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(");
+                try writer.writeAll("{ if (!pbz.validateUtf8(");
                 try writer.writeAll(value_expr);
                 try writer.writeAll(")) return error.InvalidUtf8; ");
                 try writeScalarWriteCall(field.number, scalar, value_expr, writer);
@@ -1638,7 +1638,7 @@ fn writeOneofValueEncodeAssumeCapacity(ctx: *const CodegenContext, field: *const
     switch (field.kind) {
         .scalar => |scalar| {
             if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-                try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(");
+                try writer.writeAll("{ if (!pbz.validateUtf8(");
                 try writer.writeAll(value_expr);
                 try writer.writeAll(")) return error.InvalidUtf8; ");
                 try writeScalarWriteCallAssumeCapacity(field.number, scalar, value_expr, writer);
@@ -5709,7 +5709,7 @@ fn writeDecodeScalarField(file: *const schema.FileDescriptor, field: *const sche
             try writeDecodePackedScalarField(field, scalar, writer, depth);
         } else {
             if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-                try writer.writeAll("{ const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; ");
+                try writer.writeAll("{ const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; ");
                 try writeRepeatedAppendPrefix(field, writer);
                 try writer.writeAll("value); },\n");
             } else {
@@ -5724,7 +5724,7 @@ fn writeDecodeScalarField(file: *const schema.FileDescriptor, field: *const sche
         try writeQuotedIdent(field.name, writer);
         try writer.print(" = try r.{s}();", .{scalarReaderName(scalar)});
         if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-            try writer.writeAll(" if (!std.unicode.utf8ValidateSlice(self.");
+            try writer.writeAll(" if (!pbz.validateUtf8(self.");
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(")) return error.InvalidUtf8;");
         }
@@ -5980,7 +5980,7 @@ fn writeMapEntryDecodeAssign(ctx: *const CodegenContext, field: *const schema.Fi
     if (kind == .scalar and kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
         try writer.print("{d} => {{ const value = ", .{number});
         try writeEntryReadExpr(kind, "entry_reader", writer);
-        try writer.writeAll("; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; ");
+        try writer.writeAll("; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; ");
         try writer.writeAll(target);
         try writer.writeAll(" = value; },\n");
     } else if (kind == .enumeration and enumIsClosed(file, kind.enumeration)) {
@@ -6017,7 +6017,7 @@ fn writeOneofDecodeAssign(file: *const schema.FileDescriptor, field: *const sche
     if (field.kind == .scalar and field.kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
         try writer.writeAll("{ const value = try r.");
         try writer.writeAll(reader_method);
-        try writer.writeAll("(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.");
+        try writer.writeAll("(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.");
         try writeQuotedIdent(oneof_name, writer);
         try writer.writeAll(" = .{ .");
         try writeQuotedIdent(field.name, writer);
@@ -6191,7 +6191,7 @@ fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const sche
             if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
                 try writer.writeAll("for (self.");
                 try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(") |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; ");
+                try writer.writeAll(") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; ");
                 try writeScalarWriteCall(field.number, scalar, "item", writer);
                 try writer.writeAll("); }\n");
             } else {
@@ -6214,7 +6214,7 @@ fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const sche
             try writer.writeAll(defaultSkipCondition(scalar));
         }
         if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-            try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(self.");
+            try writer.writeAll("{ if (!pbz.validateUtf8(self.");
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(")) return error.InvalidUtf8; ");
         }
@@ -6261,7 +6261,7 @@ fn writeEncodeScalarFieldAssumeCapacity(file: *const schema.FileDescriptor, fiel
             if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
                 try writer.writeAll("for (self.");
                 try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(") |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; ");
+                try writer.writeAll(") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; ");
                 try writeScalarWriteCallAssumeCapacity(field.number, scalar, "item", writer);
                 try writer.writeAll("); }\n");
             } else {
@@ -6284,7 +6284,7 @@ fn writeEncodeScalarFieldAssumeCapacity(file: *const schema.FileDescriptor, fiel
             try writer.writeAll(defaultSkipCondition(scalar));
         }
         if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-            try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(self.");
+            try writer.writeAll("{ if (!pbz.validateUtf8(self.");
             try writeQuotedIdent(field.name, writer);
             try writer.writeAll(")) return error.InvalidUtf8; ");
         }
@@ -7015,7 +7015,7 @@ fn writeEncodeMapFieldDeterministicAssumeCapacity(ctx: *const CodegenContext, fi
 fn writeMapEntryEncodeUtf8Check(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
     if (kind == .scalar and kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
         try indent(writer, depth);
-        try writer.print("if (!std.unicode.utf8ValidateSlice({s})) return error.InvalidUtf8;\n", .{value_expr});
+        try writer.print("if (!pbz.validateUtf8({s})) return error.InvalidUtf8;\n", .{value_expr});
     }
 }
 
@@ -7025,6 +7025,19 @@ fn writeMapKeyLessExpr(scalar: schema.ScalarType, a: []const u8, b: []const u8, 
         .bool => try writer.print("!{s} and {s}", .{ a, b }),
         .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("{s} < {s}", .{ a, b }),
         .double, .float, .bytes => try writer.writeAll("false"),
+    }
+}
+
+fn mapEntryValueIsTypedMessage(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
+    return typedMapMessageValueWithContext(ctx, field) != null;
+}
+
+fn writeMapEntryValueFieldSizeExprUsingLen(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, value_len_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    const map_type = field.kind.map;
+    if (mapEntryValueIsTypedMessage(ctx, field)) {
+        try writer.print("1 + pbz.wire.encodedVarintSize({s}) + {s}", .{ value_len_expr, value_len_expr });
+    } else {
+        try writeMapEntryFieldSizeExpr(2, map_type.value.*, value_expr, writer);
     }
 }
 
@@ -8016,7 +8029,7 @@ fn writeExtensionTextNameContents(file: *const schema.FileDescriptor, field: *co
 
 fn writeTextUtf8Check(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-        try writer.print("if (!std.unicode.utf8ValidateSlice({s})) return error.InvalidUtf8; ", .{value_expr});
+        try writer.print("if (!pbz.validateUtf8({s})) return error.InvalidUtf8; ", .{value_expr});
     }
 }
 
@@ -9539,7 +9552,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-        \\    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+        \\    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
         \\    try std.json.Stringify.value(value, .{}, writer);
         \\}
         \\
@@ -12525,7 +12538,7 @@ test "codegen emits typed scalar fields and encode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeInto(self: @This(), buffer: []u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.id)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }") != null);
 }
 
 test "codegen emits repeated scalar slice types" {
@@ -12676,7 +12689,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().TextFormatOptions) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.id; try writer.print(\"{d}\", .{value});") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
@@ -12711,13 +12724,13 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.ratio = try @This().textFloat(f64, raw_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.kind = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.cloneOwned(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8") != null);
@@ -12960,7 +12973,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "_ = allocator;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.id = try r.readInt32(); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.name = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); self.kind = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { self.payload = try r.readBytes(); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"_unknown_fields\": []const []const u8 = &.{}") != null);
@@ -13023,7 +13036,7 @@ test "codegen decodes map fields into entry slices" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "var counts_list: std.ArrayList(countsEntry) = .empty") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var entry = countsEntry{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts = if (counts_list.items.len != 0 and counts_list.items.len == counts_list.capacity) counts_list.toOwnedSliceAssert() else try counts_list.toOwnedSlice(allocator)") != null);
@@ -13210,7 +13223,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!pbz.validateUtf8(value)) return error.InvalidUtf8;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
 }
 
@@ -13338,8 +13351,8 @@ test "codegen maps oneof to tagged union" {
     try std.testing.expect(std.mem.indexOf(u8, content, "name: []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pick: pickOneof = .none") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (self.pick)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(1, value); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.pick = .{ .name = value }; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(1, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.pick = .{ .name = value }; }") != null);
 }
 
 test "codegen emits proto2 extension metadata" {
@@ -13842,30 +13855,30 @@ test "codegen honors utf8 validation features for wire strings" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.has_strict) { if (!std.unicode.utf8ValidateSlice(self.strict)) return error.InvalidUtf8; try w.writeString(1, self.strict); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.has_strict) { if (!pbz.validateUtf8(self.strict)) return error.InvalidUtf8; try w.writeString(1, self.strict); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.has_relaxed) try w.writeString(2, self.relaxed);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.tags) |item| { if (!std.unicode.utf8ValidateSlice(item)) return error.InvalidUtf8; try w.writeString(3, item); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".alias => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.strict = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.strict)) return error.InvalidUtf8; self.has_strict = true; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.tags) |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; try w.writeString(3, item); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".alias => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { self.strict = try r.readBytes(); if (!pbz.validateUtf8(self.strict)) return error.InvalidUtf8; self.has_strict = true; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { self.relaxed = try r.readBytes(); self.has_relaxed = true; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try tags_list.append(allocator, value); },") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.pick = .{ .alias = value }; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.value = value; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"strict: \"); const value = self.strict; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"key: \"); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value: \"); if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try tags_list.append(allocator, value); },") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.pick = .{ .alias = value }; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!pbz.validateUtf8(entry.value)) return error.InvalidUtf8;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"strict: \"); const value = self.strict; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"key: \"); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value: \"); if (!pbz.validateUtf8(entry.value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.value, writer);") != null);
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
     const text_content = content[text_start..];
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.strict = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.strict = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, text_content, "self.relaxed = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.key = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_key); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.value = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.key = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "entry.value = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
 }
 
 test "codegen honors editions enum type features in JSON parse" {

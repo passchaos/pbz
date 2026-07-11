@@ -123,6 +123,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	complexJSONBytes, err := protojson.Marshal(complex)
+	if err != nil {
+		panic(err)
+	}
+	complexTextBytes, err := prototext.Marshal(complex)
+	if err != nil {
+		panic(err)
+	}
 	packed := makePacked()
 	packedBytes, err := proto.Marshal(packed)
 	if err != nil {
@@ -144,6 +152,8 @@ func main() {
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
+	fmt.Printf("complex json payload size: %d\n", len(complexJSONBytes))
+	fmt.Printf("complex text payload size: %d\n", len(complexTextBytes))
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
@@ -208,6 +218,39 @@ func main() {
 		}
 	}).print()
 
+	jsonUnmarshalOptions := protojson.UnmarshalOptions{}
+	textUnmarshalOptions := prototext.UnmarshalOptions{}
+
+	runTimed("go protobuf complex JSON stringify", iterations, len(complexJSONBytes), func() {
+		out, err := protojson.Marshal(complex)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf complex JSON parse", iterations, len(complexJSONBytes), func() {
+		var decoded personpb.Complex
+		if err := jsonUnmarshalOptions.Unmarshal(complexJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf complex TextFormat format", iterations, len(complexTextBytes), func() {
+		out, err := prototext.Marshal(complex)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf complex TextFormat parse", iterations, len(complexTextBytes), func() {
+		var decoded personpb.Complex
+		if err := textUnmarshalOptions.Unmarshal(complexTextBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
 	runTimed("go protobuf JSON stringify", iterations, len(jsonBytes), func() {
 		out, err := protojson.Marshal(person)
 		if err != nil {
@@ -216,7 +259,6 @@ func main() {
 		_ = out
 	}).print()
 
-	jsonUnmarshalOptions := protojson.UnmarshalOptions{}
 	runTimed("go protobuf JSON parse", iterations, len(jsonBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(jsonBytes, &decoded); err != nil {
@@ -232,7 +274,6 @@ func main() {
 		_ = out
 	}).print()
 
-	textUnmarshalOptions := prototext.UnmarshalOptions{}
 	runTimed("go protobuf TextFormat parse", iterations, len(textBytes), func() {
 		var decoded personpb.Person
 		if err := textUnmarshalOptions.Unmarshal(textBytes, &decoded); err != nil {

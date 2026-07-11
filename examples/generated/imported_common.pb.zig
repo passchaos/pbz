@@ -173,13 +173,13 @@ pub const demo = struct {
 
                 pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
                     if (self.id != 0) try w.writeInt32(1, self.id);
-                    if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
+                    if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
                     for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
                 }
 
                 pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
                     if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
-                    if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
+                    if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
                     for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
                 }
 
@@ -207,7 +207,7 @@ pub const demo = struct {
 
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.id != 0) try w.writeInt32(1, self.id);
-                    if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
+                    if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
                     if (self.@"_unknown_fields".len != 0) {
                         const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
                         defer allocator.free(indexes);
@@ -232,7 +232,7 @@ pub const demo = struct {
 
                 pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
-                    if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
+                    if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
                     if (self.@"_unknown_fields".len != 0) {
                         const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
                         defer allocator.free(indexes);
@@ -296,7 +296,7 @@ pub const demo = struct {
                     while (try r.nextTag()) |tag| {
                         switch (tag.number) {
                             1 => { self.id = try r.readInt32(); },
-                            2 => { self.name = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; },
+                            2 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; },
                             else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                         }
                     }
@@ -873,7 +873,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -902,7 +902,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     _ = allocator;
                     _ = options;
                     if (self.id != 0) { try writer.writeAll("id: "); const value = self.id; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
-                    if (self.name.len != 0) { try writer.writeAll("name: "); const value = self.name; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
+                    if (self.name.len != 0) { try writer.writeAll("name: "); const value = self.name; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
                     for (self.@"_unknown_fields") |raw| {
                         try @This().textWriteUnknownRaw(raw, writer);
                     }
@@ -930,7 +930,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             continue;
                         }
                         if (@This().textFieldValue(line, "name")) |raw_value| {
-                            self.name = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };
+                            self.name = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };
                             continue;
                         }
                         if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }

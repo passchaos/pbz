@@ -99,6 +99,39 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf complex decode",),
         },
     ),
+
+    Workload(
+        "complex JSON stringify",
+        ("generated complex JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf complex JSON stringify", "c++ protobuf complex JSON stringify reuse"),
+            "go protobuf": ("go protobuf complex JSON stringify",),
+        },
+    ),
+    Workload(
+        "complex JSON parse",
+        ("generated complex JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf complex JSON parse", "c++ protobuf complex JSON parse reuse"),
+            "go protobuf": ("go protobuf complex JSON parse",),
+        },
+    ),
+    Workload(
+        "complex TextFormat format",
+        ("generated complex TextFormat format",),
+        {
+            "c++ protobuf": ("c++ protobuf complex TextFormat format", "c++ protobuf complex TextFormat format reuse"),
+            "go protobuf": ("go protobuf complex TextFormat format",),
+        },
+    ),
+    Workload(
+        "complex TextFormat parse",
+        ("generated complex TextFormat parse",),
+        {
+            "c++ protobuf": ("c++ protobuf complex TextFormat parse", "c++ protobuf complex TextFormat parse reuse"),
+            "go protobuf": ("go protobuf complex TextFormat parse",),
+        },
+    ),
     Workload(
         "packed int32 encode",
         (

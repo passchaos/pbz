@@ -387,7 +387,7 @@ pub const demo = struct {
                 if (self.kind != 0) try w.writeInt32(2, self.kind);
                 if (self.audit) |value| { const payload_len = value.encodedSize(); try w.writeTag(3, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
                 for (self.audits) |entry| {
-                    if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                    if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     try w.writeTag(7, .length_delimited);
                     try w.writeVarint(entry_len);
@@ -396,7 +396,7 @@ pub const demo = struct {
                 }
                 switch (self.subject) {
                     .none => {},
-                    .user_name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); },
+                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); },
                     .organization_id => |value| try w.writeBytes(5, value),
                     .audit_subject => |value| { const payload_len = value.encodedSize(); try w.writeTag(6, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
                 }
@@ -408,7 +408,7 @@ pub const demo = struct {
                 if (self.kind != 0) w.writeInt32AssumeCapacity(2, self.kind);
                 if (self.audit) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(3, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
                 for (self.audits) |entry| {
-                    if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                    if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     w.writeTagAssumeCapacity(7, .length_delimited);
                     w.writeVarintAssumeCapacity(entry_len);
@@ -417,7 +417,7 @@ pub const demo = struct {
                 }
                 switch (self.subject) {
                     .none => {},
-                    .user_name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(4, value); },
+                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(4, value); },
                     .organization_id => |value| w.writeBytesAssumeCapacity(5, value),
                     .audit_subject => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(6, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
                 }
@@ -451,7 +451,7 @@ pub const demo = struct {
                 if (self.kind != 0) try w.writeInt32(2, self.kind);
                 if (self.audit) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(3, payload); }
                 switch (self.subject) {
-                    .user_name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); },
+                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); },
                     else => {},
                 }
                 switch (self.subject) {
@@ -479,7 +479,7 @@ pub const demo = struct {
                         std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
                     }
                     for (entries) |entry| {
-                        if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                        if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         try w.writeTag(7, .length_delimited);
                         try w.writeVarint(entry_len);
@@ -514,7 +514,7 @@ pub const demo = struct {
                 if (self.kind != 0) w.writeInt32AssumeCapacity(2, self.kind);
                 if (self.audit) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(3, payload); }
                 switch (self.subject) {
-                    .user_name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); },
+                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); },
                     else => {},
                 }
                 switch (self.subject) {
@@ -542,7 +542,7 @@ pub const demo = struct {
                         std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
                     }
                     for (entries) |entry| {
-                        if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                        if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         w.writeTagAssumeCapacity(7, .length_delimited);
                         w.writeVarintAssumeCapacity(entry_len);
@@ -618,7 +618,7 @@ pub const demo = struct {
                         1 => { self.id = try r.readInt32(); },
                         2 => { const value = try r.readInt32(); self.kind = value; },
                         3 => { const payload = try r.readBytes(); var nested = try Audit.decode(allocator, payload); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
-                        4 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
+                        4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
                         5 => self.subject = .{ .organization_id = try r.readBytes() },
                         6 => { const payload = try r.readBytes(); self.subject = .{ .audit_subject = try Audit.decode(allocator, payload) }; },
                         7 => {
@@ -629,7 +629,7 @@ pub const demo = struct {
                             const skip_entry = false;
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; },
+                                    1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
                                     2 => { const value_payload = try entry_reader.readBytes(); entry.value.deinit(allocator); entry.value = try Audit.decode(allocator, value_payload); },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
@@ -1305,7 +1305,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -1340,7 +1340,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
                 for (self.audits) |entry| {
                     try writer.writeAll("audits {\n");
-                    try writer.writeAll("key: "); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
+                    try writer.writeAll("key: "); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
                     try writer.writeAll("value {\n");
                     try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
@@ -1409,7 +1409,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             const entry_line = @This().textCleanLine(raw_entry_line);
                             if (entry_line.len == 0) continue;
                             if (std.mem.eql(u8, entry_line, "}") or std.mem.eql(u8, entry_line, ">")) break;
-                            if (@This().textFieldValue(entry_line, "key")) |raw_key| { entry.key = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_key); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; }; continue; }
+                            if (@This().textFieldValue(entry_line, "key")) |raw_key| { entry.key = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }; continue; }
                             if (@This().textBlockField(entry_line, "value")) {
                                 const block = try @This().textBlock(allocator, &lines);
                                 defer allocator.free(block);
@@ -1425,7 +1425,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try @This().appendOrReplaceMapEntry_audits(allocator, &audits_list, entry);
                         continue;
                     }
-                    if (@This().textFieldValue(line, "user_name") orelse @This().textFieldValue(line, "userName")) |raw_value| { self.subject = .{ .user_name = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
+                    if (@This().textFieldValue(line, "user_name") orelse @This().textFieldValue(line, "userName")) |raw_value| { self.subject = .{ .user_name = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
                     if (@This().textFieldValue(line, "organization_id") orelse @This().textFieldValue(line, "organizationId")) |raw_value| { self.subject = .{ .organization_id = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value) }; continue; }
                     if (@This().textBlockField(line, "audit_subject") or @This().textBlockField(line, "auditSubject")) {
                         const block = try @This().textBlock(allocator, &lines);
@@ -1624,13 +1624,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-                    if (self.actor.len != 0) { if (!std.unicode.utf8ValidateSlice(self.actor)) return error.InvalidUtf8; try w.writeString(1, self.actor); }
+                    if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; try w.writeString(1, self.actor); }
                     if (self.at_unix != 0) try w.writeInt64(2, self.at_unix);
                     for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
                 }
 
                 pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-                    if (self.actor.len != 0) { if (!std.unicode.utf8ValidateSlice(self.actor)) return error.InvalidUtf8; w.writeStringAssumeCapacity(1, self.actor); }
+                    if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; w.writeStringAssumeCapacity(1, self.actor); }
                     if (self.at_unix != 0) w.writeInt64AssumeCapacity(2, self.at_unix);
                     for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
                 }
@@ -1658,7 +1658,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-                    if (self.actor.len != 0) { if (!std.unicode.utf8ValidateSlice(self.actor)) return error.InvalidUtf8; try w.writeString(1, self.actor); }
+                    if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; try w.writeString(1, self.actor); }
                     if (self.at_unix != 0) try w.writeInt64(2, self.at_unix);
                     if (self.@"_unknown_fields".len != 0) {
                         const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
@@ -1683,7 +1683,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-                    if (self.actor.len != 0) { if (!std.unicode.utf8ValidateSlice(self.actor)) return error.InvalidUtf8; w.writeStringAssumeCapacity(1, self.actor); }
+                    if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; w.writeStringAssumeCapacity(1, self.actor); }
                     if (self.at_unix != 0) w.writeInt64AssumeCapacity(2, self.at_unix);
                     if (self.@"_unknown_fields".len != 0) {
                         const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
@@ -1747,7 +1747,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var r = pbz.Reader.init(bytes);
                     while (try r.nextTag()) |tag| {
                         switch (tag.number) {
-                            1 => { self.actor = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.actor)) return error.InvalidUtf8; },
+                            1 => { self.actor = try r.readBytes(); if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; },
                             2 => { self.at_unix = try r.readInt64(); },
                             else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                         }
@@ -2325,7 +2325,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -2353,7 +2353,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
                     _ = allocator;
                     _ = options;
-                    if (self.actor.len != 0) { try writer.writeAll("actor: "); const value = self.actor; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
+                    if (self.actor.len != 0) { try writer.writeAll("actor: "); const value = self.actor; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
                     if (self.at_unix != 0) { try writer.writeAll("at_unix: "); const value = self.at_unix; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
                     for (self.@"_unknown_fields") |raw| {
                         try @This().textWriteUnknownRaw(raw, writer);
@@ -2378,7 +2378,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const line = @This().textCleanLine(raw_line);
                         if (line.len == 0) continue;
                         if (@This().textFieldValue(line, "actor")) |raw_value| {
-                            self.actor = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };
+                            self.actor = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };
                             continue;
                         }
                         if (@This().textFieldValue(line, "at_unix") orelse @This().textFieldValue(line, "atUnix")) |raw_value| {

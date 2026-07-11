@@ -108,6 +108,10 @@ int main() {
   if (!google::protobuf::TextFormat::PrintToString(person, &text)) std::abort();
   std::string complex_bytes;
   complex.SerializeToString(&complex_bytes);
+  std::string complex_json;
+  if (!google::protobuf::util::MessageToJsonString(complex, &complex_json).ok()) std::abort();
+  std::string complex_text;
+  if (!google::protobuf::TextFormat::PrintToString(complex, &complex_text)) std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -123,6 +127,8 @@ int main() {
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
+  std::cout << "complex json payload size: " << complex_json.size() << "\n";
+  std::cout << "complex text payload size: " << complex_text.size() << "\n";
   std::cout << "packed payload size: " << packed_bytes.size() << "\n";
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size() << "\n";
   std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size() << "\n";
@@ -221,6 +227,70 @@ int main() {
     asm volatile("" : : "g"(&reused_complex_decoded) : "memory");
   });
   complex_decode_reuse.Print();
+
+
+
+  auto complex_json_stringify = RunTimed("c++ protobuf complex JSON stringify", kIterations, complex_json.size(), [&]() {
+    std::string out;
+    if (!google::protobuf::util::MessageToJsonString(complex, &out).ok()) std::abort();
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  complex_json_stringify.Print();
+
+  std::string reused_complex_json;
+  reused_complex_json.reserve(complex_json.size());
+  auto complex_json_stringify_reuse = RunTimed("c++ protobuf complex JSON stringify reuse", kIterations, complex_json.size(), [&]() {
+    reused_complex_json.clear();
+    if (!google::protobuf::util::MessageToJsonString(complex, &reused_complex_json).ok()) std::abort();
+    asm volatile("" : : "g"(reused_complex_json.data()) : "memory");
+  });
+  complex_json_stringify_reuse.Print();
+
+  auto complex_json_parse = RunTimed("c++ protobuf complex JSON parse", kIterations, complex_json.size(), [&]() {
+    demo::Complex decoded;
+    if (!google::protobuf::util::JsonStringToMessage(complex_json, &decoded).ok()) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  complex_json_parse.Print();
+
+  demo::Complex reused_complex_json_decoded;
+  auto complex_json_parse_reuse = RunTimed("c++ protobuf complex JSON parse reuse", kIterations, complex_json.size(), [&]() {
+    reused_complex_json_decoded.Clear();
+    if (!google::protobuf::util::JsonStringToMessage(complex_json, &reused_complex_json_decoded).ok()) std::abort();
+    asm volatile("" : : "g"(&reused_complex_json_decoded) : "memory");
+  });
+  complex_json_parse_reuse.Print();
+
+  auto complex_text_format = RunTimed("c++ protobuf complex TextFormat format", kIterations, complex_text.size(), [&]() {
+    std::string out;
+    if (!google::protobuf::TextFormat::PrintToString(complex, &out)) std::abort();
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  complex_text_format.Print();
+
+  std::string reused_complex_text;
+  reused_complex_text.reserve(complex_text.size());
+  auto complex_text_format_reuse = RunTimed("c++ protobuf complex TextFormat format reuse", kIterations, complex_text.size(), [&]() {
+    reused_complex_text.clear();
+    if (!google::protobuf::TextFormat::PrintToString(complex, &reused_complex_text)) std::abort();
+    asm volatile("" : : "g"(reused_complex_text.data()) : "memory");
+  });
+  complex_text_format_reuse.Print();
+
+  auto complex_text_parse = RunTimed("c++ protobuf complex TextFormat parse", kIterations, complex_text.size(), [&]() {
+    demo::Complex decoded;
+    if (!google::protobuf::TextFormat::ParseFromString(complex_text, &decoded)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  complex_text_parse.Print();
+
+  demo::Complex reused_complex_text_decoded;
+  auto complex_text_parse_reuse = RunTimed("c++ protobuf complex TextFormat parse reuse", kIterations, complex_text.size(), [&]() {
+    reused_complex_text_decoded.Clear();
+    if (!google::protobuf::TextFormat::ParseFromString(complex_text, &reused_complex_text_decoded)) std::abort();
+    asm volatile("" : : "g"(&reused_complex_text_decoded) : "memory");
+  });
+  complex_text_parse_reuse.Print();
 
   auto json_stringify = RunTimed("c++ protobuf JSON stringify", kIterations, json.size(), [&]() {
     std::string out;

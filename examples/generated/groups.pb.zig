@@ -1075,7 +1075,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -2032,7 +2032,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -2942,7 +2942,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 

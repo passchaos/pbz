@@ -182,6 +182,34 @@ fn generatedComplexDecode(ctx: GeneratedComplexDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedComplexJsonStringifyCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Complex };
+fn generatedComplexJsonStringify(ctx: GeneratedComplexJsonStringifyCtx) !void {
+    const json = try ctx.message.jsonStringifyAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(json.ptr);
+    ctx.allocator.free(json);
+}
+
+const GeneratedComplexJsonParseCtx = struct { allocator: std.mem.Allocator, json: []const u8 };
+fn generatedComplexJsonParse(ctx: GeneratedComplexJsonParseCtx) !void {
+    var decoded = try person_pb.demo.Complex.jsonParse(ctx.allocator, ctx.json);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
+const GeneratedComplexTextFormatCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Complex };
+fn generatedComplexTextFormat(ctx: GeneratedComplexTextFormatCtx) !void {
+    const text = try ctx.message.formatTextAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(text.ptr);
+    ctx.allocator.free(text);
+}
+
+const GeneratedComplexTextParseCtx = struct { allocator: std.mem.Allocator, text: []const u8 };
+fn generatedComplexTextParse(ctx: GeneratedComplexTextParseCtx) !void {
+    var decoded = try person_pb.demo.Complex.parseText(ctx.allocator, ctx.text);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
 const GeneratedPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Packed };
 fn generatedPackedEncode(ctx: GeneratedPackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -529,6 +557,10 @@ pub fn main() !void {
     try reusable_complex_writer.bytes.ensureTotalCapacity(allocator, generated_complex_bytes.len);
     const generated_complex_buffer = try allocator.alloc(u8, generated_complex_bytes.len);
     defer allocator.free(generated_complex_buffer);
+    const generated_complex_json = try generated_complex.jsonStringifyAlloc(allocator);
+    defer allocator.free(generated_complex_json);
+    const generated_complex_text = try generated_complex.formatTextAlloc(allocator);
+    defer allocator.free(generated_complex_text);
     const generated_packed_bytes = try generated_packed.encode(allocator);
     defer allocator.free(generated_packed_bytes);
     var reusable_packed_writer = pbz.Writer.init(allocator);
@@ -560,7 +592,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} complex={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_complex_bytes.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -573,6 +605,10 @@ pub fn main() !void {
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),
         try runTimed(io, "generated complex decode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeCtx{ .allocator = allocator, .bytes = generated_complex_bytes }, generatedComplexDecode),
+        try runTimed(io, "generated complex JSON stringify", iters.json, generated_complex_json.len, GeneratedComplexJsonStringifyCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexJsonStringify),
+        try runTimed(io, "generated complex JSON parse", iters.json, generated_complex_json.len, GeneratedComplexJsonParseCtx{ .allocator = allocator, .json = generated_complex_json }, generatedComplexJsonParse),
+        try runTimed(io, "generated complex TextFormat format", iters.text, generated_complex_text.len, GeneratedComplexTextFormatCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexTextFormat),
+        try runTimed(io, "generated complex TextFormat parse", iters.text, generated_complex_text.len, GeneratedComplexTextParseCtx{ .allocator = allocator, .text = generated_complex_text }, generatedComplexTextParse),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),
         try runTimed(io, "generated packed encode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeCtx{ .allocator = allocator, .message = &generated_packed }, generatedPackedEncode),

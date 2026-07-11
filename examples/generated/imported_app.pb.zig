@@ -316,7 +316,7 @@ pub const demo = struct {
                     if (self.primary) |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
                     for (self.by_name) |entry| {
-                        if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                        if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         try w.writeTag(3, .length_delimited);
                         try w.writeVarint(entry_len);
@@ -326,7 +326,7 @@ pub const demo = struct {
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
-                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        .fallback => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(5, value); },
                     }
                     for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
                 }
@@ -335,7 +335,7 @@ pub const demo = struct {
                     if (self.primary) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(1, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeToAssumeCapacity(w); }
                     for (self.by_name) |entry| {
-                        if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                        if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         w.writeTagAssumeCapacity(3, .length_delimited);
                         w.writeVarintAssumeCapacity(entry_len);
@@ -345,7 +345,7 @@ pub const demo = struct {
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(4, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
-                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(5, value); },
+                        .fallback => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(5, value); },
                     }
                     for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
                 }
@@ -392,7 +392,7 @@ pub const demo = struct {
                             std.mem.sort(by_nameEntry, entries, {}, struct { fn lessThan(_: void, a: by_nameEntry, b: by_nameEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
                         }
                         for (entries) |entry| {
-                            if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                            if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                             const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                             try w.writeTag(3, .length_delimited);
                             try w.writeVarint(entry_len);
@@ -405,7 +405,7 @@ pub const demo = struct {
                         else => {},
                     }
                     switch (self.selected) {
-                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        .fallback => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(5, value); },
                         else => {},
                     }
                     if (self.@"_unknown_fields".len != 0) {
@@ -450,7 +450,7 @@ pub const demo = struct {
                             std.mem.sort(by_nameEntry, entries, {}, struct { fn lessThan(_: void, a: by_nameEntry, b: by_nameEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
                         }
                         for (entries) |entry| {
-                            if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                            if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
                             const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                             w.writeTagAssumeCapacity(3, .length_delimited);
                             w.writeVarintAssumeCapacity(entry_len);
@@ -463,7 +463,7 @@ pub const demo = struct {
                         else => {},
                     }
                     switch (self.selected) {
-                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        .fallback => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(5, value); },
                         else => {},
                     }
                     if (self.@"_unknown_fields".len != 0) {
@@ -544,7 +544,7 @@ pub const demo = struct {
                                 const skip_entry = false;
                                 while (try entry_reader.nextTag()) |entry_tag| {
                                     switch (entry_tag.number) {
-                                        1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; },
+                                        1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
                                         2 => { const value_payload = try entry_reader.readBytes(); entry.value.deinit(allocator); entry.value = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.decode(allocator, value_payload); },
                                         else => try entry_reader.skipValue(entry_tag),
                                     }
@@ -552,7 +552,7 @@ pub const demo = struct {
                                 if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); } else try @This().appendOrReplaceMapEntry_by_name(allocator, &by_name_list, entry);
                             },
                             4 => { const payload = try r.readBytes(); self.selected = .{ .chosen = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.decode(allocator, payload) }; },
-                            5 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
+                            5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
                             else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                         }
                     }
@@ -1215,7 +1215,7 @@ fn jsonMapKeyBool(key: []const u8) !bool {
 }
 
 fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
-    if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
     try std.json.Stringify.value(value, .{}, writer);
 }
 
@@ -1253,7 +1253,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                     for (self.by_name) |entry| {
                         try writer.writeAll("by_name {\n");
-                        try writer.writeAll("key: "); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
+                        try writer.writeAll("key: "); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
                         try writer.writeAll("value {\n");
                         try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                         try writer.writeAll("}\n");
@@ -1322,7 +1322,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 const entry_line = @This().textCleanLine(raw_entry_line);
                                 if (entry_line.len == 0) continue;
                                 if (std.mem.eql(u8, entry_line, "}") or std.mem.eql(u8, entry_line, ">")) break;
-                                if (@This().textFieldValue(entry_line, "key")) |raw_key| { entry.key = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_key); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; }; continue; }
+                                if (@This().textFieldValue(entry_line, "key")) |raw_key| { entry.key = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }; continue; }
                                 if (@This().textBlockField(entry_line, "value")) {
                                     const block = try @This().textBlock(allocator, &lines);
                                     defer allocator.free(block);
@@ -1346,7 +1346,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             self.selected = .{ .chosen = try nested.cloneOwned(allocator) };
                             continue;
                         }
-                        if (@This().textFieldValue(line, "fallback")) |raw_value| { self.selected = .{ .fallback = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
+                        if (@This().textFieldValue(line, "fallback")) |raw_value| { self.selected = .{ .fallback = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
                         if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
                         if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
                         if (options.ignore_unknown_fields) continue;

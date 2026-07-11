@@ -99,6 +99,13 @@ pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;
 
+pub fn validateUtf8(value: []const u8) bool {
+    for (value) |byte| {
+        if (byte >= 0x80) return @import("std").unicode.utf8ValidateSlice(value);
+    }
+    return true;
+}
+
 test {
     _ = wire;
     _ = schema;
