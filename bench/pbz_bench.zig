@@ -641,6 +641,12 @@ fn generatedLargeMapDecode(ctx: GeneratedLargeMapDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedLargeMapDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.LargeMap };
+fn generatedLargeMapDecodeReuse(ctx: GeneratedLargeMapDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const UInt64PackedIteratorCtx = struct { bytes: []const u8 };
 fn uint64PackedIteratorDecode(ctx: UInt64PackedIteratorCtx) !void {
     var it = (try pbz.wire.packedUInt64FieldIterator(ctx.bytes, 1)) orelse return error.InvalidWireType;
@@ -1117,6 +1123,8 @@ pub fn main() !void {
     try reusable_large_map_writer.bytes.ensureTotalCapacity(allocator, generated_large_map_bytes.len);
     const generated_large_map_buffer = try allocator.alloc(u8, generated_large_map_bytes.len);
     defer allocator.free(generated_large_map_buffer);
+    var generated_large_map_decode_reuse = person_pb.demo.LargeMap.init();
+    defer generated_large_map_decode_reuse.deinit(allocator);
     const dynamic_large_map_bytes = try dynamic_large_map.encoded(&file);
     defer allocator.free(dynamic_large_map_bytes);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
@@ -1212,6 +1220,7 @@ pub fn main() !void {
         try runTimed(io, "generated large map encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapEncodeIntoCtx{ .buffer = generated_large_map_buffer, .message = &generated_large_map }, generatedLargeMapEncodeIntoReuse),
         try runTimed(io, "generated large map deterministic encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_large_map_buffer, .message = &generated_large_map }, generatedLargeMapDeterministicEncodeIntoReuse),
         try runTimed(io, "generated large map decode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeCtx{ .allocator = allocator, .bytes = generated_large_map_bytes }, generatedLargeMapDecode),
+        try runTimed(io, "generated large map decode reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_map_bytes, .message = &generated_large_map_decode_reuse }, generatedLargeMapDecodeReuse),
         try runTimed(io, "dynamic large map encode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapEncodeCtx{ .message = &dynamic_large_map, .file = &file }, dynamicLargeMapEncode),
         try runTimed(io, "dynamic large map decode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapDecodeCtx{ .allocator = allocator, .descriptor = large_map_desc, .file = &file, .bytes = dynamic_large_map_bytes }, dynamicLargeMapDecode),
         try runTimed(io, "generated JSON stringify", iters.json, generated_json.len, GeneratedJsonStringifyCtx{ .allocator = allocator, .person = &generated_person }, generatedJsonStringify),

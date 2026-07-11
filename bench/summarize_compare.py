@@ -451,7 +451,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "large map decode",
-        ("generated large map decode",),
+        ("generated large map decode", "generated large map decode reuse"),
         {
             "rust prost": ("prost large map decode",),
             "rust quick-protobuf": ("quick-protobuf large map decode",),

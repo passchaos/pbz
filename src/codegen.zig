@@ -6264,7 +6264,8 @@ fn messageCanDecodeReuseFast(message: *const schema.MessageDescriptor) bool {
         switch (field.kind) {
             .scalar => {},
             .enumeration => {},
-            .message, .group, .map => return false,
+            .map => {},
+            .message, .group => return false,
         }
     }
     return true;
@@ -6280,6 +6281,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("self._unknown_fields = &.{};\n");
+    for (message.fields.items) |*field| try writeDecodeReuseClearMap(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
     for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx.file, field, writer, depth + 1);
@@ -6306,7 +6308,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
         try indent(writer, depth + 1);
         try writer.writeAll("}\n");
     }
-    for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
+    for (message.fields.items) |*field| try writeRepeatedAssignForDecode(field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
     try indent(writer, depth);
@@ -6314,6 +6316,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
 }
 
 fn writeRepeatedReuseListDecl(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind == .map) return;
     if (field.cardinality != .repeated) return;
     try indent(writer, depth);
     try writer.writeAll("var ");
@@ -6347,6 +6350,7 @@ fn writeRepeatedReuseListDecl(ctx: *const CodegenContext, field: *const schema.F
 }
 
 fn writeDecodeReuseResetField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind == .map) return;
     if (field.cardinality == .repeated) return;
     try indent(writer, depth);
     try writer.writeAll("self.");
@@ -6360,6 +6364,20 @@ fn writeDecodeReuseResetField(file: *const schema.FileDescriptor, field: *const 
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" = false;\n");
     }
+}
+
+fn writeDecodeReuseClearMap(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.kind != .map) return;
+    if (typedMapMessageValueWithContext(ctx, field)) |_| {
+        try indent(writer, depth);
+        try writer.writeAll("{ var map_it = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".clearRetainingCapacity();\n");
 }
 
 fn messageHasRepeatedOrMap(message: *const schema.MessageDescriptor) bool {
@@ -13665,7 +13683,9 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn appendOrReplaceMapEntry_flags(allocator: std.mem.Allocator, list: *std.ArrayList(flagsEntry), entry: flagsEntry) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (existing.key == entry.key) { existing.* = entry; return; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.clearRetainingCapacity();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else try @This().putMapEntry_counts(allocator, &self.counts, entry);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;

@@ -136,22 +136,62 @@ pub const BorrowedFieldSlices = struct {
 
 inline fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
     var v = value;
-    buffer[0] = @truncate(v);
-    if (v < 0x80) return 1;
-    buffer[0] |= 0x80;
-
-    v >>= 7;
-    buffer[1] = @truncate(v);
-    if (v < 0x80) return 2;
-
-    var len: usize = 2;
-    while (v >= 0x80) {
-        buffer[len - 1] |= 0x80;
-        v >>= 7;
-        buffer[len] = @truncate(v);
-        len += 1;
+    if (v < 0x80) {
+        buffer[0] = @truncate(v);
+        return 1;
     }
-    return len;
+    buffer[0] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[1] = @truncate(v);
+        return 2;
+    }
+    buffer[1] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[2] = @truncate(v);
+        return 3;
+    }
+    buffer[2] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[3] = @truncate(v);
+        return 4;
+    }
+    buffer[3] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[4] = @truncate(v);
+        return 5;
+    }
+    buffer[4] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[5] = @truncate(v);
+        return 6;
+    }
+    buffer[5] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[6] = @truncate(v);
+        return 7;
+    }
+    buffer[6] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[7] = @truncate(v);
+        return 8;
+    }
+    buffer[7] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[8] = @truncate(v);
+        return 9;
+    }
+    buffer[8] = @truncate(v | 0x80);
+    v >>= 7;
+    buffer[9] = @truncate(v);
+    return 10;
 }
 
 pub inline fn writeVarintToSlice(buffer: []u8, index: *usize, value: u64) void {
@@ -930,6 +970,51 @@ test "wire encodes and decodes scalar fields" {
     try std.testing.expectEqual(@as(FieldNumber, 4), tag.number);
     try std.testing.expectEqual(@as(u64, 0x0102030405060708), try reader.readFixed64());
     try std.testing.expect(reader.eof());
+}
+
+test "wire varint writer covers all encoded lengths" {
+    const Case = struct {
+        value: u64,
+        bytes: []const u8,
+    };
+    const cases = [_]Case{
+        .{ .value = 0, .bytes = &.{0x00} },
+        .{ .value = 0x7f, .bytes = &.{0x7f} },
+        .{ .value = 0x80, .bytes = &.{ 0x80, 0x01 } },
+        .{ .value = 0x3fff, .bytes = &.{ 0xff, 0x7f } },
+        .{ .value = 0x4000, .bytes = &.{ 0x80, 0x80, 0x01 } },
+        .{ .value = 0x1f_ffff, .bytes = &.{ 0xff, 0xff, 0x7f } },
+        .{ .value = 0x20_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = 0x0fff_ffff, .bytes = &.{ 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = 0x1000_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = 0x0007_ffff_ffff, .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = 0x0008_0000_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = 0x03ff_ffff_ffff, .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = 0x0400_0000_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = 0x0001_ffff_ffff_ffff, .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = 0x0002_0000_0000_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = 0x00ff_ffff_ffff_ffff, .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = 0x0100_0000_0000_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = 0x7fff_ffff_ffff_ffff, .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f } },
+        .{ .value = 0x8000_0000_0000_0000, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 } },
+        .{ .value = std.math.maxInt(u64), .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01 } },
+    };
+
+    for (cases) |case| {
+        var writer = Writer.init(std.testing.allocator);
+        defer writer.deinit();
+        try writer.writeVarint(case.value);
+        try std.testing.expectEqualSlices(u8, case.bytes, writer.slice());
+
+        var index: usize = 0;
+        try std.testing.expectEqual(case.value, try readVarintAt(writer.slice(), &index));
+        try std.testing.expectEqual(writer.slice().len, index);
+
+        var buffer: [10]u8 = undefined;
+        var direct_index: usize = 0;
+        writeVarintToSlice(&buffer, &direct_index, case.value);
+        try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_index]);
+    }
 }
 
 test "wire exposes borrowed packed fixed32 view" {
