@@ -166,6 +166,24 @@ fn makeGeneratedFixed64Packed(allocator: std.mem.Allocator) !person_pb.demo.Fixe
     return packed_msg;
 }
 
+fn makeGeneratedFloatPacked(allocator: std.mem.Allocator) !person_pb.demo.FloatPacked {
+    var packed_msg = person_pb.demo.FloatPacked.init();
+    errdefer packed_msg.deinit(allocator);
+    const values = try allocator.alloc(f32, 1024);
+    for (values, 0..) |*value, i| value.* = @as(f32, @floatFromInt(i)) * 0.25 + 1.0;
+    packed_msg.values = values;
+    return packed_msg;
+}
+
+fn makeGeneratedDoublePacked(allocator: std.mem.Allocator) !person_pb.demo.DoublePacked {
+    var packed_msg = person_pb.demo.DoublePacked.init();
+    errdefer packed_msg.deinit(allocator);
+    const values = try allocator.alloc(f64, 1024);
+    for (values, 0..) |*value, i| value.* = @as(f64, @floatFromInt(i)) * 0.5 + 1.0;
+    packed_msg.values = values;
+    return packed_msg;
+}
+
 fn makeGeneratedUInt64Packed(allocator: std.mem.Allocator) !person_pb.demo.UInt64Packed {
     var packed_msg = person_pb.demo.UInt64Packed.init();
     errdefer packed_msg.deinit(allocator);
@@ -231,6 +249,22 @@ fn makeDynamicFixed64Packed(allocator: std.mem.Allocator, desc: *const pbz.Messa
     errdefer msg.deinit();
     var i: usize = 0;
     while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .fixed64 = @intCast(i * 5 + 1) });
+    return msg;
+}
+
+fn makeDynamicFloatPacked(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
+    var msg = pbz.DynamicMessage.init(allocator, desc);
+    errdefer msg.deinit();
+    var i: usize = 0;
+    while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .float = @as(f32, @floatFromInt(i)) * 0.25 + 1.0 });
+    return msg;
+}
+
+fn makeDynamicDoublePacked(allocator: std.mem.Allocator, desc: *const pbz.MessageDescriptor) !pbz.DynamicMessage {
+    var msg = pbz.DynamicMessage.init(allocator, desc);
+    errdefer msg.deinit();
+    var i: usize = 0;
+    while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .double = @as(f64, @floatFromInt(i)) * 0.5 + 1.0 });
     return msg;
 }
 
@@ -516,6 +550,62 @@ fn generatedFixed64PackedDecode(ctx: GeneratedFixed64PackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedFloatPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.FloatPacked };
+fn generatedFloatPackedEncode(ctx: GeneratedFloatPackedEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedFloatPackedEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.FloatPacked };
+fn generatedFloatPackedEncodeIntoReuse(ctx: GeneratedFloatPackedEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedFloatPackedSlicesCtx = struct { message: *const person_pb.demo.FloatPacked };
+fn generatedFloatPackedBorrowedSlices(ctx: GeneratedFloatPackedSlicesCtx) !void {
+    var header: [20]u8 = undefined;
+    const slices = try person_pb.demo.FloatPacked.valuesPackedFixedSlices(&header, ctx.message.values);
+    std.mem.doNotOptimizeAway(slices.header.ptr);
+    std.mem.doNotOptimizeAway(slices.payload.ptr);
+}
+
+const GeneratedFloatPackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedFloatPackedDecode(ctx: GeneratedFloatPackedDecodeCtx) !void {
+    var decoded = try person_pb.demo.FloatPacked.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
+const GeneratedDoublePackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.DoublePacked };
+fn generatedDoublePackedEncode(ctx: GeneratedDoublePackedEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedDoublePackedEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.DoublePacked };
+fn generatedDoublePackedEncodeIntoReuse(ctx: GeneratedDoublePackedEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedDoublePackedSlicesCtx = struct { message: *const person_pb.demo.DoublePacked };
+fn generatedDoublePackedBorrowedSlices(ctx: GeneratedDoublePackedSlicesCtx) !void {
+    var header: [20]u8 = undefined;
+    const slices = try person_pb.demo.DoublePacked.valuesPackedFixedSlices(&header, ctx.message.values);
+    std.mem.doNotOptimizeAway(slices.header.ptr);
+    std.mem.doNotOptimizeAway(slices.payload.ptr);
+}
+
+const GeneratedDoublePackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedDoublePackedDecode(ctx: GeneratedDoublePackedDecodeCtx) !void {
+    var decoded = try person_pb.demo.DoublePacked.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
 const GeneratedUInt64PackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.UInt64Packed };
 fn generatedUInt64PackedEncode(ctx: GeneratedUInt64PackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -669,6 +759,18 @@ fn fixed64PackedBorrowedViewDecode(ctx: Fixed64PackedBorrowedViewCtx) !void {
     std.mem.doNotOptimizeAway(values.ptr);
 }
 
+const FloatPackedBorrowedViewCtx = struct { bytes: []const u8 };
+fn floatPackedBorrowedViewDecode(ctx: FloatPackedBorrowedViewCtx) !void {
+    const values = (try person_pb.demo.FloatPacked.valuesPackedFixedView(ctx.bytes)) orelse return error.InvalidWireType;
+    std.mem.doNotOptimizeAway(values.ptr);
+}
+
+const DoublePackedBorrowedViewCtx = struct { bytes: []const u8 };
+fn doublePackedBorrowedViewDecode(ctx: DoublePackedBorrowedViewCtx) !void {
+    const values = (try person_pb.demo.DoublePacked.valuesPackedFixedView(ctx.bytes)) orelse return error.InvalidWireType;
+    std.mem.doNotOptimizeAway(values.ptr);
+}
+
 const DynamicPackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
 fn dynamicPackedEncode(ctx: DynamicPackedEncodeCtx) !void {
     const bytes = try ctx.message.encoded(ctx.file);
@@ -722,6 +824,48 @@ fn dynamicFixed64PackedDecode(ctx: DynamicFixed64PackedDecodeCtx) !void {
 
 const DynamicFixed64PackedDecodeReuseCtx = struct { message: *pbz.DynamicMessage, file: *const pbz.FileDescriptor, bytes: []const u8 };
 fn dynamicFixed64PackedDecodeReuse(ctx: DynamicFixed64PackedDecodeReuseCtx) !void {
+    try ctx.message.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const DynamicFloatPackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
+fn dynamicFloatPackedEncode(ctx: DynamicFloatPackedEncodeCtx) !void {
+    const bytes = try ctx.message.encoded(ctx.file);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.message.allocator.free(bytes);
+}
+
+const DynamicFloatPackedDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicFloatPackedDecode(ctx: DynamicFloatPackedDecodeCtx) !void {
+    var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
+    defer msg.deinit();
+    try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
+}
+
+const DynamicFloatPackedDecodeReuseCtx = struct { message: *pbz.DynamicMessage, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicFloatPackedDecodeReuse(ctx: DynamicFloatPackedDecodeReuseCtx) !void {
+    try ctx.message.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const DynamicDoublePackedEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
+fn dynamicDoublePackedEncode(ctx: DynamicDoublePackedEncodeCtx) !void {
+    const bytes = try ctx.message.encoded(ctx.file);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.message.allocator.free(bytes);
+}
+
+const DynamicDoublePackedDecodeCtx = struct { allocator: std.mem.Allocator, descriptor: *const pbz.MessageDescriptor, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicDoublePackedDecode(ctx: DynamicDoublePackedDecodeCtx) !void {
+    var msg = pbz.DynamicMessage.init(ctx.allocator, ctx.descriptor);
+    defer msg.deinit();
+    try msg.decode(ctx.file, ctx.bytes);
+    std.mem.doNotOptimizeAway(&msg);
+}
+
+const DynamicDoublePackedDecodeReuseCtx = struct { message: *pbz.DynamicMessage, file: *const pbz.FileDescriptor, bytes: []const u8 };
+fn dynamicDoublePackedDecodeReuse(ctx: DynamicDoublePackedDecodeReuseCtx) !void {
     try ctx.message.decode(ctx.file, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
 }
@@ -955,6 +1099,12 @@ pub fn main() !void {
         \\message Fixed64Packed {
         \\  repeated fixed64 values = 1;
         \\}
+        \\message FloatPacked {
+        \\  repeated float values = 1;
+        \\}
+        \\message DoublePacked {
+        \\  repeated double values = 1;
+        \\}
         \\message UInt64Packed {
         \\  repeated uint64 values = 1;
         \\}
@@ -976,6 +1126,8 @@ pub fn main() !void {
     const packed_desc = file.findMessage("Packed").?;
     const fixed_packed_desc = file.findMessage("FixedPacked").?;
     const fixed64_packed_desc = file.findMessage("Fixed64Packed").?;
+    const float_packed_desc = file.findMessage("FloatPacked").?;
+    const double_packed_desc = file.findMessage("DoublePacked").?;
     const uint64_packed_desc = file.findMessage("UInt64Packed").?;
     const sint64_packed_desc = file.findMessage("SInt64Packed").?;
     const bool_packed_desc = file.findMessage("BoolPacked").?;
@@ -1008,6 +1160,18 @@ pub fn main() !void {
     defer dynamic_fixed64_packed.deinit();
     var dynamic_fixed64_packed_decode_reuse = pbz.DynamicMessage.init(allocator, fixed64_packed_desc);
     defer dynamic_fixed64_packed_decode_reuse.deinit();
+    var generated_float_packed = try makeGeneratedFloatPacked(allocator);
+    defer generated_float_packed.deinit(allocator);
+    var dynamic_float_packed = try makeDynamicFloatPacked(allocator, float_packed_desc);
+    defer dynamic_float_packed.deinit();
+    var dynamic_float_packed_decode_reuse = pbz.DynamicMessage.init(allocator, float_packed_desc);
+    defer dynamic_float_packed_decode_reuse.deinit();
+    var generated_double_packed = try makeGeneratedDoublePacked(allocator);
+    defer generated_double_packed.deinit(allocator);
+    var dynamic_double_packed = try makeDynamicDoublePacked(allocator, double_packed_desc);
+    defer dynamic_double_packed.deinit();
+    var dynamic_double_packed_decode_reuse = pbz.DynamicMessage.init(allocator, double_packed_desc);
+    defer dynamic_double_packed_decode_reuse.deinit();
     var generated_uint64_packed = try makeGeneratedUInt64Packed(allocator);
     defer generated_uint64_packed.deinit(allocator);
     var dynamic_uint64_packed = try makeDynamicUInt64Packed(allocator, uint64_packed_desc);
@@ -1088,6 +1252,18 @@ pub fn main() !void {
     defer allocator.free(generated_fixed64_packed_buffer);
     const dynamic_fixed64_packed_bytes = try dynamic_fixed64_packed.encoded(&file);
     defer allocator.free(dynamic_fixed64_packed_bytes);
+    const generated_float_packed_bytes = try generated_float_packed.encode(allocator);
+    defer allocator.free(generated_float_packed_bytes);
+    const generated_float_packed_buffer = try allocator.alloc(u8, generated_float_packed_bytes.len);
+    defer allocator.free(generated_float_packed_buffer);
+    const dynamic_float_packed_bytes = try dynamic_float_packed.encoded(&file);
+    defer allocator.free(dynamic_float_packed_bytes);
+    const generated_double_packed_bytes = try generated_double_packed.encode(allocator);
+    defer allocator.free(generated_double_packed_bytes);
+    const generated_double_packed_buffer = try allocator.alloc(u8, generated_double_packed_bytes.len);
+    defer allocator.free(generated_double_packed_buffer);
+    const dynamic_double_packed_bytes = try dynamic_double_packed.encoded(&file);
+    defer allocator.free(dynamic_double_packed_bytes);
     const generated_uint64_packed_bytes = try generated_uint64_packed.encode(allocator);
     defer allocator.free(generated_uint64_packed_bytes);
     const generated_uint64_packed_buffer = try allocator.alloc(u8, generated_uint64_packed_bytes.len);
@@ -1137,7 +1313,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d} scalar_mix={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len, generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d} scalar_mix={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len, generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -1191,6 +1367,22 @@ pub fn main() !void {
         try runTimed(io, "dynamic fixed64 packed encode", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedEncodeCtx{ .message = &dynamic_fixed64_packed, .file = &file }, dynamicFixed64PackedEncode),
         try runTimed(io, "dynamic fixed64 packed decode", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedDecodeCtx{ .allocator = allocator, .descriptor = fixed64_packed_desc, .file = &file, .bytes = dynamic_fixed64_packed_bytes }, dynamicFixed64PackedDecode),
         try runTimed(io, "dynamic fixed64 packed decode reuse", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedDecodeReuseCtx{ .message = &dynamic_fixed64_packed_decode_reuse, .file = &file, .bytes = dynamic_fixed64_packed_bytes }, dynamicFixed64PackedDecodeReuse),
+        try runTimed(io, "generated float packed encode", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedEncodeCtx{ .allocator = allocator, .message = &generated_float_packed }, generatedFloatPackedEncode),
+        try runTimed(io, "generated float packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedEncodeIntoCtx{ .buffer = generated_float_packed_buffer, .message = &generated_float_packed }, generatedFloatPackedEncodeIntoReuse),
+        try runTimed(io, "generated float packed borrowed slices encode", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedSlicesCtx{ .message = &generated_float_packed }, generatedFloatPackedBorrowedSlices),
+        try runTimed(io, "generated float packed decode", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedDecodeCtx{ .allocator = allocator, .bytes = generated_float_packed_bytes }, generatedFloatPackedDecode),
+        try runTimed(io, "wire float packed borrowed view decode", iters.packed_binary, generated_float_packed_bytes.len, FloatPackedBorrowedViewCtx{ .bytes = generated_float_packed_bytes }, floatPackedBorrowedViewDecode),
+        try runTimed(io, "dynamic float packed encode", iters.packed_binary, dynamic_float_packed_bytes.len, DynamicFloatPackedEncodeCtx{ .message = &dynamic_float_packed, .file = &file }, dynamicFloatPackedEncode),
+        try runTimed(io, "dynamic float packed decode", iters.packed_binary, dynamic_float_packed_bytes.len, DynamicFloatPackedDecodeCtx{ .allocator = allocator, .descriptor = float_packed_desc, .file = &file, .bytes = dynamic_float_packed_bytes }, dynamicFloatPackedDecode),
+        try runTimed(io, "dynamic float packed decode reuse", iters.packed_binary, dynamic_float_packed_bytes.len, DynamicFloatPackedDecodeReuseCtx{ .message = &dynamic_float_packed_decode_reuse, .file = &file, .bytes = dynamic_float_packed_bytes }, dynamicFloatPackedDecodeReuse),
+        try runTimed(io, "generated double packed encode", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedEncodeCtx{ .allocator = allocator, .message = &generated_double_packed }, generatedDoublePackedEncode),
+        try runTimed(io, "generated double packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedEncodeIntoCtx{ .buffer = generated_double_packed_buffer, .message = &generated_double_packed }, generatedDoublePackedEncodeIntoReuse),
+        try runTimed(io, "generated double packed borrowed slices encode", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedSlicesCtx{ .message = &generated_double_packed }, generatedDoublePackedBorrowedSlices),
+        try runTimed(io, "generated double packed decode", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedDecodeCtx{ .allocator = allocator, .bytes = generated_double_packed_bytes }, generatedDoublePackedDecode),
+        try runTimed(io, "wire double packed borrowed view decode", iters.packed_binary, generated_double_packed_bytes.len, DoublePackedBorrowedViewCtx{ .bytes = generated_double_packed_bytes }, doublePackedBorrowedViewDecode),
+        try runTimed(io, "dynamic double packed encode", iters.packed_binary, dynamic_double_packed_bytes.len, DynamicDoublePackedEncodeCtx{ .message = &dynamic_double_packed, .file = &file }, dynamicDoublePackedEncode),
+        try runTimed(io, "dynamic double packed decode", iters.packed_binary, dynamic_double_packed_bytes.len, DynamicDoublePackedDecodeCtx{ .allocator = allocator, .descriptor = double_packed_desc, .file = &file, .bytes = dynamic_double_packed_bytes }, dynamicDoublePackedDecode),
+        try runTimed(io, "dynamic double packed decode reuse", iters.packed_binary, dynamic_double_packed_bytes.len, DynamicDoublePackedDecodeReuseCtx{ .message = &dynamic_double_packed_decode_reuse, .file = &file, .bytes = dynamic_double_packed_bytes }, dynamicDoublePackedDecodeReuse),
         try runTimed(io, "generated uint64 packed encode", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedEncodeCtx{ .allocator = allocator, .message = &generated_uint64_packed }, generatedUInt64PackedEncode),
         try runTimed(io, "generated uint64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedEncodeIntoCtx{ .buffer = generated_uint64_packed_buffer, .message = &generated_uint64_packed }, generatedUInt64PackedEncodeIntoReuse),
         try runTimed(io, "generated uint64 packed decode", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_uint64_packed_bytes }, generatedUInt64PackedDecode),

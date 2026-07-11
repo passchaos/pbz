@@ -77,6 +77,20 @@ demo::Fixed64Packed MakeFixed64Packed() {
   return packed;
 }
 
+demo::FloatPacked MakeFloatPacked() {
+  demo::FloatPacked packed;
+  for (int i = 0; i < 1024; ++i)
+    packed.add_values(static_cast<float>(i) * 0.25f + 1.0f);
+  return packed;
+}
+
+demo::DoublePacked MakeDoublePacked() {
+  demo::DoublePacked packed;
+  for (int i = 0; i < 1024; ++i)
+    packed.add_values(static_cast<double>(i) * 0.5 + 1.0);
+  return packed;
+}
+
 demo::UInt64Packed MakeUInt64Packed() {
   demo::UInt64Packed packed;
   for (int i = 0; i < 1024; ++i)
@@ -218,6 +232,12 @@ int main() {
   const demo::Fixed64Packed fixed64_packed = MakeFixed64Packed();
   std::string fixed64_packed_bytes;
   fixed64_packed.SerializeToString(&fixed64_packed_bytes);
+  const demo::FloatPacked float_packed = MakeFloatPacked();
+  std::string float_packed_bytes;
+  float_packed.SerializeToString(&float_packed_bytes);
+  const demo::DoublePacked double_packed = MakeDoublePacked();
+  std::string double_packed_bytes;
+  double_packed.SerializeToString(&double_packed_bytes);
   const demo::UInt64Packed uint64_packed = MakeUInt64Packed();
   std::string uint64_packed_bytes;
   uint64_packed.SerializeToString(&uint64_packed_bytes);
@@ -247,6 +267,10 @@ int main() {
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size()
             << "\n";
   std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size()
+            << "\n";
+  std::cout << "float packed payload size: " << float_packed_bytes.size()
+            << "\n";
+  std::cout << "double packed payload size: " << double_packed_bytes.size()
             << "\n";
   std::cout << "uint64 packed payload size: " << uint64_packed_bytes.size()
             << "\n";
@@ -811,6 +835,94 @@ int main() {
         asm volatile("" : : "g"(&reused_fixed64_packed_decoded) : "memory");
       });
   fixed64_packed_decode_reuse.Print();
+
+  auto float_packed_encode =
+      RunTimed("c++ protobuf float packed encode", kIterations,
+               float_packed_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(float_packed_bytes.size());
+                 float_packed.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  float_packed_encode.Print();
+
+  std::string float_packed_array_buffer;
+  float_packed_array_buffer.resize(float_packed_bytes.size());
+  auto float_packed_encode_array_reuse = RunTimed(
+      "c++ protobuf float packed SerializeToArray reuse", kIterations,
+      float_packed_bytes.size(), [&]() {
+        if (!float_packed.SerializeToArray(
+                float_packed_array_buffer.data(),
+                static_cast<int>(float_packed_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(float_packed_array_buffer.data()) : "memory");
+      });
+  float_packed_encode_array_reuse.Print();
+
+  auto float_packed_decode =
+      RunTimed("c++ protobuf float packed decode", kIterations,
+               float_packed_bytes.size(), [&]() {
+                 demo::FloatPacked decoded;
+                 if (!decoded.ParseFromString(float_packed_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  float_packed_decode.Print();
+
+  demo::FloatPacked reused_float_packed_decoded;
+  auto float_packed_decode_reuse = RunTimed(
+      "c++ protobuf float packed decode reuse", kIterations,
+      float_packed_bytes.size(), [&]() {
+        reused_float_packed_decoded.Clear();
+        if (!reused_float_packed_decoded.ParseFromString(float_packed_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_float_packed_decoded) : "memory");
+      });
+  float_packed_decode_reuse.Print();
+
+  auto double_packed_encode =
+      RunTimed("c++ protobuf double packed encode", kIterations,
+               double_packed_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(double_packed_bytes.size());
+                 double_packed.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  double_packed_encode.Print();
+
+  std::string double_packed_array_buffer;
+  double_packed_array_buffer.resize(double_packed_bytes.size());
+  auto double_packed_encode_array_reuse = RunTimed(
+      "c++ protobuf double packed SerializeToArray reuse", kIterations,
+      double_packed_bytes.size(), [&]() {
+        if (!double_packed.SerializeToArray(
+                double_packed_array_buffer.data(),
+                static_cast<int>(double_packed_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(double_packed_array_buffer.data()) : "memory");
+      });
+  double_packed_encode_array_reuse.Print();
+
+  auto double_packed_decode =
+      RunTimed("c++ protobuf double packed decode", kIterations,
+               double_packed_bytes.size(), [&]() {
+                 demo::DoublePacked decoded;
+                 if (!decoded.ParseFromString(double_packed_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  double_packed_decode.Print();
+
+  demo::DoublePacked reused_double_packed_decoded;
+  auto double_packed_decode_reuse = RunTimed(
+      "c++ protobuf double packed decode reuse", kIterations,
+      double_packed_bytes.size(), [&]() {
+        reused_double_packed_decoded.Clear();
+        if (!reused_double_packed_decoded.ParseFromString(double_packed_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_double_packed_decoded) : "memory");
+      });
+  double_packed_decode_reuse.Print();
 
   auto uint64_packed_encode =
       RunTimed("c++ protobuf uint64 packed encode", kIterations,

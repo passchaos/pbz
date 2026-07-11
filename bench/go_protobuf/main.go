@@ -77,6 +77,22 @@ func makeFixed64Packed() *personpb.Fixed64Packed {
 	return &personpb.Fixed64Packed{Values: values}
 }
 
+func makeFloatPacked() *personpb.FloatPacked {
+	values := make([]float32, 1024)
+	for i := range values {
+		values[i] = float32(i)*0.25 + 1.0
+	}
+	return &personpb.FloatPacked{Values: values}
+}
+
+func makeDoublePacked() *personpb.DoublePacked {
+	values := make([]float64, 1024)
+	for i := range values {
+		values[i] = float64(i)*0.5 + 1.0
+	}
+	return &personpb.DoublePacked{Values: values}
+}
+
 func makeUInt64Packed() *personpb.UInt64Packed {
 	values := make([]uint64, 1024)
 	for i := range values {
@@ -214,6 +230,16 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	floatPacked := makeFloatPacked()
+	floatPackedBytes, err := proto.Marshal(floatPacked)
+	if err != nil {
+		panic(err)
+	}
+	doublePacked := makeDoublePacked()
+	doublePackedBytes, err := proto.Marshal(doublePacked)
+	if err != nil {
+		panic(err)
+	}
 	uint64Packed := makeUInt64Packed()
 	uint64PackedBytes, err := proto.Marshal(uint64Packed)
 	if err != nil {
@@ -252,6 +278,8 @@ func main() {
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
+	fmt.Printf("float packed payload size: %d\n", len(floatPackedBytes))
+	fmt.Printf("double packed payload size: %d\n", len(doublePackedBytes))
 	fmt.Printf("uint64 packed payload size: %d\n", len(uint64PackedBytes))
 	fmt.Printf("sint64 packed payload size: %d\n", len(sint64PackedBytes))
 	fmt.Printf("bool packed payload size: %d\n", len(boolPackedBytes))
@@ -504,6 +532,54 @@ func main() {
 	runTimed("go protobuf fixed64 packed decode", iterations, len(fixed64PackedBytes), func() {
 		var decoded personpb.Fixed64Packed
 		if err := unmarshalOptions.Unmarshal(fixed64PackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf float packed encode", iterations, len(floatPackedBytes), func() {
+		out, err := proto.Marshal(floatPacked)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	floatPackedBuf := make([]byte, 0, len(floatPackedBytes))
+	runTimed("go protobuf float packed encode reuse", iterations, len(floatPackedBytes), func() {
+		var err error
+		floatPackedBuf, err = marshalOptions.MarshalAppend(floatPackedBuf[:0], floatPacked)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf float packed decode", iterations, len(floatPackedBytes), func() {
+		var decoded personpb.FloatPacked
+		if err := unmarshalOptions.Unmarshal(floatPackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf double packed encode", iterations, len(doublePackedBytes), func() {
+		out, err := proto.Marshal(doublePacked)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	doublePackedBuf := make([]byte, 0, len(doublePackedBytes))
+	runTimed("go protobuf double packed encode reuse", iterations, len(doublePackedBytes), func() {
+		var err error
+		doublePackedBuf, err = marshalOptions.MarshalAppend(doublePackedBuf[:0], doublePacked)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf double packed decode", iterations, len(doublePackedBytes), func() {
+		var decoded personpb.DoublePacked
+		if err := unmarshalOptions.Unmarshal(doublePackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

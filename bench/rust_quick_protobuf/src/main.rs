@@ -540,6 +540,16 @@ pub struct Fixed64Packed {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct FloatPacked {
+    pub values: Vec<f32>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct DoublePacked {
+    pub values: Vec<f64>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct UInt64Packed {
     pub values: Vec<u64>,
 }
@@ -631,6 +641,76 @@ impl<'a> MessageRead<'a> for Fixed64Packed {
 fn make_fixed64_packed() -> Fixed64Packed {
     Fixed64Packed {
         values: (0..1024).map(|i| (i * 5 + 1) as u64).collect(),
+    }
+}
+
+impl MessageWrite for FloatPacked {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len = self.values.len() * 4;
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_float(*v), &|_| 4)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for FloatPacked {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = FloatPacked::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_float(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_float_packed() -> FloatPacked {
+    FloatPacked {
+        values: (0..1024).map(|i| i as f32 * 0.25 + 1.0).collect(),
+    }
+}
+
+impl MessageWrite for DoublePacked {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len = self.values.len() * 8;
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_double(*v), &|_| 8)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for DoublePacked {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = DoublePacked::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_double(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_double_packed() -> DoublePacked {
+    DoublePacked {
+        values: (0..1024).map(|i| i as f64 * 0.5 + 1.0).collect(),
     }
 }
 
@@ -978,6 +1058,10 @@ fn main() {
     let fixed_packed_bytes = encode_to_vec(&fixed_packed);
     let fixed64_packed = make_fixed64_packed();
     let fixed64_packed_bytes = encode_to_vec(&fixed64_packed);
+    let float_packed = make_float_packed();
+    let float_packed_bytes = encode_to_vec(&float_packed);
+    let double_packed = make_double_packed();
+    let double_packed_bytes = encode_to_vec(&double_packed);
     let uint64_packed = make_uint64_packed();
     let uint64_packed_bytes = encode_to_vec(&uint64_packed);
     let sint64_packed = make_sint64_packed();
@@ -1000,6 +1084,8 @@ fn main() {
         "fixed64 packed payload size: {}",
         fixed64_packed_bytes.len()
     );
+    println!("float packed payload size: {}", float_packed_bytes.len());
+    println!("double packed payload size: {}", double_packed_bytes.len());
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
     println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
     println!("bool packed payload size: {}", bool_packed_bytes.len());
@@ -1260,6 +1346,82 @@ fn main() {
             let mut reader = BytesReader::from_bytes(&fixed64_packed_bytes);
             let decoded =
                 Fixed64Packed::from_reader(&mut reader, &fixed64_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf float packed encode",
+        iters.binary,
+        float_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&float_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_float_packed = Vec::with_capacity(float_packed_bytes.len());
+    run_timed(
+        "quick-protobuf float packed encode reuse",
+        iters.binary,
+        float_packed_bytes.len(),
+        || {
+            reused_float_packed.clear();
+            let mut writer = Writer::new(&mut reused_float_packed);
+            float_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_float_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf float packed decode",
+        iters.binary,
+        float_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&float_packed_bytes);
+            let decoded =
+                FloatPacked::from_reader(&mut reader, &float_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf double packed encode",
+        iters.binary,
+        double_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&double_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_double_packed = Vec::with_capacity(double_packed_bytes.len());
+    run_timed(
+        "quick-protobuf double packed encode reuse",
+        iters.binary,
+        double_packed_bytes.len(),
+        || {
+            reused_double_packed.clear();
+            let mut writer = Writer::new(&mut reused_double_packed);
+            double_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_double_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf double packed decode",
+        iters.binary,
+        double_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&double_packed_bytes);
+            let decoded =
+                DoublePacked::from_reader(&mut reader, &double_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

@@ -3380,13 +3380,17 @@ fn writeFastDirectPackedScalarEncode(field: *const schema.FieldDescriptor, scala
         if (fixedWidthViewScalarType(scalar)) |_| {
             try indent(writer, depth + 1);
             if (scalar == .double) {
-                try writer.writeAll("for (self.");
+                try writer.writeAll("if (comptime @import(\"builtin\").target.cpu.arch.endian() == .little) { const payload = std.mem.sliceAsBytes(self.");
                 try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(item));\n");
+                try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len; } else { for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(item)); }\n");
             } else if (scalar == .float) {
-                try writer.writeAll("for (self.");
+                try writer.writeAll("if (comptime @import(\"builtin\").target.cpu.arch.endian() == .little) { const payload = std.mem.sliceAsBytes(self.");
                 try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(item));\n");
+                try writer.writeAll("); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len; } else { for (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(") |item| pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(item)); }\n");
             } else {
                 try writer.writeAll("const payload = std.mem.sliceAsBytes(self.");
                 try writeQuotedIdent(field.name, writer);

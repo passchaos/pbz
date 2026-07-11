@@ -10,8 +10,8 @@ validated feature set.
 
 - Wire-format reader and writer
   - varint, zig-zag, fixed32/fixed64, length-delimited values, groups
-  - zero-copy `pbz.wire.packedFixed32View` / `packedFixed32FieldView` for callers
-    that can borrow packed fixed32 data directly from a wire buffer
+  - zero-copy `pbz.wire.packedFixedWidthView` / `packedFixedWidthFieldView` for callers
+    that can borrow packed fixed-width data directly from a wire buffer
   - tag parsing, unknown-field skipping, recursion guard for groups
 - Schema model
   - files, messages, fields, oneofs, enums, services, imports, options
@@ -471,7 +471,7 @@ zig build bench -Doptimize=ReleaseFast
 
 The benchmark source is [`bench/pbz_bench.zig`](bench/pbz_bench.zig). It currently
 measures pbz generated and dynamic binary encode/decode, packed repeated integer,
-fixed-width, varint64, bool, enum, and large-map encode/decode, plus JSON and TextFormat
+fixed-width, float/double, varint64, bool, enum, and large-map encode/decode, plus JSON and TextFormat
 round-trips. For cross-language binary, JSON, and TextFormat comparisons, run
 [`bench/run_compare.sh`](bench/run_compare.sh), which includes Rust `prost`, Rust
 `quick-protobuf`, C++ protobuf generated code / util JSON / TextFormat, and Go

@@ -320,6 +320,66 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "packed float encode",
+        (
+            "generated float packed encode",
+            "generated float packed encodeIntoAssumeCapacity buffer reuse",
+            "generated float packed borrowed slices encode",
+        ),
+        {
+            "rust prost": ("prost float packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf float packed encode",
+                "quick-protobuf float packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf float packed encode",
+                "c++ protobuf float packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf float packed encode", "go protobuf float packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed float decode",
+        ("generated float packed decode", "wire float packed borrowed view decode"),
+        {
+            "rust prost": ("prost float packed decode",),
+            "rust quick-protobuf": ("quick-protobuf float packed decode",),
+            "c++ protobuf": ("c++ protobuf float packed decode", "c++ protobuf float packed decode reuse"),
+            "go protobuf": ("go protobuf float packed decode",),
+        },
+    ),
+    Workload(
+        "packed double encode",
+        (
+            "generated double packed encode",
+            "generated double packed encodeIntoAssumeCapacity buffer reuse",
+            "generated double packed borrowed slices encode",
+        ),
+        {
+            "rust prost": ("prost double packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf double packed encode",
+                "quick-protobuf double packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf double packed encode",
+                "c++ protobuf double packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf double packed encode", "go protobuf double packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed double decode",
+        ("generated double packed decode", "wire double packed borrowed view decode"),
+        {
+            "rust prost": ("prost double packed decode",),
+            "rust quick-protobuf": ("quick-protobuf double packed decode",),
+            "c++ protobuf": ("c++ protobuf double packed decode", "c++ protobuf double packed decode reuse"),
+            "go protobuf": ("go protobuf double packed decode",),
+        },
+    ),
+    Workload(
         "packed uint64 encode",
         (
             "generated uint64 packed encode",
