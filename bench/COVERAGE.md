@@ -117,6 +117,9 @@ benchmark harness.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing and unknown
   preservation.
 - `examples/well_known_types.zig` covers selected well known types.
+- `src/dynamic.zig` and `src/wire.zig` tests cover dynamic decode recursion
+  limits for nested length-delimited messages, maps, MessageSet payloads, and
+  groups.
 - `zig build test` runs unit tests across parser, descriptor, dynamic,
   generated-code helpers, JSON, TextFormat, registry, WKT, codegen, and
   conformance helpers.
@@ -130,9 +133,9 @@ claiming broad superiority beyond the covered workloads:
   has conformance-style helpers and examples, but not an exhaustive upstream
   conformance run.
 - The comparison matrix is intentionally broad but not infinite: additional
-  workloads such as deeply nested recursion limits, arena-style ownership
-  patterns, streaming RPC transports, and every well-known-type edge case may
-  deserve separate rows.
+  workloads such as generated recursive-schema decode limits, arena-style
+  ownership patterns, streaming RPC transports, and every well-known-type edge
+  case may deserve separate rows.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

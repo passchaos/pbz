@@ -756,6 +756,25 @@ pub const Reader = struct {
         return self.index;
     }
 
+    pub fn nested(self: *const Reader, input: []const u8) Error!Reader {
+        if (self.recursion_depth >= self.recursion_limit) return error.RecursionLimitExceeded;
+        return .{
+            .input = input,
+            .recursion_depth = self.recursion_depth + 1,
+            .recursion_limit = self.recursion_limit,
+        };
+    }
+
+    pub fn enterRecursion(self: *Reader) Error!void {
+        if (self.recursion_depth >= self.recursion_limit) return error.RecursionLimitExceeded;
+        self.recursion_depth += 1;
+    }
+
+    pub fn leaveRecursion(self: *Reader) void {
+        std.debug.assert(self.recursion_depth != 0);
+        self.recursion_depth -= 1;
+    }
+
     pub fn readByte(self: *Reader) Error!u8 {
         if (self.index >= self.input.len) return error.TruncatedInput;
         const b = self.input[self.index];
@@ -861,9 +880,8 @@ pub const Reader = struct {
     }
 
     pub fn readGroupBytes(self: *Reader, number: FieldNumber) Error![]const u8 {
-        if (self.recursion_depth >= self.recursion_limit) return error.RecursionLimitExceeded;
-        self.recursion_depth += 1;
-        defer self.recursion_depth -= 1;
+        try self.enterRecursion();
+        defer self.leaveRecursion();
 
         const start = self.index;
         while (true) {
@@ -883,9 +901,8 @@ pub const Reader = struct {
     }
 
     fn skipGroup(self: *Reader, number: FieldNumber) Error!void {
-        if (self.recursion_depth >= self.recursion_limit) return error.RecursionLimitExceeded;
-        self.recursion_depth += 1;
-        defer self.recursion_depth -= 1;
+        try self.enterRecursion();
+        defer self.leaveRecursion();
 
         while (true) {
             const tag = (try self.nextTag()) orelse return error.TruncatedInput;
@@ -1327,6 +1344,15 @@ test "wire skips nested groups and length-delimited values" {
     const second = (try reader.nextTag()).?;
     try std.testing.expectEqual(@as(FieldNumber, 3), second.number);
     try std.testing.expect(try reader.readBool());
+}
+
+test "wire nested readers carry recursion limit" {
+    var reader = Reader.init(&.{});
+    reader.recursion_limit = 1;
+    var child = try reader.nested(&.{});
+    try std.testing.expectEqual(@as(u32, 1), child.recursion_depth);
+    try std.testing.expectEqual(@as(u32, 1), child.recursion_limit);
+    try std.testing.expectError(error.RecursionLimitExceeded, child.nested(&.{}));
 }
 
 test "wire reads group payload bytes" {

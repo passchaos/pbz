@@ -12,7 +12,8 @@ validated feature set.
   - varint, zig-zag, fixed32/fixed64, length-delimited values, groups
   - zero-copy `pbz.wire.packedFixedWidthView` / `packedFixedWidthFieldView` for callers
     that can borrow packed fixed-width data directly from a wire buffer
-  - tag parsing, unknown-field skipping, recursion guard for groups
+  - tag parsing, unknown-field skipping, recursion guard for groups and nested
+    length-delimited messages
 - Schema model
   - files, messages, fields, oneofs, enums, services, imports, options
   - exclusive proto2/proto3/editions syntax flags including unstable/test-only edition literals and expanded FeatureSet defaults

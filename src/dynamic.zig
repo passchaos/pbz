@@ -664,7 +664,8 @@ pub const DynamicMessage = struct {
             if (field.kind == .map) {
                 if (tag.wire_type != .length_delimited) return error.InvalidWireType;
                 const payload = try reader.readBytes();
-                var value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field, field.kind.map, payload)) orelse {
+                var entry_reader = try reader.nested(payload);
+                var value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field, field.kind.map, &entry_reader)) orelse {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                     continue;
                 };
@@ -804,6 +805,9 @@ pub const DynamicMessage = struct {
     }
 
     fn decodeMessageSetItem(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, reader: *wire.Reader) DecodeError!void {
+        try reader.enterRecursion();
+        defer reader.leaveRecursion();
+
         var type_id: ?wire.FieldNumber = null;
         var payload: ?[]const u8 = null;
 
@@ -811,7 +815,7 @@ pub const DynamicMessage = struct {
             if (tag.wire_type == .end_group) {
                 if (tag.number != 1) return error.InvalidFieldNumber;
                 if (type_id) |number| {
-                    if (payload) |bytes| try self.addMessageSetPayload(file, registry, number, bytes);
+                    if (payload) |bytes| try self.addMessageSetPayload(file, registry, reader, number, bytes);
                 }
                 return;
             }
@@ -832,7 +836,7 @@ pub const DynamicMessage = struct {
         return error.TruncatedInput;
     }
 
-    fn addMessageSetPayload(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, number: wire.FieldNumber, payload: []const u8) DecodeError!void {
+    fn addMessageSetPayload(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, source_reader: *wire.Reader, number: wire.FieldNumber, payload: []const u8) DecodeError!void {
         const field = registryExtension(registry, self.descriptor, number) orelse {
             var raw_writer = wire.Writer.init(self.allocator);
             defer raw_writer.deinit();
@@ -847,7 +851,8 @@ pub const DynamicMessage = struct {
             return;
         };
         if (field.kind != .message or field.cardinality == .repeated or field.cardinality == .required) return error.TypeMismatch;
-        var value = try decodeMessagePayload(self.allocator, file, registry, self.descriptor, field.kind.message, payload);
+        var payload_reader = try source_reader.nested(payload);
+        var value = try decodeMessagePayload(self.allocator, file, registry, self.descriptor, field.kind.message, &payload_reader);
         self.addOwned(field, value) catch |err| {
             deinitValue(&value, self.allocator);
             return err;
@@ -1188,7 +1193,8 @@ fn decodeValue(
         .enumeration => try decodeScalarLike(kind, reader),
         .message => |name| blk: {
             const payload = try reader.readBytes();
-            break :blk try decodeMessagePayload(allocator, file, registry, current, name, payload);
+            var payload_reader = try reader.nested(payload);
+            break :blk try decodeMessagePayload(allocator, file, registry, current, name, &payload_reader);
         },
         .group => error.TypeMismatch,
         .map => error.TypeMismatch,
@@ -1206,7 +1212,7 @@ fn decodeMessagePayload(
     registry: ?*const registry_mod.Registry,
     current: *const schema.MessageDescriptor,
     name: []const u8,
-    payload: []const u8,
+    reader: *wire.Reader,
 ) DecodeError!Value {
     const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
     const message = try allocator.create(DynamicMessage);
@@ -1216,11 +1222,7 @@ fn decodeMessagePayload(
         allocator.destroy(message);
     }
     const descriptor_file = messageDescriptorFile(file, registry, descriptor);
-    if (registry) |reg| {
-        try message.decodeWithRegistry(descriptor_file, reg, payload);
-    } else {
-        try message.decode(descriptor_file, payload);
-    }
+    try message.decodeStream(descriptor_file, registry, reader, null);
     return .{ .message = message };
 }
 
@@ -1231,10 +1233,8 @@ fn decodeMapEntryValue(
     current: *const schema.MessageDescriptor,
     field: *const schema.FieldDescriptor,
     map_type: schema.MapType,
-    payload: []const u8,
+    entry_reader: *wire.Reader,
 ) DecodeError!?Value {
-    var entry_reader = wire.Reader.init(payload);
-
     var maybe_key: ?Value = null;
     var maybe_value: ?Value = null;
     var success = false;
@@ -1250,7 +1250,7 @@ fn decodeMapEntryValue(
             1 => {
                 if (tag.wire_type != map_type.key.wireType()) return error.InvalidWireType;
                 if (maybe_key) |*old| deinitValue(old, allocator);
-                maybe_key = try decodeValue(allocator, file, registry, current, field, .{ .scalar = map_type.key }, &entry_reader);
+                maybe_key = try decodeValue(allocator, file, registry, current, field, .{ .scalar = map_type.key }, entry_reader);
             },
             2 => {
                 if (maybe_value) |*old| deinitValue(old, allocator);
@@ -1261,7 +1261,7 @@ fn decodeMapEntryValue(
                     maybe_value = .{ .enumeration = value };
                 } else {
                     if (tag.wire_type != map_type.value.wireType()) return error.InvalidWireType;
-                    maybe_value = try decodeValue(allocator, file, registry, current, field, map_type.value.*, &entry_reader);
+                    maybe_value = try decodeValue(allocator, file, registry, current, field, map_type.value.*, entry_reader);
                 }
             },
             else => try entry_reader.skipValue(tag),
@@ -1343,6 +1343,8 @@ fn decodeGroupValue(
         message.deinit();
         allocator.destroy(message);
     }
+    try reader.enterRecursion();
+    defer reader.leaveRecursion();
     try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
     return .{ .group = message };
 }
@@ -1366,6 +1368,8 @@ fn decodeDelimitedMessageValue(
         message.deinit();
         allocator.destroy(message);
     }
+    try reader.enterRecursion();
+    defer reader.leaveRecursion();
     try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
     return .{ .message = message };
 }
@@ -2020,6 +2024,75 @@ test "dynamic proto3 round-trips map fields and default packed repeated scalars"
     const decoded_child = decoded.get("children").?.values.items[0].map_entry;
     try std.testing.expectEqualSlices(u8, "first", decoded_child.key.string);
     try std.testing.expectEqualSlices(u8, "kid", decoded_child.value.message.get("label").?.values.items[0].string);
+}
+
+fn makeNestedNodePayload(allocator: std.mem.Allocator, depth: usize) ![]u8 {
+    var current = try allocator.dupe(u8, &.{});
+    errdefer allocator.free(current);
+    var i: usize = 0;
+    while (i < depth) : (i += 1) {
+        var writer = wire.Writer.init(allocator);
+        defer writer.deinit();
+        try writer.writeBytes(1, current);
+        const next = try writer.toOwnedSlice();
+        allocator.free(current);
+        current = next;
+    }
+    return current;
+}
+
+test "dynamic decode enforces nested message recursion limit" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Node { Node child = 1; }
+    );
+    defer file.deinit();
+    const node = file.findMessage("Node").?;
+
+    const shallow = try makeNestedNodePayload(allocator, 4);
+    defer allocator.free(shallow);
+    var shallow_msg = DynamicMessage.init(allocator, node);
+    defer shallow_msg.deinit();
+    try shallow_msg.decode(&file, shallow);
+
+    const limit_payload = try makeNestedNodePayload(allocator, 3);
+    defer allocator.free(limit_payload);
+    var limited_reader = wire.Reader.init(limit_payload);
+    limited_reader.recursion_limit = 2;
+    var limited_msg = DynamicMessage.init(allocator, node);
+    defer limited_msg.deinit();
+    try std.testing.expectError(error.RecursionLimitExceeded, limited_msg.decodeStream(&file, null, &limited_reader, null));
+}
+
+test "dynamic decode carries recursion limit through map message entries" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Node { map<string, Node> children = 1; }
+    );
+    defer file.deinit();
+    const node = file.findMessage("Node").?;
+
+    var entry = wire.Writer.init(allocator);
+    defer entry.deinit();
+    try entry.writeString(1, "child");
+    try entry.writeBytes(2, &.{});
+
+    var payload = wire.Writer.init(allocator);
+    defer payload.deinit();
+    try payload.writeBytes(1, entry.slice());
+
+    var decoded = DynamicMessage.init(allocator, node);
+    defer decoded.deinit();
+    try decoded.decode(&file, payload.slice());
+    try std.testing.expectEqual(@as(usize, 1), decoded.get("children").?.values.items.len);
+
+    var limited_reader = wire.Reader.init(payload.slice());
+    limited_reader.recursion_limit = 1;
+    var limited = DynamicMessage.init(allocator, node);
+    defer limited.deinit();
+    try std.testing.expectError(error.RecursionLimitExceeded, limited.decodeStream(&file, null, &limited_reader, null));
 }
 
 test "dynamic proto3 round-trips fixed-width packed repeated scalars" {
