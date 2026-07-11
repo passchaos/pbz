@@ -279,6 +279,14 @@ pub const demo = struct {
             self._unknown_fields = &.{};
         }
 
+        pub fn nameFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+        }
+
+        pub fn nameStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try nameFieldSlices(header, value);
+        }
+
 
         // no same-file extension accessors
 
@@ -3340,6 +3348,38 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn titleFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+        }
+
+        pub fn titleStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try titleFieldSlices(header, value);
+        }
+
+        pub fn payloadFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+        }
+
+        pub fn payloadBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try payloadFieldSlices(header, value);
+        }
+
+        pub fn tagsFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 3, value);
+        }
+
+        pub fn tagsStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try tagsFieldSlices(header, value);
+        }
+
+        pub fn chunksFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 4, value);
+        }
+
+        pub fn chunksBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try chunksFieldSlices(header, value);
+        }
+
 
         // no same-file extension accessors
 
@@ -4433,6 +4473,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self._unknown_fields) |raw| allocator.free(raw);
             if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
             self._unknown_fields = &.{};
+        }
+
+        pub fn payloadFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+        }
+
+        pub fn payloadBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try payloadFieldSlices(header, value);
+        }
+
+        pub fn chunksFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+        }
+
+        pub fn chunksBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try chunksFieldSlices(header, value);
         }
 
 
@@ -6851,6 +6907,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 for (self._unknown_fields) |raw| allocator.free(raw);
                 if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
                 self._unknown_fields = &.{};
+            }
+
+            pub fn labelFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+            }
+
+            pub fn labelStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                return try labelFieldSlices(header, value);
             }
 
 
@@ -24742,6 +24806,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 for (self._unknown_fields) |raw| allocator.free(raw);
                 if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
                 self._unknown_fields = &.{};
+            }
+
+            pub fn actorFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+            }
+
+            pub fn actorStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                return try actorFieldSlices(header, value);
             }
 
 

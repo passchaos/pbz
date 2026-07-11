@@ -204,6 +204,14 @@ pub inline fn writeRawLittleToSlice(comptime T: type, buffer: []u8, index: *usiz
     std.mem.writeInt(T, buffer[start..][0..@sizeOf(T)], value, .little);
 }
 
+pub fn lengthDelimitedFieldSlices(header: *[20]u8, number: FieldNumber, payload: []const u8) Error!BorrowedFieldSlices {
+    const tag = try (Tag{ .number = number, .wire_type = .length_delimited }).encode();
+    var header_len: usize = 0;
+    header_len += writeVarintToBuffer(header[header_len..], tag);
+    header_len += writeVarintToBuffer(header[header_len..], @intCast(payload.len));
+    return .{ .header = header[0..header_len], .payload = payload };
+}
+
 pub fn packedFixedWidthFieldSlices(comptime T: type, header: *[20]u8, number: FieldNumber, values: []const T) Error!BorrowedFieldSlices {
     if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
         @compileError("packedFixedWidthFieldSlices requires u32, i32, f32, u64, i64, or f64");

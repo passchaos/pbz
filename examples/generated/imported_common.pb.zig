@@ -154,6 +154,14 @@ pub const demo = struct {
                     self._unknown_fields = &.{};
                 }
 
+                pub fn nameFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                    return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+                }
+
+                pub fn nameStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                    return try nameFieldSlices(header, value);
+                }
+
 
                 // no same-file extension accessors
 

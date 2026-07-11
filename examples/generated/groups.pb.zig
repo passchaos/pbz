@@ -1354,6 +1354,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._unknown_fields = &.{};
                 }
 
+                pub fn labelFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                    return try pbz.wire.lengthDelimitedFieldSlices(header, 3, value);
+                }
+
+                pub fn labelStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+                    return try labelFieldSlices(header, value);
+                }
+
 
                 // no same-file extension accessors
 

@@ -641,20 +641,16 @@ fn generatedLargeBytesBorrowedSlices(ctx: GeneratedLargeBytesBorrowedSlicesCtx) 
     const msg = ctx.message;
     var total_len: usize = 0;
     if (msg.payload.len != 0) {
-        var header_len: usize = 0;
-        header_len += pbz.wire.writeVarintToBuffer(header[0][header_len..], try (pbz.wire.Tag{ .number = 1, .wire_type = .length_delimited }).encode());
-        header_len += pbz.wire.writeVarintToBuffer(header[0][header_len..], msg.payload.len);
-        total_len += header_len + msg.payload.len;
-        std.mem.doNotOptimizeAway(header[0][0..header_len].ptr);
-        std.mem.doNotOptimizeAway(msg.payload.ptr);
+        const slices = try person_pb.demo.LargeBytes.payloadBytesSlices(&header[0], msg.payload);
+        total_len += slices.header.len + slices.payload.len;
+        std.mem.doNotOptimizeAway(slices.header.ptr);
+        std.mem.doNotOptimizeAway(slices.payload.ptr);
     }
     for (msg.chunks, 0..) |chunk, i| {
-        var header_len: usize = 0;
-        header_len += pbz.wire.writeVarintToBuffer(header[i + 1][header_len..], try (pbz.wire.Tag{ .number = 2, .wire_type = .length_delimited }).encode());
-        header_len += pbz.wire.writeVarintToBuffer(header[i + 1][header_len..], chunk.len);
-        total_len += header_len + chunk.len;
-        std.mem.doNotOptimizeAway(header[i + 1][0..header_len].ptr);
-        std.mem.doNotOptimizeAway(chunk.ptr);
+        const slices = try person_pb.demo.LargeBytes.chunksBytesSlices(&header[i + 1], chunk);
+        total_len += slices.header.len + slices.payload.len;
+        std.mem.doNotOptimizeAway(slices.header.ptr);
+        std.mem.doNotOptimizeAway(slices.payload.ptr);
     }
     std.mem.doNotOptimizeAway(total_len);
 }

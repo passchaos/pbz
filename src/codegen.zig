@@ -4540,8 +4540,12 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
 fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     for (message.fields.items) |*field| {
         if (field.oneof_name != null) continue;
-        if (field.cardinality != .repeated) continue;
         if (field.kind != .scalar) continue;
+        if (field.kind.scalar == .string or field.kind.scalar == .bytes) {
+            try writeLengthDelimitedBorrowedSlicesMethod(field, writer, depth);
+            continue;
+        }
+        if (field.cardinality != .repeated) continue;
         if (fixedWidthViewScalarType(field.kind.scalar) == null) continue;
         if (!field.resolvedPacked(file)) continue;
         const view_type = fixedWidthViewScalarType(field.kind.scalar).?;
@@ -4591,6 +4595,40 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
             try indent(writer, depth);
             try writer.writeAll("}\n\n");
         }
+    }
+}
+
+fn writeLengthDelimitedBorrowedSlicesMethod(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithSuffix(field.name, "FieldSlices", writer);
+    try writer.writeAll("(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {\n");
+    try indent(writer, depth + 1);
+    try writer.print("return try pbz.wire.lengthDelimitedFieldSlices(header, {d}, value);\n", .{field.number});
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+    if (field.kind.scalar == .bytes) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithSuffix(field.name, "BytesSlices", writer);
+        try writer.writeAll("(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeQuotedIdentWithSuffix(field.name, "FieldSlices", writer);
+        try writer.writeAll("(header, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    } else if (field.kind.scalar == .string) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithSuffix(field.name, "StringSlices", writer);
+        try writer.writeAll("(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeQuotedIdentWithSuffix(field.name, "FieldSlices", writer);
+        try writer.writeAll("(header, value);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
     }
 }
 
