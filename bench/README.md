@@ -24,6 +24,11 @@ The cross-language binary baselines use the same `Person` payload and the same
 baselines; use the same schema, payloads, optimization mode, and hardware when
 comparing.
 
+Each timed benchmark does a short warmup and reports the best elapsed sample out
+of three measured samples. This reduces one-off cold-cache and scheduler noise;
+compare complete `bench/run_compare.sh` runs rather than individual lines copied
+from different runs.
+
 Cross-language baselines:
 
 - `bench/rust_prost`: Rust `prost` binary encode/decode for the same schema and
