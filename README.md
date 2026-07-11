@@ -116,6 +116,7 @@ The examples cover:
 - [`registry_loader.zig`](examples/registry_loader.zig): in-memory imports and registry lookup.
 - [`descriptors_codegen.zig`](examples/descriptors_codegen.zig): descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
 - [`generated_types.zig`](examples/generated_types.zig): C++/Rust-style use of a checked-in generated module from [`examples/proto/person.proto`](examples/proto/person.proto), using [`examples/generated/person.pb.zig`](examples/generated/person.pb.zig).
+- [`generated_performance.zig`](examples/generated_performance.zig): generated fastest-path APIs including trusted buffer encode, borrowed field slices/views, packed iterators, and known-schema decode reuse.
 - [`generated_imports.zig`](examples/generated_imports.zig): multi-file generated modules with proto imports and typed imported singular, repeated, map value, and oneof message fields from [`examples/proto/imported_app.proto`](examples/proto/imported_app.proto) / [`examples/proto/imported_common.proto`](examples/proto/imported_common.proto).
 - [`generated_groups.zig`](examples/generated_groups.zig): typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from [`examples/proto/groups.proto`](examples/proto/groups.proto).
 - [`well_known_types.zig`](examples/well_known_types.zig): Timestamp, Duration, FieldMask, wrapper, Any, and Struct helpers.

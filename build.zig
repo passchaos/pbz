@@ -41,6 +41,7 @@ pub fn build(b: *std.Build) void {
         "registry_loader",
         "descriptors_codegen",
         "generated_types",
+        "generated_performance",
         "generated_advanced",
         "generated_imports",
         "generated_groups",
