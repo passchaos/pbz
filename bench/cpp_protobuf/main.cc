@@ -77,6 +77,25 @@ demo::Fixed64Packed MakeFixed64Packed() {
   return packed;
 }
 
+demo::SFixedPacked MakeSFixedPacked() {
+  demo::SFixedPacked packed;
+  for (int i = 0; i < 1024; ++i) {
+    const int32_t magnitude = static_cast<int32_t>(i * 7 + 1);
+    packed.add_values((i & 1) == 0 ? magnitude : -magnitude);
+  }
+  return packed;
+}
+
+demo::SFixed64Packed MakeSFixed64Packed() {
+  demo::SFixed64Packed packed;
+  for (int i = 0; i < 1024; ++i) {
+    const int64_t magnitude =
+        (static_cast<int64_t>(i) << 20) + static_cast<int64_t>(i) * 11 + 1;
+    packed.add_values((i & 1) == 0 ? magnitude : -magnitude);
+  }
+  return packed;
+}
+
 demo::FloatPacked MakeFloatPacked() {
   demo::FloatPacked packed;
   for (int i = 0; i < 1024; ++i)
@@ -232,6 +251,12 @@ int main() {
   const demo::Fixed64Packed fixed64_packed = MakeFixed64Packed();
   std::string fixed64_packed_bytes;
   fixed64_packed.SerializeToString(&fixed64_packed_bytes);
+  const demo::SFixedPacked sfixed_packed = MakeSFixedPacked();
+  std::string sfixed_packed_bytes;
+  sfixed_packed.SerializeToString(&sfixed_packed_bytes);
+  const demo::SFixed64Packed sfixed64_packed = MakeSFixed64Packed();
+  std::string sfixed64_packed_bytes;
+  sfixed64_packed.SerializeToString(&sfixed64_packed_bytes);
   const demo::FloatPacked float_packed = MakeFloatPacked();
   std::string float_packed_bytes;
   float_packed.SerializeToString(&float_packed_bytes);
@@ -267,6 +292,10 @@ int main() {
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size()
             << "\n";
   std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size()
+            << "\n";
+  std::cout << "sfixed32 packed payload size: " << sfixed_packed_bytes.size()
+            << "\n";
+  std::cout << "sfixed64 packed payload size: " << sfixed64_packed_bytes.size()
             << "\n";
   std::cout << "float packed payload size: " << float_packed_bytes.size()
             << "\n";
@@ -835,6 +864,95 @@ int main() {
         asm volatile("" : : "g"(&reused_fixed64_packed_decoded) : "memory");
       });
   fixed64_packed_decode_reuse.Print();
+
+  auto sfixed_packed_encode =
+      RunTimed("c++ protobuf sfixed32 packed encode", kIterations,
+               sfixed_packed_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(sfixed_packed_bytes.size());
+                 sfixed_packed.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  sfixed_packed_encode.Print();
+
+  std::string sfixed_packed_array_buffer;
+  sfixed_packed_array_buffer.resize(sfixed_packed_bytes.size());
+  auto sfixed_packed_encode_array_reuse = RunTimed(
+      "c++ protobuf sfixed32 packed SerializeToArray reuse", kIterations,
+      sfixed_packed_bytes.size(), [&]() {
+        if (!sfixed_packed.SerializeToArray(
+                sfixed_packed_array_buffer.data(),
+                static_cast<int>(sfixed_packed_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(sfixed_packed_array_buffer.data()) : "memory");
+      });
+  sfixed_packed_encode_array_reuse.Print();
+
+  auto sfixed_packed_decode =
+      RunTimed("c++ protobuf sfixed32 packed decode", kIterations,
+               sfixed_packed_bytes.size(), [&]() {
+                 demo::SFixedPacked decoded;
+                 if (!decoded.ParseFromString(sfixed_packed_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  sfixed_packed_decode.Print();
+
+  demo::SFixedPacked reused_sfixed_packed_decoded;
+  auto sfixed_packed_decode_reuse = RunTimed(
+      "c++ protobuf sfixed32 packed decode reuse", kIterations,
+      sfixed_packed_bytes.size(), [&]() {
+        reused_sfixed_packed_decoded.Clear();
+        if (!reused_sfixed_packed_decoded.ParseFromString(sfixed_packed_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_sfixed_packed_decoded) : "memory");
+      });
+  sfixed_packed_decode_reuse.Print();
+
+  auto sfixed64_packed_encode =
+      RunTimed("c++ protobuf sfixed64 packed encode", kIterations,
+               sfixed64_packed_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(sfixed64_packed_bytes.size());
+                 sfixed64_packed.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  sfixed64_packed_encode.Print();
+
+  std::string sfixed64_packed_array_buffer;
+  sfixed64_packed_array_buffer.resize(sfixed64_packed_bytes.size());
+  auto sfixed64_packed_encode_array_reuse = RunTimed(
+      "c++ protobuf sfixed64 packed SerializeToArray reuse", kIterations,
+      sfixed64_packed_bytes.size(), [&]() {
+        if (!sfixed64_packed.SerializeToArray(
+                sfixed64_packed_array_buffer.data(),
+                static_cast<int>(sfixed64_packed_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(sfixed64_packed_array_buffer.data()) : "memory");
+      });
+  sfixed64_packed_encode_array_reuse.Print();
+
+  auto sfixed64_packed_decode =
+      RunTimed("c++ protobuf sfixed64 packed decode", kIterations,
+               sfixed64_packed_bytes.size(), [&]() {
+                 demo::SFixed64Packed decoded;
+                 if (!decoded.ParseFromString(sfixed64_packed_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  sfixed64_packed_decode.Print();
+
+  demo::SFixed64Packed reused_sfixed64_packed_decoded;
+  auto sfixed64_packed_decode_reuse = RunTimed(
+      "c++ protobuf sfixed64 packed decode reuse", kIterations,
+      sfixed64_packed_bytes.size(), [&]() {
+        reused_sfixed64_packed_decoded.Clear();
+        if (!reused_sfixed64_packed_decoded.ParseFromString(
+                sfixed64_packed_bytes))
+          std::abort();
+        asm volatile("" : : "g"(&reused_sfixed64_packed_decoded) : "memory");
+      });
+  sfixed64_packed_decode_reuse.Print();
 
   auto float_packed_encode =
       RunTimed("c++ protobuf float packed encode", kIterations,

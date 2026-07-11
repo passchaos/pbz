@@ -51,6 +51,14 @@ message Fixed64Packed {
   repeated fixed64 values = 1;
 }
 
+message SFixedPacked {
+  repeated sfixed32 values = 1;
+}
+
+message SFixed64Packed {
+  repeated sfixed64 values = 1;
+}
+
 message FloatPacked {
   repeated float values = 1;
 }

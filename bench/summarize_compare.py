@@ -37,6 +37,7 @@ WORKLOADS: tuple[Workload, ...] = (
             "generated binary encode",
             "generated binary writeToAssumeCapacity reuse",
             "generated binary encodeIntoAssumeCapacity buffer reuse",
+            "generated binary trusted UTF-8 encodeIntoAssumeCapacity buffer reuse",
         ),
         {
             "rust prost": ("prost binary encode",),
@@ -89,7 +90,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "scalarmix decode",
-        ("generated scalarmix decode", "generated scalarmix decode reuse"),
+        ("generated scalarmix decode", "generated scalarmix decode reuse", "generated scalarmix fast known-schema decode reuse"),
         {
             "rust prost": ("prost scalarmix decode",),
             "rust quick-protobuf": ("quick-protobuf scalarmix decode",),
@@ -132,6 +133,7 @@ WORKLOADS: tuple[Workload, ...] = (
             "generated complex encode",
             "generated complex writeToAssumeCapacity reuse",
             "generated complex encodeIntoAssumeCapacity buffer reuse",
+            "generated complex fast known-schema encodeIntoAssumeCapacity buffer reuse",
         ),
         {
             "rust prost": ("prost complex encode",),
@@ -317,6 +319,66 @@ WORKLOADS: tuple[Workload, ...] = (
             "rust quick-protobuf": ("quick-protobuf fixed64 packed decode",),
             "c++ protobuf": ("c++ protobuf fixed64 packed decode", "c++ protobuf fixed64 packed decode reuse"),
             "go protobuf": ("go protobuf fixed64 packed decode",),
+        },
+    ),
+    Workload(
+        "packed sfixed32 encode",
+        (
+            "generated sfixed32 packed encode",
+            "generated sfixed32 packed encodeIntoAssumeCapacity buffer reuse",
+            "generated sfixed32 packed borrowed slices encode",
+        ),
+        {
+            "rust prost": ("prost sfixed32 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf sfixed32 packed encode",
+                "quick-protobuf sfixed32 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf sfixed32 packed encode",
+                "c++ protobuf sfixed32 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf sfixed32 packed encode", "go protobuf sfixed32 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed sfixed32 decode",
+        ("generated sfixed32 packed decode", "wire sfixed32 packed borrowed view decode"),
+        {
+            "rust prost": ("prost sfixed32 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf sfixed32 packed decode",),
+            "c++ protobuf": ("c++ protobuf sfixed32 packed decode", "c++ protobuf sfixed32 packed decode reuse"),
+            "go protobuf": ("go protobuf sfixed32 packed decode",),
+        },
+    ),
+    Workload(
+        "packed sfixed64 encode",
+        (
+            "generated sfixed64 packed encode",
+            "generated sfixed64 packed encodeIntoAssumeCapacity buffer reuse",
+            "generated sfixed64 packed borrowed slices encode",
+        ),
+        {
+            "rust prost": ("prost sfixed64 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf sfixed64 packed encode",
+                "quick-protobuf sfixed64 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf sfixed64 packed encode",
+                "c++ protobuf sfixed64 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf sfixed64 packed encode", "go protobuf sfixed64 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed sfixed64 decode",
+        ("generated sfixed64 packed decode", "wire sfixed64 packed borrowed view decode"),
+        {
+            "rust prost": ("prost sfixed64 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf sfixed64 packed decode",),
+            "c++ protobuf": ("c++ protobuf sfixed64 packed decode", "c++ protobuf sfixed64 packed decode reuse"),
+            "go protobuf": ("go protobuf sfixed64 packed decode",),
         },
     ),
     Workload(

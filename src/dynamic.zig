@@ -310,15 +310,25 @@ pub const DynamicMessage = struct {
         }
     }
 
-    fn addPackedFixed32(self: *DynamicMessage, field: *const schema.FieldDescriptor, payload: []const u8) (std.mem.Allocator.Error || wire.Error)!void {
-        if (payload.len % 4 != 0) return error.InvalidWireType;
+    fn addPackedFixedWidth(self: *DynamicMessage, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, payload: []const u8) (std.mem.Allocator.Error || wire.Error || error{TypeMismatch})!void {
+        const width = fixedWidthPackedScalarSize(scalar) orelse return error.TypeMismatch;
+        if (payload.len % width != 0) return error.InvalidWireType;
         if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
-        const count = payload.len / 4;
+        const count = payload.len / width;
         try entry.values.ensureUnusedCapacity(self.allocator, count);
         const out = entry.values.addManyAsSliceAssumeCapacity(count);
         for (out, 0..) |*value, index| {
-            value.* = .{ .fixed32 = std.mem.readInt(u32, payload[index * 4 ..][0..4], .little) };
+            const raw = payload[index * width ..][0..width];
+            value.* = switch (scalar) {
+                .fixed32 => .{ .fixed32 = std.mem.readInt(u32, raw[0..4], .little) },
+                .fixed64 => .{ .fixed64 = std.mem.readInt(u64, raw[0..8], .little) },
+                .sfixed32 => .{ .sfixed32 = std.mem.readInt(i32, raw[0..4], .little) },
+                .sfixed64 => .{ .sfixed64 = std.mem.readInt(i64, raw[0..8], .little) },
+                .float => .{ .float = @bitCast(std.mem.readInt(u32, raw[0..4], .little)) },
+                .double => .{ .double = @bitCast(std.mem.readInt(u64, raw[0..8], .little)) },
+                else => unreachable,
+            };
         }
     }
 
@@ -700,10 +710,12 @@ pub const DynamicMessage = struct {
                 try self.addPackedInt32(field, payload);
                 continue;
             }
-            if (tag.wire_type == .length_delimited and field.kind == .scalar and field.kind.scalar == .fixed32 and field.isPackable()) {
-                const payload = try reader.readBytes();
-                try self.addPackedFixed32(field, payload);
-                continue;
+            if (tag.wire_type == .length_delimited and field.kind == .scalar and field.isPackable()) {
+                if (fixedWidthPackedScalarSize(field.kind.scalar) != null) {
+                    const payload = try reader.readBytes();
+                    try self.addPackedFixedWidth(field, field.kind.scalar, payload);
+                    continue;
+                }
             }
             if (tag.wire_type == .length_delimited and field.isPackable()) {
                 const payload = try reader.readBytes();
@@ -1060,7 +1072,7 @@ fn encodeMapElement(
 fn encodePackedWithRegistry(current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
     const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
     if (kind == .scalar and kind.scalar == .int32) return try encodePackedInt32(field, values, writer);
-    if (kind == .scalar and kind.scalar == .fixed32) return try encodePackedFixed32(field, values, writer);
+    if (kind == .scalar and fixedWidthPackedScalarSize(kind.scalar) != null) return try encodePackedFixedWidth(field, values, kind.scalar, writer);
 
     var packed_writer = wire.Writer.init(writer.allocator);
     defer packed_writer.deinit();
@@ -1080,14 +1092,30 @@ fn encodePackedInt32(field: *const schema.FieldDescriptor, values: []const Value
     for (values) |value| writer.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, value.int32))));
 }
 
-fn encodePackedFixed32(field: *const schema.FieldDescriptor, values: []const Value, writer: *wire.Writer) EncodeError!void {
-    const packed_len = values.len * 4;
+fn fixedWidthPackedScalarSize(scalar: schema.ScalarType) ?usize {
+    return switch (scalar) {
+        .fixed32, .sfixed32, .float => 4,
+        .fixed64, .sfixed64, .double => 8,
+        else => null,
+    };
+}
+
+fn encodePackedFixedWidth(field: *const schema.FieldDescriptor, values: []const Value, scalar: schema.ScalarType, writer: *wire.Writer) EncodeError!void {
+    const width = fixedWidthPackedScalarSize(scalar) orelse return error.TypeMismatch;
+    const packed_len = values.len * width;
     try writer.bytes.ensureUnusedCapacity(writer.allocator, (try wire.tagSize(field.number, .length_delimited)) + wire.encodedVarintSize(packed_len) + packed_len);
     writer.writeTagAssumeCapacity(field.number, .length_delimited);
     writer.writeVarintAssumeCapacity(packed_len);
     for (values) |value| {
-        if (value != .fixed32) return error.TypeMismatch;
-        writer.writeRawLittleAssumeCapacity(u32, value.fixed32);
+        switch (scalar) {
+            .fixed32 => if (value == .fixed32) writer.writeRawLittleAssumeCapacity(u32, value.fixed32) else return error.TypeMismatch,
+            .fixed64 => if (value == .fixed64) writer.writeRawLittleAssumeCapacity(u64, value.fixed64) else return error.TypeMismatch,
+            .sfixed32 => if (value == .sfixed32) writer.writeRawLittleAssumeCapacity(i32, value.sfixed32) else return error.TypeMismatch,
+            .sfixed64 => if (value == .sfixed64) writer.writeRawLittleAssumeCapacity(i64, value.sfixed64) else return error.TypeMismatch,
+            .float => if (value == .float) writer.writeRawLittleAssumeCapacity(u32, @bitCast(value.float)) else return error.TypeMismatch,
+            .double => if (value == .double) writer.writeRawLittleAssumeCapacity(u64, @bitCast(value.double)) else return error.TypeMismatch,
+            else => unreachable,
+        }
     }
 }
 
@@ -1992,6 +2020,64 @@ test "dynamic proto3 round-trips map fields and default packed repeated scalars"
     const decoded_child = decoded.get("children").?.values.items[0].map_entry;
     try std.testing.expectEqualSlices(u8, "first", decoded_child.key.string);
     try std.testing.expectEqualSlices(u8, "kid", decoded_child.value.message.get("label").?.values.items[0].string);
+}
+
+test "dynamic proto3 round-trips fixed-width packed repeated scalars" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\message PackedFixed {
+        \\  repeated fixed32 a = 1;
+        \\  repeated fixed64 b = 2;
+        \\  repeated sfixed32 c = 3;
+        \\  repeated sfixed64 d = 4;
+        \\  repeated float e = 5;
+        \\  repeated double f = 6;
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("PackedFixed").?;
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("a").?, .{ .fixed32 = 1 });
+    try msg.add(desc.findField("a").?, .{ .fixed32 = 0xdead_beef });
+    try msg.add(desc.findField("b").?, .{ .fixed64 = 2 });
+    try msg.add(desc.findField("b").?, .{ .fixed64 = 0x0102_0304_0506_0708 });
+    try msg.add(desc.findField("c").?, .{ .sfixed32 = -3 });
+    try msg.add(desc.findField("c").?, .{ .sfixed32 = 4 });
+    try msg.add(desc.findField("d").?, .{ .sfixed64 = -5 });
+    try msg.add(desc.findField("d").?, .{ .sfixed64 = 6 });
+    try msg.add(desc.findField("e").?, .{ .float = 1.25 });
+    try msg.add(desc.findField("e").?, .{ .float = -2.5 });
+    try msg.add(desc.findField("f").?, .{ .double = 3.5 });
+    try msg.add(desc.findField("f").?, .{ .double = -4.75 });
+
+    const encoded = try msg.encoded(&file);
+    defer allocator.free(encoded);
+
+    var decoded = DynamicMessage.init(allocator, desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, encoded);
+
+    try std.testing.expectEqual(@as(u32, 1), decoded.get("a").?.values.items[0].fixed32);
+    try std.testing.expectEqual(@as(u32, 0xdead_beef), decoded.get("a").?.values.items[1].fixed32);
+    try std.testing.expectEqual(@as(u64, 2), decoded.get("b").?.values.items[0].fixed64);
+    try std.testing.expectEqual(@as(u64, 0x0102_0304_0506_0708), decoded.get("b").?.values.items[1].fixed64);
+    try std.testing.expectEqual(@as(i32, -3), decoded.get("c").?.values.items[0].sfixed32);
+    try std.testing.expectEqual(@as(i32, 4), decoded.get("c").?.values.items[1].sfixed32);
+    try std.testing.expectEqual(@as(i64, -5), decoded.get("d").?.values.items[0].sfixed64);
+    try std.testing.expectEqual(@as(i64, 6), decoded.get("d").?.values.items[1].sfixed64);
+    try std.testing.expectEqual(@as(f32, 1.25), decoded.get("e").?.values.items[0].float);
+    try std.testing.expectEqual(@as(f32, -2.5), decoded.get("e").?.values.items[1].float);
+    try std.testing.expectEqual(@as(f64, 3.5), decoded.get("f").?.values.items[0].double);
+    try std.testing.expectEqual(@as(f64, -4.75), decoded.get("f").?.values.items[1].double);
+
+    var invalid = DynamicMessage.init(allocator, desc);
+    defer invalid.deinit();
+    try std.testing.expectError(error.InvalidWireType, invalid.decode(&file, &.{ 0x0a, 0x01, 0x00 }));
 }
 
 test "dynamic map fields replace duplicate keys with last value" {

@@ -26,6 +26,24 @@ pub fn main() !void {
     std.debug.assert(person.counts.count() == 1);
     std.debug.assert(person.counts.get("red").? == 2);
 
+    // Packed fixed-width numeric fields expose zero-copy helpers when the
+    // wire buffer can be inspected directly (little-endian targets).
+    var signed_fixed = person_pb.demo.SFixedPacked.init();
+    defer signed_fixed.deinit(allocator);
+    signed_fixed.values = try allocator.dupe(i32, &.{ -7, 0, 42, -1024 });
+    const signed_fixed_bytes = try signed_fixed.encode(allocator);
+    defer allocator.free(signed_fixed_bytes);
+
+    const signed_fixed_view = (try person_pb.demo.SFixedPacked.valuesPackedFixedView(signed_fixed_bytes)).?;
+    std.debug.assert(signed_fixed_view.len == signed_fixed.values.len);
+    for (signed_fixed_view, signed_fixed.values) |actual, expected| {
+        std.debug.assert(actual == expected);
+    }
+
+    var header: [20]u8 = undefined;
+    const slices = try person_pb.demo.SFixedPacked.valuesPackedFixedSlices(&header, signed_fixed.values);
+    std.debug.assert(std.mem.eql(u8, slices.header, signed_fixed_bytes[0..slices.header.len]));
+
     const bytes = try person.encodeInitialized(allocator);
     defer allocator.free(bytes);
 

@@ -889,7 +889,18 @@ pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayL
 
 pub inline fn appendPackedUInt64(allocator: std.mem.Allocator, list: *std.ArrayList(u64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len == 0) return;
-    try list.ensureUnusedCapacity(allocator, payload.len);
+    if (list.items.len == 0 and list.capacity == 0) {
+        const count = try countPackedVarints(payload);
+        const out = try allocator.alloc(u64, count);
+        errdefer allocator.free(out);
+        var index: usize = 0;
+        for (out) |*value| value.* = try readVarintAt(payload, &index);
+        list.* = std.ArrayList(u64).fromOwnedSlice(out);
+        return;
+    }
+
+    const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
+    try list.ensureUnusedCapacity(allocator, required);
     var index: usize = 0;
     while (index < payload.len) list.appendAssumeCapacity(try readVarintAt(payload, &index));
 }

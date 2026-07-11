@@ -158,6 +158,18 @@ pub struct Fixed64Packed {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct SFixedPacked {
+    #[prost(sfixed32, repeated, tag = "1")]
+    pub values: Vec<i32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct SFixed64Packed {
+    #[prost(sfixed64, repeated, tag = "1")]
+    pub values: Vec<i64>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct FloatPacked {
     #[prost(float, repeated, tag = "1")]
     pub values: Vec<f32>,
@@ -214,6 +226,36 @@ fn make_fixed_packed() -> FixedPacked {
 fn make_fixed64_packed() -> Fixed64Packed {
     Fixed64Packed {
         values: (0..1024).map(|i| (i * 5 + 1) as u64).collect(),
+    }
+}
+
+fn make_sfixed_packed() -> SFixedPacked {
+    SFixedPacked {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = (i * 7 + 1) as i32;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
+            .collect(),
+    }
+}
+
+fn make_sfixed64_packed() -> SFixed64Packed {
+    SFixed64Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = ((i as i64) << 20) + (i as i64) * 11 + 1;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
+            .collect(),
     }
 }
 
@@ -395,6 +437,10 @@ fn main() {
     let fixed_packed_bytes = fixed_packed.encode_to_vec();
     let fixed64_packed = make_fixed64_packed();
     let fixed64_packed_bytes = fixed64_packed.encode_to_vec();
+    let sfixed_packed = make_sfixed_packed();
+    let sfixed_packed_bytes = sfixed_packed.encode_to_vec();
+    let sfixed64_packed = make_sfixed64_packed();
+    let sfixed64_packed_bytes = sfixed64_packed.encode_to_vec();
     let float_packed = make_float_packed();
     let float_packed_bytes = float_packed.encode_to_vec();
     let double_packed = make_double_packed();
@@ -420,6 +466,14 @@ fn main() {
     println!(
         "fixed64 packed payload size: {}",
         fixed64_packed_bytes.len()
+    );
+    println!(
+        "sfixed32 packed payload size: {}",
+        sfixed_packed_bytes.len()
+    );
+    println!(
+        "sfixed64 packed payload size: {}",
+        sfixed64_packed_bytes.len()
     );
     println!("float packed payload size: {}", float_packed_bytes.len());
     println!("double packed payload size: {}", double_packed_bytes.len());
@@ -568,6 +622,50 @@ fn main() {
         fixed64_packed_bytes.len(),
         || {
             let decoded = Fixed64Packed::decode(fixed64_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sfixed32 packed encode",
+        iters.binary,
+        sfixed_packed_bytes.len(),
+        || {
+            let encoded = sfixed_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sfixed32 packed decode",
+        iters.binary,
+        sfixed_packed_bytes.len(),
+        || {
+            let decoded = SFixedPacked::decode(sfixed_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sfixed64 packed encode",
+        iters.binary,
+        sfixed64_packed_bytes.len(),
+        || {
+            let encoded = sfixed64_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sfixed64 packed decode",
+        iters.binary,
+        sfixed64_packed_bytes.len(),
+        || {
+            let decoded = SFixed64Packed::decode(sfixed64_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )
