@@ -290,13 +290,14 @@ or transitive-public imported message fields, and generated `enum_ref` aliases f
 fields/map enum values when `generateZigFileWithRegistry` is used. Generated
 message structs keep protobuf fields as public Zig struct fields for natural
 direct access, store registry-resolved singular/repeated length-prefixed message
-fields and same-file/direct-import/transitive-public imported map message
-values plus same-file/direct-import/transitive-public imported length-prefixed
-oneof message alternatives as typed message values, keep oneof storage as a Zig
+fields, same-file proto2 group fields, and same-file/direct-import/transitive-public
+imported map message values plus same-file/direct-import/transitive-public
+imported length-prefixed oneof message alternatives as typed message values,
+keep oneof storage as a Zig
 `union(enum)`, and provide
 `cloneOwned` / `decodeOwned` / `decodeOwnedInitialized` for deep-copying
 strings/bytes/message payloads/maps/unknowns into owned storage. When generated
-types are available, singular, repeated, map, and oneof message payloads are
+types are available, singular, repeated, map, group, and oneof message payloads are
 encoded/decoded by wire/JSON/TextFormat helpers through same-file,
 direct-imported, or transitive-public imported generated message types.
 Generated repeated packed fixed-width scalar fields also expose field-specific
