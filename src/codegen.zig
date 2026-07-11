@@ -2834,18 +2834,26 @@ fn writeEncodedSizeRepeatedField(file: *const schema.FileDescriptor, field: *con
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(".len != 0) {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var packed_len: usize = 0;\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("for (");
-        try writer.writeAll(receiver);
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |item| packed_len += ");
-        if (field.kind == .scalar) {
-            try writeScalarPayloadSizeExpr(field.kind.scalar, "item", writer);
+        const fixed_width = if (field.kind == .scalar) fixedPackedScalarWidth(field.kind.scalar) else null;
+        if (fixed_width) |width| {
+            try writer.writeAll("const packed_len = ");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(".len * {d};\n", .{width});
         } else {
-            try writer.writeAll("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))))");
+            try writer.writeAll("var packed_len: usize = 0;\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("for (");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |item| packed_len += ");
+            if (field.kind == .scalar) {
+                try writeScalarPayloadSizeExpr(field.kind.scalar, "item", writer);
+            } else {
+                try writer.writeAll("pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))))");
+            }
+            try writer.writeAll(";\n");
         }
-        try writer.writeAll(";\n");
         try indent(writer, depth + 1);
         try writer.print("size += {d} + pbz.wire.encodedVarintSize(packed_len) + packed_len;\n", .{wire.tagSize(field.number, .length_delimited) catch unreachable});
         try indent(writer, depth);
@@ -5080,6 +5088,7 @@ fn writeDecodePackedScalarField(field: *const schema.FieldDescriptor, scalar: sc
 fn packedScalarAppendHelperName(scalar: schema.ScalarType) ?[]const u8 {
     return switch (scalar) {
         .int32 => "appendPackedInt32",
+        .fixed32 => "appendPackedFixed32",
         else => null,
     };
 }
@@ -5487,20 +5496,32 @@ fn writeEncodeEnumFieldAssumeCapacity(file: *const schema.FileDescriptor, field:
 fn writeEncodePackedScalarField(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     try writeEncodePackedPrefix(field, writer, depth);
     try indent(writer, depth + 1);
-    try writer.writeAll("var packed_len: usize = 0;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("for (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |item| packed_len += ");
-    try writePackedScalarSizeExpr(scalar, "item", writer);
-    try writer.writeAll(";\n");
+    if (fixedPackedScalarWidth(scalar)) |width| {
+        try writer.writeAll("const packed_len = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(".len * {d};\n", .{width});
+    } else {
+        try writer.writeAll("var packed_len: usize = 0;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| packed_len += ");
+        try writePackedScalarSizeExpr(scalar, "item", writer);
+        try writer.writeAll(";\n");
+    }
     try writeEncodePackedLength(field, writer, depth);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |item| ");
-    try writePackedScalarPayload(scalar, "item", "w", writer);
-    try writer.writeAll(";\n");
+    if (scalar == .fixed32) {
+        try writer.writeAll("try pbz.wire.writePackedFixed32Payload(w, self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+    } else {
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| ");
+        try writePackedScalarPayload(scalar, "item", "w", writer);
+        try writer.writeAll(";\n");
+    }
     try writeEncodePackedSuffix(field, writer, depth);
 }
 
@@ -5525,20 +5546,32 @@ fn writeEncodePackedEnumField(field: *const schema.FieldDescriptor, writer: *std
 fn writeEncodePackedScalarFieldAssumeCapacity(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     try writeEncodePackedPrefix(field, writer, depth);
     try indent(writer, depth + 1);
-    try writer.writeAll("var packed_len: usize = 0;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("for (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |item| packed_len += ");
-    try writePackedScalarSizeExpr(scalar, "item", writer);
-    try writer.writeAll(";\n");
+    if (fixedPackedScalarWidth(scalar)) |width| {
+        try writer.writeAll("const packed_len = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.print(".len * {d};\n", .{width});
+    } else {
+        try writer.writeAll("var packed_len: usize = 0;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| packed_len += ");
+        try writePackedScalarSizeExpr(scalar, "item", writer);
+        try writer.writeAll(";\n");
+    }
     try writeEncodePackedLengthAssumeCapacity(field, writer, depth);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |item| ");
-    try writePackedScalarPayloadAssumeCapacity(scalar, "item", "w", writer);
-    try writer.writeAll(";\n");
+    if (scalar == .fixed32) {
+        try writer.writeAll("pbz.wire.writePackedFixed32PayloadAssumeCapacity(w, self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+    } else {
+        try writer.writeAll("for (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |item| ");
+        try writePackedScalarPayloadAssumeCapacity(scalar, "item", "w", writer);
+        try writer.writeAll(";\n");
+    }
     try writeEncodePackedSuffix(field, writer, depth);
 }
 
@@ -5585,6 +5618,15 @@ fn writeEncodePackedSuffix(field: *const schema.FieldDescriptor, writer: *std.Io
     _ = field;
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn fixedPackedScalarWidth(scalar: schema.ScalarType) ?usize {
+    return switch (scalar) {
+        .double, .fixed64, .sfixed64 => 8,
+        .float, .fixed32, .sfixed32 => 4,
+        .bool => 1,
+        else => null,
+    };
 }
 
 fn writePackedScalarSizeExpr(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {

@@ -12,3 +12,7 @@ message Person {
 message Packed {
   repeated int32 values = 1;
 }
+
+message FixedPacked {
+  repeated fixed32 values = 1;
+}

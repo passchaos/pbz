@@ -59,6 +59,14 @@ func makePacked() *personpb.Packed {
 	return &personpb.Packed{Values: values}
 }
 
+func makeFixedPacked() *personpb.FixedPacked {
+	values := make([]uint32, 1024)
+	for i := range values {
+		values[i] = uint32(i*3 + 1)
+	}
+	return &personpb.FixedPacked{Values: values}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -80,10 +88,16 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fixedPacked := makeFixedPacked()
+	fixedPackedBytes, err := proto.Marshal(fixedPacked)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
+	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -131,6 +145,30 @@ func main() {
 	runTimed("go protobuf packed decode", iterations, len(packedBytes), func() {
 		var decoded personpb.Packed
 		if err := unmarshalOptions.Unmarshal(packedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf fixed32 packed encode", iterations, len(fixedPackedBytes), func() {
+		out, err := proto.Marshal(fixedPacked)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	fixedPackedBuf := make([]byte, 0, len(fixedPackedBytes))
+	runTimed("go protobuf fixed32 packed encode reuse", iterations, len(fixedPackedBytes), func() {
+		var err error
+		fixedPackedBuf, err = marshalOptions.MarshalAppend(fixedPackedBuf[:0], fixedPacked)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf fixed32 packed decode", iterations, len(fixedPackedBytes), func() {
+		var decoded personpb.FixedPacked
+		if err := unmarshalOptions.Unmarshal(fixedPackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

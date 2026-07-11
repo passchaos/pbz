@@ -89,6 +89,33 @@ pub fn tagSize(number: FieldNumber, wire_type: WireType) Error!usize {
     return encodedVarintSize(try (Tag{ .number = number, .wire_type = wire_type }).encode());
 }
 
+pub fn writePackedFixed32Payload(w: *Writer, values: []const u32) std.mem.Allocator.Error!void {
+    if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
+        try w.appendSlice(std.mem.sliceAsBytes(values));
+    } else {
+        for (values) |value| try w.writeRawLittle(u32, value);
+    }
+}
+
+pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) void {
+    if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
+        w.appendSliceAssumeCapacity(std.mem.sliceAsBytes(values));
+    } else {
+        for (values) |value| w.writeRawLittleAssumeCapacity(u32, value);
+    }
+}
+
+pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (payload.len % 4 != 0) return error.InvalidWireType;
+    const count = payload.len / 4;
+    const out = try list.addManyAsSlice(allocator, count);
+    if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
+        @memcpy(std.mem.sliceAsBytes(out), payload);
+    } else {
+        for (out, 0..) |*value, i| value.* = std.mem.readInt(u32, payload[i * 4 ..][0..4], .little);
+    }
+}
+
 pub const Writer = struct {
     allocator: std.mem.Allocator,
     bytes: std.ArrayList(u8) = .empty,

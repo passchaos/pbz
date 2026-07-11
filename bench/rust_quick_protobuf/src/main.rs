@@ -160,6 +160,46 @@ fn make_packed() -> Packed {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct FixedPacked {
+    pub values: Vec<u32>,
+}
+
+impl MessageWrite for FixedPacked {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len = self.values.len() * 4;
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_fixed32(*v), &|_| 4)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for FixedPacked {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = FixedPacked::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_fixed32(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_fixed_packed() -> FixedPacked {
+    FixedPacked {
+        values: (0..1024).map(|i| (i * 3 + 1) as u32).collect(),
+    }
+}
+
 fn make_person() -> Person {
     let mut counts = HashMap::new();
     counts.insert("red".to_owned(), 1);
@@ -222,10 +262,13 @@ fn main() {
     let bytes = encode_to_vec(&person);
     let packed = make_packed();
     let packed_bytes = encode_to_vec(&packed);
+    let fixed_packed = make_fixed_packed();
+    let fixed_packed_bytes = encode_to_vec(&fixed_packed);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
+    println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
 
     run_timed(
         "quick-protobuf binary encode",
@@ -296,6 +339,44 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&packed_bytes);
             let decoded = Packed::from_reader(&mut reader, &packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf fixed32 packed encode",
+        iters.binary,
+        fixed_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&fixed_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_fixed_packed = Vec::with_capacity(fixed_packed_bytes.len());
+    run_timed(
+        "quick-protobuf fixed32 packed encode reuse",
+        iters.binary,
+        fixed_packed_bytes.len(),
+        || {
+            reused_fixed_packed.clear();
+            let mut writer = Writer::new(&mut reused_fixed_packed);
+            fixed_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_fixed_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf fixed32 packed decode",
+        iters.binary,
+        fixed_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&fixed_packed_bytes);
+            let decoded =
+                FixedPacked::from_reader(&mut reader, &fixed_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )
