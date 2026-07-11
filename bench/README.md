@@ -28,6 +28,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - binary encode/decode
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` encode/decode
+- a zero-copy borrowed payload view for packed fixed-width `fixed32` when the
+  caller only needs to inspect the wire buffer
 - JSON stringify/parse
 - TextFormat format/parse
 

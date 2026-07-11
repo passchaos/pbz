@@ -108,7 +108,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed fixed32 decode",
-        ("generated fixed32 packed decode",),
+        ("generated fixed32 packed decode", "wire fixed32 packed borrowed view decode"),
         {
             "rust prost": ("prost fixed32 packed decode",),
             "rust quick-protobuf": ("quick-protobuf fixed32 packed decode",),

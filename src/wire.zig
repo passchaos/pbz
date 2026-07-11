@@ -105,6 +105,12 @@ pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) 
     }
 }
 
+pub fn packedFixed32View(payload: []const u8) Error![]align(1) const u32 {
+    if (payload.len % 4 != 0) return error.InvalidWireType;
+    if (comptime @import("builtin").target.cpu.arch.endian() != .little) return error.UnsupportedWireType;
+    return std.mem.bytesAsSlice(u32, payload);
+}
+
 pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len % 4 != 0) return error.InvalidWireType;
     const count = payload.len / 4;
@@ -628,6 +634,16 @@ test "wire encodes and decodes scalar fields" {
     try std.testing.expectEqual(@as(FieldNumber, 4), tag.number);
     try std.testing.expectEqual(@as(u64, 0x0102030405060708), try reader.readFixed64());
     try std.testing.expect(reader.eof());
+}
+
+test "wire exposes borrowed packed fixed32 view" {
+    const payload = &[_]u8{ 1, 0, 0, 0, 4, 3, 2, 1 };
+    const values = try packedFixed32View(payload);
+    try std.testing.expectEqual(@as(usize, 2), values.len);
+    try std.testing.expectEqual(@as(u32, 1), values[0]);
+    try std.testing.expectEqual(@as(u32, 0x01020304), values[1]);
+    try std.testing.expectEqual(@intFromPtr(payload.ptr), @intFromPtr(std.mem.sliceAsBytes(values).ptr));
+    try std.testing.expectError(error.InvalidWireType, packedFixed32View(payload[0..7]));
 }
 
 test "wire skips nested groups and length-delimited values" {

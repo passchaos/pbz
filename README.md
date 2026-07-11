@@ -10,6 +10,8 @@ validated feature set.
 
 - Wire-format reader and writer
   - varint, zig-zag, fixed32/fixed64, length-delimited values, groups
+  - zero-copy `pbz.wire.packedFixed32View` for callers that can borrow a packed
+    fixed32 payload directly from a wire buffer
   - tag parsing, unknown-field skipping, recursion guard for groups
 - Schema model
   - files, messages, fields, oneofs, enums, services, imports, options
