@@ -104,6 +104,22 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "TextFormat format",
+        ("generated TextFormat format",),
+        {
+            "c++ protobuf": ("c++ protobuf TextFormat format", "c++ protobuf TextFormat format reuse"),
+            "go protobuf": ("go protobuf TextFormat format",),
+        },
+    ),
+    Workload(
+        "TextFormat parse",
+        ("generated TextFormat parse",),
+        {
+            "c++ protobuf": ("c++ protobuf TextFormat parse", "c++ protobuf TextFormat parse reuse"),
+            "go protobuf": ("go protobuf TextFormat parse",),
+        },
+    ),
+    Workload(
         "packed fixed32 encode",
         (
             "generated fixed32 packed encode",

@@ -6,6 +6,7 @@ import (
 
 	"github.com/pbz/bench/personpb"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -96,6 +97,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	textBytes, err := prototext.Marshal(person)
+	if err != nil {
+		panic(err)
+	}
 	packed := makePacked()
 	packedBytes, err := proto.Marshal(packed)
 	if err != nil {
@@ -115,6 +120,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
+	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
@@ -157,6 +163,22 @@ func main() {
 	runTimed("go protobuf JSON parse", iterations, len(jsonBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(jsonBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf TextFormat format", iterations, len(textBytes), func() {
+		out, err := prototext.Marshal(person)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	textUnmarshalOptions := prototext.UnmarshalOptions{}
+	runTimed("go protobuf TextFormat parse", iterations, len(textBytes), func() {
+		var decoded personpb.Person
+		if err := textUnmarshalOptions.Unmarshal(textBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 
+#include <google/protobuf/text_format.h>
 #include <google/protobuf/util/json_util.h>
 
 #include "person.pb.h"
@@ -80,6 +81,8 @@ int main() {
   person.SerializeToString(&bytes);
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok()) std::abort();
+  std::string text;
+  if (!google::protobuf::TextFormat::PrintToString(person, &text)) std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -93,6 +96,7 @@ int main() {
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "packed payload size: " << packed_bytes.size() << "\n";
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size() << "\n";
   std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size() << "\n";
@@ -167,6 +171,37 @@ int main() {
     asm volatile("" : : "g"(&reused_json_decoded) : "memory");
   });
   json_parse_reuse.Print();
+
+  auto text_format = RunTimed("c++ protobuf TextFormat format", kIterations, text.size(), [&]() {
+    std::string out;
+    if (!google::protobuf::TextFormat::PrintToString(person, &out)) std::abort();
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  text_format.Print();
+
+  std::string reused_text;
+  reused_text.reserve(text.size());
+  auto text_format_reuse = RunTimed("c++ protobuf TextFormat format reuse", kIterations, text.size(), [&]() {
+    reused_text.clear();
+    if (!google::protobuf::TextFormat::PrintToString(person, &reused_text)) std::abort();
+    asm volatile("" : : "g"(reused_text.data()) : "memory");
+  });
+  text_format_reuse.Print();
+
+  auto text_parse = RunTimed("c++ protobuf TextFormat parse", kIterations, text.size(), [&]() {
+    demo::Person decoded;
+    if (!google::protobuf::TextFormat::ParseFromString(text, &decoded)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  text_parse.Print();
+
+  demo::Person reused_text_decoded;
+  auto text_parse_reuse = RunTimed("c++ protobuf TextFormat parse reuse", kIterations, text.size(), [&]() {
+    reused_text_decoded.Clear();
+    if (!google::protobuf::TextFormat::ParseFromString(text, &reused_text_decoded)) std::abort();
+    asm volatile("" : : "g"(&reused_text_decoded) : "memory");
+  });
+  text_parse_reuse.Print();
 
   auto packed_encode = RunTimed("c++ protobuf packed encode", kIterations, packed_bytes.size(), [&]() {
     std::string out;
