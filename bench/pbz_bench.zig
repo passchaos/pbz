@@ -73,6 +73,12 @@ fn generatedEncode(ctx: GeneratedEncodeCtx) !void {
     ctx.allocator.free(bytes);
 }
 
+const GeneratedWriteToCtx = struct { allocator: std.mem.Allocator, writer: *pbz.Writer, person: *const person_pb.demo.Person };
+fn generatedWriteToReuse(ctx: GeneratedWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.person.writeTo(ctx.allocator, ctx.writer);
+}
+
 const GeneratedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedDecode(ctx: GeneratedDecodeCtx) !void {
     var decoded = try person_pb.demo.Person.decode(ctx.allocator, ctx.bytes);
@@ -165,6 +171,9 @@ pub fn main() !void {
 
     const generated_bytes = try generated_person.encode(allocator);
     defer allocator.free(generated_bytes);
+    var reusable_writer = pbz.Writer.init(allocator);
+    defer reusable_writer.deinit();
+    try reusable_writer.bytes.ensureTotalCapacity(allocator, generated_bytes.len);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
@@ -181,6 +190,7 @@ pub fn main() !void {
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
+        try runTimed(io, "generated binary writeTo reuse", iters.generated_binary, generated_bytes.len, GeneratedWriteToCtx{ .allocator = allocator, .writer = &reusable_writer, .person = &generated_person }, generatedWriteToReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),

@@ -257,9 +257,7 @@ pub const demo = struct {
             for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
         }
 
-        pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {
-            var w = pbz.Writer.init(allocator);
-            errdefer w.deinit();
+        pub fn writeTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.id != 0) try w.writeInt32(1, self.id);
             if (self.name.len != 0) {
                 if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8;
@@ -280,6 +278,12 @@ pub const demo = struct {
                 try w.writeMessage(4, entry_writer.slice());
             }
             for (self._unknown_fields) |raw| try w.appendSlice(raw);
+        }
+
+        pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {
+            var w = pbz.Writer.init(allocator);
+            errdefer w.deinit();
+            try self.writeTo(allocator, &w);
             return try w.toOwnedSlice();
         }
 

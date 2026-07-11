@@ -2699,16 +2699,23 @@ fn writeInit(writer: *std.Io.Writer, depth: usize) Error!void {
 
 fn writeEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer w.deinit();\n");
+    try writer.writeAll("pub fn writeTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {\n");
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodeField(file, field, writer, depth + 1);
     }
     for (message.oneofs.items) |oneof| try writeEncodeOneof(file, message, oneof, writer, depth + 1);
     try writeEncodeUnknownFields(writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer w.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeTo(allocator, &w);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
     try indent(writer, depth);
@@ -10255,6 +10262,7 @@ test "codegen emits typed scalar fields and encode method" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"id\": i32 = 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encode(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.@\"id\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"name\".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@\"name\")) return error.InvalidUtf8; try w.writeString(2, self.@\"name\"); }") != null);
