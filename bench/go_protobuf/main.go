@@ -211,6 +211,15 @@ func main() {
 		}
 	}).print()
 
+	complexDeterministicBuf := make([]byte, 0, len(complexBytes))
+	runTimed("go protobuf complex deterministic binary encode reuse", iterations, len(complexBytes), func() {
+		var err error
+		complexDeterministicBuf, err = deterministicOptions.MarshalAppend(complexDeterministicBuf[:0], complex)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
 	runTimed("go protobuf complex decode", iterations, len(complexBytes), func() {
 		var decoded personpb.Complex
 		if err := unmarshalOptions.Unmarshal(complexBytes, &decoded); err != nil {

@@ -213,6 +213,21 @@ int main() {
   });
   complex_encode_array_reuse.Print();
 
+
+
+  std::string complex_deterministic_buffer;
+  complex_deterministic_buffer.resize(complex_bytes.size());
+  auto complex_deterministic_encode = RunTimed("c++ protobuf complex deterministic binary encode reuse", kIterations, complex_bytes.size(), [&]() {
+    google::protobuf::io::ArrayOutputStream array_stream(complex_deterministic_buffer.data(), static_cast<int>(complex_deterministic_buffer.size()));
+    google::protobuf::io::CodedOutputStream coded_stream(&array_stream);
+    coded_stream.SetSerializationDeterministic(true);
+    complex.SerializeWithCachedSizes(&coded_stream);
+    coded_stream.Trim();
+    if (coded_stream.HadError()) std::abort();
+    asm volatile("" : : "g"(complex_deterministic_buffer.data()) : "memory");
+  });
+  complex_deterministic_encode.Print();
+
   auto complex_decode = RunTimed("c++ protobuf complex decode", kIterations, complex_bytes.size(), [&]() {
     demo::Complex decoded;
     if (!decoded.ParseFromString(complex_bytes)) std::abort();

@@ -317,10 +317,10 @@ pub const demo = struct {
 
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                 if (self.has_id) try w.writeInt32(1, self.id);
-                if (self.box) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeTag(2, .start_group); try w.appendSlice(payload); try w.writeTag(2, .end_group); }
-                for (self.item) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeTag(4, .start_group); try w.appendSlice(payload); try w.writeTag(4, .end_group); }
+                if (self.box) |item| { try w.writeTag(2, .start_group); try item.writeDeterministicTo(allocator, w); try w.writeTag(2, .end_group); }
+                for (self.item) |item| { try w.writeTag(4, .start_group); try item.writeDeterministicTo(allocator, w); try w.writeTag(4, .end_group); }
                 switch (self.picked) {
-                    .picked_box => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(6, payload); },
+                    .picked_box => |value| { const payload_len = value.encodedSize(); try w.writeTag(6, .length_delimited); try w.writeVarint(payload_len); try value.writeDeterministicTo(allocator, w); },
                     else => {},
                 }
                 switch (self.picked) {
@@ -351,14 +351,14 @@ pub const demo = struct {
 
             pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                 if (self.has_id) w.writeInt32AssumeCapacity(1, self.id);
-                if (self.box) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeTag(2, .start_group); try w.appendSlice(payload); try w.writeTag(2, .end_group); }
-                for (self.item) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeTag(4, .start_group); try w.appendSlice(payload); try w.writeTag(4, .end_group); }
+                if (self.box) |item| { w.writeTagAssumeCapacity(2, .start_group); try item.writeDeterministicToAssumeCapacity(allocator, w); w.writeTagAssumeCapacity(2, .end_group); }
+                for (self.item) |item| { w.writeTagAssumeCapacity(4, .start_group); try item.writeDeterministicToAssumeCapacity(allocator, w); w.writeTagAssumeCapacity(4, .end_group); }
                 switch (self.picked) {
-                    .picked_box => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(6, payload); },
+                    .picked_box => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(6, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeDeterministicToAssumeCapacity(allocator, w); },
                     else => {},
                 }
                 switch (self.picked) {
-                    .note => |value| try w.writeString(7, value),
+                    .note => |value| w.writeStringAssumeCapacity(7, value),
                     else => {},
                 }
                 if (self.@"_unknown_fields".len != 0) {

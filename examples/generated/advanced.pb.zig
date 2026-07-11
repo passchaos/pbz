@@ -449,7 +449,7 @@ pub const demo = struct {
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                 if (self.id != 0) try w.writeInt32(1, self.id);
                 if (self.kind != 0) try w.writeInt32(2, self.kind);
-                if (self.audit) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(3, payload); }
+                if (self.audit) |item| { const payload_len = item.encodedSize(); try w.writeTag(3, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
                 switch (self.subject) {
                     .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); },
                     else => {},
@@ -459,7 +459,7 @@ pub const demo = struct {
                     else => {},
                 }
                 switch (self.subject) {
-                    .audit_subject => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(6, payload); },
+                    .audit_subject => |value| { const payload_len = value.encodedSize(); try w.writeTag(6, .length_delimited); try w.writeVarint(payload_len); try value.writeDeterministicTo(allocator, w); },
                     else => {},
                 }
                 if (self.audits.len != 0) {
@@ -484,7 +484,7 @@ pub const demo = struct {
                         try w.writeTag(7, .length_delimited);
                         try w.writeVarint(entry_len);
                         try w.writeString(1, entry.key);
-                        { const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }
+                        { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeDeterministicTo(allocator, w); }
                     }
                 }
                 if (self.@"_unknown_fields".len != 0) {
@@ -512,17 +512,17 @@ pub const demo = struct {
             pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                 if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
                 if (self.kind != 0) w.writeInt32AssumeCapacity(2, self.kind);
-                if (self.audit) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(3, payload); }
+                if (self.audit) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(3, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
                 switch (self.subject) {
-                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(4, value); },
+                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(4, value); },
                     else => {},
                 }
                 switch (self.subject) {
-                    .organization_id => |value| try w.writeBytes(5, value),
+                    .organization_id => |value| w.writeBytesAssumeCapacity(5, value),
                     else => {},
                 }
                 switch (self.subject) {
-                    .audit_subject => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(6, payload); },
+                    .audit_subject => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(6, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeDeterministicToAssumeCapacity(allocator, w); },
                     else => {},
                 }
                 if (self.audits.len != 0) {
@@ -547,7 +547,7 @@ pub const demo = struct {
                         w.writeTagAssumeCapacity(7, .length_delimited);
                         w.writeVarintAssumeCapacity(entry_len);
                         w.writeStringAssumeCapacity(1, entry.key);
-                        { const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); w.writeMessageAssumeCapacity(2, payload); }
+                        { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeDeterministicToAssumeCapacity(allocator, w); }
                     }
                 }
                 if (self.@"_unknown_fields".len != 0) {

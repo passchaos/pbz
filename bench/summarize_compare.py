@@ -100,6 +100,18 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
 
+
+    Workload(
+        "complex deterministic binary encode",
+        (
+            "generated complex deterministic binary encode",
+            "generated complex deterministic binary encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "c++ protobuf": ("c++ protobuf complex deterministic binary encode reuse",),
+            "go protobuf": ("go protobuf complex deterministic binary encode reuse",),
+        },
+    ),
     Workload(
         "complex JSON stringify",
         ("generated complex JSON stringify",),
