@@ -6,3 +6,6 @@ zig-out/
 *.dylib
 *.dll
 .DS_Store
+
+# Rust benchmark build artifacts
+bench/rust_prost/target/
