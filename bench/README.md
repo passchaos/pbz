@@ -24,6 +24,8 @@ row where the fastest pbz generated path is still slower than the fastest
 baseline path for the same workload.
 The summary compares the fastest relevant pbz generated path against Rust
 `prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf rows when present.
+See [`COVERAGE.md`](COVERAGE.md) for the current feature/performance audit
+checklist and the remaining non-goal/open-audit items.
 
 The benchmark currently measures pbz generated and dynamic paths for:
 

@@ -489,6 +489,8 @@ protobuf generated code / protojson / prototext when their toolchains are
 available. Timed loops warm up
 first and report the best of three measured samples; use the same schema,
 payloads, hardware, and optimization mode for fair comparisons.
+The current coverage and remaining audit items are tracked in
+[`bench/COVERAGE.md`](bench/COVERAGE.md).
 
 ## Build and test
 
