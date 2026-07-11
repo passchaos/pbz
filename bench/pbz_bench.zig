@@ -637,7 +637,7 @@ fn generatedPresenceMixDecode(ctx: GeneratedPresenceMixDecodeCtx) !void {
 
 const LargeBytesBorrowedViewCtx = struct { bytes: []const u8 };
 fn largeBytesBorrowedViewDecode(ctx: LargeBytesBorrowedViewCtx) !void {
-    const payload = (try pbz.wire.bytesFieldView(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    const payload = (try person_pb.demo.LargeBytes.payloadBytesView(ctx.bytes)) orelse return error.InvalidWireType;
     std.mem.doNotOptimizeAway(payload.ptr);
     var reader = pbz.Reader.init(ctx.bytes);
     var total_chunks: usize = 0;
@@ -2061,7 +2061,7 @@ pub fn main() !void {
         try runTimed(io, "generated largebytes borrowed slices encode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesBorrowedSlicesCtx{ .message = &generated_large_bytes }, generatedLargeBytesBorrowedSlices),
         try runTimed(io, "generated largebytes decode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes }, generatedLargeBytesDecode),
         try runTimed(io, "generated largebytes decode reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes, .message = &generated_large_bytes_decode_reuse }, generatedLargeBytesDecodeReuse),
-        try runTimed(io, "wire largebytes borrowed view decode", iters.generated_binary, generated_large_bytes_bytes.len, LargeBytesBorrowedViewCtx{ .bytes = generated_large_bytes_bytes }, largeBytesBorrowedViewDecode),
+        try runTimed(io, "generated largebytes borrowed view decode", iters.generated_binary, generated_large_bytes_bytes.len, LargeBytesBorrowedViewCtx{ .bytes = generated_large_bytes_bytes }, largeBytesBorrowedViewDecode),
         try runTimed(io, "generated presencemix encode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeCtx{ .allocator = allocator, .message = &generated_presence_mix }, generatedPresenceMixEncode),
         try runTimed(io, "generated presencemix writeToAssumeCapacity reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixWriteToCtx{ .writer = &reusable_presence_mix_writer, .message = &generated_presence_mix }, generatedPresenceMixWriteToReuse),
         try runTimed(io, "generated presencemix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeIntoCtx{ .buffer = generated_presence_mix_buffer, .message = &generated_presence_mix }, generatedPresenceMixEncodeIntoReuse),

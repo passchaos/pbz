@@ -154,8 +154,16 @@ pub const demo = struct {
                     self._unknown_fields = &.{};
                 }
 
+                pub fn nameFieldView(bytes: []const u8) !?[]const u8 {
+                    return try pbz.wire.bytesFieldView(bytes, 2);
+                }
+
                 pub fn nameFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
                     return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+                }
+
+                pub fn nameStringView(bytes: []const u8) !?[]const u8 {
+                    return try nameFieldView(bytes);
                 }
 
                 pub fn nameStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {

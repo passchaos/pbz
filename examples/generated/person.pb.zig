@@ -279,8 +279,16 @@ pub const demo = struct {
             self._unknown_fields = &.{};
         }
 
+        pub fn nameFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 2);
+        }
+
         pub fn nameFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+        }
+
+        pub fn nameStringView(bytes: []const u8) !?[]const u8 {
+            return try nameFieldView(bytes);
         }
 
         pub fn nameStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
@@ -3427,32 +3435,64 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn titleFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 1);
+        }
+
         pub fn titleFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+        }
+
+        pub fn titleStringView(bytes: []const u8) !?[]const u8 {
+            return try titleFieldView(bytes);
         }
 
         pub fn titleStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try titleFieldSlices(header, value);
         }
 
+        pub fn payloadFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 2);
+        }
+
         pub fn payloadFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+        }
+
+        pub fn payloadBytesView(bytes: []const u8) !?[]const u8 {
+            return try payloadFieldView(bytes);
         }
 
         pub fn payloadBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try payloadFieldSlices(header, value);
         }
 
+        pub fn tagsFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 3);
+        }
+
         pub fn tagsFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 3, value);
+        }
+
+        pub fn tagsStringView(bytes: []const u8) !?[]const u8 {
+            return try tagsFieldView(bytes);
         }
 
         pub fn tagsStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try tagsFieldSlices(header, value);
         }
 
+        pub fn chunksFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 4);
+        }
+
         pub fn chunksFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 4, value);
+        }
+
+        pub fn chunksBytesView(bytes: []const u8) !?[]const u8 {
+            return try chunksFieldView(bytes);
         }
 
         pub fn chunksBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
@@ -4554,16 +4594,32 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn payloadFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 1);
+        }
+
         pub fn payloadFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+        }
+
+        pub fn payloadBytesView(bytes: []const u8) !?[]const u8 {
+            return try payloadFieldView(bytes);
         }
 
         pub fn payloadBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try payloadFieldSlices(header, value);
         }
 
+        pub fn chunksFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 2);
+        }
+
         pub fn chunksFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+        }
+
+        pub fn chunksBytesView(bytes: []const u8) !?[]const u8 {
+            return try chunksFieldView(bytes);
         }
 
         pub fn chunksBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
@@ -6988,8 +7044,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self._unknown_fields = &.{};
             }
 
+            pub fn labelFieldView(bytes: []const u8) !?[]const u8 {
+                return try pbz.wire.bytesFieldView(bytes, 2);
+            }
+
             pub fn labelFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
                 return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+            }
+
+            pub fn labelStringView(bytes: []const u8) !?[]const u8 {
+                return try labelFieldView(bytes);
             }
 
             pub fn labelStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
@@ -24911,8 +24975,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self._unknown_fields = &.{};
             }
 
+            pub fn actorFieldView(bytes: []const u8) !?[]const u8 {
+                return try pbz.wire.bytesFieldView(bytes, 1);
+            }
+
             pub fn actorFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
                 return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+            }
+
+            pub fn actorStringView(bytes: []const u8) !?[]const u8 {
+                return try actorFieldView(bytes);
             }
 
             pub fn actorStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {

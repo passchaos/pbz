@@ -1661,8 +1661,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._unknown_fields = &.{};
                 }
 
+                pub fn actorFieldView(bytes: []const u8) !?[]const u8 {
+                    return try pbz.wire.bytesFieldView(bytes, 1);
+                }
+
                 pub fn actorFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
                     return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+                }
+
+                pub fn actorStringView(bytes: []const u8) !?[]const u8 {
+                    return try actorFieldView(bytes);
                 }
 
                 pub fn actorStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {

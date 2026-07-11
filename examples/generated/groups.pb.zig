@@ -1354,8 +1354,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._unknown_fields = &.{};
                 }
 
+                pub fn labelFieldView(bytes: []const u8) !?[]const u8 {
+                    return try pbz.wire.bytesFieldView(bytes, 3);
+                }
+
                 pub fn labelFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
                     return try pbz.wire.lengthDelimitedFieldSlices(header, 3, value);
+                }
+
+                pub fn labelStringView(bytes: []const u8) !?[]const u8 {
+                    return try labelFieldView(bytes);
                 }
 
                 pub fn labelStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {

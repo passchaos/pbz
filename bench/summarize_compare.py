@@ -149,7 +149,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "largebytes decode",
-        ("generated largebytes decode", "generated largebytes decode reuse", "wire largebytes borrowed view decode"),
+        ("generated largebytes decode", "generated largebytes decode reuse", "generated largebytes borrowed view decode"),
         {
             "rust prost": ("prost largebytes decode",),
             "rust quick-protobuf": ("quick-protobuf largebytes decode",),

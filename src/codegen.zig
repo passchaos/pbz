@@ -4648,6 +4648,14 @@ fn packedVarintIteratorFunction(scalar: schema.ScalarType) ?[]const u8 {
 fn writeLengthDelimitedBorrowedSlicesMethod(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithSuffix(field.name, "FieldView", writer);
+    try writer.writeAll("(bytes: []const u8) !?[]const u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.print("return try pbz.wire.bytesFieldView(bytes, {d});\n", .{field.number});
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
     try writeQuotedIdentWithSuffix(field.name, "FieldSlices", writer);
     try writer.writeAll("(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {\n");
     try indent(writer, depth + 1);
@@ -4655,6 +4663,16 @@ fn writeLengthDelimitedBorrowedSlicesMethod(field: *const schema.FieldDescriptor
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
     if (field.kind.scalar == .bytes) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithSuffix(field.name, "BytesView", writer);
+        try writer.writeAll("(bytes: []const u8) !?[]const u8 {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeQuotedIdentWithSuffix(field.name, "FieldView", writer);
+        try writer.writeAll("(bytes);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithSuffix(field.name, "BytesSlices", writer);
@@ -4666,6 +4684,16 @@ fn writeLengthDelimitedBorrowedSlicesMethod(field: *const schema.FieldDescriptor
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
     } else if (field.kind.scalar == .string) {
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithSuffix(field.name, "StringView", writer);
+        try writer.writeAll("(bytes: []const u8) !?[]const u8 {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeQuotedIdentWithSuffix(field.name, "FieldView", writer);
+        try writer.writeAll("(bytes);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
         try indent(writer, depth);
         try writer.writeAll("pub fn ");
         try writeQuotedIdentWithSuffix(field.name, "StringSlices", writer);
