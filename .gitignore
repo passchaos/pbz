@@ -9,3 +9,6 @@ zig-out/
 
 # Rust benchmark build artifacts
 bench/rust_prost/target/
+
+# C++ benchmark generated build artifacts
+bench/cpp_protobuf/generated/

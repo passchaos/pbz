@@ -22,7 +22,12 @@ This is the foundation for comparing against C++ protobuf and Rust prost in a
 future cross-language benchmark. Treat results as local machine baselines; use
 the same schema, payloads, optimization mode, and hardware when comparing.
 
-The first cross-language baseline is `bench/rust_prost`, a Rust `prost` binary
-encode/decode benchmark for the same `Person` schema and payload shape as the
-pbz generated/dynamic benchmark. It does not require `protoc`; the Rust message
-type is declared directly with `prost` derives.
+Cross-language baselines:
+
+- `bench/rust_prost`: Rust `prost` binary encode/decode for the same `Person`
+  schema and payload shape. It does not require `protoc`; the Rust message type
+  is declared directly with `prost` derives.
+- `bench/cpp_protobuf`: C++ protobuf generated-code binary encode/decode for
+  the same schema. It requires `protoc`, a C++ compiler, protobuf headers, and
+  libprotobuf. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into
+  an ignored `bench/cpp_protobuf/generated/` directory before compiling.
