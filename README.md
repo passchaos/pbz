@@ -317,10 +317,12 @@ JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
 For `service` declarations, generated files include a `services` namespace
 with service/method metadata, streaming flags, registry-aware
 `input_type_ref` / `output_type_ref` aliases where request/response messages can
-be resolved, plus lightweight unary `Handler(Impl)` and `Client(Transport)`
-adapters. The adapters intentionally leave concrete network transport to the
-caller: transports only need a `call(allocator, service_name, method_name,
-request_payload)` method returning an owned response payload.
+be resolved, plus lightweight typed `Handler(Impl)` and `Client(Transport)` adapters for
+unary and streaming method shapes. The adapters intentionally leave concrete
+network transport to the caller: unary transports provide
+`call(allocator, service_name, method_name, request_payload)`, while streaming
+transports provide the corresponding `callClientStream`, `callServerStream`, or
+`callBidiStream` methods.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)

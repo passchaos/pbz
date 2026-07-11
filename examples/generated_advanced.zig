@@ -104,6 +104,10 @@ pub fn main() !void {
             out.id += 1;
             return out;
         }
+
+        pub fn Watch(_: *@This(), alloc: std.mem.Allocator, request: adv.Envelope, responses: anytype) !void {
+            try responses.append(alloc, request);
+        }
     };
     const DirectoryHandler = adv.services.Directory.Handler(DirectoryImpl);
     var impl = DirectoryImpl{};
@@ -113,6 +117,18 @@ pub fn main() !void {
     var decoded_response = try adv.Envelope.decodeOwnedInitialized(allocator, raw_response);
     defer decoded_response.deinit(allocator);
     std.debug.assert(decoded_response.id == 43);
+
+    const StreamSink = struct {
+        count: usize = 0,
+
+        pub fn append(self: *@This(), _: std.mem.Allocator, item: adv.Envelope) !void {
+            std.debug.assert(item.id == 42);
+            self.count += 1;
+        }
+    };
+    var sink = StreamSink{};
+    try handler.Watch(allocator, decoded, &sink);
+    std.debug.assert(sink.count == 1);
 }
 
 comptime {

@@ -10643,7 +10643,7 @@ fn writeServiceDecl(ctx: *const CodegenContext, service: *const schema.ServiceDe
     try writeZigStringLiteral(service.name, writer);
     try writer.writeAll(";\n");
     for (service.methods.items) |*method| try writeMethodDecl(ctx, method, writer, depth + 1);
-    if (serviceHasUnaryAdapters(ctx, service)) {
+    if (serviceHasAdapters(ctx, service)) {
         try writeServiceHandlerDecl(ctx, service, writer, depth + 1);
         try writeServiceClientDecl(ctx, service, writer, depth + 1);
     }
@@ -10696,16 +10696,19 @@ fn writeMethodDecl(ctx: *const CodegenContext, method: *const schema.MethodDescr
     try writer.writeAll("};\n");
 }
 
-fn serviceHasUnaryAdapters(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor) bool {
+fn serviceHasAdapters(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor) bool {
     for (service.methods.items) |*method| {
-        if (methodHasUnaryAdapter(ctx, method)) return true;
+        if (methodHasMessageTypes(ctx, method)) return true;
     }
     return false;
 }
 
-fn methodHasUnaryAdapter(ctx: *const CodegenContext, method: *const schema.MethodDescriptor) bool {
-    if (method.client_streaming or method.server_streaming) return false;
+fn methodHasMessageTypes(ctx: *const CodegenContext, method: *const schema.MethodDescriptor) bool {
     return codegenCanReferenceMessageWithContext(ctx, method.input_type) and codegenCanReferenceMessageWithContext(ctx, method.output_type);
+}
+
+fn methodHasUnaryAdapter(ctx: *const CodegenContext, method: *const schema.MethodDescriptor) bool {
+    return !method.client_streaming and !method.server_streaming and methodHasMessageTypes(ctx, method);
 }
 
 fn writeServiceHandlerDecl(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -10719,7 +10722,7 @@ fn writeServiceHandlerDecl(ctx: *const CodegenContext, service: *const schema.Se
     try indent(writer, depth + 2);
     try writer.writeAll("pub fn init(impl: *Impl) @This() { return .{ .impl = impl }; }\n\n");
     for (service.methods.items) |*method| {
-        if (methodHasUnaryAdapter(ctx, method)) try writeServiceHandlerMethod(ctx, method, writer, depth + 2);
+        if (methodHasMessageTypes(ctx, method)) try writeServiceHandlerMethod(ctx, method, writer, depth + 2);
     }
     try writeServiceDispatchRaw(ctx, service, writer, depth + 2);
     try indent(writer, depth + 1);
@@ -10732,15 +10735,32 @@ fn writeServiceHandlerMethod(ctx: *const CodegenContext, method: *const schema.M
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedIdent(method.name, writer);
-    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator, request: ");
-    try writeRpcMessageTypeReference(ctx, method.input_type, writer);
+    try writer.writeAll("(self: @This(), allocator: std.mem.Allocator, ");
+    if (method.client_streaming) {
+        try writer.writeAll("requests: anytype");
+    } else {
+        try writer.writeAll("request: ");
+        try writeRpcMessageTypeReference(ctx, method.input_type, writer);
+    }
+    if (method.server_streaming) try writer.writeAll(", responses: anytype");
     try writer.writeAll(") !");
-    try writeRpcMessageTypeReference(ctx, method.output_type, writer);
+    if (method.server_streaming) {
+        try writer.writeAll("void");
+    } else {
+        try writeRpcMessageTypeReference(ctx, method.output_type, writer);
+    }
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try self.impl.");
     try writeQuotedIdent(method.name, writer);
-    try writer.writeAll("(allocator, request);\n");
+    try writer.writeAll("(allocator, ");
+    if (method.client_streaming) {
+        try writer.writeAll("requests");
+    } else {
+        try writer.writeAll("request");
+    }
+    if (method.server_streaming) try writer.writeAll(", responses");
+    try writer.writeAll(");\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 }
@@ -10794,7 +10814,7 @@ fn writeServiceClientDecl(ctx: *const CodegenContext, service: *const schema.Ser
     try indent(writer, depth + 2);
     try writer.writeAll("pub fn init(transport: Transport) @This() { return .{ .transport = transport }; }\n\n");
     for (service.methods.items) |*method| {
-        if (methodHasUnaryAdapter(ctx, method)) try writeServiceClientMethod(ctx, service, method, writer, depth + 2);
+        if (methodHasMessageTypes(ctx, method)) try writeServiceClientMethod(ctx, service, method, writer, depth + 2);
     }
     try indent(writer, depth + 1);
     try writer.writeAll("};\n");
@@ -10806,27 +10826,70 @@ fn writeServiceClientMethod(ctx: *const CodegenContext, service: *const schema.S
     try indent(writer, depth);
     try writer.writeAll("pub fn ");
     try writeQuotedIdent(method.name, writer);
-    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, request: ");
-    try writeRpcMessageTypeReference(ctx, method.input_type, writer);
+    try writer.writeAll("(self: *@This(), allocator: std.mem.Allocator, ");
+    if (method.client_streaming) {
+        try writer.writeAll("requests: anytype");
+    } else {
+        try writer.writeAll("request: ");
+        try writeRpcMessageTypeReference(ctx, method.input_type, writer);
+    }
+    if (method.server_streaming) try writer.writeAll(", responses: anytype");
     try writer.writeAll(") !");
-    try writeRpcMessageTypeReference(ctx, method.output_type, writer);
+    if (method.server_streaming) {
+        try writer.writeAll("void");
+    } else {
+        try writeRpcMessageTypeReference(ctx, method.output_type, writer);
+    }
     try writer.writeAll(" {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const request_payload = try request.encode(allocator);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(request_payload);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const response_payload = try self.transport.call(allocator, ");
-    try writeZigStringLiteral(service.name, writer);
-    try writer.writeAll(", ");
-    try writeZigStringLiteral(method.name, writer);
-    try writer.writeAll(", request_payload);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(response_payload);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("return try ");
-    try writeRpcMessageTypeReference(ctx, method.output_type, writer);
-    try writer.writeAll(".decodeOwned(allocator, response_payload);\n");
+    if (!method.client_streaming and !method.server_streaming) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const request_payload = try request.encode(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(request_payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const response_payload = try self.transport.call(allocator, ");
+        try writeZigStringLiteral(service.name, writer);
+        try writer.writeAll(", ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(", request_payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(response_payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeRpcMessageTypeReference(ctx, method.output_type, writer);
+        try writer.writeAll(".decodeOwned(allocator, response_payload);\n");
+    } else if (method.client_streaming and !method.server_streaming) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const response_payload = try self.transport.callClientStream(allocator, ");
+        try writeZigStringLiteral(service.name, writer);
+        try writer.writeAll(", ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(", requests);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(response_payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try ");
+        try writeRpcMessageTypeReference(ctx, method.output_type, writer);
+        try writer.writeAll(".decodeOwned(allocator, response_payload);\n");
+    } else if (!method.client_streaming and method.server_streaming) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const request_payload = try request.encode(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer allocator.free(request_payload);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.transport.callServerStream(allocator, ");
+        try writeZigStringLiteral(service.name, writer);
+        try writer.writeAll(", ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(", request_payload, responses);\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("try self.transport.callBidiStream(allocator, ");
+        try writeZigStringLiteral(service.name, writer);
+        try writer.writeAll(", ");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(", requests, responses);\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 }
@@ -13132,7 +13195,9 @@ test "codegen emits service metadata and unary adapters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var request = try @\"Req\".decodeOwned(allocator, request_payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var response = try self.@\"Get\"(allocator, request);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const response_payload = try self.transport.call(allocator, \"Directory\", \"Get\", request_payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"Stream\"(self: @This(), allocator: std.mem.Allocator") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"Stream\"(self: @This(), allocator: std.mem.Allocator, requests: anytype, responses: anytype) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try self.impl.@\"Stream\"(allocator, requests, responses);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.transport.callBidiStream(allocator, \"Directory\", \"Stream\", requests, responses);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "dispatchTyped") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return error.Unimplemented;") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"_pbzDispatchTyped_Get\"") == null);

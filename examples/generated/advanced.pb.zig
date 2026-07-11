@@ -2310,6 +2310,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             return try self.impl.@"Get"(allocator, request);
                         }
 
+                        pub fn @"Watch"(self: @This(), allocator: std.mem.Allocator, request: @"Envelope", responses: anytype) !void {
+                            return try self.impl.@"Watch"(allocator, request, responses);
+                        }
+
                         pub fn dispatchRaw(self: @This(), allocator: std.mem.Allocator, method_name: []const u8, request_payload: []const u8) !?[]u8 {
                             if (std.mem.eql(u8, method_name, "Get")) {
                                 var request = try @"Envelope".decodeOwned(allocator, request_payload);
@@ -2335,6 +2339,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             const response_payload = try self.transport.call(allocator, "Directory", "Get", request_payload);
                             defer allocator.free(response_payload);
                             return try @"Envelope".decodeOwned(allocator, response_payload);
+                        }
+
+                        pub fn @"Watch"(self: *@This(), allocator: std.mem.Allocator, request: @"Envelope", responses: anytype) !void {
+                            const request_payload = try request.encode(allocator);
+                            defer allocator.free(request_payload);
+                            try self.transport.callServerStream(allocator, "Directory", "Watch", request_payload, responses);
                         }
 
                     };
