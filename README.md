@@ -314,11 +314,13 @@ message fields participate in generated JSON and TextFormat stringify/parse for
 singular, repeated, map, and oneof payloads; and direct or transitive-public
 imported enum fields are treated as enum scalars for generated wire,
 JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
-For `service` declarations, generated files include only a `services` namespace
-with service/method metadata, streaming flags, and registry-aware
+For `service` declarations, generated files include a `services` namespace
+with service/method metadata, streaming flags, registry-aware
 `input_type_ref` / `output_type_ref` aliases where request/response messages can
-be resolved. RPC transport, `Handler`/`Client` stubs, dispatch adapters, and
-client/server call helpers are intentionally out of scope for this library.
+be resolved, plus lightweight unary `Handler(Impl)` and `Client(Transport)`
+adapters. The adapters intentionally leave concrete network transport to the
+caller: transports only need a `call(allocator, service_name, method_name,
+request_payload)` method returning an owned response payload.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
 `cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)

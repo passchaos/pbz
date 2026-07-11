@@ -2299,6 +2299,46 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const client_streaming = false;
                     pub const server_streaming = true;
                 };
+
+                pub fn Handler(comptime Impl: type) type {
+                    return struct {
+                        impl: *Impl,
+
+                        pub fn init(impl: *Impl) @This() { return .{ .impl = impl }; }
+
+                        pub fn @"Get"(self: @This(), allocator: std.mem.Allocator, request: @"Envelope") !@"Envelope" {
+                            return try self.impl.@"Get"(allocator, request);
+                        }
+
+                        pub fn dispatchRaw(self: @This(), allocator: std.mem.Allocator, method_name: []const u8, request_payload: []const u8) !?[]u8 {
+                            if (std.mem.eql(u8, method_name, "Get")) {
+                                var request = try @"Envelope".decodeOwned(allocator, request_payload);
+                                defer request.deinit(allocator);
+                                var response = try self.@"Get"(allocator, request);
+                                defer response.deinit(allocator);
+                                return try response.encode(allocator);
+                            }
+                            return null;
+                        }
+                    };
+                }
+
+                pub fn Client(comptime Transport: type) type {
+                    return struct {
+                        transport: Transport,
+
+                        pub fn init(transport: Transport) @This() { return .{ .transport = transport }; }
+
+                        pub fn @"Get"(self: *@This(), allocator: std.mem.Allocator, request: @"Envelope") !@"Envelope" {
+                            const request_payload = try request.encode(allocator);
+                            defer allocator.free(request_payload);
+                            const response_payload = try self.transport.call(allocator, "Directory", "Get", request_payload);
+                            defer allocator.free(response_payload);
+                            return try @"Envelope".decodeOwned(allocator, response_payload);
+                        }
+
+                    };
+                }
             };
         };
 

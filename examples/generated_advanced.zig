@@ -91,11 +91,28 @@ pub fn main() !void {
         else => return error.UnexpectedOneof,
     }
 
-    // Service metadata is generated without imposing an RPC runtime.
+    // Service metadata plus lightweight unary handler/client adapters are
+    // generated without imposing a concrete network runtime.
     std.debug.assert(std.mem.eql(u8, adv.services.Directory.name, "Directory"));
     std.debug.assert(adv.services.Directory.Get.input_has_type_ref);
     std.debug.assert(adv.services.Directory.Get.input_type_ref == adv.Envelope);
     std.debug.assert(adv.services.Directory.Watch.server_streaming);
+
+    const DirectoryImpl = struct {
+        pub fn Get(_: *@This(), alloc: std.mem.Allocator, request: adv.Envelope) !adv.Envelope {
+            var out = try request.cloneOwned(alloc);
+            out.id += 1;
+            return out;
+        }
+    };
+    const DirectoryHandler = adv.services.Directory.Handler(DirectoryImpl);
+    var impl = DirectoryImpl{};
+    var handler = DirectoryHandler.init(&impl);
+    const raw_response = try handler.dispatchRaw(allocator, "Get", bytes) orelse return error.MissingResponse;
+    defer allocator.free(raw_response);
+    var decoded_response = try adv.Envelope.decodeOwnedInitialized(allocator, raw_response);
+    defer decoded_response.deinit(allocator);
+    std.debug.assert(decoded_response.id == 43);
 }
 
 comptime {
