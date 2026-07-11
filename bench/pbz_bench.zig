@@ -141,9 +141,7 @@ fn dynamicTextParse(ctx: DynamicTextParseCtx) !void {
 }
 
 pub fn main() !void {
-    var gpa = std.heap.DebugAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = std.heap.smp_allocator;
     const io = std.Io.Threaded.global_single_threaded.io();
     const iters = Iterations{};
 
