@@ -108,6 +108,17 @@ pub fn writePackedFixed32PayloadAssumeCapacity(w: *Writer, values: []const u32) 
 pub fn appendPackedFixed32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len % 4 != 0) return error.InvalidWireType;
     const count = payload.len / 4;
+    if (count == 0) return;
+    if (list.items.len == 0 and list.capacity == 0) {
+        const out = try allocator.alloc(u32, count);
+        list.* = std.ArrayList(u32).fromOwnedSlice(out);
+        if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
+            @memcpy(std.mem.sliceAsBytes(out), payload);
+        } else {
+            for (out, 0..) |*value, i| value.* = std.mem.readInt(u32, payload[i * 4 ..][0..4], .little);
+        }
+        return;
+    }
     try list.ensureTotalCapacityPrecise(allocator, list.items.len + count);
     const out = list.addManyAsSliceAssumeCapacity(count);
     if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
