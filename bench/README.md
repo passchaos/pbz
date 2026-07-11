@@ -22,6 +22,8 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log
 Use `--fail-on-loss` when a CI-style non-zero exit is desired for any parsed
 row where the fastest pbz generated path is still slower than the fastest
 baseline path for the same workload.
+The summary compares the fastest relevant pbz generated path against Rust
+`prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf rows when present.
 
 The benchmark currently measures pbz generated and dynamic paths for:
 
@@ -29,15 +31,18 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
-- large bytes and repeated large bytes encode/decode, including a borrowed wire-view decode path
+- large bytes and repeated large bytes encode/decode, including generated
+  borrowed slices/views for copy-free payload paths
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - large `map<string, int32>` encode/decode
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` / `sfixed32` / `sfixed64` / `float` / `double` encode/decode
 - packed `uint32` / `uint64` / `int64` / `sint32` / `sint64` varint, `bool`, and enum encode/decode
-- zero-copy borrowed payload views for packed fixed-width fields when the
-  caller only needs to inspect the wire buffer
+- generated zero-copy borrowed payload views for packed fixed-width fields when
+  the caller only needs to inspect the wire buffer
+- generated typed iterators for packed varint fields
+- generated known-schema decode reuse for trusted same-schema hot paths
 - JSON stringify/parse
 - TextFormat format/parse
 

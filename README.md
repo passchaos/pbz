@@ -286,9 +286,11 @@ bare Zig identifiers (`demo.user.Message.id`) whenever the proto-derived name is
 a legal Zig identifier and does not shadow Zig keywords/primitives; escaped
 identifiers are kept only when needed for proto names like `struct`.
 Generated message structs provide `encodedSize`, allocating `encode`, checked
-`encodeInto(buffer)`, and fastest-path `encodeIntoAssumeCapacity(buffer)` helpers
-in addition to writer-based `writeTo` / `writeToAssumeCapacity`, so callers can
-choose between owned allocation, caller-provided buffers, and reusable writers.
+`encodeInto(buffer)`, fastest-path `encodeIntoAssumeCapacity(buffer)`, and
+trusted-UTF-8 `encodeIntoAssumeCapacityTrustedUtf8(buffer)` helpers in addition
+to writer-based `writeTo` / `writeToAssumeCapacity`, so callers can choose
+between owned allocation, caller-provided buffers, reusable writers, and
+validation-free hot paths when string fields are already trusted.
 Generated message structs also expose per-field metadata structs (`*_field`)
 with protobuf field number, name/json_name, cardinality, kind, raw type_name
 including imported message/enum names, Zig storage type, presence, default text,
@@ -307,13 +309,19 @@ strings/bytes/message payloads/maps/unknowns into owned storage. When generated
 types are available, singular, repeated, map, group, and oneof message payloads are
 encoded/decoded by wire/JSON/TextFormat helpers through same-file,
 direct-imported, or transitive-public imported generated message types.
-Generated repeated packed fixed-width scalar fields also expose field-specific
-borrowed view helpers such as `valuesPackedFixedView(bytes)` for zero-copy
+Generated length-delimited scalar fields expose field-specific borrowed
+`*FieldView` / `*BytesView` / `*StringView` helpers for inspecting encoded
+buffers plus `*FieldSlices` / `*BytesSlices` / `*StringSlices` helpers for
+scatter/gather output without copying large payloads. Generated repeated packed
+fixed-width scalar fields expose `valuesPackedFixedView(bytes)` for zero-copy
 inspection of wire buffers; `fixed32` fields additionally keep the convenience
-alias `valuesPackedFixed32View(bytes)`. For callers with scatter/gather output,
-the companion `valuesPackedFixedSlices(header, values)` helper returns a small
-encoded header slice plus a borrowed payload slice, avoiding the payload copy on
-little-endian targets.
+alias `valuesPackedFixed32View(bytes)`. The companion
+`valuesPackedFixedSlices(header, values)` helper returns a small encoded header
+slice plus a borrowed payload slice, avoiding the payload copy on little-endian
+targets. Packed varint scalar fields expose typed `valuesPackedIterator(bytes)`
+helpers for allocation-free scans, and generated fast raw-tag messages with
+repeated scalar buffers can use `decodeKnownReuse(allocator, bytes)` to reuse
+previous repeated-field allocations for trusted same-schema payloads.
 `pbz.generateZigFileWithRegistry` additionally resolves message and enum fields
 through a `Registry`: direct and transitive-public imported message fields get
 package-namespaced module type refs, direct and transitive-public imported
