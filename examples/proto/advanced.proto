@@ -1,0 +1,29 @@
+syntax = "proto3";
+package demo.advanced;
+
+enum Kind {
+  KIND_UNKNOWN = 0;
+  KIND_PERSON = 1;
+  KIND_ORG = 2;
+}
+
+message Envelope {
+  message Audit {
+    string actor = 1;
+    int64 at_unix = 2;
+  }
+
+  int32 id = 1;
+  Kind kind = 2;
+  Audit audit = 3;
+
+  oneof subject {
+    string user_name = 4;
+    bytes organization_id = 5;
+  }
+}
+
+service Directory {
+  rpc Get (Envelope) returns (Envelope);
+  rpc Watch (Envelope) returns (stream Envelope);
+}

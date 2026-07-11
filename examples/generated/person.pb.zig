@@ -511,7 +511,7 @@ pub const demo = struct {
             return try self.jsonStringifyAllocWithOptions(allocator, .{});
         }
 
-        pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: JsonStringifyOptions) ![]u8 {
+        pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().JsonStringifyOptions) ![]u8 {
             var out: std.Io.Writer.Allocating = .init(allocator);
             errdefer out.deinit();
             try self.jsonStringifyWithOptions(allocator, &out.writer, options);
@@ -526,7 +526,7 @@ pub const demo = struct {
             try self.jsonStringifyWithOptions(allocator, writer, .{});
         }
 
-        pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: JsonStringifyOptions) !void {
+        pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
             _ = allocator;
             try writer.writeAll("{");
             var first = true;
@@ -577,7 +577,7 @@ pub const demo = struct {
             return try @This().jsonParseWithOptions(allocator, text, .{});
         }
 
-        pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This() {
+        pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {
             var arena = try allocator.create(std.heap.ArenaAllocator);
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
@@ -597,14 +597,14 @@ pub const demo = struct {
             return self;
         }
 
-        pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This() {
+        pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {
             var self = try @This().jsonParseWithOptions(allocator, text, options);
             errdefer self.deinit(allocator);
             try self.validateRequiredRecursive(allocator);
             return self;
         }
 
-        fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: JsonParseOptions) !void {
+        fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void {
             _ = arena_allocator;
             const object = switch (json_value) {
                 .object => |object| object,
@@ -726,18 +726,18 @@ pub const demo = struct {
         }
 
         fn jsonBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]const u8 {
-            return try jsonDecodeBase64(allocator, try jsonString(value));
+            return try @This().jsonDecodeBase64(allocator, try @This().jsonString(value));
         }
 
         fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
             return switch (value) {
-                .integer => |v| try jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
-                .number_string => |text| try jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
+                .integer => |v| try @This().jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
+                .number_string => |text| try @This().jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
                 .string => |text| {
                     inline for (names, 0..) |name, i| {
                         if (std.mem.eql(u8, text, name)) return numbers[i];
                     }
-                    return try jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
+                    return try @This().jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
                 },
                 else => error.TypeMismatch,
             };
@@ -993,7 +993,7 @@ pub const demo = struct {
             var raw = pbz.Writer.init(allocator);
             defer raw.deinit();
             if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) {
-                const bytes = try textUnquote(allocator, value);
+                const bytes = try @This().textUnquote(allocator, value);
                 defer allocator.free(bytes);
                 try raw.writeBytes(number, bytes);
             } else {
@@ -1013,18 +1013,18 @@ pub const demo = struct {
             defer raw.deinit();
             try raw.writeTag(number, .start_group);
             while (lines.next()) |raw_line| {
-                const child = textCleanLine(raw_line);
+                const child = @This().textCleanLine(raw_line);
                 if (child.len == 0) continue;
                 if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
                     try raw.writeTag(number, .end_group);
                     return try raw.toOwnedSlice();
                 }
-                if (try textUnknownField(allocator, child)) |field_raw| {
+                if (try @This().textUnknownField(allocator, child)) |field_raw| {
                     defer allocator.free(field_raw);
                     try raw.appendSlice(field_raw);
                     continue;
                 }
-                if (try textUnknownGroup(allocator, child, lines)) |group_raw| {
+                if (try @This().textUnknownGroup(allocator, child, lines)) |group_raw| {
                     defer allocator.free(group_raw);
                     try raw.appendSlice(group_raw);
                     continue;
@@ -1036,7 +1036,7 @@ pub const demo = struct {
 
         fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
             var r = pbz.Reader.init(raw);
-            while (try r.nextTag()) |tag| try textWriteUnknownField(tag, &r, writer);
+            while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
         }
 
         fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
@@ -1054,7 +1054,7 @@ pub const demo = struct {
                 .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
                 .length_delimited => {
                     try writer.print("{d}: ", .{tag.number});
-                    try textWriteQuotedBytes(try r.readBytes(), writer);
+                    try @This().textWriteQuotedBytes(try r.readBytes(), writer);
                     try writer.writeByte('\n');
                 },
                 .start_group => {
@@ -1065,7 +1065,7 @@ pub const demo = struct {
                             try writer.writeAll("}\n");
                             return;
                         }
-                        try textWriteUnknownField(inner, r, writer);
+                        try @This().textWriteUnknownField(inner, r, writer);
                     }
                     return error.TruncatedInput;
                 },
@@ -1078,7 +1078,7 @@ pub const demo = struct {
             errdefer out.deinit();
             var depth: usize = 1;
             while (lines.next()) |raw_line| {
-                const line = textCleanLine(raw_line);
+                const line = @This().textCleanLine(raw_line);
                 if (line.len == 0) continue;
                 if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
                     depth -= 1;
@@ -1092,10 +1092,10 @@ pub const demo = struct {
         }
 
         fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-            return jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-                jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-                jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-                jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
+            return @This().jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
+                @This().jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
+                @This().jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
+                @This().jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
         }
 
         fn jsonDecodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
@@ -1123,7 +1123,7 @@ pub const demo = struct {
             return try self.formatTextAllocWithOptions(allocator, .{});
         }
 
-        pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8 {
+        pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().TextFormatOptions) ![]u8 {
             var out: std.Io.Writer.Allocating = .init(allocator);
             errdefer out.deinit();
             try self.formatTextWithOptions(allocator, &out.writer, options);
@@ -1138,7 +1138,7 @@ pub const demo = struct {
             try self.formatTextWithOptions(allocator, writer, .{});
         }
 
-        pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void {
+        pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
             _ = allocator;
             _ = options;
             if (self.id != 0) {
@@ -1151,7 +1151,7 @@ pub const demo = struct {
                 try writer.writeAll("name: ");
                 const value = self.name;
                 if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
-                try textWriteQuotedBytes(value, writer);
+                try @This().textWriteQuotedBytes(value, writer);
                 try writer.writeByte('\n');
             }
             for (self.scores) |value| {
@@ -1163,7 +1163,7 @@ pub const demo = struct {
                 try writer.writeAll("counts {\n");
                 try writer.writeAll("key: ");
                 if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
-                try textWriteQuotedBytes(entry.key, writer);
+                try @This().textWriteQuotedBytes(entry.key, writer);
                 try writer.writeByte('\n');
                 try writer.writeAll("value: ");
                 try writer.print("{d}", .{entry.value});
@@ -1181,7 +1181,7 @@ pub const demo = struct {
             return try @This().parseTextWithOptions(allocator, text, .{});
         }
 
-        pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {
+        pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var scores_list: std.ArrayList(i32) = .empty;
@@ -1266,7 +1266,7 @@ pub const demo = struct {
             return self;
         }
 
-        pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {
+        pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = try @This().parseTextWithOptions(allocator, text, options);
             errdefer self.deinit(allocator);
             try self.validateRequiredRecursive(allocator);
@@ -1595,7 +1595,7 @@ pub const demo = struct {
             return try self.jsonStringifyAllocWithOptions(allocator, .{});
         }
 
-        pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: JsonStringifyOptions) ![]u8 {
+        pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().JsonStringifyOptions) ![]u8 {
             var out: std.Io.Writer.Allocating = .init(allocator);
             errdefer out.deinit();
             try self.jsonStringifyWithOptions(allocator, &out.writer, options);
@@ -1610,7 +1610,7 @@ pub const demo = struct {
             try self.jsonStringifyWithOptions(allocator, writer, .{});
         }
 
-        pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: JsonStringifyOptions) !void {
+        pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
             _ = allocator;
             try writer.writeAll("{");
             var first = true;
@@ -1634,7 +1634,7 @@ pub const demo = struct {
             return try @This().jsonParseWithOptions(allocator, text, .{});
         }
 
-        pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This() {
+        pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {
             var arena = try allocator.create(std.heap.ArenaAllocator);
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
@@ -1654,14 +1654,14 @@ pub const demo = struct {
             return self;
         }
 
-        pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This() {
+        pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {
             var self = try @This().jsonParseWithOptions(allocator, text, options);
             errdefer self.deinit(allocator);
             try self.validateRequiredRecursive(allocator);
             return self;
         }
 
-        fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: JsonParseOptions) !void {
+        fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void {
             _ = arena_allocator;
             const object = switch (json_value) {
                 .object => |object| object,
@@ -1742,18 +1742,18 @@ pub const demo = struct {
         }
 
         fn jsonBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]const u8 {
-            return try jsonDecodeBase64(allocator, try jsonString(value));
+            return try @This().jsonDecodeBase64(allocator, try @This().jsonString(value));
         }
 
         fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
             return switch (value) {
-                .integer => |v| try jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
-                .number_string => |text| try jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
+                .integer => |v| try @This().jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
+                .number_string => |text| try @This().jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
                 .string => |text| {
                     inline for (names, 0..) |name, i| {
                         if (std.mem.eql(u8, text, name)) return numbers[i];
                     }
-                    return try jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
+                    return try @This().jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
                 },
                 else => error.TypeMismatch,
             };
@@ -2009,7 +2009,7 @@ pub const demo = struct {
             var raw = pbz.Writer.init(allocator);
             defer raw.deinit();
             if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) {
-                const bytes = try textUnquote(allocator, value);
+                const bytes = try @This().textUnquote(allocator, value);
                 defer allocator.free(bytes);
                 try raw.writeBytes(number, bytes);
             } else {
@@ -2029,18 +2029,18 @@ pub const demo = struct {
             defer raw.deinit();
             try raw.writeTag(number, .start_group);
             while (lines.next()) |raw_line| {
-                const child = textCleanLine(raw_line);
+                const child = @This().textCleanLine(raw_line);
                 if (child.len == 0) continue;
                 if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
                     try raw.writeTag(number, .end_group);
                     return try raw.toOwnedSlice();
                 }
-                if (try textUnknownField(allocator, child)) |field_raw| {
+                if (try @This().textUnknownField(allocator, child)) |field_raw| {
                     defer allocator.free(field_raw);
                     try raw.appendSlice(field_raw);
                     continue;
                 }
-                if (try textUnknownGroup(allocator, child, lines)) |group_raw| {
+                if (try @This().textUnknownGroup(allocator, child, lines)) |group_raw| {
                     defer allocator.free(group_raw);
                     try raw.appendSlice(group_raw);
                     continue;
@@ -2052,7 +2052,7 @@ pub const demo = struct {
 
         fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
             var r = pbz.Reader.init(raw);
-            while (try r.nextTag()) |tag| try textWriteUnknownField(tag, &r, writer);
+            while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
         }
 
         fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
@@ -2070,7 +2070,7 @@ pub const demo = struct {
                 .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
                 .length_delimited => {
                     try writer.print("{d}: ", .{tag.number});
-                    try textWriteQuotedBytes(try r.readBytes(), writer);
+                    try @This().textWriteQuotedBytes(try r.readBytes(), writer);
                     try writer.writeByte('\n');
                 },
                 .start_group => {
@@ -2081,7 +2081,7 @@ pub const demo = struct {
                             try writer.writeAll("}\n");
                             return;
                         }
-                        try textWriteUnknownField(inner, r, writer);
+                        try @This().textWriteUnknownField(inner, r, writer);
                     }
                     return error.TruncatedInput;
                 },
@@ -2094,7 +2094,7 @@ pub const demo = struct {
             errdefer out.deinit();
             var depth: usize = 1;
             while (lines.next()) |raw_line| {
-                const line = textCleanLine(raw_line);
+                const line = @This().textCleanLine(raw_line);
                 if (line.len == 0) continue;
                 if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
                     depth -= 1;
@@ -2108,10 +2108,10 @@ pub const demo = struct {
         }
 
         fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-            return jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-                jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-                jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-                jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
+            return @This().jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
+                @This().jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
+                @This().jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
+                @This().jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
         }
 
         fn jsonDecodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
@@ -2139,7 +2139,7 @@ pub const demo = struct {
             return try self.formatTextAllocWithOptions(allocator, .{});
         }
 
-        pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8 {
+        pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().TextFormatOptions) ![]u8 {
             var out: std.Io.Writer.Allocating = .init(allocator);
             errdefer out.deinit();
             try self.formatTextWithOptions(allocator, &out.writer, options);
@@ -2154,7 +2154,7 @@ pub const demo = struct {
             try self.formatTextWithOptions(allocator, writer, .{});
         }
 
-        pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void {
+        pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
             _ = allocator;
             _ = options;
             for (self.values) |value| {
@@ -2173,7 +2173,7 @@ pub const demo = struct {
             return try @This().parseTextWithOptions(allocator, text, .{});
         }
 
-        pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {
+        pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
@@ -2218,7 +2218,7 @@ pub const demo = struct {
             return self;
         }
 
-        pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {
+        pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = try @This().parseTextWithOptions(allocator, text, options);
             errdefer self.deinit(allocator);
             try self.validateRequiredRecursive(allocator);

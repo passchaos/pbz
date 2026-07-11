@@ -855,7 +855,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {\n");
+    try writer.writeAll("pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = @This().init();\n");
     try indent(writer, depth + 1);
@@ -920,7 +920,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This() {\n");
+    try writer.writeAll("pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = try @This().parseTextWithOptions(allocator, text, options);\n");
     try indent(writer, depth + 1);
@@ -1058,7 +1058,7 @@ fn writeTextParseMessageExtensionField(ctx: *const CodegenContext, field: *const
     try indent(writer, depth + 1);
     try writer.writeAll("var nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-    try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
+    try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth + 1);
@@ -1151,7 +1151,7 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
     try indent(writer, depth);
     try writer.writeAll("var nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-    try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
+    try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
@@ -1252,7 +1252,7 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try indent(writer, depth + 3);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, map_type.value.message, writer);
-        try writer.writeAll(".parseTextWithOptions(allocator, block, options);\n");
+        try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 3);
         try writer.writeAll("defer nested.deinit(allocator);\n");
         try indent(writer, depth + 3);
@@ -6285,7 +6285,7 @@ fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8 {\n");
+    try writer.writeAll("pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().TextFormatOptions) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
     try indent(writer, depth + 1);
@@ -6312,7 +6312,7 @@ fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void {\n");
+    try writer.writeAll("pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {\n");
     if (!messageTextUsesAllocator(ctx, message)) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
@@ -6556,7 +6556,7 @@ fn writeTextMessagePayload(ctx: *const CodegenContext, field_name: []const u8, t
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, options);\n");
+    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
     try indent(writer, depth);
     try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
 }
@@ -6590,7 +6590,7 @@ fn writeTextMapField(ctx: *const CodegenContext, field: *const schema.FieldDescr
         try indent(writer, depth + 1);
         try writer.writeAll("defer nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, options);\n");
+        try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
     } else {
@@ -6744,7 +6744,7 @@ fn writeTextUnknownMessageExtensionField(ctx: *const CodegenContext, field: *con
     try indent(writer, depth + 2);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, options);\n");
+    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
     try indent(writer, depth + 2);
     try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
     try indent(writer, depth + 2);
@@ -6796,7 +6796,7 @@ fn writeTextUtf8Check(file: *const schema.FileDescriptor, field: *const schema.F
 
 fn writeTextScalarValue(scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
-        .string, .bytes => try writer.print("try textWriteQuotedBytes({s}, writer)", .{value_expr}),
+        .string, .bytes => try writer.print("try @This().textWriteQuotedBytes({s}, writer)", .{value_expr}),
         .bool => try writer.print("try writer.writeAll(if ({s}) \"true\" else \"false\")", .{value_expr}),
         else => try writer.print("try writer.print(\"{{d}}\", .{{{s}}})", .{value_expr}),
     }
@@ -6822,7 +6822,7 @@ fn writeTextMapValue(ctx: *const CodegenContext, kind: schema.FieldKind, value_e
             try writeMessageTypeReferenceWithContext(ctx, name, writer);
             try writer.writeAll(".decode(allocator, ");
             try writer.writeAll(value_expr);
-            try writer.writeAll("); defer nested.deinit(allocator); try nested.formatTextWithOptions(allocator, writer, options)");
+            try writer.writeAll("); defer nested.deinit(allocator); try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name })");
         } else try writer.writeAll("@compileError(\"unsupported map text value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map text value\")"),
     }
@@ -6840,7 +6840,7 @@ fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: JsonStringifyOptions) ![]u8 {\n");
+    try writer.writeAll("pub fn jsonStringifyAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().JsonStringifyOptions) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var out: std.Io.Writer.Allocating = .init(allocator);\n");
     try indent(writer, depth + 1);
@@ -6867,7 +6867,7 @@ fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: JsonStringifyOptions) !void {\n");
+    try writer.writeAll("pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {\n");
     if (!messageJsonStringifyUsesAllocator(ctx, message)) {
         try indent(writer, depth + 1);
         try writer.writeAll("_ = allocator;\n");
@@ -6914,7 +6914,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This() {\n");
+    try writer.writeAll("pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var arena = try allocator.create(std.heap.ArenaAllocator);\n");
     try indent(writer, depth + 1);
@@ -6952,7 +6952,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This() {\n");
+    try writer.writeAll("pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = try @This().jsonParseWithOptions(allocator, text, options);\n");
     try indent(writer, depth + 1);
@@ -6965,7 +6965,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: JsonParseOptions) !void {\n");
+    try writer.writeAll("fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void {\n");
     const has_parse_fields = messageJsonParseHasFields(ctx, message);
     if (!has_parse_fields) {
         try indent(writer, depth + 1);
@@ -7382,7 +7382,7 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         try indent(writer, depth + 2);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), options);\n");
+        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 2);
         try writer.writeAll("defer nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 2);
@@ -7399,7 +7399,7 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         try indent(writer, depth + 1);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), options);\n");
+        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 1);
         try writer.writeAll("defer nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 1);
@@ -7514,7 +7514,7 @@ fn writeJsonParseMessageExtensionField(ctx: *const CodegenContext, field: *const
         try indent(writer, depth + 2);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), options);\n");
+        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 2);
         try writer.writeAll("defer nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 2);
@@ -7527,7 +7527,7 @@ fn writeJsonParseMessageExtensionField(ctx: *const CodegenContext, field: *const
         try indent(writer, depth + 1);
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), options);\n");
+        try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 1);
         try writer.writeAll("defer nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 1);
@@ -7634,7 +7634,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
             try writer.writeAll("blk: { var nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), options); defer nested.deinit(arena_allocator); break :blk try nested.encode(arena_allocator); }");
+            try writer.writeAll(".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer nested.deinit(arena_allocator); break :blk try nested.encode(arena_allocator); }");
         } else {
             try writeJsonParseValueExpr(file, field.kind, "value", "arena_allocator", writer);
         }
@@ -7725,7 +7725,7 @@ fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, kind: schema.FieldKind
             try writer.writeAll(arena_expr);
             try writer.writeAll(", ");
             try writer.writeAll(value_expr);
-            try writer.writeAll(", .{}), options); defer nested.deinit(");
+            try writer.writeAll(", .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer nested.deinit(");
             try writer.writeAll(arena_expr);
             try writer.writeAll("); break :blk try nested.encode(");
             try writer.writeAll(arena_expr);
@@ -7807,18 +7807,18 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn jsonBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]const u8 {
-        \\    return try jsonDecodeBase64(allocator, try jsonString(value));
+        \\    return try @This().jsonDecodeBase64(allocator, try @This().jsonString(value));
         \\}
         \\
         \\fn jsonEnum(value: std.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32 {
         \\    return switch (value) {
-        \\        .integer => |v| try jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
-        \\        .number_string => |text| try jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
+        \\        .integer => |v| try @This().jsonEnumNumber(std.math.cast(i32, v) orelse error.Overflow, numbers, closed),
+        \\        .number_string => |text| try @This().jsonEnumNumber(try std.fmt.parseInt(i32, text, 10), numbers, closed),
         \\        .string => |text| {
         \\            inline for (names, 0..) |name, i| {
         \\                if (std.mem.eql(u8, text, name)) return numbers[i];
         \\            }
-        \\            return try jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
+        \\            return try @This().jsonEnumNumber(std.fmt.parseInt(i32, text, 10) catch return error.InvalidEnumValue, numbers, closed);
         \\        },
         \\        else => error.TypeMismatch,
         \\    };
@@ -8071,7 +8071,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    var raw = pbz.Writer.init(allocator);
         \\    defer raw.deinit();
         \\    if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or (value[0] == '\'' and value[value.len - 1] == '\''))) {
-        \\        const bytes = try textUnquote(allocator, value);
+        \\        const bytes = try @This().textUnquote(allocator, value);
         \\        defer allocator.free(bytes);
         \\        try raw.writeBytes(number, bytes);
         \\    } else {
@@ -8091,18 +8091,18 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    defer raw.deinit();
         \\    try raw.writeTag(number, .start_group);
         \\    while (lines.next()) |raw_line| {
-        \\        const child = textCleanLine(raw_line);
+        \\        const child = @This().textCleanLine(raw_line);
         \\        if (child.len == 0) continue;
         \\        if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
         \\            try raw.writeTag(number, .end_group);
         \\            return try raw.toOwnedSlice();
         \\        }
-        \\        if (try textUnknownField(allocator, child)) |field_raw| {
+        \\        if (try @This().textUnknownField(allocator, child)) |field_raw| {
         \\            defer allocator.free(field_raw);
         \\            try raw.appendSlice(field_raw);
         \\            continue;
         \\        }
-        \\        if (try textUnknownGroup(allocator, child, lines)) |group_raw| {
+        \\        if (try @This().textUnknownGroup(allocator, child, lines)) |group_raw| {
         \\            defer allocator.free(group_raw);
         \\            try raw.appendSlice(group_raw);
         \\            continue;
@@ -8114,7 +8114,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\
         \\fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
         \\    var r = pbz.Reader.init(raw);
-        \\    while (try r.nextTag()) |tag| try textWriteUnknownField(tag, &r, writer);
+        \\    while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
         \\}
         \\
         \\fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
@@ -8132,7 +8132,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\        .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         \\        .length_delimited => {
         \\            try writer.print("{d}: ", .{tag.number});
-        \\            try textWriteQuotedBytes(try r.readBytes(), writer);
+        \\            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
         \\            try writer.writeByte('\n');
         \\        },
         \\        .start_group => {
@@ -8143,7 +8143,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\                    try writer.writeAll("}\n");
         \\                    return;
         \\                }
-        \\                try textWriteUnknownField(inner, r, writer);
+        \\                try @This().textWriteUnknownField(inner, r, writer);
         \\            }
         \\            return error.TruncatedInput;
         \\        },
@@ -8156,7 +8156,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    errdefer out.deinit();
         \\    var depth: usize = 1;
         \\    while (lines.next()) |raw_line| {
-        \\        const line = textCleanLine(raw_line);
+        \\        const line = @This().textCleanLine(raw_line);
         \\        if (line.len == 0) continue;
         \\        if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
         \\            depth -= 1;
@@ -8170,10 +8170,10 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-        \\    return jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-        \\        jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-        \\        jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-        \\        jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
+        \\    return @This().jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
+        \\        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
+        \\        @This().jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
+        \\        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
         \\}
         \\
         \\fn jsonDecodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
@@ -8387,7 +8387,7 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         try indent(writer, depth + 1);
         try writer.writeAll("defer nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, options);\n");
+        try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -8403,7 +8403,7 @@ fn writeDecodeAndStringifyPayload(ctx: *const CodegenContext, type_name: []const
     try indent(writer, depth);
     try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, options);\n");
+    try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
 }
 
 fn jsonMapValueSupported(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
@@ -8433,7 +8433,7 @@ fn writeJsonMapEntryValue(ctx: *const CodegenContext, kind: schema.FieldKind, va
             try writeMessageTypeReferenceWithContext(ctx, name, writer);
             try writer.writeAll(".decode(allocator, ");
             try writer.writeAll(value_expr);
-            try writer.writeAll("); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, options)");
+            try writer.writeAll("); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })");
         } else try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
     }
@@ -8554,9 +8554,9 @@ fn writeJsonExtensionValue(ctx: *const CodegenContext, kind: schema.FieldKind, v
         .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
         .message, .group => |type_name| {
-            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: JsonStringifyOptions, payload_: []const u8) !void { var nested = try ");
+            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, options_); } }.write(allocator, writer, options, ");
+            try writer.writeAll(".decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, ");
             try writer.writeAll(value_expr);
             try writer.writeAll(")");
         },
@@ -10002,13 +10002,13 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, self.@\"user\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, self.@\"user\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".parseTextWithOptions(allocator, block, options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".parseTextWithOptions(allocator, block, options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, payload);") != null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -10298,7 +10298,7 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".parseTextWithOptions(allocator, block, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".decode(allocator_, payload_);") != null);
@@ -10892,7 +10892,7 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |item| try w.writeMessage(2, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, self.@\"child\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"children\".len != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |payload, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value|") != null);
@@ -10953,22 +10953,22 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextFormatOptions = struct { enum_as_name: bool = true };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: TextFormatOptions) ![]u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: TextFormatOptions) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().TextFormatOptions) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.@\"id\"; try writer.print(\"{d}\", .{value});") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"tags: \"); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithOptions(allocator, writer, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"kids {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value {\\n\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try @This().textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"picked: \"); try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: TextParseOptions) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const normalized_text = try @This().textNormalizeSeparators(allocator, text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var lines = std.mem.splitScalar(u8, normalized_text, '\\n');") != null);
@@ -10979,7 +10979,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try textWriteQuotedBytes(try r.readBytes(), writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteQuotedBytes(try r.readBytes(), writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\\{o:0>3}\", .{c});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"{d} {{\\n\", .{tag.number});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
@@ -11021,7 +11021,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseTextWithOptions(allocator, block, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try self.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"has_child\" and self.@\"child\".len != 0 and payload.len != 0)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(merged[0..self.@\"child\".len], self.@\"child\")") != null);
@@ -11174,7 +11174,7 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteString(writer, entry.value)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (entry.key) \"\\\"true\\\"\" else \"\\\"false\\\"\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".decode(allocator, entry.value); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"counts\" = blk: { const old = self.@\"counts\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
@@ -11425,14 +11425,14 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{})") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonParseOptions = struct { ignore_unknown_fields: bool = false };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"_json_arena\" = arena") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitialized(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().jsonParse(allocator, text);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: JsonParseOptions) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.validateRequiredRecursive(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: JsonParseOptions) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonFloat(comptime T: type, value: std.json.Value) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, text, \"NaN\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else if (std.mem.eql(u8, text, \"Infinity\"))") != null);
@@ -11681,7 +11681,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"tag\".encodeRaw(allocator, try @This().textUnquote(try self.@\"_pbzOwnedAllocator\"(allocator), raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"nums\".encodeRaw(allocator, try @This().textInt(i32, raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.note]\") or @This().textBlockField(line, \"[note]\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".parseTextWithOptions(allocator, block, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.@\"note\".encodeRaw(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, key, \"[demo.tag]\") or std.mem.eql(u8, key, \"[tag]\")) {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.clearUnknownFieldsByNumber(allocator, extensions.@\"tag\".number); continue;") != null);
@@ -11696,9 +11696,9 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.@\"nums\".decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"[demo.nums]\\\":\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: JsonStringifyOptions, payload_: []const u8) !void { var nested = try @\"Note\".decode(allocator_, payload_);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try @\"Note\".decode(allocator_, payload_);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"tag\".decodeRaw(raw) catch null) |value| {") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try @This().textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.@\"note\".decodeRaw(raw) catch null) |payload| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.note] {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Note\".decode(allocator, payload);") != null);
@@ -12092,9 +12092,9 @@ test "codegen honors utf8 validation features for wire strings" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.value = value; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"strict: \"); const value = self.@\"strict\"; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try textWriteQuotedBytes(value, writer);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"key: \"); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try textWriteQuotedBytes(entry.key, writer);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value: \"); if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8; try textWriteQuotedBytes(entry.value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"strict: \"); const value = self.@\"strict\"; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"key: \"); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value: \"); if (!std.unicode.utf8ValidateSlice(entry.value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.value, writer);") != null);
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
     const text_content = content[text_start..];

@@ -15,6 +15,7 @@ library API.
 - `registry_loader.zig` — `MemorySourceTree`, recursive imports, and registry lookup.
 - `descriptors_codegen.zig` — descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`.
+- `generated_advanced.zig` — generated package namespaces, enum helpers, nested message payload type refs, oneof union storage, and service metadata from `proto/advanced.proto`.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask, wrappers, Any, and Struct helpers.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON and preserved unknown storage.
 - `conformance.zig` — conformance-style JSON-to-protobuf conversion.
