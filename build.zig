@@ -40,6 +40,7 @@ pub fn build(b: *std.Build) void {
         "json_text",
         "registry_loader",
         "descriptors_codegen",
+        "generated_types",
         "well_known_types",
         "proto2_extensions",
         "conformance",

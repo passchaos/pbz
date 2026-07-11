@@ -3715,9 +3715,7 @@ fn writeCloneRepeatedField(field: *const schema.FieldDescriptor, writer: *std.Io
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("out.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" = try allocator.alloc(");
+    try writer.writeAll("const cloned = try allocator.alloc(");
     try writeRepeatedElementType(field.*, writer);
     try writer.writeAll(", self.");
     try writeQuotedIdent(field.name, writer);
@@ -3725,11 +3723,13 @@ fn writeCloneRepeatedField(field: *const schema.FieldDescriptor, writer: *std.Io
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(", 0..) |item, i| out.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll("[i] = ");
+    try writer.writeAll(", 0..) |item, i| cloned[i] = ");
     try writeCloneValueExpr(field.kind, "item", writer);
     try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = cloned;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -3744,9 +3744,7 @@ fn writeCloneMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writ
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("out.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" = try allocator.alloc(");
+    try writer.writeAll("const cloned = try allocator.alloc(");
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll(", self.");
     try writeQuotedIdent(field.name, writer);
@@ -3754,13 +3752,15 @@ fn writeCloneMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writ
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(", 0..) |entry, i| out.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll("[i] = .{ .key = ");
+    try writer.writeAll(", 0..) |entry, i| cloned[i] = .{ .key = ");
     try writeCloneValueExpr(.{ .scalar = map_type.key }, "entry.key", writer);
     try writer.writeAll(", .value = ");
     try writeCloneValueExpr(map_type.value.*, "entry.value", writer);
     try writer.writeAll(" };\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("out.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = cloned;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -3795,9 +3795,11 @@ fn writeCloneUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("out.@\"_unknown_fields\" = try allocator.alloc([]const u8, self.@\"_unknown_fields\".len);\n");
+    try writer.writeAll("const cloned_unknowns = try allocator.alloc([]const u8, self.@\"_unknown_fields\".len);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self.@\"_unknown_fields\", 0..) |raw, i| out.@\"_unknown_fields\"[i] = try allocator.dupe(u8, raw);\n");
+    try writer.writeAll("for (self.@\"_unknown_fields\", 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("out.@\"_unknown_fields\" = cloned_unknowns;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -9359,14 +9361,18 @@ test "codegen emits owned clone helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try out.@\"_pbzOwnedAllocator\"(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"name\" = try owned_allocator.dupe(u8, self.@\"name\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"raw\" = try owned_allocator.dupe(u8, self.@\"raw\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\", 0..) |item, i| out.@\"tags\"[i] = try owned_allocator.dupe(u8, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const cloned = try allocator.alloc([]const u8, self.@\"tags\".len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"tags\", 0..) |item, i| cloned[i] = try owned_allocator.dupe(u8, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"tags\" = cloned;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"child\" = try owned_allocator.dupe(u8, self.@\"child\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |item, i| out.@\"children\"[i] = try owned_allocator.dupe(u8, item);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"blobs\", 0..) |entry, i| out.@\"blobs\"[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try owned_allocator.dupe(u8, entry.value) };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |item, i| cloned[i] = try owned_allocator.dupe(u8, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"blobs\", 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try owned_allocator.dupe(u8, entry.value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"alias\" => |value| .{ .@\"alias\" = try owned_allocator.dupe(u8, value) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value| .{ .@\"picked\" = try owned_allocator.dupe(u8, value) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"id\" => |value| .{ .@\"id\" = value },") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\", 0..) |raw, i| out.@\"_unknown_fields\"[i] = try allocator.dupe(u8, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const cloned_unknowns = try allocator.alloc([]const u8, self.@\"_unknown_fields\".len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"_unknown_fields\", 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out.@\"_unknown_fields\" = cloned_unknowns;") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

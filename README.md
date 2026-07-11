@@ -113,6 +113,7 @@ The examples cover:
 - [`json_text.zig`](examples/json_text.zig): dynamic JSON and TextFormat parse/format round-trips.
 - [`registry_loader.zig`](examples/registry_loader.zig): in-memory imports and registry lookup.
 - [`descriptors_codegen.zig`](examples/descriptors_codegen.zig): descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
+- [`generated_types.zig`](examples/generated_types.zig): C++/Rust-style use of a checked-in generated module from [`examples/proto/person.proto`](examples/proto/person.proto), using [`examples/generated/person.pb.zig`](examples/generated/person.pb.zig).
 - [`well_known_types.zig`](examples/well_known_types.zig): Timestamp, Duration, FieldMask, wrapper, Any, and Struct helpers.
 - [`proto2_extensions.zig`](examples/proto2_extensions.zig): proto2 extensions via TextFormat/JSON and preserved unknown storage.
 - [`conformance.zig`](examples/conformance.zig): conformance-style JSON-to-protobuf conversion.

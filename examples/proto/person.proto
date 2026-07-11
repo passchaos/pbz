@@ -1,0 +1,9 @@
+syntax = "proto3";
+package demo;
+
+message Person {
+  int32 id = 1;
+  string name = 2;
+  repeated int32 scores = 3;
+  map<string, int32> counts = 4;
+}
