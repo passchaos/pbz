@@ -4,6 +4,8 @@
 #include <iostream>
 #include <string>
 
+#include <google/protobuf/util/json_util.h>
+
 #include "person.pb.h"
 
 using Clock = std::chrono::steady_clock;
@@ -76,6 +78,8 @@ int main() {
   const demo::Person person = MakePerson();
   std::string bytes;
   person.SerializeToString(&bytes);
+  std::string json;
+  if (!google::protobuf::util::MessageToJsonString(person, &json).ok()) std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -88,6 +92,7 @@ int main() {
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
+  std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "packed payload size: " << packed_bytes.size() << "\n";
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size() << "\n";
   std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size() << "\n";
@@ -131,6 +136,37 @@ int main() {
     asm volatile("" : : "g"(&reused_decoded) : "memory");
   });
   decode_reuse.Print();
+
+  auto json_stringify = RunTimed("c++ protobuf JSON stringify", kIterations, json.size(), [&]() {
+    std::string out;
+    if (!google::protobuf::util::MessageToJsonString(person, &out).ok()) std::abort();
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  json_stringify.Print();
+
+  std::string reused_json;
+  reused_json.reserve(json.size());
+  auto json_stringify_reuse = RunTimed("c++ protobuf JSON stringify reuse", kIterations, json.size(), [&]() {
+    reused_json.clear();
+    if (!google::protobuf::util::MessageToJsonString(person, &reused_json).ok()) std::abort();
+    asm volatile("" : : "g"(reused_json.data()) : "memory");
+  });
+  json_stringify_reuse.Print();
+
+  auto json_parse = RunTimed("c++ protobuf JSON parse", kIterations, json.size(), [&]() {
+    demo::Person decoded;
+    if (!google::protobuf::util::JsonStringToMessage(json, &decoded).ok()) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  json_parse.Print();
+
+  demo::Person reused_json_decoded;
+  auto json_parse_reuse = RunTimed("c++ protobuf JSON parse reuse", kIterations, json.size(), [&]() {
+    reused_json_decoded.Clear();
+    if (!google::protobuf::util::JsonStringToMessage(json, &reused_json_decoded).ok()) std::abort();
+    asm volatile("" : : "g"(&reused_json_decoded) : "memory");
+  });
+  json_parse_reuse.Print();
 
   auto packed_encode = RunTimed("c++ protobuf packed encode", kIterations, packed_bytes.size(), [&]() {
     std::string out;

@@ -88,6 +88,22 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "JSON stringify",
+        ("generated JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf JSON stringify", "c++ protobuf JSON stringify reuse"),
+            "go protobuf": ("go protobuf JSON stringify",),
+        },
+    ),
+    Workload(
+        "JSON parse",
+        ("generated JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf JSON parse", "c++ protobuf JSON parse reuse"),
+            "go protobuf": ("go protobuf JSON parse",),
+        },
+    ),
+    Workload(
         "packed fixed32 encode",
         (
             "generated fixed32 packed encode",

@@ -33,7 +33,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - JSON stringify/parse
 - TextFormat format/parse
 
-The cross-language binary baselines use the same `Person` payload and the same
+The cross-language binary and JSON baselines use the same `Person` payload and the same
 `Packed { repeated int32 values = 1; }` and
 `FixedPacked { repeated fixed32 values = 1; }` and
 `Fixed64Packed { repeated fixed64 values = 1; }` payloads. Treat results as
@@ -57,10 +57,10 @@ Cross-language baselines:
 - `bench/cpp_protobuf`: C++ protobuf generated-code binary encode/decode for
   the same schema. It requires `protoc`, a C++ compiler, protobuf headers, and
   libprotobuf. It measures both `SerializeToString` and caller-provided buffer
-  `SerializeToArray` reuse paths, plus decode into fresh and reused message
+  `SerializeToArray` reuse paths, protobuf util JSON stringify/parse, plus decode into fresh and reused message
   objects. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
   ignored `bench/cpp_protobuf/generated/` directory before compiling.
 - `bench/go_protobuf`: Go `google.golang.org/protobuf` generated-code binary
-  encode/decode for the same schema. It requires Go, `protoc`, and
+  encode/decode plus `protojson` stringify/parse for the same schema. It requires Go, `protoc`, and
   `protoc-gen-go`; generated Go protobuf sources are written to the ignored
   `bench/go_protobuf/personpb/` directory.
