@@ -104,6 +104,14 @@ int main() {
   });
   decode.Print();
 
+  demo::Person reused_decoded;
+  auto decode_reuse = RunTimed("c++ protobuf binary decode reuse", kIterations, bytes.size(), [&]() {
+    reused_decoded.Clear();
+    if (!reused_decoded.ParseFromString(bytes)) std::abort();
+    asm volatile("" : : "g"(&reused_decoded) : "memory");
+  });
+  decode_reuse.Print();
+
   auto packed_encode = RunTimed("c++ protobuf packed encode", kIterations, packed_bytes.size(), [&]() {
     std::string out;
     out.reserve(packed_bytes.size());
@@ -135,6 +143,14 @@ int main() {
     asm volatile("" : : "g"(&decoded) : "memory");
   });
   packed_decode.Print();
+
+  demo::Packed reused_packed_decoded;
+  auto packed_decode_reuse = RunTimed("c++ protobuf packed decode reuse", kIterations, packed_bytes.size(), [&]() {
+    reused_packed_decoded.Clear();
+    if (!reused_packed_decoded.ParseFromString(packed_bytes)) std::abort();
+    asm volatile("" : : "g"(&reused_packed_decoded) : "memory");
+  });
+  packed_decode_reuse.Print();
 
   return 0;
 }
