@@ -450,13 +450,50 @@ pub const demo = struct {
             }
 
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
-                var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
-                try self.writeToAssumeCapacity(&w);
-                return buffer[0..w.slice().len];
+                var index: usize = 0;
+                if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
+                if (self.kind != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+                if (self.audit) |value| { const payload_len = value.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
+                { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
+                    const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
+                    if (!pbz.validateUtf8(key)) return error.InvalidUtf8;
+                    const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + blk: { const value_len = value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
+                    buffer[index] = 58; index += 1;
+                    pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
+                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
+                    const value_len = value.encodedSize(); buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..value_len]); index += value_len;
+                } }
+                switch (self.subject) {
+                    .none => {},
+                    .user_name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .organization_id => |value| { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .audit_subject => |value| { const payload_len = value.encodedSize(); buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; },
+                }
+                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                return buffer[0..index];
             }
 
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
-                return try self.encodeIntoAssumeCapacity(buffer);
+                var index: usize = 0;
+                if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
+                if (self.kind != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+                if (self.audit) |value| { const payload_len = value.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
+                { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
+                    const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
+                    const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + blk: { const value_len = value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
+                    buffer[index] = 58; index += 1;
+                    pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
+                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
+                    const value_len = value.encodedSize(); buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..value_len]); index += value_len;
+                } }
+                switch (self.subject) {
+                    .none => {},
+                    .user_name => |value| { buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .organization_id => |value| { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .audit_subject => |value| { const payload_len = value.encodedSize(); buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; },
+                }
+                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                return buffer[0..index];
             }
 
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {

@@ -3247,6 +3247,7 @@ fn messageCanFastDirectEncode(ctx: *const CodegenContext, message: *const schema
     var has_typed_message = false;
     const has_oneof = message.oneofs.items.len != 0;
     var has_presence = false;
+    var has_map = false;
     for (message.fields.items) |*field| {
         if (field.oneof_name == null and hasPresence(file, field.*)) has_presence = true;
         switch (field.kind) {
@@ -3269,10 +3270,27 @@ fn messageCanFastDirectEncode(ctx: *const CodegenContext, message: *const schema
                 }
                 has_typed_message = true;
             },
-            .map => return false,
+            .map => {
+                if (!mapCanFastDirectEncode(ctx, field)) return false;
+                has_map = true;
+            },
         }
     }
-    return has_packed_repeated or has_length_delimited_scalar or has_typed_message or has_oneof or has_presence or message.fields.items.len >= 8;
+    return has_packed_repeated or has_length_delimited_scalar or has_typed_message or has_oneof or has_presence or has_map or message.fields.items.len >= 8;
+}
+
+fn mapCanFastDirectEncode(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
+    _ = ctx;
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return false,
+    };
+    _ = map_type.key;
+    return switch (map_type.value.*) {
+        .scalar, .enumeration => true,
+        .message => true,
+        .group, .map => false,
+    };
 }
 
 fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -3281,6 +3299,10 @@ fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: 
     try writer.writeAll("var index: usize = 0;\n");
     for (message.fields.items) |*field| {
         if (field.oneof_name != null) continue;
+        if (field.kind == .map) {
+            try writeFastDirectMapEncode(ctx, field, validate_utf8, writer, depth);
+            continue;
+        }
         if (field.cardinality == .repeated) {
             if (field.kind == .scalar and field.resolvedPacked(file)) {
                 try writeFastDirectPackedScalarEncode(field, field.kind.scalar, writer, depth);
@@ -3299,7 +3321,7 @@ fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: 
             .scalar => |scalar| try writeFastDirectScalarEncode(ctx.file, field, scalar, validate_utf8, writer, depth),
             .enumeration => try writeFastDirectEnumEncode(ctx.file, field, writer, depth),
             .message, .group => try writeFastDirectSingularMessageEncode(ctx, field, validate_utf8, writer, depth),
-            .map => {},
+            .map => unreachable,
         }
     }
     for (message.oneofs.items) |oneof| try writeFastDirectOneofEncode(ctx, message, oneof, validate_utf8, writer, depth);
@@ -3392,6 +3414,83 @@ fn writeFastDirectRepeatedMessageEncode(ctx: *const CodegenContext, field: *cons
     try writer.writeAll(") |item| { ");
     try writeFastDirectMessagePayload(field, "item", validate_utf8, writer);
     try writer.writeAll(" }\n");
+}
+
+fn writeFastDirectMapEncode(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("{ var map_it = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".iterator(); while (map_it.next()) |map_entry| {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;\n");
+    if (validate_utf8) {
+        try writeFastDirectMapUtf8Validation(ctx.file, field, "key", .{ .scalar = map_type.key }, writer, depth + 1);
+        try writeFastDirectMapUtf8Validation(ctx.file, field, "value", map_type.value.*, writer, depth + 1);
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("const entry_len = ");
+    try writeMapEntryFieldSizeExpr(1, .{ .scalar = map_type.key }, "key", writer);
+    try writer.writeAll(" + ");
+    try writeMapEntryValueFieldSizeExpr(ctx, field, "value", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
+    try writer.writeAll("\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, entry_len);\n");
+    try indent(writer, depth + 1);
+    try writeFastDirectMapScalarPayload(1, map_type.key, "key", writer);
+    try writer.writeAll("\n");
+    try writeFastDirectMapValuePayload(ctx, field, map_type, validate_utf8, writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("} }\n");
+}
+
+fn writeFastDirectMapUtf8Validation(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, value_expr: []const u8, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (kind == .scalar and kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+        try indent(writer, depth);
+        try writer.print("if (!pbz.validateUtf8({s})) return error.InvalidUtf8;\n", .{value_expr});
+    }
+}
+
+fn writeFastDirectMapValuePayload(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, map_type: schema.MapType, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    switch (map_type.value.*) {
+        .scalar => |scalar| try writeFastDirectMapScalarPayload(2, scalar, "value", writer),
+        .enumeration => {
+            try writeFastDirectTag(2, .{ .enumeration = "" }, writer);
+            try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value))));");
+        },
+        .message => {
+            if (typedMapMessageValueWithContext(ctx, field)) |_| {
+                try writer.writeAll("const value_len = value.encodedSize(); ");
+                try writeFastDirectTag(2, .{ .scalar = .bytes }, writer);
+                try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, value_len); _ = try value.");
+                try writer.writeAll(if (validate_utf8) "encodeIntoAssumeCapacity" else "encodeIntoAssumeCapacityTrustedUtf8");
+                try writer.writeAll("(buffer[index..][0..value_len]); index += value_len;");
+            } else {
+                try writeFastDirectTag(2, .{ .scalar = .bytes }, writer);
+                try writer.writeAll(" ");
+                try writeFastDirectLengthDelimitedPayload("", "value", writer);
+            }
+        },
+        .group, .map => try writer.writeAll("@compileError(\"unsupported map value\")"),
+    }
+    try writer.writeAll("\n");
+}
+
+fn writeFastDirectMapScalarPayload(number: u29, scalar: schema.ScalarType, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    try writeFastDirectTag(number, .{ .scalar = scalar }, writer);
+    try writer.writeByte(' ');
+    if (scalar == .string or scalar == .bytes) {
+        try writeFastDirectLengthDelimitedPayload("", value_expr, writer);
+    } else {
+        try writeFastDirectScalarPayload(value_expr, "", scalar, writer);
+    }
 }
 
 fn writeFastDirectOneofEncode(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {

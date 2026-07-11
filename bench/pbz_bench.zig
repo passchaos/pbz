@@ -1632,50 +1632,8 @@ fn generatedEncodeIntoReuse(ctx: GeneratedEncodeIntoCtx) !void {
 
 const GeneratedPersonFastEncodeIntoCtx = struct { buffer: []u8, person: *const person_pb.demo.Person };
 fn generatedPersonTrustedUtf8EncodeIntoReuse(ctx: GeneratedPersonFastEncodeIntoCtx) !void {
-    const person = ctx.person;
-    var index: usize = 0;
-    if (person.id != 0) {
-        ctx.buffer[index] = 8;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(@as(i64, person.id))));
-    }
-    if (person.name.len != 0) {
-        ctx.buffer[index] = 18;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, person.name.len);
-        @memcpy(ctx.buffer[index..][0..person.name.len], person.name);
-        index += person.name.len;
-    }
-    if (person.scores.len != 0) {
-        var packed_len: usize = 0;
-        for (person.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
-        ctx.buffer[index] = 26;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, packed_len);
-        for (person.scores) |item| pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(@as(i64, item))));
-    }
-    var map_it = person.counts.iterator();
-    while (map_it.next()) |entry| {
-        const key = entry.key_ptr.*;
-        const value = entry.value_ptr.*;
-        const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value))));
-        ctx.buffer[index] = 34;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, entry_len);
-        ctx.buffer[index] = 10;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, key.len);
-        @memcpy(ctx.buffer[index..][0..key.len], key);
-        index += key.len;
-        ctx.buffer[index] = 16;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(@as(i64, value))));
-    }
-    for (person._unknown_fields) |raw| {
-        @memcpy(ctx.buffer[index..][0..raw.len], raw);
-        index += raw.len;
-    }
-    std.mem.doNotOptimizeAway(ctx.buffer.ptr);
+    const bytes = try ctx.person.encodeIntoAssumeCapacityTrustedUtf8(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
 const GeneratedDeterministicEncodeCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
