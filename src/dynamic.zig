@@ -306,6 +306,18 @@ pub const DynamicMessage = struct {
         }
     }
 
+    fn addPackedFixed32(self: *DynamicMessage, field: *const schema.FieldDescriptor, payload: []const u8) (std.mem.Allocator.Error || wire.Error)!void {
+        if (payload.len % 4 != 0) return error.InvalidWireType;
+        if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
+        var entry = try self.getOrCreateMutable(field);
+        const count = payload.len / 4;
+        try entry.values.ensureUnusedCapacity(self.allocator, count);
+        var index: usize = 0;
+        while (index < count) : (index += 1) {
+            entry.values.appendAssumeCapacity(.{ .fixed32 = std.mem.readInt(u32, payload[index * 4 ..][0..4], .little) });
+        }
+    }
+
     pub fn mergeFrom(self: *DynamicMessage, other: *const DynamicMessage) std.mem.Allocator.Error!void {
         for (other.fields.items) |*entry| {
             for (entry.values.items) |value| try self.mergeFieldFrom(entry.descriptor, value);
@@ -682,6 +694,11 @@ pub const DynamicMessage = struct {
                 try self.addPackedInt32(field, payload);
                 continue;
             }
+            if (tag.wire_type == .length_delimited and field.kind == .scalar and field.kind.scalar == .fixed32 and field.isPackable()) {
+                const payload = try reader.readBytes();
+                try self.addPackedFixed32(field, payload);
+                continue;
+            }
             if (tag.wire_type == .length_delimited and field.isPackable()) {
                 const payload = try reader.readBytes();
                 var packed_reader = wire.Reader.init(payload);
@@ -1037,6 +1054,7 @@ fn encodeMapElement(
 fn encodePackedWithRegistry(current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
     const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
     if (kind == .scalar and kind.scalar == .int32) return try encodePackedInt32(field, values, writer);
+    if (kind == .scalar and kind.scalar == .fixed32) return try encodePackedFixed32(field, values, writer);
 
     var packed_writer = wire.Writer.init(writer.allocator);
     defer packed_writer.deinit();
@@ -1054,6 +1072,17 @@ fn encodePackedInt32(field: *const schema.FieldDescriptor, values: []const Value
     writer.writeTagAssumeCapacity(field.number, .length_delimited);
     writer.writeVarintAssumeCapacity(packed_len);
     for (values) |value| writer.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, value.int32))));
+}
+
+fn encodePackedFixed32(field: *const schema.FieldDescriptor, values: []const Value, writer: *wire.Writer) EncodeError!void {
+    const packed_len = values.len * 4;
+    try writer.bytes.ensureUnusedCapacity(writer.allocator, (try wire.tagSize(field.number, .length_delimited)) + wire.encodedVarintSize(packed_len) + packed_len);
+    writer.writeTagAssumeCapacity(field.number, .length_delimited);
+    writer.writeVarintAssumeCapacity(packed_len);
+    for (values) |value| {
+        if (value != .fixed32) return error.TypeMismatch;
+        writer.writeRawLittleAssumeCapacity(u32, value.fixed32);
+    }
 }
 
 fn encodeScalar(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, number: wire.FieldNumber, scalar: schema.ScalarType, value: Value, writer: *wire.Writer) EncodeError!void {
