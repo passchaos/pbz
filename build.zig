@@ -42,6 +42,7 @@ pub fn build(b: *std.Build) void {
         "descriptors_codegen",
         "generated_types",
         "generated_advanced",
+        "generated_imports",
         "well_known_types",
         "proto2_extensions",
         "conformance",

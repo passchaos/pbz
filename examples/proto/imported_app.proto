@@ -1,0 +1,16 @@
+syntax = "proto3";
+package demo.imports.app;
+
+import "imported_common.proto";
+
+message Request {
+  demo.imports.common.Profile primary = 1;
+  repeated demo.imports.common.Profile history = 2;
+  map<string, demo.imports.common.Profile> by_name = 3;
+
+  oneof selected {
+    demo.imports.common.Profile chosen = 4;
+    string fallback = 5;
+  }
+}
+

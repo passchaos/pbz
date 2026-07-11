@@ -565,6 +565,8 @@ fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: 
         for (file.imports.items) |import| try writeImportDecl(ctx, import, writer, depth + 1);
         try indent(writer, depth);
         try writer.writeAll("};\n");
+        try indent(writer, depth);
+        try writer.writeAll("const @\"pbz.generated.file\" = @This();\n");
     }
     try writer.writeAll("\n");
 }
@@ -752,6 +754,11 @@ fn writeFieldMetadataDecl(ctx: *const CodegenContext, field: *const schema.Field
         var type_buf: std.Io.Writer.Allocating = .init(ctx.allocator);
         defer type_buf.deinit();
         try type_buf.writer.writeAll("[]const ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, &type_buf.writer);
+        try writeZigStringLiteral(type_buf.written(), writer);
+    } else if (typedOneofMessageFieldWithContext(ctx, field)) |type_name| {
+        var type_buf: std.Io.Writer.Allocating = .init(ctx.allocator);
+        defer type_buf.deinit();
         try writeMessageTypeReferenceWithContext(ctx, type_name, &type_buf.writer);
         try writeZigStringLiteral(type_buf.written(), writer);
     } else {
@@ -5182,7 +5189,7 @@ fn writeMessageTypeReferenceWithContext(ctx: *const CodegenContext, type_name: [
         return try writeMessageTypeReference(type_name, writer);
     };
     if (reference.import_chain) |chain| {
-        try writeImportChainPrefix(chain.slice(), writer);
+        try writeImportChainPrefix(ctx, chain.slice(), writer);
         try writePackagePath(reference.file.package, writer);
         if (!(try writeMessagePathInFile(reference.file, reference.message, writer))) try writeMessageTypeReference(type_name, writer);
     } else {
@@ -5235,7 +5242,8 @@ fn sameFileForCodegen(a: *const schema.FileDescriptor, b: *const schema.FileDesc
     return false;
 }
 
-fn writeImportChainPrefix(paths: []const []const u8, writer: *std.Io.Writer) Error!void {
+fn writeImportChainPrefix(ctx: *const CodegenContext, paths: []const []const u8, writer: *std.Io.Writer) Error!void {
+    if (packageHasSegment(ctx.file.package, "imports")) try writer.writeAll("@\"pbz.generated.file\".");
     try writer.writeAll("imports.");
     for (paths, 0..) |path, index| {
         if (index != 0) {
@@ -5244,6 +5252,14 @@ fn writeImportChainPrefix(paths: []const []const u8, writer: *std.Io.Writer) Err
         try writeQuotedIdent(path, writer);
     }
     try writer.writeByte('.');
+}
+
+fn packageHasSegment(package: []const u8, needle: []const u8) bool {
+    var parts = std.mem.splitScalar(u8, package, '.');
+    while (parts.next()) |part| {
+        if (std.mem.eql(u8, part, needle)) return true;
+    }
+    return false;
 }
 
 fn writePackagePath(package: []const u8, writer: *std.Io.Writer) Error!void {
@@ -7251,10 +7267,24 @@ fn writeTextMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
     if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
-        try writer.writeAll("for (self.");
-        try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |payload| {\n");
-        try writeTextMessagePayload(ctx, field.name, type_name, "payload", writer, depth + 1);
+        if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |nested| {\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try writer.writeAll(\"");
+            try writeEscapedStringContents(field.name, writer);
+            try writer.writeAll(" {\\n\");\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
+        } else {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |payload| {\n");
+            try writeTextMessagePayload(ctx, field.name, type_name, "payload", writer, depth + 1);
+        }
         try indent(writer, depth);
         try writer.writeAll("}\n");
     } else {
@@ -9245,10 +9275,15 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         try indent(writer, depth + 1);
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", 0..) |payload, i| {\n");
+        try writer.writeAll(", 0..) |item, i| {\n");
         try indent(writer, depth + 2);
         try writer.writeAll("if (i != 0) try writer.writeAll(\",\");\n");
-        try writeDecodeAndStringifyPayload(ctx, type_name, "payload", writer, depth + 2);
+        if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
+            try indent(writer, depth + 2);
+            try writer.writeAll("try item.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
+        } else {
+            try writeDecodeAndStringifyPayload(ctx, type_name, "item", writer, depth + 2);
+        }
         try indent(writer, depth + 1);
         try writer.writeAll("}\n");
         try indent(writer, depth + 1);
@@ -11816,7 +11851,7 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"children\".len != 0 or options.always_print_primitive_fields)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |payload, i|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\", 0..) |item, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Child\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"pick\" = .{ .@\"picked\" = blk:") != null);
@@ -11838,7 +11873,7 @@ test "codegen emits JSON helpers for proto2 group payload fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"box\": []const u8 = \"\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"item\": []const []const u8 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".decode(allocator, self.@\"box\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"item\", 0..) |payload, i|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"item\", 0..) |item, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Box\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try @\"Item\".jsonParseWithOptions(arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"item\" = blk: { const old = self.@\"item\"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
@@ -12457,7 +12492,7 @@ test "codegen emits recursive required validation for message payloads" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.@\"child\") |nested|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |payload|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"children\") |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".@\"picked\" => |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.@\"keyed\") |entry|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.validateRequiredRecursive(allocator)") != null);
