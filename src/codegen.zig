@@ -42,11 +42,41 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     try writeZigStringLiteral(active_ctx.pbz_import, &out.writer);
     try out.writer.writeAll(");\n\n");
     try writeFileMetadata(&active_ctx, &out.writer, 0);
-    for (active_ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, &out.writer, 0);
-    for (active_ctx.file.messages.items) |*message| try writeMessage(&active_ctx, message, &out.writer, 0);
-    try writeExtensionMetadata(&active_ctx, &out.writer, 0);
-    try writeServiceMetadata(&active_ctx, &out.writer, 0);
+    try writePackagedFileDecls(&active_ctx, &out.writer, 0);
     return try out.toOwnedSlice();
+}
+
+fn writePackagedFileDecls(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (ctx.file.package.len == 0) return try writeFileDecls(ctx, writer, depth);
+    try writePackageNamespace(ctx, ctx.file.package, writer, depth);
+}
+
+fn writePackageNamespace(ctx: *const CodegenContext, package: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    const dot = std.mem.indexOfScalar(u8, package, '.');
+    const segment = if (dot) |idx| package[0..idx] else package;
+    if (segment.len == 0) {
+        if (dot) |idx| return try writePackageNamespace(ctx, package[idx + 1 ..], writer, depth);
+        return try writeFileDecls(ctx, writer, depth);
+    }
+
+    try indent(writer, depth);
+    try writer.writeAll("pub const ");
+    try writeQuotedIdent(segment, writer);
+    try writer.writeAll(" = struct {\n");
+    if (dot) |idx| {
+        try writePackageNamespace(ctx, package[idx + 1 ..], writer, depth + 1);
+    } else {
+        try writeFileDecls(ctx, writer, depth + 1);
+    }
+    try indent(writer, depth);
+    try writer.writeAll("};\n\n");
+}
+
+fn writeFileDecls(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth);
+    for (ctx.file.messages.items) |*message| try writeMessage(ctx, message, writer, depth);
+    try writeExtensionMetadata(ctx, writer, depth);
+    try writeServiceMetadata(ctx, writer, depth);
 }
 
 fn cloneFileForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDescriptor) std.mem.Allocator.Error!schema.FileDescriptor {
@@ -601,8 +631,6 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writeCloneOwned(file, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeOwnedAllocator(writer, depth + 1);
-    try writer.writeAll("\n");
-    try writeFieldAccessors(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
     try writer.writeAll("\n");
@@ -3475,11 +3503,33 @@ fn writeMergeMapField(field: *const schema.FieldDescriptor, writer: *std.Io.Writ
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("var list: std.ArrayList(");
+    try writeRepeatedElementType(field.*, writer);
+    try writer.writeAll(") = .empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer list.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) try list.appendSlice(allocator, self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("for (other.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(") |entry| try self.");
-    try writeQuotedAccessorIdent("append", field.name, writer);
-    try writer.writeAll("(allocator, entry);\n");
+    try writer.writeAll(") |entry| try @This().");
+    try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+    try writer.writeAll("(allocator, &list, entry);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const old = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = try list.toOwnedSlice(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -4331,6 +4381,7 @@ fn writeMessageTypeReferenceWithContext(ctx: *const CodegenContext, type_name: [
     };
     if (reference.import_chain) |chain| {
         try writeImportChainPrefix(chain.slice(), writer);
+        try writePackagePath(reference.file.package, writer);
         if (!(try writeMessagePathInFile(reference.file, reference.message, writer))) try writeMessageTypeReference(type_name, writer);
     } else {
         try writeMessageTypeReference(type_name, writer);
@@ -4386,6 +4437,16 @@ fn writeImportChainPrefix(paths: []const []const u8, writer: *std.Io.Writer) Err
         try writeQuotedIdent(path, writer);
     }
     try writer.writeByte('.');
+}
+
+fn writePackagePath(package: []const u8, writer: *std.Io.Writer) Error!void {
+    if (package.len == 0) return;
+    var parts = std.mem.splitScalar(u8, package, '.');
+    while (parts.next()) |part| {
+        if (part.len == 0) continue;
+        try writeQuotedIdent(part, writer);
+        try writer.writeByte('.');
+    }
 }
 
 fn writeMessagePathInFile(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, writer: *std.Io.Writer) Error!bool {
@@ -9225,7 +9286,7 @@ test "codegen emits field metadata including imported type names" {
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
-test "codegen emits field accessors for presence repeated map message and oneof fields" {
+test "codegen emits direct fields for presence repeated map message and oneof fields" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
@@ -9244,38 +9305,21 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasField_id\"(self: @This()) bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getField_id\"(self: @This()) ?i32") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getOrDefaultField_name\"(self: @This()) []const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setField_name\"(self: *@This(), value: []const u8) void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_name\"(self: *@This()) void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendField_nums\"(self: *@This(), allocator: std.mem.Allocator, value: i32) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendAllField_nums\"(self: *@This(), allocator: std.mem.Allocator, values: []const i32) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceField_keyed\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"keyedEntry\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_keyed\"(self: *@This(), allocator: std.mem.Allocator) void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8, value: @\"Child\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_keyed\"(allocator, .{ .key = key, .value = try value.encode(owned_allocator) });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceMessageEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8, value: @\"Child\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry.key, key)) { self.@\"keyed\"[i] = .{ .key = key, .value = payload }; return; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"removeMessageEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8) !bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const replacement = try allocator.alloc(@\"keyedEntry\", old.len - 1);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageEntryField_keyed\"(self: @This(), allocator: std.mem.Allocator, key: []const u8) !?@\"Child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry.key, key)) return try @\"Child\".decode(allocator, entry.value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_child\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessageField_child\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageField_children\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceMessagesField_children\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Child\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessagesField_children\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessagesField_children\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasField_alias\"(self: @This()) bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return switch (self.@\"pick\") { .@\"alias\" => true, else => false };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getField_alias\"(self: @This()) ?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setField_alias\"(self: *@This(), value: []const u8) void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"clearField_alias\"(self: *@This()) void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Child\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"decodeMessageField_picked\"(self: @This(), allocator: std.mem.Allocator) !?@\"Child\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"id\": i32 = 0,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_id\": bool = false,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"name\": []const u8 = \"anon\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"nums\": []const i32 = &.{},") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"child\": []const u8 = \"\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"children\": []const []const u8 = &.{},") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"keyed\": []const @\"keyedEntry\" = &.{},") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"pick\": @\"pickOneof\" = .none,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"hasField_id\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getField_id\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setField_name\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendField_nums\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_child\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessageField_child\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setField_alias\"") == null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -9284,7 +9328,7 @@ test "codegen emits field accessors for presence repeated map message and oneof 
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
-test "codegen emits typed enum field accessors" {
+test "codegen emits typed enum metadata without field accessor wrappers" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
@@ -9303,31 +9347,16 @@ test "codegen emits typed enum field accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Kind\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_has_enum_ref = true;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_enum_ref = @\"Kind\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_role\"(self: @This()) ?@\"Kind\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return @\"Kind\".fromInt(raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumOrDefaultField_role\"(self: @This()) @\"Kind\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return self.@\"getEnumField_role\"() orelse @\"Kind\".fromInt(self.@\"getOrDefaultField_role\"()) orelse unreachable;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_role\"(self: *@This(), value: @\"Kind\") void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.@\"setField_role\"(value.toInt());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumField_roles\"(self: *@This(), allocator: std.mem.Allocator, value: @\"Kind\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_roles\"(allocator, value.toInt());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendAllEnumsField_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (values, 0..) |value, i| raw[i] = value.toInt();") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendAllField_roles\"(allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceEnumsField_roles\"(self: *@This(), allocator: std.mem.Allocator, values: []const @\"Kind\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"replaceField_roles\"(allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumsField_roles\"(self: @This(), allocator: std.mem.Allocator) ![]@\"Kind\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw, 0..) |value, i| out[i] = @\"Kind\".fromInt(value) orelse return error.InvalidEnumValue;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_selected\"(self: @This()) ?@\"Kind\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_selected\"(self: *@This(), value: @\"Kind\") void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8, value: @\"Kind\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.@\"appendField_keyed\"(allocator, .{ .key = key, .value = value.toInt() });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"replaceEnumEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8, value: @\"Kind\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry.key, key)) { self.@\"keyed\"[i] = .{ .key = key, .value = value.toInt() }; return; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"removeEnumEntryField_keyed\"(self: *@This(), allocator: std.mem.Allocator, key: []const u8) !bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const replacement = try allocator.alloc(@\"keyedEntry\", old.len - 1);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumEntryField_keyed\"(self: @This(), key: []const u8) ?@\"Kind\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, entry.key, key)) return @\"Kind\".fromInt(entry.value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"role\": i32 = 0,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"has_role\": bool = false,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"roles\": []const i32 = &.{},") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"pick\": @\"pickOneof\" = .none,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@\"keyed\": []const @\"keyedEntry\" = &.{},") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_role\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setEnumField_role\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumField_roles\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendEnumEntryField_keyed\"") == null);
+
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
@@ -9419,27 +9448,19 @@ test "codegen with registry emits imported message type refs and accessors" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\".@\"Profile\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"User\".@\"Profile\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_user\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendMessageField_profiles\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\".@\"Profile\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getMessagesField_profiles\"(self: @This(), allocator: std.mem.Allocator) ![]imports.@\"common.proto\".@\"User\".@\"Profile\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_picked\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".decode(allocator, self.@\"user\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".decode(allocator, self.@\"user\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".parseTextWithOptions(allocator, block, options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".@\"Profile\".parseTextWithOptions(allocator, block, options)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setExtensionMessage_ext_user\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"User\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessage_ext_user\"(self: @This(), allocator: std.mem.Allocator) !?imports.@\"common.proto\".@\"User\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"User\".decode(allocator, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"appendExtensionMessages_ext_users\"(self: *@This(), allocator: std.mem.Allocator, values: []const imports.@\"common.proto\".@\"User\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getExtensionMessages_ext_users\"(self: @This(), allocator: std.mem.Allocator) ![]imports.@\"common.proto\".@\"User\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, self.@\"user\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, self.@\"user\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".decode(allocator, entry.value)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".parseTextWithOptions(allocator, block, options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".@\"Profile\".parseTextWithOptions(allocator, block, options)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\".decode(allocator, payload);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -9483,7 +9504,7 @@ test "codegen with registry keeps local enum priority over imported enum" {
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Event\".@\"Kind\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_enum_ref = @\"Event\".@\"Kind\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_kind\"(self: @This()) ?@\"Event\".@\"Kind\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"getEnumField_kind\"") == null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -9523,13 +9544,13 @@ test "codegen with registry resolves same-package imported unqualified refs" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"demo\".@\"User\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const enum_ref = @\"Kind\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const map_value_type_ref = imports.@\"common.proto\".@\"demo\".@\"User\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@\"kind\": i32 = 7") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".decode(allocator, self.@\"user\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"User\".decode(allocator, entry.value)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"User\".decode(allocator, self.@\"user\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"User\".decode(allocator, entry.value)") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -9573,9 +9594,8 @@ test "codegen with registry follows public import chains for message refs" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"bridge.proto\".imports.@\"leaf.proto\".@\"User\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"setMessageField_user\"(self: *@This(), allocator: std.mem.Allocator, value: imports.@\"bridge.proto\".imports.@\"leaf.proto\".@\"User\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"bridge.proto\".imports.@\"leaf.proto\".@\"User\".decode(allocator, self.@\"user\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"bridge.proto\".imports.@\"leaf.proto\".@\"demo\".@\"leaf\".@\"User\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"bridge.proto\".imports.@\"leaf.proto\".@\"demo\".@\"leaf\".@\"User\".decode(allocator, self.@\"user\")") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -9662,7 +9682,7 @@ test "codegen validates imported extension required payloads" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.@\"payload\".decodeAllFromUnknown(self, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Payload\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"common\".@\"Payload\".decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator);") != null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -9707,32 +9727,32 @@ test "codegen with registry emits extension type refs" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \".demo.common.Host\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_has_type_ref = true;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".@\"Host\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \".demo.common.Note\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_has_type_ref = true;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.@\"common.proto\".@\"Note\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasOn(message: imports.@\"common.proto\".@\"Host\") !bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setMessageOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"Note\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?imports.@\"common.proto\".@\"Note\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\") !bool") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, value: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setMessageOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, value: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator) !?imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_enum_ref = @\"demo.common.Role\";") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !?@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator) !?@\"demo.common.Role\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return @\"demo.common.Role\".fromInt(raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) !@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator) !@\"demo.common.Role\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try getEnumOn(message, allocator)) orelse @\"demo.common.Role\".fromInt(default_value_zig) orelse unreachable;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try setOn(message, allocator, value.toInt());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumsOn(message: imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator) ![]@\"demo.common.Role\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn addEnumOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllEnumsOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumsOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator) ![]@\"demo.common.Role\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn addEnumOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllEnumsOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.@\"common.proto\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Note\".parseTextWithOptions(allocator, block, options);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Note\".decode(allocator, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Note\".jsonParseWithOptions(arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"Note\".decode(allocator_, payload_);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".parseTextWithOptions(allocator, block, options);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".jsonParseWithOptions(arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\".decode(allocator_, payload_);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -9789,7 +9809,7 @@ test "codegen emits protoc response" {
                         1 => saw_file_name = std.mem.eql(u8, try file_reader.readBytes(), "a.pb.zig"),
                         15 => {
                             const content = try file_reader.readBytes();
-                            saw_registry_import_ref = saw_registry_import_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null;
+                            saw_registry_import_ref = saw_registry_import_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\";") != null;
                         },
                         16 => {
                             var info = try @import("descriptor.zig").decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
@@ -9879,7 +9899,7 @@ test "codegen emits protoc response from request file_to_generate" {
                         },
                         15 => {
                             const content = try file_reader.readBytes();
-                            saw_import_type_ref = saw_import_type_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"User\";") != null;
+                            saw_import_type_ref = saw_import_type_ref or std.mem.indexOf(u8, content, "pub const type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"User\";") != null;
                         },
                         else => try file_reader.skipValue(file_tag),
                     }
@@ -10512,9 +10532,7 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, existing.key, entry.key)) { existing.* = entry; return; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn @\"appendOrReplaceMapEntry_flags\"(allocator: std.mem.Allocator, list: *std.ArrayList(@\"flagsEntry\"), entry: @\"flagsEntry\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (existing.key == entry.key) { existing.* = entry; return; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"counts\") |entry| try self.@\"appendField_counts\"(allocator, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (other.@\"counts\") |entry| try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, entry);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &@\"counts_list\", entry);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().@\"appendOrReplaceMapEntry_counts\"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
 
@@ -11296,7 +11314,7 @@ test "codegen with registry normalizes imported extension extendee names" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \".common.Host\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee = \"common.Host\";") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".@\"Host\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const extendee_type_ref = imports.@\"common.proto\".@\"common\".@\"Host\";") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -11407,9 +11425,9 @@ test "codegen emits registry-aware service metadata type references" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type = \"common.Req\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_has_type_ref = true") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type_ref = imports.@\"common.proto\".@\"Req\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type_ref = imports.@\"common.proto\".@\"common\".@\"Req\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_has_type_ref = true") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = imports.@\"common.proto\".@\"Res\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = imports.@\"common.proto\".@\"common\".@\"Res\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"Get\"") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "decodeOwned(allocator, request_payload)") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "handler.@\"Get\"") == null);

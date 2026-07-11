@@ -48,7 +48,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; request-based generated plugin responses honor file_to_generate, parse basic generator parameters, reject unresolved type references, accept raw CodeGeneratorRequest bytes, expose writer-based plugin runners and an installed protoc-gen-pbz executable, emit file, top-level, nested message/enum, field, and enum-value GeneratedCodeInfo annotations, use all proto_file descriptors as a registry for imports, and advertise proto3 optional plus editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation, including proto `allow_alias` enum values emitted as Zig enum namespace aliases and generated enum `fromInt` / `fromName` / `toInt` / `protoName` / JSON parse/stringify and TextFormat parse/format helpers
-  - generated `proto_package`, `proto_syntax`, and import module aliases with import kind/path metadata plus registry-aware generation for same-package unqualified, direct, and transitive-public imported message type references and imported enum field resolution while preserving local/nested enum scope priority
+  - generated `proto_package`, `proto_syntax`, package-mirrored Zig namespaces, and import module aliases with import kind/path metadata plus registry-aware generation for same-package unqualified, direct, and transitive-public imported message type references and imported enum field resolution while preserving local/nested enum scope priority
   - generated proto2 extension metadata structs with extension number, registry-normalized extendee names for imported targets, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata with registry-aware method input/output type references; RPC transport, Handler/Client stubs, and dispatch adapters are intentionally out of scope
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
@@ -57,7 +57,7 @@ validated feature set.
   - generated decoders retain unknown wire fields and preserve closed-enum unknown numeric values for singular/repeated/map/oneof enum fields; generated encoders replay retained unknowns
   - generated message structs expose unknown field count/list/filter, validated raw unknown append, clear helpers, and merge unknown fields through `mergeFrom`
   - generated field declarations honor proto2 scalar/string/bytes/bool/float/enum defaults, including imported enum defaults during registry-aware generation, plus editions field-presence, message-encoding, and string UTF-8 validation features
-  - generated message structs expose field accessors for presence-aware singular fields, repeated/map append/replace/clear with map duplicate-key last-wins replacement, oneof union arms, typed enum get/set/default/repeated-batch/map-entry helpers, typed map-message append/replace/remove/get entry helpers, same-file typed message payload encode/decode helpers, decodeMessageField aliases, and `cloneOwned` / `decodeOwned` helpers for deep-copying decoded slice payloads
+  - generated message structs expose protobuf fields as public Zig struct fields, retain presence flags for presence-aware singular fields and oneof union arms, implement map duplicate-key last-wins replacement through decode/merge/JSON/TextFormat paths, and provide `cloneOwned` / `decodeOwned` helpers for deep-copying decoded slice payloads
   - generated typed JSON stringify/parse helpers plus basic TextFormat formatters/parsers for scalar, enum, repeated, map, message payload, proto2 group, same-file proto2 extension, and oneof fields, including exact scoped/nested extension extendee matching; generated JSON helpers accept/emit bracketed same-file proto2 extension keys backed by unknown/raw storage and generated JSON/TextFormat helpers use registry-aware direct and transitive-public imported message types when available for singular, repeated, map, oneof, and proto2 extension payloads; generated wire/TextFormat UTF-8 validation for string/map-string fields; and generated wire/TextFormat closed-enum validation for singular/repeated/map/oneof enum fields
 - TextFormat support
   - dynamic message formatting/parsing for scalars, repeated fields, maps including default key/value fill for omitted map-entry members, enums including editions open/closed enum numeric validation with imported enums honoring their owning-file features plus registry-aware imported message/enum parsing including same-package unqualified imports, local enum scope priority, and imported enum-name formatting, initialized parse helpers with recursive required validation, protobuf merge semantics for duplicate singular message/group fields, string UTF-8 validation via `features.utf8_validation` during parse and format with imported messages parsed/formatted under their owning-file features, nested messages, proto2 extension fields using `[ext.name]` including scoped extension names and MessageSet extensions, numeric unknown fields and numeric unknown groups, `{}`/`<>` delimiters with optional colon, bool aliases, decimal/hex/octal integers, common separators, # comments, common string/bytes escapes, and adjacent string literal concatenation
@@ -270,23 +270,31 @@ from every `proto_file` descriptor so generated imports can resolve cross-file
 message/enum references.
 `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
-Generated files expose `proto_package`, `proto_syntax`, and an `imports`
-namespace that maps imported `.proto` paths to their generated `.pb.zig` module
-aliases while preserving import kind/path metadata.
+Generated files expose `proto_package`, `proto_syntax`, and top-level
+declarations under a Zig namespace that mirrors the proto package
+(`package demo.user;` becomes `generated.demo.user.Message`). They also expose
+an `imports` namespace that maps imported `.proto` paths to their generated
+`.pb.zig` module aliases while preserving import kind/path metadata.
 Generated message structs also expose per-field metadata structs (`*_field`)
 with protobuf field number, name/json_name, cardinality, kind, raw type_name
 including imported message/enum names, Zig storage type, presence, default text,
 packed status, map key/value metadata, generated `type_ref` aliases for same-file, direct-imported,
 or transitive-public imported message fields, and generated `enum_ref` aliases for enum
-fields/map enum values when `generateZigFileWithRegistry` is used. They include generated field accessors (`hasField_*`,
-`getField_*`, `getOrDefaultField_*`, `setField_*`, `clearField_*`, repeated/map
-`appendField_*` / `appendAllField_*` / `replaceField_*` helpers, oneof-arm accessors, and `cloneOwned` / `decodeOwned` / `decodeOwnedInitialized` for deep-copying strings/bytes/message payloads/maps/unknowns into owned storage) while keeping oneof storage as a
-Zig `union(enum)`. Same-file message/group payload fields additionally expose
-`setMessageField_*` / `getMessageField_*` / `decodeMessageField_*` and repeated message batch helpers that
-encode/decode the underlying payload bytes through same-file, direct-imported, or transitive-public imported generated message types.
+fields/map enum values when `generateZigFileWithRegistry` is used. Generated
+message structs keep protobuf fields as public Zig struct fields for natural
+direct access, keep oneof storage as a Zig `union(enum)`, and provide
+`cloneOwned` / `decodeOwned` / `decodeOwnedInitialized` for deep-copying
+strings/bytes/message payloads/maps/unknowns into owned storage. When generated
+types are available, singular, repeated, map, and oneof message payloads are
+encoded/decoded by wire/JSON/TextFormat helpers through same-file,
+direct-imported, or transitive-public imported generated message types.
 `pbz.generateZigFileWithRegistry` additionally resolves message and enum fields
-through a `Registry`: direct and transitive-public imported message fields get module type refs/accessors,
-direct and transitive-public imported message fields participate in generated JSON and TextFormat stringify/parse for singular, repeated, map, and oneof payloads; and direct or transitive-public imported enum fields are treated as enum scalars for generated wire, JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
+through a `Registry`: direct and transitive-public imported message fields get
+package-namespaced module type refs, direct and transitive-public imported
+message fields participate in generated JSON and TextFormat stringify/parse for
+singular, repeated, map, and oneof payloads; and direct or transitive-public
+imported enum fields are treated as enum scalars for generated wire,
+JSON/TextFormat, metadata, closed-enum checks, and map/oneof handling.
 For `service` declarations, generated files include only a `services` namespace
 with service/method metadata, streaming flags, and registry-aware
 `input_type_ref` / `output_type_ref` aliases where request/response messages can

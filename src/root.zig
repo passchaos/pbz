@@ -139,7 +139,7 @@ test "root exports registry-aware codegen" {
     try reg.addFile(&app);
     const generated = try generateZigFileWithRegistry(allocator, &app, &reg);
     defer allocator.free(generated);
-    try std.testing.expect(std.mem.indexOf(u8, generated, "imports.@\"common.proto\".@\"User\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, generated, "imports.@\"common.proto\".@\"common\".@\"User\"") != null);
 }
 
 test "root exports request-based plugin codegen" {
