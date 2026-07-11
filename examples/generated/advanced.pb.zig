@@ -436,7 +436,6 @@ pub const demo = struct {
                 }
                 var r = pbz.Reader.init(bytes);
                 while (try r.nextTag()) |tag| {
-                    const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                     switch (tag.number) {
                         1 => {
                             self.id = try r.readInt32();
@@ -465,6 +464,7 @@ pub const demo = struct {
                         },
                         5 => self.subject = .{ .organization_id = try r.readBytes() },
                         else => {
+                            const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                             try r.skipValue(tag);
                             const raw = try allocator.dupe(u8, r.input[start..r.position()]);
                             errdefer allocator.free(raw);
@@ -1539,7 +1539,6 @@ pub const demo = struct {
                     }
                     var r = pbz.Reader.init(bytes);
                     while (try r.nextTag()) |tag| {
-                        const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                         switch (tag.number) {
                             1 => {
                                 self.actor = try r.readBytes();
@@ -1549,6 +1548,7 @@ pub const demo = struct {
                                 self.at_unix = try r.readInt64();
                             },
                             else => {
+                                const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                                 try r.skipValue(tag);
                                 const raw = try allocator.dupe(u8, r.input[start..r.position()]);
                                 errdefer allocator.free(raw);

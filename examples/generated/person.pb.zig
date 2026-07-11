@@ -423,7 +423,6 @@ pub const demo = struct {
             }
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
-                const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                 switch (tag.number) {
                     1 => {
                         self.id = try r.readInt32();
@@ -466,6 +465,7 @@ pub const demo = struct {
                         } else try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);
                     },
                     else => {
+                        const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                         try r.skipValue(tag);
                         const raw = try allocator.dupe(u8, r.input[start..r.position()]);
                         errdefer allocator.free(raw);
@@ -1554,7 +1554,6 @@ pub const demo = struct {
             }
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
-                const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -1565,6 +1564,7 @@ pub const demo = struct {
                         }
                     },
                     else => {
+                        const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                         try r.skipValue(tag);
                         const raw = try allocator.dupe(u8, r.input[start..r.position()]);
                         errdefer allocator.free(raw);
@@ -2516,7 +2516,6 @@ pub const demo = struct {
             }
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
-                const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -2527,6 +2526,7 @@ pub const demo = struct {
                         }
                     },
                     else => {
+                        const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode());
                         try r.skipValue(tag);
                         const raw = try allocator.dupe(u8, r.input[start..r.position()]);
                         errdefer allocator.free(raw);
