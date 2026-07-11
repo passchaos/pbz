@@ -634,6 +634,8 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
     try writer.writeAll("\n");
+    try writeBorrowedViewMethods(file, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeMessageExtensionAccessors(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeMergeFrom(file, message, writer, depth + 1);
@@ -3488,6 +3490,23 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("self.@\"_unknown_fields\" = &.{};\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    for (message.fields.items) |*field| {
+        if (field.oneof_name != null) continue;
+        if (field.cardinality != .repeated) continue;
+        if (field.kind != .scalar or field.kind.scalar != .fixed32) continue;
+        if (!field.resolvedPacked(file)) continue;
+        try indent(writer, depth);
+        try writer.writeAll("pub fn ");
+        try writeQuotedIdentWithSuffix(field.name, "PackedFixed32View", writer);
+        try writer.writeAll("(bytes: []const u8) !?[]align(1) const u32 {\n");
+        try indent(writer, depth + 1);
+        try writer.print("return try pbz.wire.packedFixed32FieldView(bytes, {d});\n", .{field.number});
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    }
 }
 
 fn writeMessageExtensionAccessors(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -11818,6 +11837,19 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.sort(@\"countsEntry\", entries") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.lessThan(u8, a.key, b.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+}
+
+test "codegen emits packed fixed32 borrowed field view helper" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { repeated fixed32 values = 1; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn @\"valuesPackedFixed32View\"(bytes: []const u8) !?[]align(1) const u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixed32FieldView(bytes, 1);") != null);
 }
 
 test "codegen emits map duplicate-key last-wins helpers" {

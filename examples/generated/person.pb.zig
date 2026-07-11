@@ -2398,6 +2398,10 @@ pub const demo = struct {
 
         // no same-file extension accessors
 
+        pub fn valuesPackedFixed32View(bytes: []const u8) !?[]align(1) const u32 {
+            return try pbz.wire.packedFixed32FieldView(bytes, 1);
+        }
+
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;

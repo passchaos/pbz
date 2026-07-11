@@ -163,7 +163,7 @@ fn generatedFixedPackedDecode(ctx: GeneratedFixedPackedDecodeCtx) !void {
 
 const FixedPackedBorrowedViewCtx = struct { bytes: []const u8 };
 fn fixedPackedBorrowedViewDecode(ctx: FixedPackedBorrowedViewCtx) !void {
-    const values = (try pbz.wire.packedFixed32FieldView(ctx.bytes, 1)) orelse return error.InvalidWireType;
+    const values = (try person_pb.demo.FixedPacked.valuesPackedFixed32View(ctx.bytes)) orelse return error.InvalidWireType;
     std.mem.doNotOptimizeAway(values.ptr);
 }
 

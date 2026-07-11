@@ -296,6 +296,9 @@ strings/bytes/message payloads/maps/unknowns into owned storage. When generated
 types are available, singular, repeated, map, and oneof message payloads are
 encoded/decoded by wire/JSON/TextFormat helpers through same-file,
 direct-imported, or transitive-public imported generated message types.
+Generated repeated packed `fixed32` fields also expose a field-specific borrowed
+view helper such as `valuesPackedFixed32View(bytes)` for zero-copy inspection of
+wire buffers.
 `pbz.generateZigFileWithRegistry` additionally resolves message and enum fields
 through a `Registry`: direct and transitive-public imported message fields get
 package-namespaced module type refs, direct and transitive-public imported
