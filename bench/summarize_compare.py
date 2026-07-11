@@ -8,8 +8,8 @@ Usage:
 The script parses the ``ns/op`` lines emitted by ``bench/run_compare.sh`` and
 compares the fastest relevant pbz generated path against each available
 cross-language implementation for the same workload. It is intentionally a
-summary/audit tool: by default it exits successfully even when pbz loses a row;
-use ``--fail-on-loss`` for CI-style gating.
+summary/audit tool: by default it exits successfully even when pbz loses a row or
+when a baseline is missing; use ``--fail-on-loss`` for CI-style gating.
 """
 
 from __future__ import annotations
@@ -168,24 +168,35 @@ def best(results: dict[str, float], names: tuple[str, ...]) -> tuple[str, float]
 
 def summarize(results: dict[str, float]) -> tuple[str, bool]:
     rows: list[tuple[str, str, str, float, str, float, float, str]] = []
-    has_loss = False
+    uncovered: list[tuple[str, str, tuple[str, ...]]] = []
+    has_gap = False
     for workload in WORKLOADS:
         pbz_best = best(results, workload.pbz)
         if pbz_best is None:
+            uncovered.append((workload.name, "pbz", workload.pbz))
+            has_gap = True
             continue
         pbz_name, pbz_ns = pbz_best
         for impl, names in workload.baselines.items():
             baseline_best = best(results, names)
             if baseline_best is None:
+                uncovered.append((workload.name, impl, names))
+                has_gap = True
                 continue
             baseline_name, baseline_ns = baseline_best
             ratio = baseline_ns / pbz_ns if pbz_ns else float("inf")
             status = "WIN" if pbz_ns < baseline_ns else "LOSS"
-            has_loss = has_loss or status == "LOSS"
+            has_gap = has_gap or status == "LOSS"
             rows.append((workload.name, impl, pbz_name, pbz_ns, baseline_name, baseline_ns, ratio, status))
 
     if not rows:
-        return "No comparable benchmark rows found.", False
+        details = ""
+        if uncovered:
+            details = "\nUncovered rows:\n" + "\n".join(
+                f"- {workload} / {impl}: expected one of {', '.join(names)}"
+                for workload, impl, names in uncovered
+            )
+        return "No comparable benchmark rows found." + details, True
 
     lines = [
         "| workload | baseline | pbz best ns/op | baseline best ns/op | baseline/pbz | status |",
@@ -202,10 +213,15 @@ def summarize(results: dict[str, float]) -> tuple[str, bool]:
         lines.append("Remaining performance gaps:")
         for workload, impl, _pbz_name, pbz_ns, baseline_name, baseline_ns, _ratio, _status in losses:
             lines.append(f"- {workload} vs {impl}: pbz {pbz_ns:.2f} ns/op, {baseline_name} {baseline_ns:.2f} ns/op")
-    else:
+    if uncovered:
+        lines.append("")
+        lines.append("Uncovered benchmark rows:")
+        for workload, impl, names in uncovered:
+            lines.append(f"- {workload} / {impl}: expected one of {', '.join(names)}")
+    if not losses and not uncovered:
         lines.append("")
         lines.append("All parsed cross-language rows are pbz wins.")
-    return "\n".join(lines), has_loss
+    return "\n".join(lines), has_gap
 
 
 def self_test() -> None:
@@ -220,13 +236,14 @@ def self_test() -> None:
     assert "binary encode" in output
     assert "WIN" in output
     assert "LOSS" in output
+    assert "Uncovered benchmark rows" in output
     assert has_loss
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", nargs="?", help="run_compare output log; stdin is used when omitted")
-    parser.add_argument("--fail-on-loss", action="store_true", help="exit non-zero if any parsed row is a pbz loss")
+    parser.add_argument("--fail-on-loss", action="store_true", help="exit non-zero if any parsed row is a pbz loss or missing baseline")
     parser.add_argument("--self-test", action="store_true", help="run parser self-test")
     args = parser.parse_args(argv)
 
