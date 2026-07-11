@@ -15,3 +15,6 @@ bench/cpp_protobuf/generated/
 
 # Go benchmark generated protobuf sources
 bench/go_protobuf/personpb/
+
+# Rust quick-protobuf benchmark build artifacts
+bench/rust_quick_protobuf/target/

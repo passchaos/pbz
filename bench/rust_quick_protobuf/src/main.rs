@@ -1,0 +1,177 @@
+use quick_protobuf::{BytesReader, MessageRead, MessageWrite, Result, Writer, WriterBackend};
+use quick_protobuf::sizeofs;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Person {
+    pub id: i32,
+    pub name: String,
+    pub scores: Vec<i32>,
+    pub counts: HashMap<String, i32>,
+}
+
+impl MessageWrite for Person {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if self.id != 0 {
+            size += 1 + sizeofs::sizeof_int32(self.id);
+        }
+        if !self.name.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.name.len());
+        }
+        if !self.scores.is_empty() {
+            let packed_len: usize = self.scores.iter().map(|v| sizeofs::sizeof_int32(*v)).sum();
+            size += 1 + sizeofs::sizeof_len(packed_len);
+        }
+        for (key, value) in &self.counts {
+            let entry_len = 1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_int32(*value);
+            size += 1 + sizeofs::sizeof_len(entry_len);
+        }
+        size
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if self.id != 0 {
+            w.write_with_tag(8, |w| w.write_int32(self.id))?;
+        }
+        if !self.name.is_empty() {
+            w.write_with_tag(18, |w| w.write_string(&self.name))?;
+        }
+        if !self.scores.is_empty() {
+            w.write_packed_with_tag(26, &self.scores, |w, v| w.write_int32(*v), &|v| sizeofs::sizeof_int32(*v))?;
+        }
+        for (key, value) in &self.counts {
+            let entry_len = 1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_int32(*value);
+            w.write_with_tag(34, |w| {
+                w.write_map(
+                    entry_len,
+                    10,
+                    |w| w.write_string(key),
+                    16,
+                    |w| w.write_int32(*value),
+                )
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for Person {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Person::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                8 => msg.id = r.read_int32(bytes)?,
+                18 => msg.name = r.read_string(bytes)?.to_owned(),
+                26 => msg.scores = r.read_packed(bytes, |r, bytes| r.read_int32(bytes))?,
+                34 => {
+                    let (key, value) = r.read_map(
+                        bytes,
+                        |r, bytes| Ok(r.read_string(bytes)?.to_owned()),
+                        |r, bytes| r.read_int32(bytes),
+                    )?;
+                    msg.counts.insert(key, value);
+                }
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Iterations {
+    binary: usize,
+}
+
+struct BenchResult {
+    name: &'static str,
+    iterations: usize,
+    elapsed: Duration,
+    bytes_per_iter: usize,
+}
+
+impl BenchResult {
+    fn print(&self) {
+        let elapsed_ns = self.elapsed.as_nanos() as f64;
+        let ns_per_iter = elapsed_ns / self.iterations as f64;
+        let ops_per_sec = self.iterations as f64 * 1_000_000_000.0 / elapsed_ns;
+        let mib_per_sec = self.bytes_per_iter as f64 * self.iterations as f64 * 1_000_000_000.0
+            / elapsed_ns
+            / (1024.0 * 1024.0);
+        println!(
+            "{}: {} iters, {} bytes/iter, {:.2} ns/op, {:.2} ops/s, {:.2} MiB/s",
+            self.name, self.iterations, self.bytes_per_iter, ns_per_iter, ops_per_sec, mib_per_sec
+        );
+    }
+}
+
+fn make_person() -> Person {
+    let mut counts = HashMap::new();
+    counts.insert("red".to_owned(), 1);
+    counts.insert("green".to_owned(), 2);
+    counts.insert("blue".to_owned(), 3);
+    Person {
+        id: 7,
+        name: "Zig".to_owned(),
+        scores: vec![10, 20, 30, 40, 50, 60, 70, 80],
+        counts,
+    }
+}
+
+fn encode_to_vec(person: &Person) -> Vec<u8> {
+    let mut out = Vec::with_capacity(person.get_size());
+    {
+        let mut writer = Writer::new(&mut out);
+        person.write_message(&mut writer).expect("encode");
+    }
+    out
+}
+
+fn run_timed<F>(name: &'static str, iterations: usize, bytes_per_iter: usize, mut f: F) -> BenchResult
+where
+    F: FnMut(),
+{
+    let start = Instant::now();
+    for _ in 0..iterations {
+        f();
+    }
+    BenchResult {
+        name,
+        iterations,
+        elapsed: start.elapsed(),
+        bytes_per_iter,
+    }
+}
+
+fn main() {
+    let iters = Iterations { binary: 20_000 };
+    let person = make_person();
+    let bytes = encode_to_vec(&person);
+
+    println!("rust quick-protobuf benchmark baseline");
+    println!("payload size: {}", bytes.len());
+
+    run_timed("quick-protobuf binary encode", iters.binary, bytes.len(), || {
+        let encoded = encode_to_vec(&person);
+        std::hint::black_box(encoded);
+    })
+    .print();
+
+    let mut reused = Vec::with_capacity(bytes.len());
+    run_timed("quick-protobuf binary encode reuse", iters.binary, bytes.len(), || {
+        reused.clear();
+        let mut writer = Writer::new(&mut reused);
+        person.write_message(&mut writer).expect("encode");
+        std::hint::black_box(&reused);
+    })
+    .print();
+
+    run_timed("quick-protobuf binary decode", iters.binary, bytes.len(), || {
+        let mut reader = BytesReader::from_bytes(&bytes);
+        let decoded = Person::from_reader(&mut reader, &bytes).expect("decode");
+        std::hint::black_box(decoded);
+    })
+    .print();
+}

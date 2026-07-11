@@ -10,8 +10,12 @@ echo
 if command -v cargo >/dev/null 2>&1; then
   echo "== Rust prost baseline =="
   cargo run --release --manifest-path bench/rust_prost/Cargo.toml
+
+  echo
+  echo "== Rust quick-protobuf baseline =="
+  cargo run --release --manifest-path bench/rust_quick_protobuf/Cargo.toml
 else
-  echo "cargo not found; skipping Rust prost benchmark" >&2
+  echo "cargo not found; skipping Rust prost and quick-protobuf benchmarks" >&2
 fi
 
 
