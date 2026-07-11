@@ -9795,6 +9795,10 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
     try writeZigStringLiteral(fieldType(field.*), writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("pub const typed_zig_type = ");
+    try writeExtensionTypedZigTypeLiteral(ctx, field, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("pub const has_default = ");
     try writer.writeAll(if (field.default_value != null) "true" else "false");
     try writer.writeAll(";\n");
@@ -9819,6 +9823,19 @@ fn writeExtensionDecl(ctx: *const CodegenContext, field: *const schema.FieldDesc
 
 fn extensionExtendeeHasTypeRef(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
     return codegenCanReferenceMessageWithContext(ctx, field.extendee orelse return false);
+}
+
+fn writeExtensionTypedZigTypeLiteral(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    const type_name = switch (field.kind) {
+        .message, .group => |name| name,
+        else => return try writeZigStringLiteral(fieldType(field.*), writer),
+    };
+    if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return try writeZigStringLiteral(fieldType(field.*), writer);
+    var type_buf: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer type_buf.deinit();
+    if (field.cardinality == .repeated) try type_buf.writer.writeAll("[]const ");
+    try writeMessageTypeReferenceWithContext(ctx, type_name, &type_buf.writer);
+    try writeZigStringLiteral(type_buf.written(), writer);
 }
 
 fn writeExtensionExtendeeTypeRef(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
@@ -11506,6 +11523,7 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \".demo.common.Note\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_has_type_ref = true;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type_ref = imports.@\"common.proto\".@\"demo\".@\"common\".@\"Note\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const typed_zig_type = \"imports.@\\\"common.proto\\\".@\\\"demo\\\".@\\\"common\\\".@\\\"Note\\\"\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\") !bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getOn(message: imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setOn(message: *imports.@\"common.proto\".@\"demo\".@\"common\".@\"Host\", allocator: std.mem.Allocator, value: []const u8) !void") != null);
@@ -12874,6 +12892,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"optional\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_type = \"string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"[]const u8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const typed_zig_type = \"[]const u8\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const has_default = true;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"untagged\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value_zig: []const u8 = \"untagged\";") != null);

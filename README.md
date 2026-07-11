@@ -325,7 +325,8 @@ transports provide the corresponding `callClientStream`, `callServerStream`, or
 `callBidiStream` methods.
 For proto2 extension declarations, generated files also expose an `extensions`
 namespace containing per-extension metadata constants (`number`, `extendee`,
-`cardinality`, `value_type`, `zig_type`, `has_default`, and `default_value`)
+`cardinality`, `value_type`, raw-storage `zig_type`, typed-helper
+`typed_zig_type`, `has_default`, and `default_value`)
 plus registry-aware `extendee_type_ref` / `value_type_ref` aliases, generated
 `value_enum_ref` aliases for enum extension values, typed `default_value_zig`,
 `write`/`writeAll`, `decodeValue` / `decodeAppend`, and
