@@ -240,6 +240,23 @@ demo::LargeBytes MakeLargeBytes() {
   return msg;
 }
 
+demo::PresenceMix::Child MakePresenceChild(int32_t id, const std::string &label) {
+  demo::PresenceMix::Child child;
+  child.set_id(id);
+  child.set_label(label);
+  return child;
+}
+
+demo::PresenceMix MakePresenceMix() {
+  demo::PresenceMix msg;
+  msg.set_count(0);
+  msg.set_note("");
+  msg.set_raw("presence-raw");
+  *msg.mutable_child() = MakePresenceChild(7, "child");
+  *msg.mutable_nested() = MakePresenceChild(11, "nested");
+  return msg;
+}
+
 demo::Complex::Audit MakeAudit(const std::string &actor, int64_t at_unix) {
   demo::Complex::Audit audit;
   audit.set_actor(actor);
@@ -265,6 +282,7 @@ int main() {
   const demo::ScalarMix scalarmix = MakeScalarMix();
   const demo::TextBytes textbytes = MakeTextBytes();
   const demo::LargeBytes largebytes = MakeLargeBytes();
+  const demo::PresenceMix presencemix = MakePresenceMix();
   const demo::Complex complex = MakeComplex();
   std::string bytes;
   person.SerializeToString(&bytes);
@@ -280,6 +298,8 @@ int main() {
   textbytes.SerializeToString(&textbytes_bytes);
   std::string largebytes_bytes;
   largebytes.SerializeToString(&largebytes_bytes);
+  std::string presencemix_bytes;
+  presencemix.SerializeToString(&presencemix_bytes);
   std::string complex_bytes;
   complex.SerializeToString(&complex_bytes);
   std::string complex_json;
@@ -341,6 +361,7 @@ int main() {
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
   std::cout << "largebytes payload size: " << largebytes_bytes.size() << "\n";
+  std::cout << "presencemix payload size: " << presencemix_bytes.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
   std::cout << "complex json payload size: " << complex_json.size() << "\n";
   std::cout << "complex text payload size: " << complex_text.size() << "\n";
@@ -589,6 +610,61 @@ int main() {
                  asm volatile("" : : "g"(&reused_largebytes_decoded) : "memory");
                });
   largebytes_decode_reuse.Print();
+
+  auto presencemix_encode =
+      RunTimed("c++ protobuf presencemix encode", kIterations,
+               presencemix_bytes.size(), [&]() {
+                 std::string out;
+                 out.reserve(presencemix_bytes.size());
+                 presencemix.SerializeToString(&out);
+                 asm volatile("" : : "g"(out.data()) : "memory");
+               });
+  presencemix_encode.Print();
+
+  std::string reused_presencemix;
+  reused_presencemix.reserve(presencemix_bytes.size());
+  auto presencemix_encode_reuse =
+      RunTimed("c++ protobuf presencemix encode reuse", kIterations,
+               presencemix_bytes.size(), [&]() {
+                 reused_presencemix.clear();
+                 presencemix.SerializeToString(&reused_presencemix);
+                 asm volatile("" : : "g"(reused_presencemix.data()) : "memory");
+               });
+  presencemix_encode_reuse.Print();
+
+  std::string presencemix_array_buffer;
+  presencemix_array_buffer.resize(presencemix_bytes.size());
+  auto presencemix_encode_array_reuse = RunTimed(
+      "c++ protobuf presencemix SerializeToArray reuse", kIterations,
+      presencemix_bytes.size(), [&]() {
+        if (!presencemix.SerializeToArray(
+                presencemix_array_buffer.data(),
+                static_cast<int>(presencemix_array_buffer.size())))
+          std::abort();
+        asm volatile("" : : "g"(presencemix_array_buffer.data()) : "memory");
+      });
+  presencemix_encode_array_reuse.Print();
+
+  auto presencemix_decode =
+      RunTimed("c++ protobuf presencemix decode", kIterations,
+               presencemix_bytes.size(), [&]() {
+                 demo::PresenceMix decoded;
+                 if (!decoded.ParseFromString(presencemix_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  presencemix_decode.Print();
+
+  demo::PresenceMix reused_presencemix_decoded;
+  auto presencemix_decode_reuse =
+      RunTimed("c++ protobuf presencemix decode reuse", kIterations,
+               presencemix_bytes.size(), [&]() {
+                 reused_presencemix_decoded.Clear();
+                 if (!reused_presencemix_decoded.ParseFromString(presencemix_bytes))
+                   std::abort();
+                 asm volatile("" : : "g"(&reused_presencemix_decoded) : "memory");
+               });
+  presencemix_decode_reuse.Print();
 
   auto complex_encode = RunTimed(
       "c++ protobuf complex encode", kIterations, complex_bytes.size(), [&]() {

@@ -77,6 +77,45 @@ pub struct LargeBytes {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct PresenceMixChild {
+    #[prost(int32, tag = "1")]
+    pub id: i32,
+    #[prost(string, tag = "2")]
+    pub label: String,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct PresenceMix {
+    #[prost(int32, optional, tag = "1")]
+    pub count: Option<i32>,
+    #[prost(string, optional, tag = "2")]
+    pub note: Option<String>,
+    #[prost(bytes, optional, tag = "3")]
+    pub raw: Option<Vec<u8>>,
+    #[prost(message, optional, tag = "4")]
+    pub child: Option<PresenceMixChild>,
+    #[prost(oneof = "presence_mix::Pick", tags = "5, 6, 7, 8")]
+    pub pick: Option<presence_mix::Pick>,
+}
+
+pub mod presence_mix {
+    use super::PresenceMixChild;
+    use prost::Oneof;
+
+    #[derive(Clone, PartialEq, Oneof)]
+    pub enum Pick {
+        #[prost(string, tag = "5")]
+        Name(String),
+        #[prost(bytes, tag = "6")]
+        Token(Vec<u8>),
+        #[prost(message, tag = "7")]
+        Nested(PresenceMixChild),
+        #[prost(int64, tag = "8")]
+        Code(i64),
+    }
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct ComplexAudit {
     #[prost(string, tag = "1")]
     pub actor: String,
@@ -441,6 +480,23 @@ fn make_largebytes() -> LargeBytes {
     LargeBytes { payload, chunks }
 }
 
+fn presence_child(id: i32, label: &str) -> PresenceMixChild {
+    PresenceMixChild {
+        id,
+        label: label.to_string(),
+    }
+}
+
+fn make_presencemix() -> PresenceMix {
+    PresenceMix {
+        count: Some(0),
+        note: Some(String::new()),
+        raw: Some(b"presence-raw".to_vec()),
+        child: Some(presence_child(7, "child")),
+        pick: Some(presence_mix::Pick::Nested(presence_child(11, "nested"))),
+    }
+}
+
 fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
     ComplexAudit {
         actor: actor.to_string(),
@@ -507,6 +563,8 @@ fn main() {
     let textbytes_bytes = textbytes.encode_to_vec();
     let largebytes = make_largebytes();
     let largebytes_bytes = largebytes.encode_to_vec();
+    let presencemix = make_presencemix();
+    let presencemix_bytes = presencemix.encode_to_vec();
     let complex = make_complex();
     let complex_bytes = complex.encode_to_vec();
     let packed = make_packed();
@@ -545,6 +603,7 @@ fn main() {
     println!("scalarmix payload size: {}", scalarmix_bytes.len());
     println!("textbytes payload size: {}", textbytes_bytes.len());
     println!("largebytes payload size: {}", largebytes_bytes.len());
+    println!("presencemix payload size: {}", presencemix_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
@@ -644,6 +703,28 @@ fn main() {
         largebytes_bytes.len(),
         || {
             let decoded = LargeBytes::decode(largebytes_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost presencemix encode",
+        iters.binary,
+        presencemix_bytes.len(),
+        || {
+            let encoded = presencemix.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost presencemix decode",
+        iters.binary,
+        presencemix_bytes.len(),
+        || {
+            let decoded = PresenceMix::decode(presencemix_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

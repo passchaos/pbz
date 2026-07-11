@@ -158,6 +158,35 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "presencemix encode",
+        (
+            "generated presencemix encode",
+            "generated presencemix writeToAssumeCapacity reuse",
+            "generated presencemix encodeIntoAssumeCapacity buffer reuse",
+            "generated presencemix trusted UTF-8 encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost presencemix encode",),
+            "rust quick-protobuf": ("quick-protobuf presencemix encode", "quick-protobuf presencemix encode reuse"),
+            "c++ protobuf": (
+                "c++ protobuf presencemix encode",
+                "c++ protobuf presencemix encode reuse",
+                "c++ protobuf presencemix SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf presencemix encode", "go protobuf presencemix encode reuse"),
+        },
+    ),
+    Workload(
+        "presencemix decode",
+        ("generated presencemix decode",),
+        {
+            "rust prost": ("prost presencemix decode",),
+            "rust quick-protobuf": ("quick-protobuf presencemix decode",),
+            "c++ protobuf": ("c++ protobuf presencemix decode", "c++ protobuf presencemix decode reuse"),
+            "go protobuf": ("go protobuf presencemix decode",),
+        },
+    ),
+    Workload(
         "complex encode",
         (
             "generated complex encode",

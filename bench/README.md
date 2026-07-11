@@ -30,6 +30,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
 - large bytes and repeated large bytes encode/decode, including a borrowed wire-view decode path
+- proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - large `map<string, int32>` encode/decode
 - packed repeated integer encode/decode
@@ -40,7 +41,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - JSON stringify/parse
 - TextFormat format/parse
 
-The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
+The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and
 `FixedPacked { repeated fixed32 values = 1; }` and
 `Fixed64Packed { repeated fixed64 values = 1; }` and

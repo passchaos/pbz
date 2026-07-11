@@ -44,6 +44,25 @@ message LargeBytes {
   repeated bytes chunks = 2;
 }
 
+message PresenceMix {
+  message Child {
+    int32 id = 1;
+    string label = 2;
+  }
+
+  optional int32 count = 1;
+  optional string note = 2;
+  optional bytes raw = 3;
+  Child child = 4;
+
+  oneof pick {
+    string name = 5;
+    bytes token = 6;
+    Child nested = 7;
+    int64 code = 8;
+  }
+}
+
 message Packed {
   repeated int32 values = 1;
 }

@@ -236,6 +236,22 @@ func makeLargeBytes() *personpb.LargeBytes {
 	return &personpb.LargeBytes{Payload: payload, Chunks: chunks}
 }
 
+func presenceChild(id int32, label string) *personpb.PresenceMix_Child {
+	return &personpb.PresenceMix_Child{Id: id, Label: label}
+}
+
+func makePresenceMix() *personpb.PresenceMix {
+	count := int32(0)
+	note := ""
+	return &personpb.PresenceMix{
+		Count: &count,
+		Note:  &note,
+		Raw:   []byte("presence-raw"),
+		Child: presenceChild(7, "child"),
+		Pick:  &personpb.PresenceMix_Nested{Nested: presenceChild(11, "nested")},
+	}
+}
+
 func audit(actor string, atUnix int64) *personpb.Complex_Audit {
 	return &personpb.Complex_Audit{Actor: actor, AtUnix: atUnix}
 }
@@ -259,6 +275,7 @@ func main() {
 	scalarmix := makeScalarMix()
 	textbytes := makeTextBytes()
 	largebytes := makeLargeBytes()
+	presencemix := makePresenceMix()
 	complex := makeComplex()
 	bytes, err := proto.Marshal(person)
 	if err != nil {
@@ -281,6 +298,10 @@ func main() {
 		panic(err)
 	}
 	largebytesBytes, err := proto.Marshal(largebytes)
+	if err != nil {
+		panic(err)
+	}
+	presencemixBytes, err := proto.Marshal(presencemix)
 	if err != nil {
 		panic(err)
 	}
@@ -379,6 +400,7 @@ func main() {
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
 	fmt.Printf("largebytes payload size: %d\n", len(largebytesBytes))
+	fmt.Printf("presencemix payload size: %d\n", len(presencemixBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
 	fmt.Printf("complex json payload size: %d\n", len(complexJSONBytes))
 	fmt.Printf("complex text payload size: %d\n", len(complexTextBytes))
@@ -500,6 +522,30 @@ func main() {
 	runTimed("go protobuf largebytes decode", iterations, len(largebytesBytes), func() {
 		var decoded personpb.LargeBytes
 		if err := unmarshalOptions.Unmarshal(largebytesBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf presencemix encode", iterations, len(presencemixBytes), func() {
+		out, err := proto.Marshal(presencemix)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	presencemixBuf := make([]byte, 0, len(presencemixBytes))
+	runTimed("go protobuf presencemix encode reuse", iterations, len(presencemixBytes), func() {
+		var err error
+		presencemixBuf, err = marshalOptions.MarshalAppend(presencemixBuf[:0], presencemix)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf presencemix decode", iterations, len(presencemixBytes), func() {
+		var decoded personpb.PresenceMix
+		if err := unmarshalOptions.Unmarshal(presencemixBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

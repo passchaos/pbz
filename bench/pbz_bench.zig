@@ -129,6 +129,24 @@ fn makeGeneratedLargeBytes(allocator: std.mem.Allocator) !person_pb.demo.LargeBy
     return msg;
 }
 
+fn presenceChild(id: i32, label: []const u8) person_pb.demo.PresenceMix.Child {
+    var child = person_pb.demo.PresenceMix.Child.init();
+    child.id = id;
+    child.label = label;
+    return child;
+}
+
+fn makeGeneratedPresenceMix(allocator: std.mem.Allocator) !person_pb.demo.PresenceMix {
+    var msg = person_pb.demo.PresenceMix.init();
+    errdefer msg.deinit(allocator);
+    msg._count = .{ .count = 0 };
+    msg._note = .{ .note = "" };
+    msg._raw = .{ .raw = "presence-raw" };
+    msg.child = try presenceChild(7, "child").cloneOwned(allocator);
+    msg.pick = .{ .nested = try presenceChild(11, "nested").cloneOwned(allocator) };
+    return msg;
+}
+
 fn audit(actor: []const u8, at_unix: i64) person_pb.demo.Complex.Audit {
     var out = person_pb.demo.Complex.Audit.init();
     out.actor = actor;
@@ -685,6 +703,135 @@ const GeneratedLargeBytesDecodeReuseCtx = struct { allocator: std.mem.Allocator,
 fn generatedLargeBytesDecodeReuse(ctx: GeneratedLargeBytesDecodeReuseCtx) !void {
     try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const GeneratedPresenceMixEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.PresenceMix };
+fn generatedPresenceMixEncode(ctx: GeneratedPresenceMixEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedPresenceMixWriteToCtx = struct { writer: *pbz.Writer, message: *const person_pb.demo.PresenceMix };
+fn generatedPresenceMixWriteToReuse(ctx: GeneratedPresenceMixWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.message.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+const GeneratedPresenceMixEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.PresenceMix };
+fn generatedPresenceMixEncodeIntoReuse(ctx: GeneratedPresenceMixEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+inline fn presenceMixChildFastSize(child: person_pb.demo.PresenceMix.Child) usize {
+    var size: usize = 0;
+    if (child.id != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, child.id))));
+    if (child.label.len != 0) size += 1 + pbz.wire.encodedVarintSize(child.label.len) + child.label.len;
+    for (child._unknown_fields) |raw| size += raw.len;
+    return size;
+}
+
+inline fn writePresenceMixChildFast(buffer: []u8, index: *usize, child: person_pb.demo.PresenceMix.Child) void {
+    if (child.id != 0) {
+        buffer[index.*] = 8;
+        index.* += 1;
+        pbz.wire.writeVarintToSlice(buffer, index, @as(u64, @bitCast(@as(i64, child.id))));
+    }
+    if (child.label.len != 0) {
+        buffer[index.*] = 18;
+        index.* += 1;
+        pbz.wire.writeVarintToSlice(buffer, index, child.label.len);
+        @memcpy(buffer[index.*..][0..child.label.len], child.label);
+        index.* += child.label.len;
+    }
+    for (child._unknown_fields) |raw| {
+        @memcpy(buffer[index.*..][0..raw.len], raw);
+        index.* += raw.len;
+    }
+}
+
+fn generatedPresenceMixTrustedUtf8EncodeIntoReuse(ctx: GeneratedPresenceMixEncodeIntoCtx) !void {
+    const msg = ctx.message;
+    var index: usize = 0;
+    if (msg.child) |value| {
+        const payload_len = presenceMixChildFastSize(value);
+        ctx.buffer[index] = 34;
+        index += 1;
+        pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
+        writePresenceMixChildFast(ctx.buffer, &index, value);
+    }
+    switch (msg.pick) {
+        .none => {},
+        .name => |value| {
+            ctx.buffer[index] = 42;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
+            @memcpy(ctx.buffer[index..][0..value.len], value);
+            index += value.len;
+        },
+        .token => |value| {
+            ctx.buffer[index] = 50;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
+            @memcpy(ctx.buffer[index..][0..value.len], value);
+            index += value.len;
+        },
+        .nested => |value| {
+            const payload_len = presenceMixChildFastSize(value);
+            ctx.buffer[index] = 58;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
+            writePresenceMixChildFast(ctx.buffer, &index, value);
+        },
+        .code => |value| {
+            ctx.buffer[index] = 64;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(value)));
+        },
+    }
+    switch (msg._count) {
+        .none => {},
+        .count => |value| {
+            ctx.buffer[index] = 8;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(@as(i64, value))));
+        },
+    }
+    switch (msg._note) {
+        .none => {},
+        .note => |value| {
+            ctx.buffer[index] = 18;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
+            @memcpy(ctx.buffer[index..][0..value.len], value);
+            index += value.len;
+        },
+    }
+    switch (msg._raw) {
+        .none => {},
+        .raw => |value| {
+            ctx.buffer[index] = 26;
+            index += 1;
+            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
+            @memcpy(ctx.buffer[index..][0..value.len], value);
+            index += value.len;
+        },
+    }
+    for (msg._unknown_fields) |raw| {
+        @memcpy(ctx.buffer[index..][0..raw.len], raw);
+        index += raw.len;
+    }
+    std.mem.doNotOptimizeAway(ctx.buffer.ptr);
+    std.mem.doNotOptimizeAway(index);
+}
+
+const GeneratedPresenceMixDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedPresenceMixDecode(ctx: GeneratedPresenceMixDecodeCtx) !void {
+    var decoded = try person_pb.demo.PresenceMix.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
 }
 
 const LargeBytesBorrowedViewCtx = struct { bytes: []const u8 };
@@ -1790,6 +1937,22 @@ pub fn main() !void {
         \\  bytes payload = 1;
         \\  repeated bytes chunks = 2;
         \\}
+        \\message PresenceMix {
+        \\  message Child {
+        \\    int32 id = 1;
+        \\    string label = 2;
+        \\  }
+        \\  optional int32 count = 1;
+        \\  optional string note = 2;
+        \\  optional bytes raw = 3;
+        \\  Child child = 4;
+        \\  oneof pick {
+        \\    string name = 5;
+        \\    bytes token = 6;
+        \\    Child nested = 7;
+        \\    int64 code = 8;
+        \\  }
+        \\}
         \\message Packed {
         \\  repeated int32 values = 1;
         \\}
@@ -1864,6 +2027,8 @@ pub fn main() !void {
     defer generated_text_bytes.deinit(allocator);
     var generated_large_bytes = try makeGeneratedLargeBytes(allocator);
     defer generated_large_bytes.deinit(allocator);
+    var generated_presence_mix = try makeGeneratedPresenceMix(allocator);
+    defer generated_presence_mix.deinit(allocator);
     var generated_complex = try makeGeneratedComplex(allocator);
     defer generated_complex.deinit(allocator);
     var generated_packed = try makeGeneratedPacked(allocator);
@@ -1975,6 +2140,13 @@ pub fn main() !void {
     defer allocator.free(generated_large_bytes_buffer);
     var generated_large_bytes_decode_reuse = person_pb.demo.LargeBytes.init();
     defer generated_large_bytes_decode_reuse.deinit(allocator);
+    const generated_presence_mix_bytes = try generated_presence_mix.encode(allocator);
+    defer allocator.free(generated_presence_mix_bytes);
+    var reusable_presence_mix_writer = pbz.Writer.init(allocator);
+    defer reusable_presence_mix_writer.deinit();
+    try reusable_presence_mix_writer.bytes.ensureTotalCapacity(allocator, generated_presence_mix_bytes.len);
+    const generated_presence_mix_buffer = try allocator.alloc(u8, generated_presence_mix_bytes.len);
+    defer allocator.free(generated_presence_mix_buffer);
     const generated_complex_bytes = try generated_complex.encode(allocator);
     defer allocator.free(generated_complex_bytes);
     var reusable_complex_writer = pbz.Writer.init(allocator);
@@ -2101,7 +2273,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2131,6 +2303,11 @@ pub fn main() !void {
         try runTimed(io, "generated largebytes decode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes }, generatedLargeBytesDecode),
         try runTimed(io, "generated largebytes decode reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes, .message = &generated_large_bytes_decode_reuse }, generatedLargeBytesDecodeReuse),
         try runTimed(io, "wire largebytes borrowed view decode", iters.generated_binary, generated_large_bytes_bytes.len, LargeBytesBorrowedViewCtx{ .bytes = generated_large_bytes_bytes }, largeBytesBorrowedViewDecode),
+        try runTimed(io, "generated presencemix encode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeCtx{ .allocator = allocator, .message = &generated_presence_mix }, generatedPresenceMixEncode),
+        try runTimed(io, "generated presencemix writeToAssumeCapacity reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixWriteToCtx{ .writer = &reusable_presence_mix_writer, .message = &generated_presence_mix }, generatedPresenceMixWriteToReuse),
+        try runTimed(io, "generated presencemix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeIntoCtx{ .buffer = generated_presence_mix_buffer, .message = &generated_presence_mix }, generatedPresenceMixEncodeIntoReuse),
+        try runTimed(io, "generated presencemix trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeIntoCtx{ .buffer = generated_presence_mix_buffer, .message = &generated_presence_mix }, generatedPresenceMixTrustedUtf8EncodeIntoReuse),
+        try runTimed(io, "generated presencemix decode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes }, generatedPresenceMixDecode),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),

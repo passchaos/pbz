@@ -333,6 +333,145 @@ impl<'a> MessageRead<'a> for LargeBytes {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct PresenceMixChild {
+    pub id: i32,
+    pub label: String,
+}
+
+impl MessageWrite for PresenceMixChild {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if self.id != 0 {
+            size += 1 + sizeofs::sizeof_int32(self.id);
+        }
+        if !self.label.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.label.len());
+        }
+        size
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if self.id != 0 {
+            w.write_with_tag(8, |w| w.write_int32(self.id))?;
+        }
+        if !self.label.is_empty() {
+            w.write_with_tag(18, |w| w.write_string(&self.label))?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for PresenceMixChild {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = PresenceMixChild::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                8 => msg.id = r.read_int32(bytes)?,
+                18 => msg.label = r.read_string(bytes)?.to_owned(),
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PresenceMixPick {
+    Name(String),
+    Token(Vec<u8>),
+    Nested(PresenceMixChild),
+    Code(i64),
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct PresenceMix {
+    pub count: Option<i32>,
+    pub note: Option<String>,
+    pub raw: Option<Vec<u8>>,
+    pub child: Option<PresenceMixChild>,
+    pub pick: Option<PresenceMixPick>,
+}
+
+impl MessageWrite for PresenceMix {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if let Some(value) = self.count {
+            size += 1 + sizeofs::sizeof_int32(value);
+        }
+        if let Some(value) = &self.note {
+            size += 1 + sizeofs::sizeof_len(value.len());
+        }
+        if let Some(value) = &self.raw {
+            size += 1 + sizeofs::sizeof_len(value.len());
+        }
+        if let Some(value) = &self.child {
+            let len = value.get_size();
+            size += 1 + sizeofs::sizeof_len(len);
+        }
+        match &self.pick {
+            Some(PresenceMixPick::Name(value)) => size += 1 + sizeofs::sizeof_len(value.len()),
+            Some(PresenceMixPick::Token(value)) => size += 1 + sizeofs::sizeof_len(value.len()),
+            Some(PresenceMixPick::Nested(value)) => {
+                let len = value.get_size();
+                size += 1 + sizeofs::sizeof_len(len);
+            }
+            Some(PresenceMixPick::Code(value)) => size += 1 + sizeofs::sizeof_int64(*value),
+            None => {}
+        }
+        size
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if let Some(value) = self.count {
+            w.write_with_tag(8, |w| w.write_int32(value))?;
+        }
+        if let Some(value) = &self.note {
+            w.write_with_tag(18, |w| w.write_string(value))?;
+        }
+        if let Some(value) = &self.raw {
+            w.write_with_tag(26, |w| w.write_bytes(value))?;
+        }
+        if let Some(value) = &self.child {
+            w.write_with_tag(34, |w| w.write_message(value))?;
+        }
+        match &self.pick {
+            Some(PresenceMixPick::Name(value)) => {
+                w.write_with_tag(42, |w| w.write_string(value))?
+            }
+            Some(PresenceMixPick::Token(value)) => {
+                w.write_with_tag(50, |w| w.write_bytes(value))?
+            }
+            Some(PresenceMixPick::Nested(value)) => {
+                w.write_with_tag(58, |w| w.write_message(value))?
+            }
+            Some(PresenceMixPick::Code(value)) => {
+                w.write_with_tag(64, |w| w.write_int64(*value))?
+            }
+            None => {}
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for PresenceMix {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = PresenceMix::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                8 => msg.count = Some(r.read_int32(bytes)?),
+                18 => msg.note = Some(r.read_string(bytes)?.to_owned()),
+                26 => msg.raw = Some(r.read_bytes(bytes)?.to_vec()),
+                34 => msg.child = Some(r.read_message(bytes)?),
+                42 => msg.pick = Some(PresenceMixPick::Name(r.read_string(bytes)?.to_owned())),
+                50 => msg.pick = Some(PresenceMixPick::Token(r.read_bytes(bytes)?.to_vec())),
+                58 => msg.pick = Some(PresenceMixPick::Nested(r.read_message(bytes)?)),
+                64 => msg.pick = Some(PresenceMixPick::Code(r.read_int64(bytes)?)),
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct ComplexAudit {
     pub actor: String,
     pub at_unix: i64,
@@ -1276,6 +1415,23 @@ fn make_largebytes() -> LargeBytes {
     LargeBytes { payload, chunks }
 }
 
+fn presence_child(id: i32, label: &str) -> PresenceMixChild {
+    PresenceMixChild {
+        id,
+        label: label.to_owned(),
+    }
+}
+
+fn make_presencemix() -> PresenceMix {
+    PresenceMix {
+        count: Some(0),
+        note: Some(String::new()),
+        raw: Some(b"presence-raw".to_vec()),
+        child: Some(presence_child(7, "child")),
+        pick: Some(PresenceMixPick::Nested(presence_child(11, "nested"))),
+    }
+}
+
 fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
     ComplexAudit {
         actor: actor.to_owned(),
@@ -1350,6 +1506,8 @@ fn main() {
     let textbytes_bytes = encode_to_vec(&textbytes);
     let largebytes = make_largebytes();
     let largebytes_bytes = encode_to_vec(&largebytes);
+    let presencemix = make_presencemix();
+    let presencemix_bytes = encode_to_vec(&presencemix);
     let complex = make_complex();
     let complex_bytes = encode_to_vec(&complex);
     let packed = make_packed();
@@ -1388,6 +1546,7 @@ fn main() {
     println!("scalarmix payload size: {}", scalarmix_bytes.len());
     println!("textbytes payload size: {}", textbytes_bytes.len());
     println!("largebytes payload size: {}", largebytes_bytes.len());
+    println!("presencemix payload size: {}", presencemix_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
@@ -1555,6 +1714,44 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&largebytes_bytes);
             let decoded = LargeBytes::from_reader(&mut reader, &largebytes_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf presencemix encode",
+        iters.binary,
+        presencemix_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&presencemix);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_presencemix = Vec::with_capacity(presencemix_bytes.len());
+    run_timed(
+        "quick-protobuf presencemix encode reuse",
+        iters.binary,
+        presencemix_bytes.len(),
+        || {
+            reused_presencemix.clear();
+            let mut writer = Writer::new(&mut reused_presencemix);
+            presencemix.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_presencemix);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf presencemix decode",
+        iters.binary,
+        presencemix_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&presencemix_bytes);
+            let decoded =
+                PresenceMix::from_reader(&mut reader, &presencemix_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )
