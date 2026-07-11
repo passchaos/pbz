@@ -163,6 +163,12 @@ pub struct UInt64Packed {
     pub values: Vec<u64>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct SInt64Packed {
+    #[prost(sint64, repeated, tag = "1")]
+    pub values: Vec<i64>,
+}
+
 fn make_packed() -> Packed {
     Packed {
         values: (0..1024).map(|i| (i % 4096) as i32).collect(),
@@ -185,6 +191,21 @@ fn make_uint64_packed() -> UInt64Packed {
     UInt64Packed {
         values: (0..1024)
             .map(|i| ((i as u64) << 21) + (i as u64) * 17 + 1)
+            .collect(),
+    }
+}
+
+fn make_sint64_packed() -> SInt64Packed {
+    SInt64Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = ((i as i64) << 20) + (i as i64) * 13 + 1;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
             .collect(),
     }
 }
@@ -313,6 +334,8 @@ fn main() {
     let fixed64_packed_bytes = fixed64_packed.encode_to_vec();
     let uint64_packed = make_uint64_packed();
     let uint64_packed_bytes = uint64_packed.encode_to_vec();
+    let sint64_packed = make_sint64_packed();
+    let sint64_packed_bytes = sint64_packed.encode_to_vec();
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -326,6 +349,7 @@ fn main() {
         fixed64_packed_bytes.len()
     );
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
+    println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
 
     let encode = run_timed("prost binary encode", iters.binary, bytes.len(), || {
         let encoded = person.encode_to_vec();
@@ -488,6 +512,28 @@ fn main() {
         uint64_packed_bytes.len(),
         || {
             let decoded = UInt64Packed::decode(uint64_packed_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sint64 packed encode",
+        iters.binary,
+        sint64_packed_bytes.len(),
+        || {
+            let encoded = sint64_packed.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost sint64 packed decode",
+        iters.binary,
+        sint64_packed_bytes.len(),
+        || {
+            let decoded = SInt64Packed::decode(sint64_packed_bytes.as_slice()).expect("decode");
             std::hint::black_box(decoded);
         },
     )

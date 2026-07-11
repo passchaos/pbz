@@ -348,6 +348,35 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf uint64 packed decode",),
         },
     ),
+    Workload(
+        "packed sint64 encode",
+        (
+            "generated sint64 packed encode",
+            "generated sint64 packed encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost sint64 packed encode",),
+            "rust quick-protobuf": (
+                "quick-protobuf sint64 packed encode",
+                "quick-protobuf sint64 packed encode reuse",
+            ),
+            "c++ protobuf": (
+                "c++ protobuf sint64 packed encode",
+                "c++ protobuf sint64 packed SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf sint64 packed encode", "go protobuf sint64 packed encode reuse"),
+        },
+    ),
+    Workload(
+        "packed sint64 decode",
+        ("generated sint64 packed decode", "wire sint64 packed iterator decode"),
+        {
+            "rust prost": ("prost sint64 packed decode",),
+            "rust quick-protobuf": ("quick-protobuf sint64 packed decode",),
+            "c++ protobuf": ("c++ protobuf sint64 packed decode", "c++ protobuf sint64 packed decode reuse"),
+            "go protobuf": ("go protobuf sint64 packed decode",),
+        },
+    ),
 )
 
 

@@ -212,6 +212,16 @@ pub const PackedUInt64Iterator = struct {
     }
 };
 
+pub const PackedSInt64Iterator = struct {
+    payload: []const u8,
+    index: usize = 0,
+
+    pub fn next(self: *PackedSInt64Iterator) Error!?i64 {
+        if (self.index >= self.payload.len) return null;
+        return zigZagDecode64(try readVarintAt(self.payload, &self.index));
+    }
+};
+
 pub fn packedUInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedUInt64Iterator {
     var reader = Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
@@ -220,6 +230,23 @@ pub fn packedUInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?
             if (tag.wire_type == .varint) {
                 const payload_start = reader.position();
                 _ = try reader.readUInt64();
+                return .{ .payload = bytes[payload_start..reader.position()] };
+            }
+            return error.InvalidWireType;
+        }
+        try reader.skipValue(tag);
+    }
+    return null;
+}
+
+pub fn packedSInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedSInt64Iterator {
+    var reader = Reader.init(bytes);
+    while (try reader.nextTag()) |tag| {
+        if (tag.number == number) {
+            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
+            if (tag.wire_type == .varint) {
+                const payload_start = reader.position();
+                _ = try reader.readSInt64();
                 return .{ .payload = bytes[payload_start..reader.position()] };
             }
             return error.InvalidWireType;

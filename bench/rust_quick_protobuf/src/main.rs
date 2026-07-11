@@ -544,6 +544,11 @@ pub struct UInt64Packed {
     pub values: Vec<u64>,
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SInt64Packed {
+    pub values: Vec<i64>,
+}
+
 impl MessageWrite for FixedPacked {
     fn get_size(&self) -> usize {
         if self.values.is_empty() {
@@ -649,6 +654,52 @@ fn make_uint64_packed() -> UInt64Packed {
     UInt64Packed {
         values: (0..1024)
             .map(|i| ((i as u64) << 21) + (i as u64) * 17 + 1)
+            .collect(),
+    }
+}
+
+impl MessageWrite for SInt64Packed {
+    fn get_size(&self) -> usize {
+        if self.values.is_empty() {
+            return 0;
+        }
+        let packed_len: usize = self.values.iter().map(|v| sizeof_sint64(*v)).sum();
+        1 + sizeofs::sizeof_len(packed_len)
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.values.is_empty() {
+            w.write_packed_with_tag(10, &self.values, |w, v| w.write_sint64(*v), &|v| {
+                sizeof_sint64(*v)
+            })?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for SInt64Packed {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = SInt64Packed::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.values = r.read_packed(bytes, |r, bytes| r.read_sint64(bytes))?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+fn make_sint64_packed() -> SInt64Packed {
+    SInt64Packed {
+        values: (0..1024)
+            .map(|i| {
+                let magnitude = ((i as i64) << 20) + (i as i64) * 13 + 1;
+                if i & 1 == 0 {
+                    magnitude
+                } else {
+                    -magnitude
+                }
+            })
             .collect(),
     }
 }
@@ -785,6 +836,8 @@ fn main() {
     let fixed64_packed_bytes = encode_to_vec(&fixed64_packed);
     let uint64_packed = make_uint64_packed();
     let uint64_packed_bytes = encode_to_vec(&uint64_packed);
+    let sint64_packed = make_sint64_packed();
+    let sint64_packed_bytes = encode_to_vec(&sint64_packed);
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
@@ -798,6 +851,7 @@ fn main() {
         fixed64_packed_bytes.len()
     );
     println!("uint64 packed payload size: {}", uint64_packed_bytes.len());
+    println!("sint64 packed payload size: {}", sint64_packed_bytes.len());
 
     run_timed(
         "quick-protobuf binary encode",
@@ -1091,6 +1145,44 @@ fn main() {
             let mut reader = BytesReader::from_bytes(&uint64_packed_bytes);
             let decoded =
                 UInt64Packed::from_reader(&mut reader, &uint64_packed_bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf sint64 packed encode",
+        iters.binary,
+        sint64_packed_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&sint64_packed);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_sint64_packed = Vec::with_capacity(sint64_packed_bytes.len());
+    run_timed(
+        "quick-protobuf sint64 packed encode reuse",
+        iters.binary,
+        sint64_packed_bytes.len(),
+        || {
+            reused_sint64_packed.clear();
+            let mut writer = Writer::new(&mut reused_sint64_packed);
+            sint64_packed.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_sint64_packed);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf sint64 packed decode",
+        iters.binary,
+        sint64_packed_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&sint64_packed_bytes);
+            let decoded =
+                SInt64Packed::from_reader(&mut reader, &sint64_packed_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

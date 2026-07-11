@@ -85,6 +85,19 @@ func makeUInt64Packed() *personpb.UInt64Packed {
 	return &personpb.UInt64Packed{Values: values}
 }
 
+func makeSInt64Packed() *personpb.SInt64Packed {
+	values := make([]int64, 1024)
+	for i := range values {
+		magnitude := (int64(i) << 20) + int64(i)*13 + 1
+		if i&1 == 0 {
+			values[i] = magnitude
+		} else {
+			values[i] = -magnitude
+		}
+	}
+	return &personpb.SInt64Packed{Values: values}
+}
+
 func makePerson() *personpb.Person {
 	return &personpb.Person{
 		Id:     7,
@@ -182,6 +195,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	sint64Packed := makeSInt64Packed()
+	sint64PackedBytes, err := proto.Marshal(sint64Packed)
+	if err != nil {
+		panic(err)
+	}
 
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
@@ -196,6 +214,7 @@ func main() {
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
 	fmt.Printf("uint64 packed payload size: %d\n", len(uint64PackedBytes))
+	fmt.Printf("sint64 packed payload size: %d\n", len(sint64PackedBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
 		out, err := proto.Marshal(person)
@@ -467,6 +486,30 @@ func main() {
 	runTimed("go protobuf uint64 packed decode", iterations, len(uint64PackedBytes), func() {
 		var decoded personpb.UInt64Packed
 		if err := unmarshalOptions.Unmarshal(uint64PackedBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf sint64 packed encode", iterations, len(sint64PackedBytes), func() {
+		out, err := proto.Marshal(sint64Packed)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	sint64PackedBuf := make([]byte, 0, len(sint64PackedBytes))
+	runTimed("go protobuf sint64 packed encode reuse", iterations, len(sint64PackedBytes), func() {
+		var err error
+		sint64PackedBuf, err = marshalOptions.MarshalAppend(sint64PackedBuf[:0], sint64Packed)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf sint64 packed decode", iterations, len(sint64PackedBytes), func() {
+		var decoded personpb.SInt64Packed
+		if err := unmarshalOptions.Unmarshal(sint64PackedBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
