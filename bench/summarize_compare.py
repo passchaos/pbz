@@ -192,7 +192,7 @@ WORKLOADS: tuple[Workload, ...] = (
             "generated complex encode",
             "generated complex writeToAssumeCapacity reuse",
             "generated complex encodeIntoAssumeCapacity buffer reuse",
-            "generated complex fast known-schema encodeIntoAssumeCapacity buffer reuse",
+            "generated complex trusted UTF-8 encodeIntoAssumeCapacity buffer reuse",
         ),
         {
             "rust prost": ("prost complex encode",),

@@ -675,85 +675,8 @@ fn generatedComplexEncodeIntoReuse(ctx: GeneratedComplexEncodeIntoCtx) !void {
 
 const GeneratedComplexManualEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.Complex };
 fn generatedComplexManualEncodeIntoReuse(ctx: GeneratedComplexManualEncodeIntoCtx) !void {
-    const msg = ctx.message;
-    var index: usize = 0;
-    if (msg.id != 0) {
-        ctx.buffer[index] = 8;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(@as(i64, msg.id))));
-    }
-    if (msg.audit) |value| {
-        ctx.buffer[index] = 18;
-        index += 1;
-        const payload_len = value.encodedSize();
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
-        const end = index + payload_len;
-        _ = try value.encodeIntoAssumeCapacity(ctx.buffer[index..end]);
-        index = end;
-    }
-    for (msg.history) |item| {
-        ctx.buffer[index] = 26;
-        index += 1;
-        const payload_len = item.encodedSize();
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
-        const end = index + payload_len;
-        _ = try item.encodeIntoAssumeCapacity(ctx.buffer[index..end]);
-        index = end;
-    }
-    var map_it = msg.audits.iterator();
-    while (map_it.next()) |map_entry| {
-        const key = map_entry.key_ptr.*;
-        const value = map_entry.value_ptr.*;
-        if (!pbz.validateUtf8(key)) return error.InvalidUtf8;
-        const value_payload_len = value.encodedSize();
-        const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(value_payload_len) + value_payload_len;
-        ctx.buffer[index] = 34;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, entry_len);
-        ctx.buffer[index] = 10;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, key.len);
-        @memcpy(ctx.buffer[index..][0..key.len], key);
-        index += key.len;
-        ctx.buffer[index] = 18;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, value_payload_len);
-        const end = index + value_payload_len;
-        _ = try value.encodeIntoAssumeCapacity(ctx.buffer[index..end]);
-        index = end;
-    }
-    switch (msg.subject) {
-        .none => {},
-        .user_name => |value| {
-            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
-            ctx.buffer[index] = 42;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
-            @memcpy(ctx.buffer[index..][0..value.len], value);
-            index += value.len;
-        },
-        .organization_id => |value| {
-            ctx.buffer[index] = 50;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
-            @memcpy(ctx.buffer[index..][0..value.len], value);
-            index += value.len;
-        },
-        .audit_subject => |value| {
-            ctx.buffer[index] = 58;
-            index += 1;
-            const payload_len = value.encodedSize();
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
-            const end = index + payload_len;
-            _ = try value.encodeIntoAssumeCapacity(ctx.buffer[index..end]);
-            index = end;
-        },
-    }
-    for (msg._unknown_fields) |raw| {
-        @memcpy(ctx.buffer[index..][0..raw.len], raw);
-        index += raw.len;
-    }
-    std.mem.doNotOptimizeAway(ctx.buffer.ptr);
+    const bytes = try ctx.message.encodeIntoAssumeCapacityTrustedUtf8(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
 const GeneratedComplexDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
@@ -2070,7 +1993,7 @@ pub fn main() !void {
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),
-        try runTimed(io, "generated complex fast known-schema encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexManualEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexManualEncodeIntoReuse),
+        try runTimed(io, "generated complex trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexManualEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexManualEncodeIntoReuse),
         try runTimed(io, "generated complex decode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeCtx{ .allocator = allocator, .bytes = generated_complex_bytes }, generatedComplexDecode),
         try runTimed(io, "generated complex JSON stringify", iters.json, generated_complex_json.len, GeneratedComplexJsonStringifyCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexJsonStringify),
         try runTimed(io, "generated complex JSON parse", iters.json, generated_complex_json.len, GeneratedComplexJsonParseCtx{ .allocator = allocator, .json = generated_complex_json }, generatedComplexJsonParse),
