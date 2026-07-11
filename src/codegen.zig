@@ -789,6 +789,10 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     if (messageCanDecodeReuseFast(message)) {
         try writeDecodeReuse(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
+        if (messageCanDecodeKnownReuse(ctx.file, message)) {
+            try writeDecodeKnownReuse(ctx, message, writer, depth + 1);
+            try writer.writeAll("\n");
+        }
     }
     try writeDecodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
@@ -6592,6 +6596,25 @@ fn messageCanDecodeReuseFast(message: *const schema.MessageDescriptor) bool {
     return true;
 }
 
+fn messageCanDecodeKnownReuse(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
+    if (!messageCanFastRawTagDecode(file, message)) return false;
+    var has_repeated = false;
+    for (message.fields.items) |field| {
+        if (field.cardinality != .repeated) continue;
+        has_repeated = true;
+        if (field.kind != .scalar) return false;
+        if (knownReuseRepeatedScalarSupported(field.kind.scalar) == false) return false;
+    }
+    return has_repeated;
+}
+
+fn knownReuseRepeatedScalarSupported(scalar: schema.ScalarType) bool {
+    return switch (scalar) {
+        .bool, .uint64, .uint32, .int32, .int64, .sint32, .sint64 => true,
+        else => false,
+    };
+}
+
 fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
@@ -6634,6 +6657,151 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeDecodeKnownReuse(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
+    for (message.fields.items) |*field| {
+        if (field.cardinality != .repeated) continue;
+        try indent(writer, depth + 1);
+        try writer.writeAll("const ");
+        try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+        try writer.writeAll(" = @constCast(self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var ");
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll(": usize = 0;\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self._unknown_fields = &.{};\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
+    for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx.file, field, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("while (!r.eof()) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("const raw_tag_start = r.position();\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("const first_tag_byte = try r.readByte();\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("switch (raw_tag) {\n");
+    for (message.fields.items) |*field| {
+        if (field.cardinality == .repeated) {
+            if (field.kind == .scalar) try writeKnownReuseRepeatedScalarCases(ctx.file, field, field.kind.scalar, writer, depth + 3);
+            continue;
+        }
+        switch (field.kind) {
+            .scalar => |scalar| try writeRawTagDecodeSingularScalarCase(ctx.file, field, scalar, writer, depth + 3),
+            .enumeration => try writeRawTagDecodeSingularEnumCase(ctx.file, field, writer, depth + 3),
+            else => {},
+        }
+    }
+    try indent(writer, depth + 3);
+    try writer.writeAll("else => return error.InvalidWireType,\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    for (message.fields.items) |*field| {
+        if (field.cardinality != .repeated) continue;
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (");
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll(" != ");
+        try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+        try writer.writeAll(".len) return error.InvalidWireType;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = ");
+        try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+        try writer.writeAll(";\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeKnownReuseRepeatedScalarCases(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    _ = file;
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .length_delimited)});
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payload = try r.readBytes();\n");
+    try writeKnownReuseRepeatedScalarPayload(field, scalar, "payload", writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .varint)});
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+    try writer.writeAll("[");
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll("] = try r.");
+    try writer.writeAll(scalarReaderName(scalar));
+    try writer.writeAll("();\n");
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll(" += 1;\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+}
+
+fn writeKnownReuseRepeatedScalarPayload(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (scalar == .bool) {
+        try indent(writer, depth);
+        try writer.print("for ({s}) |byte| {{\n", .{payload_expr});
+        try indent(writer, depth + 1);
+        try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+        try writer.writeAll("[");
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll("] = byte != 0;\n");
+        try indent(writer, depth + 1);
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll(" += 1;\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+        return;
+    }
+    try indent(writer, depth);
+    try writer.writeAll("var payload_index: usize = 0;\n");
+    try indent(writer, depth);
+    try writer.print("while (payload_index < {s}.len) {{\n", .{payload_expr});
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+    try writer.writeAll("[");
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll("] = ");
+    try writeKnownReuseRepeatedScalarDecodeExpr(scalar, payload_expr, writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll(" += 1;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeKnownReuseRepeatedScalarDecodeExpr(scalar: schema.ScalarType, payload_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .uint64 => try writer.print("try pbz.wire.readVarintAt({s}, &payload_index)", .{payload_expr}),
+        .uint32 => try writer.print("@intCast(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
+        .int32 => try writer.print("@truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt({s}, &payload_index))))", .{payload_expr}),
+        .int64 => try writer.print("@bitCast(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
+        .sint32 => try writer.print("pbz.wire.zigZagDecode32(@intCast(try pbz.wire.readVarintAt({s}, &payload_index)))", .{payload_expr}),
+        .sint64 => try writer.print("pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
+        else => try writer.writeAll("@compileError(\"unsupported known reuse scalar\")"),
+    }
 }
 
 fn writeRepeatedReuseListDecl(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {

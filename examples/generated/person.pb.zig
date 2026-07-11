@@ -2265,6 +2265,77 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
         }
 
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const flags_buffer = @constCast(self.flags);
+            var flags_len: usize = 0;
+            const ids_buffer = @constCast(self.ids);
+            var ids_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            self.active = false;
+            self.count = 0;
+            self.total = 0;
+            self.delta = 0;
+            self.big_delta = 0;
+            self.checksum = 0;
+            self.token = 0;
+            self.signed_fixed = 0;
+            self.signed_big_fixed = 0;
+            self.ratio = 0;
+            self.score = 0;
+            self.kind = 0;
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    8 => { self.active = try r.readBool(); },
+                    16 => { self.count = try r.readUInt32(); },
+                    24 => { self.total = try r.readUInt64(); },
+                    32 => { self.delta = try r.readSInt32(); },
+                    40 => { self.big_delta = try r.readSInt64(); },
+                    53 => { self.checksum = try r.readFixed32(); },
+                    57 => { self.token = try r.readFixed64(); },
+                    69 => { self.signed_fixed = try r.readSFixed32(); },
+                    73 => { self.signed_big_fixed = try r.readSFixed64(); },
+                    85 => { self.ratio = try r.readFloat(); },
+                    89 => { self.score = try r.readDouble(); },
+                    96 => { const value = try r.readInt32(); self.kind = value; },
+                    106 => {
+                        const payload = try r.readBytes();
+                        for (payload) |byte| {
+                            flags_buffer[flags_len] = byte != 0;
+                            flags_len += 1;
+                        }
+                    },
+                    104 => {
+                        flags_buffer[flags_len] = try r.readBool();
+                        flags_len += 1;
+                    },
+                    114 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            ids_buffer[ids_len] = try pbz.wire.readVarintAt(payload, &payload_index);
+                            ids_len += 1;
+                        }
+                    },
+                    112 => {
+                        ids_buffer[ids_len] = try r.readUInt64();
+                        ids_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (flags_len != flags_buffer.len) return error.InvalidWireType;
+            self.flags = flags_buffer;
+            if (ids_len != ids_buffer.len) return error.InvalidWireType;
+            self.ids = ids_buffer;
+        }
+
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var decoded = try @This().decode(allocator, bytes);
             defer decoded.deinit(allocator);

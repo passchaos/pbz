@@ -497,74 +497,9 @@ fn generatedScalarMixDecodeReuse(ctx: GeneratedScalarMixDecodeReuseCtx) !void {
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
-const GeneratedScalarMixManualDecodeReuseCtx = struct {
-    bytes: []const u8,
-    message: *person_pb.demo.ScalarMix,
-    flags: []bool,
-    ids: []u64,
-};
-fn generatedScalarMixManualDecodeReuse(ctx: GeneratedScalarMixManualDecodeReuseCtx) !void {
-    const msg = ctx.message;
-    msg.active = false;
-    msg.count = 0;
-    msg.total = 0;
-    msg.delta = 0;
-    msg.big_delta = 0;
-    msg.checksum = 0;
-    msg.token = 0;
-    msg.signed_fixed = 0;
-    msg.signed_big_fixed = 0;
-    msg.ratio = 0;
-    msg.score = 0;
-    msg.kind = 0;
-
-    var flags_len: usize = 0;
-    var ids_len: usize = 0;
-    var r = pbz.Reader.init(ctx.bytes);
-    while (!r.eof()) {
-        switch (try r.readByte()) {
-            8 => msg.active = try r.readBool(),
-            16 => msg.count = try r.readUInt32(),
-            24 => msg.total = try r.readUInt64(),
-            32 => msg.delta = try r.readSInt32(),
-            40 => msg.big_delta = try r.readSInt64(),
-            53 => msg.checksum = try r.readFixed32(),
-            57 => msg.token = try r.readFixed64(),
-            69 => msg.signed_fixed = try r.readSFixed32(),
-            73 => msg.signed_big_fixed = try r.readSFixed64(),
-            85 => msg.ratio = try r.readFloat(),
-            89 => msg.score = try r.readDouble(),
-            96 => msg.kind = try r.readInt32(),
-            106 => {
-                const payload = try r.readBytes();
-                for (payload) |byte| {
-                    ctx.flags[flags_len] = byte != 0;
-                    flags_len += 1;
-                }
-            },
-            104 => {
-                ctx.flags[flags_len] = try r.readBool();
-                flags_len += 1;
-            },
-            114 => {
-                const payload = try r.readBytes();
-                var index: usize = 0;
-                while (index < payload.len) {
-                    ctx.ids[ids_len] = try pbz.wire.readVarintAt(payload, &index);
-                    ids_len += 1;
-                }
-            },
-            112 => {
-                ctx.ids[ids_len] = try r.readUInt64();
-                ids_len += 1;
-            },
-            else => return error.InvalidWireType,
-        }
-    }
-    if (flags_len != ctx.flags.len or ids_len != ctx.ids.len) return error.InvalidWireType;
-    msg.flags = ctx.flags;
-    msg.ids = ctx.ids;
-    std.mem.doNotOptimizeAway(msg);
+fn generatedScalarMixKnownDecodeReuse(ctx: GeneratedScalarMixDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
 }
 
 const GeneratedTextBytesEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.TextBytes };
@@ -2112,7 +2047,7 @@ pub fn main() !void {
         try runTimed(io, "generated scalarmix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeIntoCtx{ .buffer = generated_scalar_mix_buffer, .message = &generated_scalar_mix }, generatedScalarMixEncodeIntoReuse),
         try runTimed(io, "generated scalarmix decode", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixDecodeCtx{ .allocator = allocator, .bytes = generated_scalar_mix_bytes }, generatedScalarMixDecode),
         try runTimed(io, "generated scalarmix decode reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixDecodeReuseCtx{ .allocator = allocator, .bytes = generated_scalar_mix_bytes, .message = &generated_scalar_mix_decode_reuse }, generatedScalarMixDecodeReuse),
-        try runTimed(io, "generated scalarmix fast known-schema decode reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixManualDecodeReuseCtx{ .bytes = generated_scalar_mix_bytes, .message = &generated_scalar_mix_decode_reuse, .flags = @constCast(generated_scalar_mix_decode_reuse.flags), .ids = @constCast(generated_scalar_mix_decode_reuse.ids) }, generatedScalarMixManualDecodeReuse),
+        try runTimed(io, "generated scalarmix fast known-schema decode reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixDecodeReuseCtx{ .allocator = allocator, .bytes = generated_scalar_mix_bytes, .message = &generated_scalar_mix_decode_reuse }, generatedScalarMixKnownDecodeReuse),
         try runTimed(io, "generated textbytes encode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeCtx{ .allocator = allocator, .message = &generated_text_bytes }, generatedTextBytesEncode),
         try runTimed(io, "generated textbytes writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesWriteToReuse),
         try runTimed(io, "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8WriteToReuse),
