@@ -873,6 +873,29 @@ fn writeEncodeOneof(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("}\n");
 }
 
+fn writeEncodeOneofAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".none => {},\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            if (std.mem.eql(u8, name, oneof.name)) {
+                try indent(writer, depth + 1);
+                try writer.writeAll(".");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" => |value| ");
+                try writeOneofValueEncodeAssumeCapacity(ctx, field, "value", writer);
+                try writer.writeAll(",\n");
+            }
+        }
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };\n\n");
@@ -1604,6 +1627,42 @@ fn writeOneofValueEncode(ctx: *const CodegenContext, field: *const schema.FieldD
                 try writer.print("{{ try w.writeTag({d}, .start_group); try {s}.writeTo(w); try w.writeTag({d}, .end_group); }}", .{ field.number, value_expr, field.number });
             } else {
                 try writer.print("{{ try w.writeTag({d}, .start_group); try w.appendSlice({s}); try w.writeTag({d}, .end_group); }}", .{ field.number, value_expr, field.number });
+            }
+        },
+        else => try writer.writeAll("@compileError(\"unsupported oneof field\")"),
+    }
+}
+
+fn writeOneofValueEncodeAssumeCapacity(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    const file = ctx.file;
+    switch (field.kind) {
+        .scalar => |scalar| {
+            if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+                try writer.writeAll("{ if (!std.unicode.utf8ValidateSlice(");
+                try writer.writeAll(value_expr);
+                try writer.writeAll(")) return error.InvalidUtf8; ");
+                try writeScalarWriteCallAssumeCapacity(field.number, scalar, value_expr, writer);
+                try writer.writeAll("); }");
+            } else {
+                try writeScalarWriteCallAssumeCapacity(field.number, scalar, value_expr, writer);
+                try writer.writeAll(")");
+            }
+        },
+        .enumeration => try writer.print("w.writeInt32AssumeCapacity({d}, {s})", .{ field.number, value_expr }),
+        .message => {
+            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
+                try writer.print("{{ const payload_len = {s}.encodedSize(); w.writeTagAssumeCapacity({d}, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try {s}.writeToAssumeCapacity(w); }}", .{ value_expr, field.number, value_expr });
+            } else if (fieldMessageEncoding(file, field) == .delimited) {
+                try writer.print("{{ w.writeTagAssumeCapacity({d}, .start_group); w.appendSliceAssumeCapacity({s}); w.writeTagAssumeCapacity({d}, .end_group); }}", .{ field.number, value_expr, field.number });
+            } else {
+                try writer.print("w.writeMessageAssumeCapacity({d}, {s})", .{ field.number, value_expr });
+            }
+        },
+        .group => {
+            if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
+                try writer.print("{{ w.writeTagAssumeCapacity({d}, .start_group); try {s}.writeToAssumeCapacity(w); w.writeTagAssumeCapacity({d}, .end_group); }}", .{ field.number, value_expr, field.number });
+            } else {
+                try writer.print("{{ w.writeTagAssumeCapacity({d}, .start_group); w.appendSliceAssumeCapacity({s}); w.writeTagAssumeCapacity({d}, .end_group); }}", .{ field.number, value_expr, field.number });
             }
         },
         else => try writer.writeAll("@compileError(\"unsupported oneof field\")"),
@@ -2931,7 +2990,7 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeEncodeFieldAssumeCapacity(ctx, field, writer, depth + 1);
     }
-    for (message.oneofs.items) |oneof| try writeEncodeOneof(ctx, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeEncodeOneofAssumeCapacity(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("for (self.@\"_unknown_fields\") |raw| w.appendSliceAssumeCapacity(raw);\n");
     try indent(writer, depth);
@@ -6087,7 +6146,8 @@ fn writeEncodeFieldAssumeCapacity(ctx: *const CodegenContext, field: *const sche
     switch (field.kind) {
         .scalar => |scalar| try writeEncodeScalarFieldAssumeCapacity(file, field, scalar, writer, depth),
         .enumeration => try writeEncodeEnumFieldAssumeCapacity(file, field, writer, depth),
-        .message, .group => try writeEncodeField(ctx, field, writer, depth),
+        .message => try writeEncodeMessageFieldAssumeCapacity(ctx, field, writer, depth),
+        .group => try writeEncodeGroupFieldAssumeCapacity(ctx, field, writer, depth),
         .map => try writeEncodeMapFieldAssumeCapacity(ctx, field, writer, depth),
     }
 }
@@ -6527,6 +6587,35 @@ fn writeEncodeMessageField(ctx: *const CodegenContext, field: *const schema.Fiel
     }
 }
 
+fn writeEncodeMessageFieldAssumeCapacity(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |item| {{ const payload_len = item.encodedSize(); w.writeTagAssumeCapacity({d}, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeToAssumeCapacity(w); }}\n", .{field.number});
+            return;
+        }
+        try writeEncodeMessageField(ctx, field, writer, depth);
+    } else {
+        try indent(writer, depth);
+        if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(") |value| { const payload_len = value.encodedSize(); ");
+            if (fieldMessageEncoding(file, field) == .delimited) {
+                try writer.print("w.writeTagAssumeCapacity({d}, .start_group); try value.writeToAssumeCapacity(w); w.writeTagAssumeCapacity({d}, .end_group);", .{ field.number, field.number });
+            } else {
+                try writer.print("w.writeTagAssumeCapacity({d}, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w);", .{field.number});
+            }
+            try writer.writeAll(" }\n");
+            return;
+        }
+        try writeEncodeMessageField(ctx, field, writer, depth);
+    }
+}
+
 fn writeEncodeMessageFieldDeterministic(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     if (field.cardinality == .repeated) {
@@ -6601,6 +6690,28 @@ fn writeEncodeGroupFieldDeterministic(ctx: *const CodegenContext, field: *const 
             try writeEncodeMessagePayloadDeterministic(ctx, field.number, true, type_name, "item", "w", writer);
             try writer.writeAll(" }\n");
         }
+    }
+}
+
+fn writeEncodeGroupFieldAssumeCapacity(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.cardinality == .repeated) {
+        try indent(writer, depth);
+        if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
+            try writer.writeAll("for (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |item| {{ w.writeTagAssumeCapacity({d}, .start_group); try item.writeToAssumeCapacity(w); w.writeTagAssumeCapacity({d}, .end_group); }}\n", .{ field.number, field.number });
+            return;
+        }
+        try writeEncodeGroupField(ctx, field, writer, depth);
+    } else {
+        try indent(writer, depth);
+        if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
+            try writer.writeAll("if (self.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.print(") |value| {{ w.writeTagAssumeCapacity({d}, .start_group); try value.writeToAssumeCapacity(w); w.writeTagAssumeCapacity({d}, .end_group); }}\n", .{ field.number, field.number });
+            return;
+        }
+        try writeEncodeGroupField(ctx, field, writer, depth);
     }
 }
 
@@ -6930,7 +7041,7 @@ fn writeMapEntryValueWriteCall(ctx: *const CodegenContext, field: *const schema.
     const map_type = field.kind.map;
     if (typedMapMessageValueWithContext(ctx, field)) |_| {
         if (assume_capacity) {
-            try writer.print("{{ const value_len = {s}.encodedSize(); {s}.writeTagAssumeCapacity(2, .length_delimited); {s}.writeVarintAssumeCapacity(value_len); try {s}.writeTo({s}); }}\n", .{ value_expr, writer_name, writer_name, value_expr, writer_name });
+            try writer.print("{{ const value_len = {s}.encodedSize(); {s}.writeTagAssumeCapacity(2, .length_delimited); {s}.writeVarintAssumeCapacity(value_len); try {s}.writeToAssumeCapacity({s}); }}\n", .{ value_expr, writer_name, writer_name, value_expr, writer_name });
         } else {
             try writer.print("{{ const value_len = {s}.encodedSize(); try {s}.writeTag(2, .length_delimited); try {s}.writeVarint(value_len); try {s}.writeTo({s}); }}\n", .{ value_expr, writer_name, writer_name, value_expr, writer_name });
         }

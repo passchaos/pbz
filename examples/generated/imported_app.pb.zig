@@ -332,20 +332,20 @@ pub const demo = struct {
                 }
 
                 pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-                    if (self.primary) |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
-                    for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
+                    if (self.primary) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(1, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
+                    for (self.history) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeToAssumeCapacity(w); }
                     for (self.by_name) |entry| {
                         if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         w.writeTagAssumeCapacity(3, .length_delimited);
                         w.writeVarintAssumeCapacity(entry_len);
                         w.writeStringAssumeCapacity(1, entry.key);
-                        { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeTo(w); }
+                        { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeToAssumeCapacity(w); }
                     }
                     switch (self.selected) {
                         .none => {},
-                        .chosen => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
-                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        .chosen => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(4, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
+                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(5, value); },
                     }
                     for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
                 }

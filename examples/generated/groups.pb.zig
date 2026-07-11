@@ -283,12 +283,12 @@ pub const demo = struct {
 
             pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
                 if (self.has_id) w.writeInt32AssumeCapacity(1, self.id);
-                if (self.box) |value| { try w.writeTag(2, .start_group); try value.writeTo(w); try w.writeTag(2, .end_group); }
-                for (self.item) |item| { try w.writeTag(4, .start_group); try item.writeTo(w); try w.writeTag(4, .end_group); }
+                if (self.box) |value| { w.writeTagAssumeCapacity(2, .start_group); try value.writeToAssumeCapacity(w); w.writeTagAssumeCapacity(2, .end_group); }
+                for (self.item) |item| { w.writeTagAssumeCapacity(4, .start_group); try item.writeToAssumeCapacity(w); w.writeTagAssumeCapacity(4, .end_group); }
                 switch (self.picked) {
                     .none => {},
-                    .picked_box => |value| { const payload_len = value.encodedSize(); try w.writeTag(6, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
-                    .note => |value| try w.writeString(7, value),
+                    .picked_box => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(6, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
+                    .note => |value| w.writeStringAssumeCapacity(7, value),
                 }
                 for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
             }

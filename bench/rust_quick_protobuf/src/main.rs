@@ -84,6 +84,169 @@ impl<'a> MessageRead<'a> for Person {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ComplexAudit {
+    pub actor: String,
+    pub at_unix: i64,
+}
+
+impl MessageWrite for ComplexAudit {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if !self.actor.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.actor.len());
+        }
+        if self.at_unix != 0 {
+            size += 1 + sizeofs::sizeof_int64(self.at_unix);
+        }
+        size
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.actor.is_empty() {
+            w.write_with_tag(10, |w| w.write_string(&self.actor))?;
+        }
+        if self.at_unix != 0 {
+            w.write_with_tag(16, |w| w.write_int64(self.at_unix))?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for ComplexAudit {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = ComplexAudit::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.actor = r.read_string(bytes)?.to_owned(),
+                16 => msg.at_unix = r.read_int64(bytes)?,
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComplexSubject {
+    UserName(String),
+    OrganizationId(Vec<u8>),
+    AuditSubject(ComplexAudit),
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Complex {
+    pub id: i32,
+    pub audit: Option<ComplexAudit>,
+    pub history: Vec<ComplexAudit>,
+    pub audits: HashMap<String, ComplexAudit>,
+    pub subject: Option<ComplexSubject>,
+}
+
+impl MessageWrite for Complex {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if self.id != 0 {
+            size += 1 + sizeofs::sizeof_int32(self.id);
+        }
+        if let Some(audit) = &self.audit {
+            let len = audit.get_size();
+            size += 1 + sizeofs::sizeof_len(len);
+        }
+        for item in &self.history {
+            let len = item.get_size();
+            size += 1 + sizeofs::sizeof_len(len);
+        }
+        for (key, value) in &self.audits {
+            let value_len = value.get_size();
+            let entry_len = 1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_len(value_len);
+            size += 1 + sizeofs::sizeof_len(entry_len);
+        }
+        match &self.subject {
+            Some(ComplexSubject::UserName(value)) => size += 1 + sizeofs::sizeof_len(value.len()),
+            Some(ComplexSubject::OrganizationId(value)) => {
+                size += 1 + sizeofs::sizeof_len(value.len())
+            }
+            Some(ComplexSubject::AuditSubject(value)) => {
+                let len = value.get_size();
+                size += 1 + sizeofs::sizeof_len(len);
+            }
+            None => {}
+        }
+        size
+    }
+
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if self.id != 0 {
+            w.write_with_tag(8, |w| w.write_int32(self.id))?;
+        }
+        if let Some(audit) = &self.audit {
+            w.write_with_tag(18, |w| w.write_message(audit))?;
+        }
+        for item in &self.history {
+            w.write_with_tag(26, |w| w.write_message(item))?;
+        }
+        for (key, value) in &self.audits {
+            let value_len = value.get_size();
+            let entry_len = 1 + sizeofs::sizeof_len(key.len()) + 1 + sizeofs::sizeof_len(value_len);
+            w.write_with_tag(34, |w| {
+                w.write_map(
+                    entry_len,
+                    10,
+                    |w| w.write_string(key),
+                    18,
+                    |w| w.write_message(value),
+                )
+            })?;
+        }
+        match &self.subject {
+            Some(ComplexSubject::UserName(value)) => {
+                w.write_with_tag(42, |w| w.write_string(value))?
+            }
+            Some(ComplexSubject::OrganizationId(value)) => {
+                w.write_with_tag(50, |w| w.write_bytes(value))?
+            }
+            Some(ComplexSubject::AuditSubject(value)) => {
+                w.write_with_tag(58, |w| w.write_message(value))?
+            }
+            None => {}
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for Complex {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = Complex::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                8 => msg.id = r.read_int32(bytes)?,
+                18 => msg.audit = Some(r.read_message(bytes)?),
+                26 => msg.history.push(r.read_message(bytes)?),
+                34 => {
+                    let (key, value) = r.read_map(
+                        bytes,
+                        |r, bytes| Ok(r.read_string(bytes)?.to_owned()),
+                        |r, bytes| r.read_message(bytes),
+                    )?;
+                    msg.audits.insert(key, value);
+                }
+                42 => {
+                    msg.subject = Some(ComplexSubject::UserName(r.read_string(bytes)?.to_owned()))
+                }
+                50 => {
+                    msg.subject = Some(ComplexSubject::OrganizationId(
+                        r.read_bytes(bytes)?.to_vec(),
+                    ))
+                }
+                58 => msg.subject = Some(ComplexSubject::AuditSubject(r.read_message(bytes)?)),
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Iterations {
     binary: usize,
@@ -253,6 +416,26 @@ fn make_person() -> Person {
     }
 }
 
+fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
+    ComplexAudit {
+        actor: actor.to_owned(),
+        at_unix,
+    }
+}
+
+fn make_complex() -> Complex {
+    let mut audits = HashMap::new();
+    audits.insert("latest".to_owned(), audit("reviewer", 67890));
+    audits.insert("created".to_owned(), audit("creator", 12345));
+    Complex {
+        id: 42,
+        audit: Some(audit("tester", 12345)),
+        history: vec![audit("creator", 12345), audit("reviewer", 67890)],
+        audits,
+        subject: Some(ComplexSubject::AuditSubject(audit("subject", 777))),
+    }
+}
+
 fn encode_to_vec<M: MessageWrite>(message: &M) -> Vec<u8> {
     let mut out = Vec::with_capacity(message.get_size());
     {
@@ -300,6 +483,8 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = encode_to_vec(&person);
+    let complex = make_complex();
+    let complex_bytes = encode_to_vec(&complex);
     let packed = make_packed();
     let packed_bytes = encode_to_vec(&packed);
     let fixed_packed = make_fixed_packed();
@@ -309,6 +494,7 @@ fn main() {
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
     println!(
@@ -348,6 +534,43 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&bytes);
             let decoded = Person::from_reader(&mut reader, &bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf complex encode",
+        iters.binary,
+        complex_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&complex);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_complex = Vec::with_capacity(complex_bytes.len());
+    run_timed(
+        "quick-protobuf complex encode reuse",
+        iters.binary,
+        complex_bytes.len(),
+        || {
+            reused_complex.clear();
+            let mut writer = Writer::new(&mut reused_complex);
+            complex.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_complex);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf complex decode",
+        iters.binary,
+        complex_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&complex_bytes);
+            let decoded = Complex::from_reader(&mut reader, &complex_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

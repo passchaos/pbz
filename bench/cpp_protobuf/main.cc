@@ -76,15 +76,38 @@ demo::Person MakePerson() {
   return person;
 }
 
+
+demo::Complex::Audit MakeAudit(const std::string& actor, int64_t at_unix) {
+  demo::Complex::Audit audit;
+  audit.set_actor(actor);
+  audit.set_at_unix(at_unix);
+  return audit;
+}
+
+demo::Complex MakeComplex() {
+  demo::Complex complex;
+  complex.set_id(42);
+  *complex.mutable_audit() = MakeAudit("tester", 12345);
+  *complex.add_history() = MakeAudit("creator", 12345);
+  *complex.add_history() = MakeAudit("reviewer", 67890);
+  (*complex.mutable_audits())["latest"] = MakeAudit("reviewer", 67890);
+  (*complex.mutable_audits())["created"] = MakeAudit("creator", 12345);
+  *complex.mutable_audit_subject() = MakeAudit("subject", 777);
+  return complex;
+}
+
 int main() {
   constexpr int kIterations = 20000;
   const demo::Person person = MakePerson();
+  const demo::Complex complex = MakeComplex();
   std::string bytes;
   person.SerializeToString(&bytes);
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok()) std::abort();
   std::string text;
   if (!google::protobuf::TextFormat::PrintToString(person, &text)) std::abort();
+  std::string complex_bytes;
+  complex.SerializeToString(&complex_bytes);
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -99,6 +122,7 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
+  std::cout << "complex payload size: " << complex_bytes.size() << "\n";
   std::cout << "packed payload size: " << packed_bytes.size() << "\n";
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size() << "\n";
   std::cout << "fixed64 packed payload size: " << fixed64_packed_bytes.size() << "\n";
@@ -155,6 +179,48 @@ int main() {
     asm volatile("" : : "g"(&reused_decoded) : "memory");
   });
   decode_reuse.Print();
+
+
+
+  auto complex_encode = RunTimed("c++ protobuf complex encode", kIterations, complex_bytes.size(), [&]() {
+    std::string out;
+    out.reserve(complex_bytes.size());
+    complex.SerializeToString(&out);
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  complex_encode.Print();
+
+  std::string reused_complex;
+  reused_complex.reserve(complex_bytes.size());
+  auto complex_encode_reuse = RunTimed("c++ protobuf complex encode reuse", kIterations, complex_bytes.size(), [&]() {
+    reused_complex.clear();
+    complex.SerializeToString(&reused_complex);
+    asm volatile("" : : "g"(reused_complex.data()) : "memory");
+  });
+  complex_encode_reuse.Print();
+
+  std::string complex_array_buffer;
+  complex_array_buffer.resize(complex_bytes.size());
+  auto complex_encode_array_reuse = RunTimed("c++ protobuf complex SerializeToArray reuse", kIterations, complex_bytes.size(), [&]() {
+    if (!complex.SerializeToArray(complex_array_buffer.data(), static_cast<int>(complex_array_buffer.size()))) std::abort();
+    asm volatile("" : : "g"(complex_array_buffer.data()) : "memory");
+  });
+  complex_encode_array_reuse.Print();
+
+  auto complex_decode = RunTimed("c++ protobuf complex decode", kIterations, complex_bytes.size(), [&]() {
+    demo::Complex decoded;
+    if (!decoded.ParseFromString(complex_bytes)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  complex_decode.Print();
+
+  demo::Complex reused_complex_decoded;
+  auto complex_decode_reuse = RunTimed("c++ protobuf complex decode reuse", kIterations, complex_bytes.size(), [&]() {
+    reused_complex_decoded.Clear();
+    if (!reused_complex_decoded.ParseFromString(complex_bytes)) std::abort();
+    asm volatile("" : : "g"(&reused_complex_decoded) : "memory");
+  });
+  complex_decode_reuse.Print();
 
   auto json_stringify = RunTimed("c++ protobuf JSON stringify", kIterations, json.size(), [&]() {
     std::string out;

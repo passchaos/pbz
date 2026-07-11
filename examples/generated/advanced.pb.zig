@@ -406,20 +406,20 @@ pub const demo = struct {
             pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
                 if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
                 if (self.kind != 0) w.writeInt32AssumeCapacity(2, self.kind);
-                if (self.audit) |value| { const payload_len = value.encodedSize(); try w.writeTag(3, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
+                if (self.audit) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(3, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
                 for (self.audits) |entry| {
                     if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     w.writeTagAssumeCapacity(7, .length_delimited);
                     w.writeVarintAssumeCapacity(entry_len);
                     w.writeStringAssumeCapacity(1, entry.key);
-                    { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeTo(w); }
+                    { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeToAssumeCapacity(w); }
                 }
                 switch (self.subject) {
                     .none => {},
-                    .user_name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(4, value); },
-                    .organization_id => |value| try w.writeBytes(5, value),
-                    .audit_subject => |value| { const payload_len = value.encodedSize(); try w.writeTag(6, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
+                    .user_name => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(4, value); },
+                    .organization_id => |value| w.writeBytesAssumeCapacity(5, value),
+                    .audit_subject => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(6, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
                 }
                 for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
             }

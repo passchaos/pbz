@@ -86,9 +86,27 @@ func makePerson() *personpb.Person {
 	}
 }
 
+func audit(actor string, atUnix int64) *personpb.Complex_Audit {
+	return &personpb.Complex_Audit{Actor: actor, AtUnix: atUnix}
+}
+
+func makeComplex() *personpb.Complex {
+	return &personpb.Complex{
+		Id:      42,
+		Audit:   audit("tester", 12345),
+		History: []*personpb.Complex_Audit{audit("creator", 12345), audit("reviewer", 67890)},
+		Audits: map[string]*personpb.Complex_Audit{
+			"latest":  audit("reviewer", 67890),
+			"created": audit("creator", 12345),
+		},
+		Subject: &personpb.Complex_AuditSubject{AuditSubject: audit("subject", 777)},
+	}
+}
+
 func main() {
 	const iterations = 20_000
 	person := makePerson()
+	complex := makeComplex()
 	bytes, err := proto.Marshal(person)
 	if err != nil {
 		panic(err)
@@ -98,6 +116,10 @@ func main() {
 		panic(err)
 	}
 	textBytes, err := prototext.Marshal(person)
+	if err != nil {
+		panic(err)
+	}
+	complexBytes, err := proto.Marshal(complex)
 	if err != nil {
 		panic(err)
 	}
@@ -121,6 +143,7 @@ func main() {
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
+	fmt.Printf("complex payload size: %d\n", len(complexBytes))
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
 	fmt.Printf("fixed64 packed payload size: %d\n", len(fixed64PackedBytes))
@@ -157,6 +180,30 @@ func main() {
 	runTimed("go protobuf binary decode", iterations, len(bytes), func() {
 		var decoded personpb.Person
 		if err := unmarshalOptions.Unmarshal(bytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf complex encode", iterations, len(complexBytes), func() {
+		out, err := proto.Marshal(complex)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	complexBuf := make([]byte, 0, len(complexBytes))
+	runTimed("go protobuf complex encode reuse", iterations, len(complexBytes), func() {
+		var err error
+		complexBuf, err = marshalOptions.MarshalAppend(complexBuf[:0], complex)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf complex decode", iterations, len(complexBytes), func() {
+		var decoded personpb.Complex
+		if err := unmarshalOptions.Unmarshal(complexBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

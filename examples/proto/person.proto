@@ -19,3 +19,21 @@ message FixedPacked {
 message Fixed64Packed {
   repeated fixed64 values = 1;
 }
+
+message Complex {
+  message Audit {
+    string actor = 1;
+    int64 at_unix = 2;
+  }
+
+  int32 id = 1;
+  Audit audit = 2;
+  repeated Audit history = 3;
+  map<string, Audit> audits = 4;
+
+  oneof subject {
+    string user_name = 5;
+    bytes organization_id = 6;
+    Audit audit_subject = 7;
+  }
+}

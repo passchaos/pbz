@@ -16,6 +16,43 @@ pub struct Person {
     pub counts: HashMap<String, i32>,
 }
 
+#[derive(Clone, PartialEq, Message)]
+pub struct ComplexAudit {
+    #[prost(string, tag = "1")]
+    pub actor: String,
+    #[prost(int64, tag = "2")]
+    pub at_unix: i64,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct Complex {
+    #[prost(int32, tag = "1")]
+    pub id: i32,
+    #[prost(message, optional, tag = "2")]
+    pub audit: Option<ComplexAudit>,
+    #[prost(message, repeated, tag = "3")]
+    pub history: Vec<ComplexAudit>,
+    #[prost(map = "string, message", tag = "4")]
+    pub audits: HashMap<String, ComplexAudit>,
+    #[prost(oneof = "complex::Subject", tags = "5, 6, 7")]
+    pub subject: Option<complex::Subject>,
+}
+
+pub mod complex {
+    use super::ComplexAudit;
+    use prost::Oneof;
+
+    #[derive(Clone, PartialEq, Oneof)]
+    pub enum Subject {
+        #[prost(string, tag = "5")]
+        UserName(String),
+        #[prost(bytes, tag = "6")]
+        OrganizationId(Vec<u8>),
+        #[prost(message, tag = "7")]
+        AuditSubject(ComplexAudit),
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Iterations {
     binary: usize,
@@ -99,6 +136,27 @@ fn make_person() -> Person {
     }
 }
 
+fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
+    ComplexAudit {
+        actor: actor.to_string(),
+        at_unix,
+    }
+}
+
+fn make_complex() -> Complex {
+    let latest = audit("reviewer", 67890);
+    let mut audits = HashMap::new();
+    audits.insert("latest".to_string(), latest.clone());
+    audits.insert("created".to_string(), audit("creator", 12345));
+    Complex {
+        id: 42,
+        audit: Some(audit("tester", 12345)),
+        history: vec![audit("creator", 12345), latest],
+        audits,
+        subject: Some(complex::Subject::AuditSubject(audit("subject", 777))),
+    }
+}
+
 fn run_timed<F>(
     name: &'static str,
     iterations: usize,
@@ -137,6 +195,8 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = person.encode_to_vec();
+    let complex = make_complex();
+    let complex_bytes = complex.encode_to_vec();
     let packed = make_packed();
     let packed_bytes = packed.encode_to_vec();
     let fixed_packed = make_fixed_packed();
@@ -146,6 +206,7 @@ fn main() {
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
     println!(
@@ -164,6 +225,28 @@ fn main() {
         std::hint::black_box(decoded);
     });
     decode.print();
+
+    run_timed(
+        "prost complex encode",
+        iters.binary,
+        complex_bytes.len(),
+        || {
+            let encoded = complex.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost complex decode",
+        iters.binary,
+        complex_bytes.len(),
+        || {
+            let decoded = Complex::decode(complex_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
 
     run_timed(
         "prost packed encode",

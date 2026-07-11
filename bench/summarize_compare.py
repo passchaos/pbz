@@ -70,6 +70,35 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf deterministic binary encode reuse",),
         },
     ),
+
+    Workload(
+        "complex encode",
+        (
+            "generated complex encode",
+            "generated complex writeToAssumeCapacity reuse",
+            "generated complex encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost complex encode",),
+            "rust quick-protobuf": ("quick-protobuf complex encode", "quick-protobuf complex encode reuse"),
+            "c++ protobuf": (
+                "c++ protobuf complex encode",
+                "c++ protobuf complex encode reuse",
+                "c++ protobuf complex SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf complex encode", "go protobuf complex encode reuse"),
+        },
+    ),
+    Workload(
+        "complex decode",
+        ("generated complex decode",),
+        {
+            "rust prost": ("prost complex decode",),
+            "rust quick-protobuf": ("quick-protobuf complex decode",),
+            "c++ protobuf": ("c++ protobuf complex decode", "c++ protobuf complex decode reuse"),
+            "go protobuf": ("go protobuf complex decode",),
+        },
+    ),
     Workload(
         "packed int32 encode",
         (
