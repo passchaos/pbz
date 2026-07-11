@@ -27,6 +27,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
 - deterministic binary encode
+- string/bytes and repeated string/bytes encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` encode/decode
@@ -35,7 +36,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - JSON stringify/parse
 - TextFormat format/parse
 
-The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
+The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and
 `FixedPacked { repeated fixed32 values = 1; }` and
 `Fixed64Packed { repeated fixed64 values = 1; }` payloads. Treat results as

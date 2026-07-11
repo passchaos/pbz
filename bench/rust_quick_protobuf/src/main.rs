@@ -85,6 +85,64 @@ impl<'a> MessageRead<'a> for Person {
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
+pub struct TextBytes {
+    pub title: String,
+    pub payload: Vec<u8>,
+    pub tags: Vec<String>,
+    pub chunks: Vec<Vec<u8>>,
+}
+
+impl MessageWrite for TextBytes {
+    fn get_size(&self) -> usize {
+        let mut size = 0usize;
+        if !self.title.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.title.len());
+        }
+        if !self.payload.is_empty() {
+            size += 1 + sizeofs::sizeof_len(self.payload.len());
+        }
+        for tag in &self.tags {
+            size += 1 + sizeofs::sizeof_len(tag.len());
+        }
+        for chunk in &self.chunks {
+            size += 1 + sizeofs::sizeof_len(chunk.len());
+        }
+        size
+    }
+    fn write_message<W: WriterBackend>(&self, w: &mut Writer<W>) -> Result<()> {
+        if !self.title.is_empty() {
+            w.write_with_tag(10, |w| w.write_string(&self.title))?;
+        }
+        if !self.payload.is_empty() {
+            w.write_with_tag(18, |w| w.write_bytes(&self.payload))?;
+        }
+        for tag in &self.tags {
+            w.write_with_tag(26, |w| w.write_string(tag))?;
+        }
+        for chunk in &self.chunks {
+            w.write_with_tag(34, |w| w.write_bytes(chunk))?;
+        }
+        Ok(())
+    }
+}
+
+impl<'a> MessageRead<'a> for TextBytes {
+    fn from_reader(r: &mut BytesReader, bytes: &'a [u8]) -> Result<Self> {
+        let mut msg = TextBytes::default();
+        while !r.is_eof() {
+            match r.next_tag(bytes)? {
+                10 => msg.title = r.read_string(bytes)?.to_owned(),
+                18 => msg.payload = r.read_bytes(bytes)?.to_vec(),
+                26 => msg.tags.push(r.read_string(bytes)?.to_owned()),
+                34 => msg.chunks.push(r.read_bytes(bytes)?.to_vec()),
+                tag => r.read_unknown(bytes, tag)?,
+            }
+        }
+        Ok(msg)
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct ComplexAudit {
     pub actor: String,
     pub at_unix: i64,
@@ -416,6 +474,25 @@ fn make_person() -> Person {
     }
 }
 
+fn make_textbytes() -> TextBytes {
+    TextBytes {
+        title: "ASCII title for protobuf".to_owned(),
+        payload: b"0123456789abcdef0123456789abcdef".to_vec(),
+        tags: vec![
+            "alpha".to_owned(),
+            "beta".to_owned(),
+            "gamma".to_owned(),
+            "delta".to_owned(),
+        ],
+        chunks: vec![
+            b"chunk-one".to_vec(),
+            b"chunk-two".to_vec(),
+            b"chunk-three".to_vec(),
+            b"chunk-four".to_vec(),
+        ],
+    }
+}
+
 fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
     ComplexAudit {
         actor: actor.to_owned(),
@@ -483,6 +560,8 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = encode_to_vec(&person);
+    let textbytes = make_textbytes();
+    let textbytes_bytes = encode_to_vec(&textbytes);
     let complex = make_complex();
     let complex_bytes = encode_to_vec(&complex);
     let packed = make_packed();
@@ -494,6 +573,7 @@ fn main() {
 
     println!("rust quick-protobuf benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("textbytes payload size: {}", textbytes_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
@@ -534,6 +614,43 @@ fn main() {
         || {
             let mut reader = BytesReader::from_bytes(&bytes);
             let decoded = Person::from_reader(&mut reader, &bytes).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf textbytes encode",
+        iters.binary,
+        textbytes_bytes.len(),
+        || {
+            let encoded = encode_to_vec(&textbytes);
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    let mut reused_textbytes = Vec::with_capacity(textbytes_bytes.len());
+    run_timed(
+        "quick-protobuf textbytes encode reuse",
+        iters.binary,
+        textbytes_bytes.len(),
+        || {
+            reused_textbytes.clear();
+            let mut writer = Writer::new(&mut reused_textbytes);
+            textbytes.write_message(&mut writer).expect("encode");
+            std::hint::black_box(&reused_textbytes);
+        },
+    )
+    .print();
+
+    run_timed(
+        "quick-protobuf textbytes decode",
+        iters.binary,
+        textbytes_bytes.len(),
+        || {
+            let mut reader = BytesReader::from_bytes(&textbytes_bytes);
+            let decoded = TextBytes::from_reader(&mut reader, &textbytes_bytes).expect("decode");
             std::hint::black_box(decoded);
         },
     )

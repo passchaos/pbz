@@ -77,6 +77,16 @@ demo::Person MakePerson() {
 }
 
 
+
+demo::TextBytes MakeTextBytes() {
+  demo::TextBytes msg;
+  msg.set_title("ASCII title for protobuf");
+  msg.set_payload("0123456789abcdef0123456789abcdef");
+  for (const char* tag : {"alpha", "beta", "gamma", "delta"}) msg.add_tags(tag);
+  for (const char* chunk : {"chunk-one", "chunk-two", "chunk-three", "chunk-four"}) msg.add_chunks(chunk);
+  return msg;
+}
+
 demo::Complex::Audit MakeAudit(const std::string& actor, int64_t at_unix) {
   demo::Complex::Audit audit;
   audit.set_actor(actor);
@@ -99,6 +109,7 @@ demo::Complex MakeComplex() {
 int main() {
   constexpr int kIterations = 20000;
   const demo::Person person = MakePerson();
+  const demo::TextBytes textbytes = MakeTextBytes();
   const demo::Complex complex = MakeComplex();
   std::string bytes;
   person.SerializeToString(&bytes);
@@ -106,6 +117,8 @@ int main() {
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok()) std::abort();
   std::string text;
   if (!google::protobuf::TextFormat::PrintToString(person, &text)) std::abort();
+  std::string textbytes_bytes;
+  textbytes.SerializeToString(&textbytes_bytes);
   std::string complex_bytes;
   complex.SerializeToString(&complex_bytes);
   std::string complex_json;
@@ -126,6 +139,7 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
+  std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
   std::cout << "complex json payload size: " << complex_json.size() << "\n";
   std::cout << "complex text payload size: " << complex_text.size() << "\n";
@@ -187,6 +201,48 @@ int main() {
   decode_reuse.Print();
 
 
+
+
+
+  auto textbytes_encode = RunTimed("c++ protobuf textbytes encode", kIterations, textbytes_bytes.size(), [&]() {
+    std::string out;
+    out.reserve(textbytes_bytes.size());
+    textbytes.SerializeToString(&out);
+    asm volatile("" : : "g"(out.data()) : "memory");
+  });
+  textbytes_encode.Print();
+
+  std::string reused_textbytes;
+  reused_textbytes.reserve(textbytes_bytes.size());
+  auto textbytes_encode_reuse = RunTimed("c++ protobuf textbytes encode reuse", kIterations, textbytes_bytes.size(), [&]() {
+    reused_textbytes.clear();
+    textbytes.SerializeToString(&reused_textbytes);
+    asm volatile("" : : "g"(reused_textbytes.data()) : "memory");
+  });
+  textbytes_encode_reuse.Print();
+
+  std::string textbytes_array_buffer;
+  textbytes_array_buffer.resize(textbytes_bytes.size());
+  auto textbytes_encode_array_reuse = RunTimed("c++ protobuf textbytes SerializeToArray reuse", kIterations, textbytes_bytes.size(), [&]() {
+    if (!textbytes.SerializeToArray(textbytes_array_buffer.data(), static_cast<int>(textbytes_array_buffer.size()))) std::abort();
+    asm volatile("" : : "g"(textbytes_array_buffer.data()) : "memory");
+  });
+  textbytes_encode_array_reuse.Print();
+
+  auto textbytes_decode = RunTimed("c++ protobuf textbytes decode", kIterations, textbytes_bytes.size(), [&]() {
+    demo::TextBytes decoded;
+    if (!decoded.ParseFromString(textbytes_bytes)) std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  textbytes_decode.Print();
+
+  demo::TextBytes reused_textbytes_decoded;
+  auto textbytes_decode_reuse = RunTimed("c++ protobuf textbytes decode reuse", kIterations, textbytes_bytes.size(), [&]() {
+    reused_textbytes_decoded.Clear();
+    if (!reused_textbytes_decoded.ParseFromString(textbytes_bytes)) std::abort();
+    asm volatile("" : : "g"(&reused_textbytes_decoded) : "memory");
+  });
+  textbytes_decode_reuse.Print();
 
   auto complex_encode = RunTimed("c++ protobuf complex encode", kIterations, complex_bytes.size(), [&]() {
     std::string out;

@@ -71,6 +71,36 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
 
+
+    Workload(
+        "textbytes encode",
+        (
+            "generated textbytes encode",
+            "generated textbytes writeToAssumeCapacity reuse",
+            "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse",
+            "generated textbytes encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "rust prost": ("prost textbytes encode",),
+            "rust quick-protobuf": ("quick-protobuf textbytes encode", "quick-protobuf textbytes encode reuse"),
+            "c++ protobuf": (
+                "c++ protobuf textbytes encode",
+                "c++ protobuf textbytes encode reuse",
+                "c++ protobuf textbytes SerializeToArray reuse",
+            ),
+            "go protobuf": ("go protobuf textbytes encode", "go protobuf textbytes encode reuse"),
+        },
+    ),
+    Workload(
+        "textbytes decode",
+        ("generated textbytes decode",),
+        {
+            "rust prost": ("prost textbytes decode",),
+            "rust quick-protobuf": ("quick-protobuf textbytes decode",),
+            "c++ protobuf": ("c++ protobuf textbytes decode", "c++ protobuf textbytes decode reuse"),
+            "go protobuf": ("go protobuf textbytes decode",),
+        },
+    ),
     Workload(
         "complex encode",
         (

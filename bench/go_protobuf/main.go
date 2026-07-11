@@ -86,6 +86,15 @@ func makePerson() *personpb.Person {
 	}
 }
 
+func makeTextBytes() *personpb.TextBytes {
+	return &personpb.TextBytes{
+		Title:   "ASCII title for protobuf",
+		Payload: []byte("0123456789abcdef0123456789abcdef"),
+		Tags:    []string{"alpha", "beta", "gamma", "delta"},
+		Chunks:  [][]byte{[]byte("chunk-one"), []byte("chunk-two"), []byte("chunk-three"), []byte("chunk-four")},
+	}
+}
+
 func audit(actor string, atUnix int64) *personpb.Complex_Audit {
 	return &personpb.Complex_Audit{Actor: actor, AtUnix: atUnix}
 }
@@ -106,6 +115,7 @@ func makeComplex() *personpb.Complex {
 func main() {
 	const iterations = 20_000
 	person := makePerson()
+	textbytes := makeTextBytes()
 	complex := makeComplex()
 	bytes, err := proto.Marshal(person)
 	if err != nil {
@@ -116,6 +126,10 @@ func main() {
 		panic(err)
 	}
 	textBytes, err := prototext.Marshal(person)
+	if err != nil {
+		panic(err)
+	}
+	textbytesBytes, err := proto.Marshal(textbytes)
 	if err != nil {
 		panic(err)
 	}
@@ -151,6 +165,7 @@ func main() {
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
+	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
 	fmt.Printf("complex json payload size: %d\n", len(complexJSONBytes))
 	fmt.Printf("complex text payload size: %d\n", len(complexTextBytes))
@@ -190,6 +205,30 @@ func main() {
 	runTimed("go protobuf binary decode", iterations, len(bytes), func() {
 		var decoded personpb.Person
 		if err := unmarshalOptions.Unmarshal(bytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf textbytes encode", iterations, len(textbytesBytes), func() {
+		out, err := proto.Marshal(textbytes)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	textbytesBuf := make([]byte, 0, len(textbytesBytes))
+	runTimed("go protobuf textbytes encode reuse", iterations, len(textbytesBytes), func() {
+		var err error
+		textbytesBuf, err = marshalOptions.MarshalAppend(textbytesBuf[:0], textbytes)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf textbytes decode", iterations, len(textbytesBytes), func() {
+		var decoded personpb.TextBytes
+		if err := unmarshalOptions.Unmarshal(textbytesBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

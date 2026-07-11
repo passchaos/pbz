@@ -80,6 +80,16 @@ fn makeDynamicPerson(allocator: std.mem.Allocator, desc: *const pbz.MessageDescr
     return msg;
 }
 
+fn makeGeneratedTextBytes(allocator: std.mem.Allocator) !person_pb.demo.TextBytes {
+    var msg = person_pb.demo.TextBytes.init();
+    errdefer msg.deinit(allocator);
+    msg.title = "ASCII title for protobuf";
+    msg.payload = "0123456789abcdef0123456789abcdef";
+    msg.tags = try allocator.dupe([]const u8, &.{ "alpha", "beta", "gamma", "delta" });
+    msg.chunks = try allocator.dupe([]const u8, &.{ "chunk-one", "chunk-two", "chunk-three", "chunk-four" });
+    return msg;
+}
+
 fn audit(actor: []const u8, at_unix: i64) person_pb.demo.Complex.Audit {
     var out = person_pb.demo.Complex.Audit.init();
     out.actor = actor;
@@ -153,6 +163,43 @@ fn makeDynamicFixed64Packed(allocator: std.mem.Allocator, desc: *const pbz.Messa
     var i: usize = 0;
     while (i < 1024) : (i += 1) try msg.add(desc.findField("values").?, .{ .fixed64 = @intCast(i * 5 + 1) });
     return msg;
+}
+
+const GeneratedTextBytesEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.TextBytes };
+fn generatedTextBytesEncode(ctx: GeneratedTextBytesEncodeCtx) !void {
+    const bytes = try ctx.message.encode(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedTextBytesWriteToCtx = struct { writer: *pbz.Writer, message: *const person_pb.demo.TextBytes };
+fn generatedTextBytesWriteToReuse(ctx: GeneratedTextBytesWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    try ctx.message.writeToAssumeCapacity(ctx.writer);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+fn generatedTextBytesTrustedUtf8WriteToReuse(ctx: GeneratedTextBytesWriteToCtx) !void {
+    ctx.writer.clearRetainingCapacity();
+    const msg = ctx.message;
+    if (msg.title.len != 0) ctx.writer.writeStringAssumeCapacity(1, msg.title);
+    if (msg.payload.len != 0) ctx.writer.writeBytesAssumeCapacity(2, msg.payload);
+    for (msg.tags) |tag| ctx.writer.writeStringAssumeCapacity(3, tag);
+    for (msg.chunks) |chunk| ctx.writer.writeBytesAssumeCapacity(4, chunk);
+    std.mem.doNotOptimizeAway(ctx.writer.slice().ptr);
+}
+
+const GeneratedTextBytesEncodeIntoCtx = struct { buffer: []u8, message: *const person_pb.demo.TextBytes };
+fn generatedTextBytesEncodeIntoReuse(ctx: GeneratedTextBytesEncodeIntoCtx) !void {
+    const bytes = try ctx.message.encodeIntoAssumeCapacity(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
+const GeneratedTextBytesDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
+fn generatedTextBytesDecode(ctx: GeneratedTextBytesDecodeCtx) !void {
+    var decoded = try person_pb.demo.TextBytes.decode(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
 }
 
 const GeneratedComplexEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Complex };
@@ -535,6 +582,8 @@ pub fn main() !void {
     defer generated_person.deinit(allocator);
     var dynamic_person = try makeDynamicPerson(allocator, desc);
     defer dynamic_person.deinit();
+    var generated_text_bytes = try makeGeneratedTextBytes(allocator);
+    defer generated_text_bytes.deinit(allocator);
     var generated_complex = try makeGeneratedComplex(allocator);
     defer generated_complex.deinit(allocator);
     var generated_packed = try makeGeneratedPacked(allocator);
@@ -563,6 +612,13 @@ pub fn main() !void {
     defer allocator.free(generated_buffer);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
+    const generated_text_bytes_bytes = try generated_text_bytes.encode(allocator);
+    defer allocator.free(generated_text_bytes_bytes);
+    var reusable_text_bytes_writer = pbz.Writer.init(allocator);
+    defer reusable_text_bytes_writer.deinit();
+    try reusable_text_bytes_writer.bytes.ensureTotalCapacity(allocator, generated_text_bytes_bytes.len);
+    const generated_text_bytes_buffer = try allocator.alloc(u8, generated_text_bytes_bytes.len);
+    defer allocator.free(generated_text_bytes_buffer);
     const generated_complex_bytes = try generated_complex.encode(allocator);
     defer allocator.free(generated_complex_bytes);
     var reusable_complex_writer = pbz.Writer.init(allocator);
@@ -605,7 +661,7 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} text_bytes={d} complex={d} complex_json={d} complex_text={d} json={d} text={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_text_bytes_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -614,6 +670,11 @@ pub fn main() !void {
         try runTimed(io, "generated deterministic binary encode", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedDeterministicEncode),
         try runTimed(io, "generated deterministic binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_buffer, .person = &generated_person }, generatedDeterministicEncodeIntoReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
+        try runTimed(io, "generated textbytes encode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeCtx{ .allocator = allocator, .message = &generated_text_bytes }, generatedTextBytesEncode),
+        try runTimed(io, "generated textbytes writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesWriteToReuse),
+        try runTimed(io, "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8WriteToReuse),
+        try runTimed(io, "generated textbytes encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeIntoCtx{ .buffer = generated_text_bytes_buffer, .message = &generated_text_bytes }, generatedTextBytesEncodeIntoReuse),
+        try runTimed(io, "generated textbytes decode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes }, generatedTextBytesDecode),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),

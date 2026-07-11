@@ -17,6 +17,18 @@ pub struct Person {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub struct TextBytes {
+    #[prost(string, tag = "1")]
+    pub title: String,
+    #[prost(bytes, tag = "2")]
+    pub payload: Vec<u8>,
+    #[prost(string, repeated, tag = "3")]
+    pub tags: Vec<String>,
+    #[prost(bytes, repeated, tag = "4")]
+    pub chunks: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub struct ComplexAudit {
     #[prost(string, tag = "1")]
     pub actor: String,
@@ -136,6 +148,25 @@ fn make_person() -> Person {
     }
 }
 
+fn make_textbytes() -> TextBytes {
+    TextBytes {
+        title: "ASCII title for protobuf".to_string(),
+        payload: b"0123456789abcdef0123456789abcdef".to_vec(),
+        tags: vec![
+            "alpha".to_string(),
+            "beta".to_string(),
+            "gamma".to_string(),
+            "delta".to_string(),
+        ],
+        chunks: vec![
+            b"chunk-one".to_vec(),
+            b"chunk-two".to_vec(),
+            b"chunk-three".to_vec(),
+            b"chunk-four".to_vec(),
+        ],
+    }
+}
+
 fn audit(actor: &str, at_unix: i64) -> ComplexAudit {
     ComplexAudit {
         actor: actor.to_string(),
@@ -195,6 +226,8 @@ fn main() {
     let iters = Iterations { binary: 20_000 };
     let person = make_person();
     let bytes = person.encode_to_vec();
+    let textbytes = make_textbytes();
+    let textbytes_bytes = textbytes.encode_to_vec();
     let complex = make_complex();
     let complex_bytes = complex.encode_to_vec();
     let packed = make_packed();
@@ -206,6 +239,7 @@ fn main() {
 
     println!("rust prost benchmark baseline");
     println!("payload size: {}", bytes.len());
+    println!("textbytes payload size: {}", textbytes_bytes.len());
     println!("complex payload size: {}", complex_bytes.len());
     println!("packed payload size: {}", packed_bytes.len());
     println!("fixed32 packed payload size: {}", fixed_packed_bytes.len());
@@ -225,6 +259,28 @@ fn main() {
         std::hint::black_box(decoded);
     });
     decode.print();
+
+    run_timed(
+        "prost textbytes encode",
+        iters.binary,
+        textbytes_bytes.len(),
+        || {
+            let encoded = textbytes.encode_to_vec();
+            std::hint::black_box(encoded);
+        },
+    )
+    .print();
+
+    run_timed(
+        "prost textbytes decode",
+        iters.binary,
+        textbytes_bytes.len(),
+        || {
+            let decoded = TextBytes::decode(textbytes_bytes.as_slice()).expect("decode");
+            std::hint::black_box(decoded);
+        },
+    )
+    .print();
 
     run_timed(
         "prost complex encode",

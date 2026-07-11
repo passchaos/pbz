@@ -99,9 +99,23 @@ pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;
 
-pub fn validateUtf8(value: []const u8) bool {
-    for (value) |byte| {
-        if (byte >= 0x80) return @import("std").unicode.utf8ValidateSlice(value);
+pub inline fn validateUtf8(value: []const u8) bool {
+    const std = @import("std");
+    const word_size = @sizeOf(usize);
+    const high_bit_mask = comptime blk: {
+        var mask: usize = 0;
+        var i: usize = 0;
+        while (i < word_size) : (i += 1) mask |= @as(usize, 0x80) << @intCast(i * 8);
+        break :blk mask;
+    };
+
+    var index: usize = 0;
+    while (index + word_size <= value.len) : (index += word_size) {
+        const word = std.mem.readInt(usize, value[index..][0..word_size], .little);
+        if ((word & high_bit_mask) != 0) return std.unicode.utf8ValidateSlice(value);
+    }
+    while (index < value.len) : (index += 1) {
+        if (value[index] >= 0x80) return std.unicode.utf8ValidateSlice(value);
     }
     return true;
 }

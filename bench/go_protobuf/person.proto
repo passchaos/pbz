@@ -9,6 +9,13 @@ message Person {
   map<string, int32> counts = 4;
 }
 
+message TextBytes {
+  string title = 1;
+  bytes payload = 2;
+  repeated string tags = 3;
+  repeated bytes chunks = 4;
+}
+
 message Packed {
   repeated int32 values = 1;
 }
