@@ -60,6 +60,17 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "deterministic binary encode",
+        (
+            "generated deterministic binary encode",
+            "generated deterministic binary encodeIntoAssumeCapacity buffer reuse",
+        ),
+        {
+            "c++ protobuf": ("c++ protobuf deterministic binary encode reuse",),
+            "go protobuf": ("go protobuf deterministic binary encode reuse",),
+        },
+    ),
+    Workload(
         "packed int32 encode",
         (
             "generated packed encode",

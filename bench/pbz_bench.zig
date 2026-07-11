@@ -303,6 +303,19 @@ fn generatedEncodeIntoReuse(ctx: GeneratedEncodeIntoCtx) !void {
     std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
+const GeneratedDeterministicEncodeCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
+fn generatedDeterministicEncode(ctx: GeneratedDeterministicEncodeCtx) !void {
+    const bytes = try ctx.person.encodeDeterministic(ctx.allocator);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+    ctx.allocator.free(bytes);
+}
+
+const GeneratedDeterministicEncodeIntoCtx = struct { allocator: std.mem.Allocator, buffer: []u8, person: *const person_pb.demo.Person };
+fn generatedDeterministicEncodeIntoReuse(ctx: GeneratedDeterministicEncodeIntoCtx) !void {
+    const bytes = try ctx.person.encodeDeterministicIntoAssumeCapacity(ctx.allocator, ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
+}
+
 const GeneratedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedDecode(ctx: GeneratedDecodeCtx) !void {
     var decoded = try person_pb.demo.Person.decode(ctx.allocator, ctx.bytes);
@@ -478,6 +491,8 @@ pub fn main() !void {
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
         try runTimed(io, "generated binary writeToAssumeCapacity reuse", iters.generated_binary, generated_bytes.len, GeneratedWriteToCtx{ .writer = &reusable_writer, .person = &generated_person }, generatedWriteToReuse),
         try runTimed(io, "generated binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedEncodeIntoCtx{ .buffer = generated_buffer, .person = &generated_person }, generatedEncodeIntoReuse),
+        try runTimed(io, "generated deterministic binary encode", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedDeterministicEncode),
+        try runTimed(io, "generated deterministic binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_buffer, .person = &generated_person }, generatedDeterministicEncodeIntoReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
         try runTimed(io, "dynamic binary encode", iters.dynamic_binary, dynamic_bytes.len, DynamicEncodeCtx{ .message = &dynamic_person, .file = &file }, dynamicEncode),
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),

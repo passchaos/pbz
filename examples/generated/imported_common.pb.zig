@@ -205,9 +205,7 @@ pub const demo = struct {
                     return buffer[0..w.slice().len];
                 }
 
-                pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
-                    var w = pbz.Writer.init(allocator);
-                    errdefer w.deinit();
+                pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.id != 0) try w.writeInt32(1, self.id);
                     if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
                     if (self.@"_unknown_fields".len != 0) {
@@ -230,7 +228,53 @@ pub const demo = struct {
                         }.lessThan);
                         for (indexes) |index| try w.appendSlice(self.@"_unknown_fields"[index]);
                     }
+                }
+
+                pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
+                    if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
+                    if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
+                    if (self.@"_unknown_fields".len != 0) {
+                        const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
+                        defer allocator.free(indexes);
+                        for (indexes, 0..) |*index, i| index.* = i;
+                        std.mem.sort(usize, indexes, self.@"_unknown_fields", struct {
+                            fn firstTag(raw: []const u8) ?pbz.wire.Tag {
+                                var r = pbz.Reader.init(raw);
+                                return (r.nextTag() catch null) orelse null;
+                            }
+                            fn lessThan(raws: []const []const u8, a: usize, b: usize) bool {
+                                const tag_a = firstTag(raws[a]);
+                                const tag_b = firstTag(raws[b]);
+                                if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, raws[a], raws[b]);
+                                if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;
+                                if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);
+                                return std.mem.lessThan(u8, raws[a], raws[b]);
+                            }
+                        }.lessThan);
+                        for (indexes) |index| w.appendSliceAssumeCapacity(self.@"_unknown_fields"[index]);
+                    }
+                }
+
+                pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
+                    var w = pbz.Writer.init(allocator);
+                    errdefer w.deinit();
+                    try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());
+                    try self.writeDeterministicToAssumeCapacity(allocator, &w);
                     return try w.toOwnedSlice();
+                }
+
+                pub fn encodeDeterministicInto(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8 {
+                    const size = self.encodedSize();
+                    if (buffer.len < size) return error.NoSpaceLeft;
+                    var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer[0..size]);
+                    try self.writeDeterministicToAssumeCapacity(allocator, &w);
+                    return buffer[0..w.slice().len];
+                }
+
+                pub fn encodeDeterministicIntoAssumeCapacity(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8 {
+                    var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
+                    try self.writeDeterministicToAssumeCapacity(allocator, &w);
+                    return buffer[0..w.slice().len];
                 }
 
                 pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8 {

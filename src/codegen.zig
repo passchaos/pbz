@@ -3273,15 +3273,57 @@ fn writeScalarPayloadSizeExprForField(scalar: schema.ScalarType, receiver: []con
 
 fn writeEncodeDeterministic(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {\n");
+    try writeEncodeFieldsByNumber(ctx, message, writer, depth + 1);
+    try writeEncodeUnknownFieldsDeterministic(writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {\n");
+    try writeEncodeFieldsByNumberAssumeCapacity(ctx, message, writer, depth + 1);
+    try writeEncodeUnknownFieldsDeterministicAssumeCapacity(writer, depth + 1);
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var w = pbz.Writer.init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer w.deinit();\n");
-    try writeEncodeFieldsByNumber(ctx, message, writer, depth + 1);
-    try writeEncodeUnknownFieldsDeterministic(writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeDeterministicToAssumeCapacity(allocator, &w);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try w.toOwnedSlice();\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeDeterministicInto(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const size = self.encodedSize();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (buffer.len < size) return error.NoSpaceLeft;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer[0..size]);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeDeterministicToAssumeCapacity(allocator, &w);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return buffer[0..w.slice().len];\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeDeterministicIntoAssumeCapacity(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8 {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeDeterministicToAssumeCapacity(allocator, &w);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return buffer[0..w.slice().len];\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -3343,6 +3385,49 @@ fn writeEncodeUnknownFieldsDeterministic(writer: *std.Io.Writer, depth: usize) E
     try writer.writeAll("}\n");
 }
 
+fn writeEncodeUnknownFieldsDeterministicAssumeCapacity(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("if (self.@\"_unknown_fields\".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const indexes = try allocator.alloc(usize, self.@\"_unknown_fields\".len);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer allocator.free(indexes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (indexes, 0..) |*index, i| index.* = i;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("std.mem.sort(usize, indexes, self.@\"_unknown_fields\", struct {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("fn firstTag(raw: []const u8) ?pbz.wire.Tag {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("return (r.nextTag() catch null) orelse null;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("fn lessThan(raws: []const []const u8, a: usize, b: usize) bool {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("const tag_a = firstTag(raws[a]);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("const tag_b = firstTag(raws[b]);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, raws[a], raws[b]);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("return std.mem.lessThan(u8, raws[a], raws[b]);\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}.lessThan);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (indexes) |index| w.appendSliceAssumeCapacity(self.@\"_unknown_fields\"[index]);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeEncodeFieldsByNumber(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     var emitted: usize = 0;
     var previous: u29 = 0;
@@ -3360,6 +3445,27 @@ fn writeEncodeFieldsByNumber(ctx: *const CodegenContext, message: *const schema.
             try writeEncodeMapFieldDeterministic(ctx, field, writer, depth);
         } else {
             try writeEncodeFieldDeterministic(ctx, field, writer, depth);
+        }
+    }
+}
+
+fn writeEncodeFieldsByNumberAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    var emitted: usize = 0;
+    var previous: u29 = 0;
+    while (emitted < message.fields.items.len) : (emitted += 1) {
+        var next: ?*const schema.FieldDescriptor = null;
+        for (message.fields.items) |*field| {
+            if (field.number <= previous) continue;
+            if (next == null or field.number < next.?.number) next = field;
+        }
+        const field = next orelse break;
+        previous = field.number;
+        if (field.oneof_name) |oneof_name| {
+            try writeEncodeOneofSingleField(ctx, field, oneof_name, writer, depth);
+        } else if (field.kind == .map) {
+            try writeEncodeMapFieldDeterministicAssumeCapacity(ctx, field, writer, depth);
+        } else {
+            try writeEncodeFieldDeterministicAssumeCapacity(ctx, field, writer, depth);
         }
     }
 }
@@ -6001,6 +6107,21 @@ fn writeEncodeFieldDeterministic(ctx: *const CodegenContext, field: *const schem
     }
 }
 
+fn writeEncodeFieldDeterministicAssumeCapacity(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    switch (field.kind) {
+        .scalar => |scalar| try writeEncodeScalarFieldAssumeCapacity(file, field, scalar, writer, depth),
+        .enumeration => try writeEncodeEnumFieldAssumeCapacity(file, field, writer, depth),
+        .message => |type_name| if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+            try writeEncodeMessageFieldDeterministic(ctx, field, type_name, writer, depth);
+        } else try writeEncodeMessageField(ctx, field, writer, depth),
+        .group => |type_name| if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
+            try writeEncodeGroupFieldDeterministic(ctx, field, type_name, writer, depth);
+        } else try writeEncodeGroupField(ctx, field, writer, depth),
+        .map => try writeEncodeMapFieldDeterministicAssumeCapacity(ctx, field, writer, depth),
+    }
+}
+
 fn writeEncodeScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
     if (field.cardinality == .repeated) {
         if (field.resolvedPacked(file)) {
@@ -6599,14 +6720,48 @@ fn writeEncodeMapFieldDeterministic(ctx: *const CodegenContext, field: *const sc
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len != 0) {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const entries = try allocator.dupe(");
+    try writer.writeAll("var stack_entries: [32]");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(" = undefined;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const use_stack_entries = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len <= stack_entries.len;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len], self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll("); break :blk stack_entries[0..self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len]; } else try allocator.dupe(");
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll(", self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(");\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(entries);\n");
+    try writer.writeAll("defer if (!use_stack_entries) allocator.free(entries);\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("if (use_stack_entries) {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("var sort_i: usize = 1;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("while (sort_i < entries.len) : (sort_i += 1) {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("const item = entries[sort_i];\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("var sort_j = sort_i;\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("while (sort_j > 0 and ");
+    try writeMapKeyLessExpr(map_type.key, "item.key", "entries[sort_j - 1].key", writer);
+    try writer.writeAll(") : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("entries[sort_j] = item;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("} else {\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("std.mem.sort(");
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll(", entries, {}, struct { fn lessThan(_: void, a: ");
@@ -6617,27 +6772,129 @@ fn writeEncodeMapFieldDeterministic(ctx: *const CodegenContext, field: *const sc
     try writeMapKeyLessExpr(map_type.key, "a.key", "b.key", writer);
     try writer.writeAll("; } }.lessThan);\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("for (entries) |entry| {\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("var entry_writer = pbz.Writer.init(allocator);\n");
-    try indent(writer, depth + 2);
-    try writer.writeAll("defer entry_writer.deinit();\n");
     try writeMapEntryEncodeUtf8Check(file, field, "entry.key", .{ .scalar = map_type.key }, writer, depth + 2);
     try indent(writer, depth + 2);
-    try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "entry_writer", writer);
+    try writer.writeAll("const entry_len = ");
+    try writeMapEntryFieldSizeExpr(1, .{ .scalar = map_type.key }, "entry.key", writer);
+    try writer.writeAll(" + ");
+    try writeMapEntryValueFieldSizeExpr(ctx, field, "entry.value", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 2);
+    try writer.print("try w.writeTag({d}, .length_delimited);\n", .{field.number});
+    try indent(writer, depth + 2);
+    try writer.writeAll("try w.writeVarint(entry_len);\n");
+    try indent(writer, depth + 2);
+    try writeKindWriteCall(1, .{ .scalar = map_type.key }, "entry.key", "w", writer);
     try writer.writeAll(");\n");
     try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 2);
     try indent(writer, depth + 2);
     if (typedMapMessageValueWithContext(ctx, field)) |_| {
-        try writer.writeAll("{ const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try entry_writer.writeMessage(2, payload); }\n");
+        try writer.writeAll("{ const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }\n");
     } else if (map_type.value.* == .message and codegenCanReferenceMessageWithContext(ctx, map_type.value.message)) {
-        try writeEncodeMessagePayloadDeterministic(ctx, 2, false, map_type.value.message, "entry.value", "entry_writer", writer);
+        try writeEncodeMessagePayloadDeterministic(ctx, 2, false, map_type.value.message, "entry.value", "w", writer);
         try writer.writeAll("\n");
     } else {
-        try writeMapEntryValueWriteCall(ctx, field, "entry.value", "entry_writer", false, writer);
+        try writeMapEntryValueWriteCall(ctx, field, "entry.value", "w", false, writer);
     }
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeEncodeMapFieldDeterministicAssumeCapacity(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var stack_entries: [32]");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(" = undefined;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const use_stack_entries = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len <= stack_entries.len;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len], self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll("); break :blk stack_entries[0..self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".len]; } else try allocator.dupe(");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer if (!use_stack_entries) allocator.free(entries);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (use_stack_entries) {\n");
     try indent(writer, depth + 2);
-    try writer.print("try w.writeMessage({d}, entry_writer.slice());\n", .{field.number});
+    try writer.writeAll("var sort_i: usize = 1;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("while (sort_i < entries.len) : (sort_i += 1) {\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("const item = entries[sort_i];\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("var sort_j = sort_i;\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("while (sort_j > 0 and ");
+    try writeMapKeyLessExpr(map_type.key, "item.key", "entries[sort_j - 1].key", writer);
+    try writer.writeAll(") : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];\n");
+    try indent(writer, depth + 3);
+    try writer.writeAll("entries[sort_j] = item;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("} else {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("std.mem.sort(");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", entries, {}, struct { fn lessThan(_: void, a: ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(", b: ");
+    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
+    try writer.writeAll(") bool { return ");
+    try writeMapKeyLessExpr(map_type.key, "a.key", "b.key", writer);
+    try writer.writeAll("; } }.lessThan);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("for (entries) |entry| {\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.key", .{ .scalar = map_type.key }, writer, depth + 2);
+    try indent(writer, depth + 2);
+    try writer.writeAll("const entry_len = ");
+    try writeMapEntryFieldSizeExpr(1, .{ .scalar = map_type.key }, "entry.key", writer);
+    try writer.writeAll(" + ");
+    try writeMapEntryValueFieldSizeExpr(ctx, field, "entry.value", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 2);
+    try writer.print("w.writeTagAssumeCapacity({d}, .length_delimited);\n", .{field.number});
+    try indent(writer, depth + 2);
+    try writer.writeAll("w.writeVarintAssumeCapacity(entry_len);\n");
+    try indent(writer, depth + 2);
+    try writeKindWriteCallAssumeCapacity(1, .{ .scalar = map_type.key }, "entry.key", "w", writer);
+    try writer.writeAll(";\n");
+    try writeMapEntryEncodeUtf8Check(file, field, "entry.value", map_type.value.*, writer, depth + 2);
+    try indent(writer, depth + 2);
+    if (typedMapMessageValueWithContext(ctx, field)) |_| {
+        try writer.writeAll("{ const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); w.writeMessageAssumeCapacity(2, payload); }\n");
+    } else if (map_type.value.* == .message and codegenCanReferenceMessageWithContext(ctx, map_type.value.message)) {
+        try writeEncodeMessagePayloadDeterministic(ctx, 2, false, map_type.value.message, "entry.value", "w", writer);
+        try writer.writeAll("\n");
+    } else {
+        try writeMapEntryValueWriteCall(ctx, field, "entry.value", "w", true, writer);
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -12405,14 +12662,19 @@ test "codegen emits map entry types and encoders" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const countsEntry = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "counts: []const countsEntry = &.{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeString(1, entry.key)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try entry_writer.writeInt32(2, entry.value)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(1, entry_writer.slice())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: i32 = 7") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: Child = .{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicIntoAssumeCapacity(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.sort(countsEntry, entries") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.lessThan(u8, a.key, b.key)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var stack_entries: [32]countsEntry = undefined;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeVarint(entry_len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeString(1, entry.key);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(2, entry.value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var entry_writer = pbz.Writer.init(allocator);") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
 }
 
@@ -12491,8 +12753,9 @@ test "codegen deterministic encoder emits fields by number" {
     defer file.deinit();
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
-    const deterministic_start = std.mem.indexOf(u8, content, "pub fn encodeDeterministic").?;
-    const deterministic = content[deterministic_start..];
+    const deterministic_start = std.mem.indexOf(u8, content, "pub fn writeDeterministicTo").?;
+    const deterministic_end = std.mem.indexOfPos(u8, content, deterministic_start, "pub fn encodeDeterministic").?;
+    const deterministic = content[deterministic_start..deterministic_end];
     const first_pos = std.mem.indexOf(u8, deterministic, "try w.writeInt32(1, self.first)").?;
     const mid_pos = std.mem.indexOf(u8, deterministic, ".mid => |value| try w.writeInt32(3, value)").?;
     const later_pos = std.mem.indexOf(u8, deterministic, "try w.writeInt32(10, self.later)").?;
@@ -12517,8 +12780,8 @@ test "codegen deterministic encoder recurses into available message payloads" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
     const parent_start = std.mem.indexOf(u8, content, "pub const Parent = struct").?;
-    const deterministic_start = std.mem.indexOfPos(u8, content, parent_start, "pub fn encodeDeterministic").?;
-    const deterministic_end = std.mem.indexOfPos(u8, content, deterministic_start, "pub fn encodeDeterministicInitialized").?;
+    const deterministic_start = std.mem.indexOfPos(u8, content, parent_start, "pub fn writeDeterministicTo").?;
+    const deterministic_end = std.mem.indexOfPos(u8, content, deterministic_start, "pub fn encodeDeterministic").?;
     const deterministic = content[deterministic_start..deterministic_end];
 
     try std.testing.expect(std.mem.indexOf(u8, deterministic, "for (self.children) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }") != null);
@@ -12527,7 +12790,7 @@ test "codegen deterministic encoder recurses into available message payloads" {
     try std.testing.expect(std.mem.indexOf(u8, deterministic, "if (self.legacy) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeTag(3, .start_group); try w.appendSlice(payload); try w.writeTag(3, .end_group); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, deterministic, "try w.writeTag(3, .start_group); try w.appendSlice(payload); try w.writeTag(3, .end_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, deterministic, "std.mem.sort(keyedEntry, entries") != null);
-    try std.testing.expect(std.mem.indexOf(u8, deterministic, "{ const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try entry_writer.writeMessage(2, payload); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, deterministic, "{ const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, deterministic, ".picked => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(7, payload); }") != null);
 }
 

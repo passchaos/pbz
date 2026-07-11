@@ -143,6 +143,16 @@ func main() {
 		}
 	}).print()
 
+	deterministicOptions := proto.MarshalOptions{Deterministic: true}
+	deterministicBuf := make([]byte, 0, len(bytes))
+	runTimed("go protobuf deterministic binary encode reuse", iterations, len(bytes), func() {
+		var err error
+		deterministicBuf, err = deterministicOptions.MarshalAppend(deterministicBuf[:0], person)
+		if err != nil {
+			panic(err)
+		}
+	}).print()
+
 	unmarshalOptions := proto.UnmarshalOptions{}
 	runTimed("go protobuf binary decode", iterations, len(bytes), func() {
 		var decoded personpb.Person

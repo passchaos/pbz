@@ -372,22 +372,32 @@ pub const demo = struct {
                     return buffer[0..w.slice().len];
                 }
 
-                pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
-                    var w = pbz.Writer.init(allocator);
-                    errdefer w.deinit();
+                pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.primary) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
                     for (self.history) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }
                     if (self.by_name.len != 0) {
-                        const entries = try allocator.dupe(by_nameEntry, self.by_name);
-                        defer allocator.free(entries);
-                        std.mem.sort(by_nameEntry, entries, {}, struct { fn lessThan(_: void, a: by_nameEntry, b: by_nameEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        var stack_entries: [32]by_nameEntry = undefined;
+                        const use_stack_entries = self.by_name.len <= stack_entries.len;
+                        const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.by_name.len], self.by_name); break :blk stack_entries[0..self.by_name.len]; } else try allocator.dupe(by_nameEntry, self.by_name);
+                        defer if (!use_stack_entries) allocator.free(entries);
+                        if (use_stack_entries) {
+                            var sort_i: usize = 1;
+                            while (sort_i < entries.len) : (sort_i += 1) {
+                                const item = entries[sort_i];
+                                var sort_j = sort_i;
+                                while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                                entries[sort_j] = item;
+                            }
+                        } else {
+                            std.mem.sort(by_nameEntry, entries, {}, struct { fn lessThan(_: void, a: by_nameEntry, b: by_nameEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        }
                         for (entries) |entry| {
-                            var entry_writer = pbz.Writer.init(allocator);
-                            defer entry_writer.deinit();
                             if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
-                            try entry_writer.writeString(1, entry.key);
-                            { const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try entry_writer.writeMessage(2, payload); }
-                            try w.writeMessage(3, entry_writer.slice());
+                            const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
+                            try w.writeTag(3, .length_delimited);
+                            try w.writeVarint(entry_len);
+                            try w.writeString(1, entry.key);
+                            { const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }
                         }
                     }
                     switch (self.selected) {
@@ -418,7 +428,86 @@ pub const demo = struct {
                         }.lessThan);
                         for (indexes) |index| try w.appendSlice(self.@"_unknown_fields"[index]);
                     }
+                }
+
+                pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
+                    if (self.primary) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
+                    for (self.history) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }
+                    if (self.by_name.len != 0) {
+                        var stack_entries: [32]by_nameEntry = undefined;
+                        const use_stack_entries = self.by_name.len <= stack_entries.len;
+                        const entries = if (use_stack_entries) blk: { @memcpy(stack_entries[0..self.by_name.len], self.by_name); break :blk stack_entries[0..self.by_name.len]; } else try allocator.dupe(by_nameEntry, self.by_name);
+                        defer if (!use_stack_entries) allocator.free(entries);
+                        if (use_stack_entries) {
+                            var sort_i: usize = 1;
+                            while (sort_i < entries.len) : (sort_i += 1) {
+                                const item = entries[sort_i];
+                                var sort_j = sort_i;
+                                while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                                entries[sort_j] = item;
+                            }
+                        } else {
+                            std.mem.sort(by_nameEntry, entries, {}, struct { fn lessThan(_: void, a: by_nameEntry, b: by_nameEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        }
+                        for (entries) |entry| {
+                            if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
+                            const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
+                            w.writeTagAssumeCapacity(3, .length_delimited);
+                            w.writeVarintAssumeCapacity(entry_len);
+                            w.writeStringAssumeCapacity(1, entry.key);
+                            { const payload = try entry.value.encodeDeterministic(allocator); defer allocator.free(payload); w.writeMessageAssumeCapacity(2, payload); }
+                        }
+                    }
+                    switch (self.selected) {
+                        .chosen => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(4, payload); },
+                        else => {},
+                    }
+                    switch (self.selected) {
+                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        else => {},
+                    }
+                    if (self.@"_unknown_fields".len != 0) {
+                        const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
+                        defer allocator.free(indexes);
+                        for (indexes, 0..) |*index, i| index.* = i;
+                        std.mem.sort(usize, indexes, self.@"_unknown_fields", struct {
+                            fn firstTag(raw: []const u8) ?pbz.wire.Tag {
+                                var r = pbz.Reader.init(raw);
+                                return (r.nextTag() catch null) orelse null;
+                            }
+                            fn lessThan(raws: []const []const u8, a: usize, b: usize) bool {
+                                const tag_a = firstTag(raws[a]);
+                                const tag_b = firstTag(raws[b]);
+                                if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, raws[a], raws[b]);
+                                if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;
+                                if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);
+                                return std.mem.lessThan(u8, raws[a], raws[b]);
+                            }
+                        }.lessThan);
+                        for (indexes) |index| w.appendSliceAssumeCapacity(self.@"_unknown_fields"[index]);
+                    }
+                }
+
+                pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
+                    var w = pbz.Writer.init(allocator);
+                    errdefer w.deinit();
+                    try w.bytes.ensureTotalCapacity(allocator, self.encodedSize());
+                    try self.writeDeterministicToAssumeCapacity(allocator, &w);
                     return try w.toOwnedSlice();
+                }
+
+                pub fn encodeDeterministicInto(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8 {
+                    const size = self.encodedSize();
+                    if (buffer.len < size) return error.NoSpaceLeft;
+                    var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer[0..size]);
+                    try self.writeDeterministicToAssumeCapacity(allocator, &w);
+                    return buffer[0..w.slice().len];
+                }
+
+                pub fn encodeDeterministicIntoAssumeCapacity(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8 {
+                    var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
+                    try self.writeDeterministicToAssumeCapacity(allocator, &w);
+                    return buffer[0..w.slice().len];
                 }
 
                 pub fn encodeDeterministicInitialized(self: @This(), allocator: std.mem.Allocator) ![]u8 {

@@ -26,6 +26,7 @@ baseline path for the same workload.
 The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
+- deterministic binary encode
 - packed repeated integer encode/decode
 - packed fixed-width `fixed32` / `fixed64` encode/decode
 - a zero-copy borrowed payload view for packed fixed-width `fixed32` when the
@@ -57,10 +58,12 @@ Cross-language baselines:
 - `bench/cpp_protobuf`: C++ protobuf generated-code binary encode/decode for
   the same schema. It requires `protoc`, a C++ compiler, protobuf headers, and
   libprotobuf. It measures both `SerializeToString` and caller-provided buffer
-  `SerializeToArray` reuse paths, protobuf util JSON stringify/parse, protobuf TextFormat format/parse, plus decode into fresh and reused message
+  `SerializeToArray` reuse paths, deterministic `CodedOutputStream` encoding,
+  protobuf util JSON stringify/parse, protobuf TextFormat format/parse, plus decode into fresh and reused message
   objects. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
   ignored `bench/cpp_protobuf/generated/` directory before compiling.
 - `bench/go_protobuf`: Go `google.golang.org/protobuf` generated-code binary
-  encode/decode plus `protojson` stringify/parse and `prototext` format/parse for the same schema. It requires Go, `protoc`, and
+  encode/decode, deterministic `MarshalOptions`, plus `protojson`
+  stringify/parse and `prototext` format/parse for the same schema. It requires Go, `protoc`, and
   `protoc-gen-go`; generated Go protobuf sources are written to the ignored
   `bench/go_protobuf/personpb/` directory.

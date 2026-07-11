@@ -5,6 +5,8 @@
 #include <string>
 
 #include <google/protobuf/text_format.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/util/json_util.h>
 
 #include "person.pb.h"
@@ -125,6 +127,19 @@ int main() {
     asm volatile("" : : "g"(array_buffer.data()) : "memory");
   });
   encode_array_reuse.Print();
+
+  std::string deterministic_buffer;
+  deterministic_buffer.resize(bytes.size());
+  auto deterministic_encode = RunTimed("c++ protobuf deterministic binary encode reuse", kIterations, bytes.size(), [&]() {
+    google::protobuf::io::ArrayOutputStream array_stream(deterministic_buffer.data(), static_cast<int>(deterministic_buffer.size()));
+    google::protobuf::io::CodedOutputStream coded_stream(&array_stream);
+    coded_stream.SetSerializationDeterministic(true);
+    person.SerializeWithCachedSizes(&coded_stream);
+    coded_stream.Trim();
+    if (coded_stream.HadError()) std::abort();
+    asm volatile("" : : "g"(deterministic_buffer.data()) : "memory");
+  });
+  deterministic_encode.Print();
 
   auto decode = RunTimed("c++ protobuf binary decode", kIterations, bytes.size(), [&]() {
     demo::Person decoded;
