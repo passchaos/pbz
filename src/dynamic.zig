@@ -312,9 +312,9 @@ pub const DynamicMessage = struct {
         var entry = try self.getOrCreateMutable(field);
         const count = payload.len / 4;
         try entry.values.ensureUnusedCapacity(self.allocator, count);
-        var index: usize = 0;
-        while (index < count) : (index += 1) {
-            entry.values.appendAssumeCapacity(.{ .fixed32 = std.mem.readInt(u32, payload[index * 4 ..][0..4], .little) });
+        const out = entry.values.addManyAsSliceAssumeCapacity(count);
+        for (out, 0..) |*value, index| {
+            value.* = .{ .fixed32 = std.mem.readInt(u32, payload[index * 4 ..][0..4], .little) };
         }
     }
 
