@@ -1,0 +1,20 @@
+syntax = "proto2";
+package demo.groups;
+
+message Parent {
+  optional int32 id = 1;
+
+  optional group Box = 2 {
+    optional string label = 3;
+  }
+
+  repeated group Item = 4 {
+    optional int32 rank = 5;
+  }
+
+  oneof picked {
+    Box picked_box = 6;
+    string note = 7;
+  }
+}
+

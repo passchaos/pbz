@@ -4,14 +4,14 @@ const pbz = @import("pbz");
 pub const proto_package = "demo";
 pub const proto_syntax = "proto3";
 
-pub const @"demo" = struct {
-    pub const @"Person" = struct {
-        pub const @"id_number" = 1;
-        pub const @"name_number" = 2;
-        pub const @"scores_number" = 3;
-        pub const @"counts_number" = 4;
+pub const demo = struct {
+    pub const Person = struct {
+        pub const id_number = 1;
+        pub const name_number = 2;
+        pub const scores_number = 3;
+        pub const counts_number = 4;
 
-        pub const @"id_field" = struct {
+        pub const id_field = struct {
             pub const number = 1;
             pub const name = "id";
             pub const json_name = "id";
@@ -27,7 +27,7 @@ pub const @"demo" = struct {
             pub const default_value = "";
             pub const is_packed = false;
         };
-        pub const @"name_field" = struct {
+        pub const name_field = struct {
             pub const number = 2;
             pub const name = "name";
             pub const json_name = "name";
@@ -43,7 +43,7 @@ pub const @"demo" = struct {
             pub const default_value = "";
             pub const is_packed = false;
         };
-        pub const @"scores_field" = struct {
+        pub const scores_field = struct {
             pub const number = 3;
             pub const name = "scores";
             pub const json_name = "scores";
@@ -59,14 +59,14 @@ pub const @"demo" = struct {
             pub const default_value = "";
             pub const is_packed = true;
         };
-        pub const @"counts_field" = struct {
+        pub const counts_field = struct {
             pub const number = 4;
             pub const name = "counts";
             pub const json_name = "counts";
             pub const cardinality = "repeated";
             pub const kind = "map";
             pub const type_name = "";
-            pub const zig_type = "[]const @\"countsEntry\"";
+            pub const zig_type = "[]const countsEntry";
             pub const has_type_ref = false;
             pub const type_ref = void;
             pub const has_enum_ref = false;
@@ -83,22 +83,22 @@ pub const @"demo" = struct {
             pub const map_value_enum_ref = void;
         };
 
-        pub const @"countsEntry" = struct {
+        pub const countsEntry = struct {
             key: []const u8 = "",
             value: i32 = 0,
         };
 
-        fn @"appendOrReplaceMapEntry_counts"(allocator: std.mem.Allocator, list: *std.ArrayList(@"countsEntry"), entry: @"countsEntry") !void {
+        fn appendOrReplaceMapEntry_counts(allocator: std.mem.Allocator, list: *std.ArrayList(countsEntry), entry: countsEntry) !void {
             for (list.items) |*existing| {
                 if (std.mem.eql(u8, existing.key, entry.key)) { existing.* = entry; return; }
             }
             try list.append(allocator, entry);
         }
 
-        @"id": i32 = 0,
-        @"name": []const u8 = "",
-        @"scores": []const i32 = &.{},
-        @"counts": []const @"countsEntry" = &.{},
+        id: i32 = 0,
+        name: []const u8 = "",
+        scores: []const i32 = &.{},
+        counts: []const countsEntry = &.{},
         @"_json_arena": ?*std.heap.ArenaAllocator = null,
         @"_unknown_fields": []const []const u8 = &.{},
 
@@ -107,8 +107,8 @@ pub const @"demo" = struct {
         }
 
         pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-            allocator.free(self.@"scores");
-            allocator.free(self.@"counts");
+            allocator.free(self.scores);
+            allocator.free(self.counts);
             for (self.@"_unknown_fields") |raw| allocator.free(raw);
             allocator.free(self.@"_unknown_fields");
             if (self.@"_json_arena") |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
@@ -119,17 +119,17 @@ pub const @"demo" = struct {
             var out = @This().init();
             errdefer out.deinit(allocator);
             const owned_allocator = try out.@"_pbzOwnedAllocator"(allocator);
-            out.@"id" = self.@"id";
-            out.@"name" = try owned_allocator.dupe(u8, self.@"name");
-            if (self.@"scores".len != 0) {
-                const cloned = try allocator.alloc(i32, self.@"scores".len);
-                for (self.@"scores", 0..) |item, i| cloned[i] = item;
-                out.@"scores" = cloned;
+            out.id = self.id;
+            out.name = try owned_allocator.dupe(u8, self.name);
+            if (self.scores.len != 0) {
+                const cloned = try allocator.alloc(i32, self.scores.len);
+                for (self.scores, 0..) |item, i| cloned[i] = item;
+                out.scores = cloned;
             }
-            if (self.@"counts".len != 0) {
-                const cloned = try allocator.alloc(@"countsEntry", self.@"counts".len);
-                for (self.@"counts", 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = entry.value };
-                out.@"counts" = cloned;
+            if (self.counts.len != 0) {
+                const cloned = try allocator.alloc(countsEntry, self.counts.len);
+                for (self.counts, 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = entry.value };
+                out.counts = cloned;
             }
             if (self.@"_unknown_fields".len != 0) {
                 const cloned_unknowns = try allocator.alloc([]const u8, self.@"_unknown_fields".len);
@@ -223,23 +223,23 @@ pub const @"demo" = struct {
         // no same-file extension accessors
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.@"id" != 0) self.@"id" = other.@"id";
-            if (other.@"name".len != 0) self.@"name" = other.@"name";
-            if (other.@"scores".len != 0) {
-                const old = self.@"scores";
-                const merged = try allocator.alloc(i32, old.len + other.@"scores".len);
+            if (other.id != 0) self.id = other.id;
+            if (other.name.len != 0) self.name = other.name;
+            if (other.scores.len != 0) {
+                const old = self.scores;
+                const merged = try allocator.alloc(i32, old.len + other.scores.len);
                 @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.@"scores");
-                self.@"scores" = merged;
+                @memcpy(merged[old.len..], other.scores);
+                self.scores = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            if (other.@"counts".len != 0) {
-                var list: std.ArrayList(@"countsEntry") = .empty;
+            if (other.counts.len != 0) {
+                var list: std.ArrayList(countsEntry) = .empty;
                 defer list.deinit(allocator);
-                if (self.@"counts".len != 0) try list.appendSlice(allocator, self.@"counts");
-                for (other.@"counts") |entry| try @This().@"appendOrReplaceMapEntry_counts"(allocator, &list, entry);
-                const old = self.@"counts";
-                self.@"counts" = try list.toOwnedSlice(allocator);
+                if (self.counts.len != 0) try list.appendSlice(allocator, self.counts);
+                for (other.counts) |entry| try @This().appendOrReplaceMapEntry_counts(allocator, &list, entry);
+                const old = self.counts;
+                self.counts = try list.toOwnedSlice(allocator);
                 if (old.len != 0) allocator.free(old);
             }
             for (other.@"_unknown_fields") |raw| try self.appendUnknownRaw(allocator, raw);
@@ -247,14 +247,14 @@ pub const @"demo" = struct {
 
         pub fn encodedSize(self: @This()) usize {
             var size: usize = 0;
-            if (self.@"id" != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.@"id"))));
-            if (self.@"name".len != 0) size += 1 + pbz.wire.encodedVarintSize(self.@"name".len) + self.@"name".len;
-            if (self.@"scores".len != 0) {
+            if (self.id != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.id))));
+            if (self.name.len != 0) size += 1 + pbz.wire.encodedVarintSize(self.name.len) + self.name.len;
+            if (self.scores.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"scores") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 size += 1 + pbz.wire.encodedVarintSize(packed_len) + packed_len;
             }
-            for (self.@"counts") |entry| {
+            for (self.counts) |entry| {
                 const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
                 size += 1 + pbz.wire.encodedVarintSize(entry_len) + entry_len;
             }
@@ -263,16 +263,16 @@ pub const @"demo" = struct {
         }
 
         pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"id" != 0) try w.writeInt32(1, self.@"id");
-            if (self.@"name".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@"name")) return error.InvalidUtf8; try w.writeString(2, self.@"name"); }
-            if (self.@"scores".len != 0) {
+            if (self.id != 0) try w.writeInt32(1, self.id);
+            if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
+            if (self.scores.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"scores") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 try w.writeTag(3, .length_delimited);
                 try w.writeVarint(packed_len);
-                for (self.@"scores") |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
-            for (self.@"counts") |entry| {
+            for (self.counts) |entry| {
                 if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
                 const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
                 try w.writeTag(4, .length_delimited);
@@ -284,16 +284,16 @@ pub const @"demo" = struct {
         }
 
         pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"id" != 0) w.writeInt32AssumeCapacity(1, self.@"id");
-            if (self.@"name".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@"name")) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.@"name"); }
-            if (self.@"scores".len != 0) {
+            if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
+            if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
+            if (self.scores.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"scores") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 w.writeTagAssumeCapacity(3, .length_delimited);
                 w.writeVarintAssumeCapacity(packed_len);
-                for (self.@"scores") |item| w.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| w.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, item))));
             }
-            for (self.@"counts") |entry| {
+            for (self.counts) |entry| {
                 if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
                 const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
                 w.writeTagAssumeCapacity(4, .length_delimited);
@@ -329,19 +329,19 @@ pub const @"demo" = struct {
         pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
-            if (self.@"id" != 0) try w.writeInt32(1, self.@"id");
-            if (self.@"name".len != 0) { if (!std.unicode.utf8ValidateSlice(self.@"name")) return error.InvalidUtf8; try w.writeString(2, self.@"name"); }
-            if (self.@"scores".len != 0) {
+            if (self.id != 0) try w.writeInt32(1, self.id);
+            if (self.name.len != 0) { if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
+            if (self.scores.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"scores") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 try w.writeTag(3, .length_delimited);
                 try w.writeVarint(packed_len);
-                for (self.@"scores") |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
+                for (self.scores) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
-            if (self.@"counts".len != 0) {
-                const entries = try allocator.dupe(@"countsEntry", self.@"counts");
+            if (self.counts.len != 0) {
+                const entries = try allocator.dupe(countsEntry, self.counts);
                 defer allocator.free(entries);
-                std.mem.sort(@"countsEntry", entries, {}, struct { fn lessThan(_: void, a: @"countsEntry", b: @"countsEntry") bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
                 for (entries) |entry| {
                     var entry_writer = pbz.Writer.init(allocator);
                     defer entry_writer.deinit();
@@ -387,27 +387,27 @@ pub const @"demo" = struct {
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"scores_list": std.ArrayList(i32) = .empty;
-            defer @"scores_list".deinit(allocator);
-            var @"counts_list": std.ArrayList(@"countsEntry") = .empty;
-            defer @"counts_list".deinit(allocator);
+            var scores_list: std.ArrayList(i32) = .empty;
+            defer scores_list.deinit(allocator);
+            var counts_list: std.ArrayList(countsEntry) = .empty;
+            defer counts_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
-                    1 => { self.@"id" = try r.readInt32(); },
-                    2 => { self.@"name" = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.@"name")) return error.InvalidUtf8; },
+                    1 => { self.id = try r.readInt32(); },
+                    2 => { self.name = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(self.name)) return error.InvalidUtf8; },
                     3 => {
                         if (tag.wire_type == .length_delimited) {
                             const payload = try r.readBytes();
-                            try pbz.wire.appendPackedInt32(allocator, &@"scores_list", payload);
+                            try pbz.wire.appendPackedInt32(allocator, &scores_list, payload);
                         } else {
-                            try @"scores_list".append(allocator, try r.readInt32());
+                            try scores_list.append(allocator, try r.readInt32());
                         }
                     },
                     4 => {
-                        var entry = @"countsEntry"{};
+                        var entry = countsEntry{};
                         const payload = try r.readBytes();
                         var entry_reader = pbz.Reader.init(payload);
                         const skip_entry = false;
@@ -418,13 +418,13 @@ pub const @"demo" = struct {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); } else try @This().@"appendOrReplaceMapEntry_counts"(allocator, &@"counts_list", entry);
+                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); } else try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);
                     },
                     else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                 }
             }
-            self.@"scores" = if (@"scores_list".items.len != 0 and @"scores_list".items.len == @"scores_list".capacity) @"scores_list".toOwnedSliceAssert() else try @"scores_list".toOwnedSlice(allocator);
-            self.@"counts" = if (@"counts_list".items.len != 0 and @"counts_list".items.len == @"counts_list".capacity) @"counts_list".toOwnedSliceAssert() else try @"counts_list".toOwnedSlice(allocator);
+            self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
+            self.counts = if (counts_list.items.len != 0 and counts_list.items.len == counts_list.capacity) counts_list.toOwnedSliceAssert() else try counts_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -493,30 +493,30 @@ pub const @"demo" = struct {
             _ = allocator;
             try writer.writeAll("{");
             var first = true;
-            if (self.@"id" != 0 or options.always_print_primitive_fields) {
+            if (self.id != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"id\":" else "\"id\":");
-                const value = self.@"id";
+                const value = self.id;
                 try writer.print("{d}", .{value});
             }
-            if (self.@"name".len != 0 or options.always_print_primitive_fields) {
+            if (self.name.len != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"name\":" else "\"name\":");
-                const value = self.@"name";
+                const value = self.name;
                 try @This().jsonWriteString(writer, value);
             }
-            if (self.@"scores".len != 0 or options.always_print_primitive_fields) {
+            if (self.scores.len != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"scores\":" else "\"scores\":");
                 try writer.writeAll("[");
-                for (self.@"scores", 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
+                for (self.scores, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
             }
-            if (self.@"counts".len != 0 or options.always_print_primitive_fields) {
+            if (self.counts.len != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"counts\":" else "\"counts\":");
                 try writer.writeAll("{");
-                for (self.@"counts", 0..) |entry, i| {
+                for (self.counts, 0..) |entry, i| {
                     if (i != 0) try writer.writeAll(",");
                     try @This().jsonWriteString(writer, entry.key);
                     try writer.writeAll(":");
@@ -569,30 +569,30 @@ pub const @"demo" = struct {
                 const value = entry.value_ptr.*;
                 if (value == .null) {
                     if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
-                        self.@"id" = 0;
+                        self.id = 0;
                         continue;
                     }
                     if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
-                        self.@"name" = "";
+                        self.name = "";
                         continue;
                     }
                     if (std.mem.eql(u8, key, "scores") or std.mem.eql(u8, key, "scores")) {
-                        const old = self.@"scores"; self.@"scores" = &.{}; if (old.len != 0) allocator.free(old);
+                        const old = self.scores; self.scores = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "counts") or std.mem.eql(u8, key, "counts")) {
-                        const old = self.@"counts"; self.@"counts" = &.{}; if (old.len != 0) allocator.free(old);
+                        const old = self.counts; self.counts = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
                 if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
-                    self.@"id" = try @This().jsonInt(i32, value);
+                    self.id = try @This().jsonInt(i32, value);
                     continue;
                 }
                 if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
-                    self.@"name" = try @This().jsonString(value);
+                    self.name = try @This().jsonString(value);
                     continue;
                 }
                 if (std.mem.eql(u8, key, "scores") or std.mem.eql(u8, key, "scores")) {
@@ -600,18 +600,18 @@ pub const @"demo" = struct {
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
-                    self.@"scores" = blk: { const old = self.@"scores"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                    self.scores = blk: { const old = self.scores; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
                 if (std.mem.eql(u8, key, "counts") or std.mem.eql(u8, key, "counts")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                    var list: std.ArrayList(@"countsEntry") = .empty;
+                    var list: std.ArrayList(countsEntry) = .empty;
                     errdefer list.deinit(allocator);
                     var map_it = object_value.iterator();
                     while (map_it.next()) |map_entry| {
-                        try @This().@"appendOrReplaceMapEntry_counts"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
+                        try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
                     }
-                    self.@"counts" = blk: { const old = self.@"counts"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                    self.counts = blk: { const old = self.counts; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -1071,10 +1071,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
             _ = allocator;
             _ = options;
-            if (self.@"id" != 0) { try writer.writeAll("id: "); const value = self.@"id"; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
-            if (self.@"name".len != 0) { try writer.writeAll("name: "); const value = self.@"name"; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
-            for (self.@"scores") |value| { try writer.writeAll("scores: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
-            for (self.@"counts") |entry| {
+            if (self.id != 0) { try writer.writeAll("id: "); const value = self.id; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+            if (self.name.len != 0) { try writer.writeAll("name: "); const value = self.name; if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
+            for (self.scores) |value| { try writer.writeAll("scores: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+            for (self.counts) |entry| {
                 try writer.writeAll("counts {\n");
                 try writer.writeAll("key: "); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
                 try writer.writeAll("value: "); try writer.print("{d}", .{entry.value}); try writer.writeByte('\n');
@@ -1094,10 +1094,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"scores_list": std.ArrayList(i32) = .empty;
-            defer @"scores_list".deinit(allocator);
-            var @"counts_list": std.ArrayList(@"countsEntry") = .empty;
-            defer @"counts_list".deinit(allocator);
+            var scores_list: std.ArrayList(i32) = .empty;
+            defer scores_list.deinit(allocator);
+            var counts_list: std.ArrayList(countsEntry) = .empty;
+            defer counts_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             const normalized_text = try @This().textNormalizeSeparators(allocator, text);
@@ -1107,19 +1107,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "id")) |raw_value| {
-                    self.@"id" = try @This().textInt(i32, raw_value);
+                    self.id = try @This().textInt(i32, raw_value);
                     continue;
                 }
                 if (@This().textFieldValue(line, "name")) |raw_value| {
-                    self.@"name" = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };
+                    self.name = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; };
                     continue;
                 }
                 if (@This().textFieldValue(line, "scores")) |raw_value| {
-                    @"scores_list".append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
+                    scores_list.append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
                     continue;
                 }
                 if (@This().textBlockField(line, "counts")) {
-                    var entry = @"countsEntry"{};
+                    var entry = countsEntry{};
                     const skip_entry = false;
                     while (lines.next()) |raw_entry_line| {
                         const entry_line = @This().textCleanLine(raw_entry_line);
@@ -1130,7 +1130,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         return error.UnknownField;
                     }
                     if (skip_entry) continue;
-                    try @This().@"appendOrReplaceMapEntry_counts"(allocator, &@"counts_list", entry);
+                    try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
@@ -1138,8 +1138,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.@"scores" = if (@"scores_list".items.len != 0 and @"scores_list".items.len == @"scores_list".capacity) @"scores_list".toOwnedSliceAssert() else try @"scores_list".toOwnedSlice(allocator);
-            self.@"counts" = if (@"counts_list".items.len != 0 and @"counts_list".items.len == @"counts_list".capacity) @"counts_list".toOwnedSliceAssert() else try @"counts_list".toOwnedSlice(allocator);
+            self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
+            self.counts = if (counts_list.items.len != 0 and counts_list.items.len == counts_list.capacity) counts_list.toOwnedSliceAssert() else try counts_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -1160,10 +1160,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
     };
 
-    pub const @"Packed" = struct {
-        pub const @"values_number" = 1;
+    pub const Packed = struct {
+        pub const values_number = 1;
 
-        pub const @"values_field" = struct {
+        pub const values_field = struct {
             pub const number = 1;
             pub const name = "values";
             pub const json_name = "values";
@@ -1180,7 +1180,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
-        @"values": []const i32 = &.{},
+        values: []const i32 = &.{},
         @"_json_arena": ?*std.heap.ArenaAllocator = null,
         @"_unknown_fields": []const []const u8 = &.{},
 
@@ -1189,7 +1189,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-            allocator.free(self.@"values");
+            allocator.free(self.values);
             for (self.@"_unknown_fields") |raw| allocator.free(raw);
             allocator.free(self.@"_unknown_fields");
             if (self.@"_json_arena") |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
@@ -1199,10 +1199,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
             var out = @This().init();
             errdefer out.deinit(allocator);
-            if (self.@"values".len != 0) {
-                const cloned = try allocator.alloc(i32, self.@"values".len);
-                for (self.@"values", 0..) |item, i| cloned[i] = item;
-                out.@"values" = cloned;
+            if (self.values.len != 0) {
+                const cloned = try allocator.alloc(i32, self.values.len);
+                for (self.values, 0..) |item, i| cloned[i] = item;
+                out.values = cloned;
             }
             if (self.@"_unknown_fields".len != 0) {
                 const cloned_unknowns = try allocator.alloc([]const u8, self.@"_unknown_fields".len);
@@ -1296,12 +1296,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         // no same-file extension accessors
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.@"values".len != 0) {
-                const old = self.@"values";
-                const merged = try allocator.alloc(i32, old.len + other.@"values".len);
+            if (other.values.len != 0) {
+                const old = self.values;
+                const merged = try allocator.alloc(i32, old.len + other.values.len);
                 @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.@"values");
-                self.@"values" = merged;
+                @memcpy(merged[old.len..], other.values);
+                self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
             for (other.@"_unknown_fields") |raw| try self.appendUnknownRaw(allocator, raw);
@@ -1309,9 +1309,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodedSize(self: @This()) usize {
             var size: usize = 0;
-            if (self.@"values".len != 0) {
+            if (self.values.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"values") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 size += 1 + pbz.wire.encodedVarintSize(packed_len) + packed_len;
             }
             for (self.@"_unknown_fields") |raw| size += raw.len;
@@ -1319,23 +1319,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"values".len != 0) {
+            if (self.values.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"values") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                for (self.@"values") |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
             for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
         }
 
         pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"values".len != 0) {
+            if (self.values.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"values") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 w.writeTagAssumeCapacity(1, .length_delimited);
                 w.writeVarintAssumeCapacity(packed_len);
-                for (self.@"values") |item| w.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| w.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, item))));
             }
             for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
         }
@@ -1365,12 +1365,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
-            if (self.@"values".len != 0) {
+            if (self.values.len != 0) {
                 var packed_len: usize = 0;
-                for (self.@"values") |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| packed_len += pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                for (self.@"values") |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
+                for (self.values) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
             if (self.@"_unknown_fields".len != 0) {
                 const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
@@ -1408,8 +1408,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"values_list": std.ArrayList(i32) = .empty;
-            defer @"values_list".deinit(allocator);
+            var values_list: std.ArrayList(i32) = .empty;
+            defer values_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             var r = pbz.Reader.init(bytes);
@@ -1418,15 +1418,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
                             const payload = try r.readBytes();
-                            try pbz.wire.appendPackedInt32(allocator, &@"values_list", payload);
+                            try pbz.wire.appendPackedInt32(allocator, &values_list, payload);
                         } else {
-                            try @"values_list".append(allocator, try r.readInt32());
+                            try values_list.append(allocator, try r.readInt32());
                         }
                     },
                     else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                 }
             }
-            self.@"values" = if (@"values_list".items.len != 0 and @"values_list".items.len == @"values_list".capacity) @"values_list".toOwnedSliceAssert() else try @"values_list".toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -1495,11 +1495,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = allocator;
             try writer.writeAll("{");
             var first = true;
-            if (self.@"values".len != 0 or options.always_print_primitive_fields) {
+            if (self.values.len != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"values\":" else "\"values\":");
                 try writer.writeAll("[");
-                for (self.@"values", 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
+                for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
             }
             try writer.writeAll("}");
@@ -1547,7 +1547,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const value = entry.value_ptr.*;
                 if (value == .null) {
                     if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
-                        const old = self.@"values"; self.@"values" = &.{}; if (old.len != 0) allocator.free(old);
+                        const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -1558,7 +1558,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
-                    self.@"values" = blk: { const old = self.@"values"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                    self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -2018,7 +2018,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
             _ = allocator;
             _ = options;
-            for (self.@"values") |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+            for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self.@"_unknown_fields") |raw| {
                 try @This().textWriteUnknownRaw(raw, writer);
             }
@@ -2033,8 +2033,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"values_list": std.ArrayList(i32) = .empty;
-            defer @"values_list".deinit(allocator);
+            var values_list: std.ArrayList(i32) = .empty;
+            defer values_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             const normalized_text = try @This().textNormalizeSeparators(allocator, text);
@@ -2044,7 +2044,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    @"values_list".append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
+                    values_list.append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
@@ -2052,7 +2052,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.@"values" = if (@"values_list".items.len != 0 and @"values_list".items.len == @"values_list".capacity) @"values_list".toOwnedSliceAssert() else try @"values_list".toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -2073,10 +2073,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
     };
 
-    pub const @"FixedPacked" = struct {
-        pub const @"values_number" = 1;
+    pub const FixedPacked = struct {
+        pub const values_number = 1;
 
-        pub const @"values_field" = struct {
+        pub const values_field = struct {
             pub const number = 1;
             pub const name = "values";
             pub const json_name = "values";
@@ -2093,7 +2093,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
-        @"values": []const u32 = &.{},
+        values: []const u32 = &.{},
         @"_json_arena": ?*std.heap.ArenaAllocator = null,
         @"_unknown_fields": []const []const u8 = &.{},
 
@@ -2102,7 +2102,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-            allocator.free(self.@"values");
+            allocator.free(self.values);
             for (self.@"_unknown_fields") |raw| allocator.free(raw);
             allocator.free(self.@"_unknown_fields");
             if (self.@"_json_arena") |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
@@ -2112,10 +2112,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
             var out = @This().init();
             errdefer out.deinit(allocator);
-            if (self.@"values".len != 0) {
-                const cloned = try allocator.alloc(u32, self.@"values".len);
-                for (self.@"values", 0..) |item, i| cloned[i] = item;
-                out.@"values" = cloned;
+            if (self.values.len != 0) {
+                const cloned = try allocator.alloc(u32, self.values.len);
+                for (self.values, 0..) |item, i| cloned[i] = item;
+                out.values = cloned;
             }
             if (self.@"_unknown_fields".len != 0) {
                 const cloned_unknowns = try allocator.alloc([]const u8, self.@"_unknown_fields".len);
@@ -2205,32 +2205,32 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.@"_unknown_fields" = &.{};
         }
 
-        pub fn @"valuesPackedFixedView"(bytes: []const u8) !?[]align(1) const u32 {
+        pub fn valuesPackedFixedView(bytes: []const u8) !?[]align(1) const u32 {
             return try pbz.wire.packedFixedWidthFieldView(u32, bytes, 1);
         }
 
-        pub fn @"valuesPackedFixedSlices"(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {
+        pub fn valuesPackedFixedSlices(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.packedFixedWidthFieldSlices(u32, header, 1, values);
         }
 
-        pub fn @"valuesPackedFixed32View"(bytes: []const u8) !?[]align(1) const u32 {
-            return try @"valuesPackedFixedView"(bytes);
+        pub fn valuesPackedFixed32View(bytes: []const u8) !?[]align(1) const u32 {
+            return try valuesPackedFixedView(bytes);
         }
 
-        pub fn @"valuesPackedFixed32Slices"(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {
-            return try @"valuesPackedFixedSlices"(header, values);
+        pub fn valuesPackedFixed32Slices(header: *[20]u8, values: []const u32) !pbz.wire.BorrowedFieldSlices {
+            return try valuesPackedFixedSlices(header, values);
         }
 
 
         // no same-file extension accessors
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.@"values".len != 0) {
-                const old = self.@"values";
-                const merged = try allocator.alloc(u32, old.len + other.@"values".len);
+            if (other.values.len != 0) {
+                const old = self.values;
+                const merged = try allocator.alloc(u32, old.len + other.values.len);
                 @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.@"values");
-                self.@"values" = merged;
+                @memcpy(merged[old.len..], other.values);
+                self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
             for (other.@"_unknown_fields") |raw| try self.appendUnknownRaw(allocator, raw);
@@ -2238,8 +2238,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodedSize(self: @This()) usize {
             var size: usize = 0;
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 4;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
                 size += 1 + pbz.wire.encodedVarintSize(packed_len) + packed_len;
             }
             for (self.@"_unknown_fields") |raw| size += raw.len;
@@ -2247,21 +2247,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 4;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                try pbz.wire.writePackedFixedWidthPayload(u32, w, self.@"values");
+                try pbz.wire.writePackedFixedWidthPayload(u32, w, self.values);
             }
             for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
         }
 
         pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 4;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
                 w.writeTagAssumeCapacity(1, .length_delimited);
                 w.writeVarintAssumeCapacity(packed_len);
-                pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u32, w, self.@"values");
+                pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u32, w, self.values);
             }
             for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
         }
@@ -2291,11 +2291,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 4;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                try pbz.wire.writePackedFixedWidthPayload(u32, w, self.@"values");
+                try pbz.wire.writePackedFixedWidthPayload(u32, w, self.values);
             }
             if (self.@"_unknown_fields".len != 0) {
                 const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
@@ -2333,8 +2333,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"values_list": std.ArrayList(u32) = .empty;
-            defer @"values_list".deinit(allocator);
+            var values_list: std.ArrayList(u32) = .empty;
+            defer values_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             var r = pbz.Reader.init(bytes);
@@ -2343,15 +2343,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
                             const payload = try r.readBytes();
-                            try pbz.wire.appendPackedFixed32(allocator, &@"values_list", payload);
+                            try pbz.wire.appendPackedFixed32(allocator, &values_list, payload);
                         } else {
-                            try @"values_list".append(allocator, try r.readFixed32());
+                            try values_list.append(allocator, try r.readFixed32());
                         }
                     },
                     else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                 }
             }
-            self.@"values" = if (@"values_list".items.len != 0 and @"values_list".items.len == @"values_list".capacity) @"values_list".toOwnedSliceAssert() else try @"values_list".toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -2420,11 +2420,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = allocator;
             try writer.writeAll("{");
             var first = true;
-            if (self.@"values".len != 0 or options.always_print_primitive_fields) {
+            if (self.values.len != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"values\":" else "\"values\":");
                 try writer.writeAll("[");
-                for (self.@"values", 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
+                for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
             }
             try writer.writeAll("}");
@@ -2472,7 +2472,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const value = entry.value_ptr.*;
                 if (value == .null) {
                     if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
-                        const old = self.@"values"; self.@"values" = &.{}; if (old.len != 0) allocator.free(old);
+                        const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -2483,7 +2483,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var list: std.ArrayList(u32) = .empty;
                     errdefer list.deinit(allocator);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u32, item));
-                    self.@"values" = blk: { const old = self.@"values"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                    self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -2943,7 +2943,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
             _ = allocator;
             _ = options;
-            for (self.@"values") |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+            for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self.@"_unknown_fields") |raw| {
                 try @This().textWriteUnknownRaw(raw, writer);
             }
@@ -2958,8 +2958,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"values_list": std.ArrayList(u32) = .empty;
-            defer @"values_list".deinit(allocator);
+            var values_list: std.ArrayList(u32) = .empty;
+            defer values_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             const normalized_text = try @This().textNormalizeSeparators(allocator, text);
@@ -2969,7 +2969,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    @"values_list".append(allocator, try @This().textInt(u32, raw_value)) catch |err| return err;
+                    values_list.append(allocator, try @This().textInt(u32, raw_value)) catch |err| return err;
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
@@ -2977,7 +2977,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.@"values" = if (@"values_list".items.len != 0 and @"values_list".items.len == @"values_list".capacity) @"values_list".toOwnedSliceAssert() else try @"values_list".toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -2998,10 +2998,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
     };
 
-    pub const @"Fixed64Packed" = struct {
-        pub const @"values_number" = 1;
+    pub const Fixed64Packed = struct {
+        pub const values_number = 1;
 
-        pub const @"values_field" = struct {
+        pub const values_field = struct {
             pub const number = 1;
             pub const name = "values";
             pub const json_name = "values";
@@ -3018,7 +3018,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
-        @"values": []const u64 = &.{},
+        values: []const u64 = &.{},
         @"_json_arena": ?*std.heap.ArenaAllocator = null,
         @"_unknown_fields": []const []const u8 = &.{},
 
@@ -3027,7 +3027,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-            allocator.free(self.@"values");
+            allocator.free(self.values);
             for (self.@"_unknown_fields") |raw| allocator.free(raw);
             allocator.free(self.@"_unknown_fields");
             if (self.@"_json_arena") |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
@@ -3037,10 +3037,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
             var out = @This().init();
             errdefer out.deinit(allocator);
-            if (self.@"values".len != 0) {
-                const cloned = try allocator.alloc(u64, self.@"values".len);
-                for (self.@"values", 0..) |item, i| cloned[i] = item;
-                out.@"values" = cloned;
+            if (self.values.len != 0) {
+                const cloned = try allocator.alloc(u64, self.values.len);
+                for (self.values, 0..) |item, i| cloned[i] = item;
+                out.values = cloned;
             }
             if (self.@"_unknown_fields".len != 0) {
                 const cloned_unknowns = try allocator.alloc([]const u8, self.@"_unknown_fields".len);
@@ -3130,11 +3130,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.@"_unknown_fields" = &.{};
         }
 
-        pub fn @"valuesPackedFixedView"(bytes: []const u8) !?[]align(1) const u64 {
+        pub fn valuesPackedFixedView(bytes: []const u8) !?[]align(1) const u64 {
             return try pbz.wire.packedFixedWidthFieldView(u64, bytes, 1);
         }
 
-        pub fn @"valuesPackedFixedSlices"(header: *[20]u8, values: []const u64) !pbz.wire.BorrowedFieldSlices {
+        pub fn valuesPackedFixedSlices(header: *[20]u8, values: []const u64) !pbz.wire.BorrowedFieldSlices {
             return try pbz.wire.packedFixedWidthFieldSlices(u64, header, 1, values);
         }
 
@@ -3142,12 +3142,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         // no same-file extension accessors
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.@"values".len != 0) {
-                const old = self.@"values";
-                const merged = try allocator.alloc(u64, old.len + other.@"values".len);
+            if (other.values.len != 0) {
+                const old = self.values;
+                const merged = try allocator.alloc(u64, old.len + other.values.len);
                 @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.@"values");
-                self.@"values" = merged;
+                @memcpy(merged[old.len..], other.values);
+                self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
             for (other.@"_unknown_fields") |raw| try self.appendUnknownRaw(allocator, raw);
@@ -3155,8 +3155,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodedSize(self: @This()) usize {
             var size: usize = 0;
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 8;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
                 size += 1 + pbz.wire.encodedVarintSize(packed_len) + packed_len;
             }
             for (self.@"_unknown_fields") |raw| size += raw.len;
@@ -3164,21 +3164,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 8;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                try pbz.wire.writePackedFixedWidthPayload(u64, w, self.@"values");
+                try pbz.wire.writePackedFixedWidthPayload(u64, w, self.values);
             }
             for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
         }
 
         pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 8;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
                 w.writeTagAssumeCapacity(1, .length_delimited);
                 w.writeVarintAssumeCapacity(packed_len);
-                pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u64, w, self.@"values");
+                pbz.wire.writePackedFixedWidthPayloadAssumeCapacity(u64, w, self.values);
             }
             for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
         }
@@ -3208,11 +3208,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             var w = pbz.Writer.init(allocator);
             errdefer w.deinit();
-            if (self.@"values".len != 0) {
-                const packed_len = self.@"values".len * 8;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
                 try w.writeTag(1, .length_delimited);
                 try w.writeVarint(packed_len);
-                try pbz.wire.writePackedFixedWidthPayload(u64, w, self.@"values");
+                try pbz.wire.writePackedFixedWidthPayload(u64, w, self.values);
             }
             if (self.@"_unknown_fields".len != 0) {
                 const indexes = try allocator.alloc(usize, self.@"_unknown_fields".len);
@@ -3250,8 +3250,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"values_list": std.ArrayList(u64) = .empty;
-            defer @"values_list".deinit(allocator);
+            var values_list: std.ArrayList(u64) = .empty;
+            defer values_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             var r = pbz.Reader.init(bytes);
@@ -3260,17 +3260,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
                             const payload = try r.readBytes();
-                            try @"values_list".ensureUnusedCapacity(allocator, payload.len / 8);
+                            try values_list.ensureUnusedCapacity(allocator, payload.len / 8);
                             var packed_reader = pbz.Reader.init(payload);
-                            while (!packed_reader.eof()) @"values_list".appendAssumeCapacity(try packed_reader.readFixed64());
+                            while (!packed_reader.eof()) values_list.appendAssumeCapacity(try packed_reader.readFixed64());
                         } else {
-                            try @"values_list".append(allocator, try r.readFixed64());
+                            try values_list.append(allocator, try r.readFixed64());
                         }
                     },
                     else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                 }
             }
-            self.@"values" = if (@"values_list".items.len != 0 and @"values_list".items.len == @"values_list".capacity) @"values_list".toOwnedSliceAssert() else try @"values_list".toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }
@@ -3339,11 +3339,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = allocator;
             try writer.writeAll("{");
             var first = true;
-            if (self.@"values".len != 0 or options.always_print_primitive_fields) {
+            if (self.values.len != 0 or options.always_print_primitive_fields) {
                 if (!first) try writer.writeAll(","); first = false;
                 try writer.writeAll(if (options.preserve_proto_field_names) "\"values\":" else "\"values\":");
                 try writer.writeAll("[");
-                for (self.@"values", 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
+                for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
             }
             try writer.writeAll("}");
@@ -3391,7 +3391,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const value = entry.value_ptr.*;
                 if (value == .null) {
                     if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
-                        const old = self.@"values"; self.@"values" = &.{}; if (old.len != 0) allocator.free(old);
+                        const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -3402,7 +3402,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
                     for (array.items) |item| try list.append(allocator, try @This().jsonInt(u64, item));
-                    self.@"values" = blk: { const old = self.@"values"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                    self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -3862,7 +3862,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
             _ = allocator;
             _ = options;
-            for (self.@"values") |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+            for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self.@"_unknown_fields") |raw| {
                 try @This().textWriteUnknownRaw(raw, writer);
             }
@@ -3877,8 +3877,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            var @"values_list": std.ArrayList(u64) = .empty;
-            defer @"values_list".deinit(allocator);
+            var values_list: std.ArrayList(u64) = .empty;
+            defer values_list.deinit(allocator);
             var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
             errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
             const normalized_text = try @This().textNormalizeSeparators(allocator, text);
@@ -3888,7 +3888,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    @"values_list".append(allocator, try @This().textInt(u64, raw_value)) catch |err| return err;
+                    values_list.append(allocator, try @This().textInt(u64, raw_value)) catch |err| return err;
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
@@ -3896,7 +3896,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (options.ignore_unknown_fields) continue;
                 return error.UnknownField;
             }
-            self.@"values" = if (@"values_list".items.len != 0 and @"values_list".items.len == @"values_list".capacity) @"values_list".toOwnedSliceAssert() else try @"values_list".toOwnedSlice(allocator);
+            self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
             return self;
         }

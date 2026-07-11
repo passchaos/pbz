@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
         "generated_types",
         "generated_advanced",
         "generated_imports",
+        "generated_groups",
         "well_known_types",
         "proto2_extensions",
         "conformance",

@@ -33,7 +33,7 @@ pub fn main() !void {
 
     const zig_source = try pbz.generateZigFile(allocator, &file);
     defer allocator.free(zig_source);
-    std.debug.assert(std.mem.indexOf(u8, zig_source, "pub const @\"Event\"") != null);
+    std.debug.assert(std.mem.indexOf(u8, zig_source, "pub const Event") != null);
 
     var request = pbz.CodeGeneratorRequest.init(allocator);
     defer request.deinit();

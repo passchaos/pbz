@@ -10,56 +10,56 @@ pub const imports = struct {
 };
 const @"pbz.generated.file" = @This();
 
-pub const @"demo" = struct {
-    pub const @"imports" = struct {
-        pub const @"app" = struct {
-            pub const @"Request" = struct {
-                pub const @"primary_number" = 1;
-                pub const @"history_number" = 2;
-                pub const @"by_name_number" = 3;
-                pub const @"chosen_number" = 4;
-                pub const @"fallback_number" = 5;
+pub const demo = struct {
+    pub const imports = struct {
+        pub const app = struct {
+            pub const Request = struct {
+                pub const primary_number = 1;
+                pub const history_number = 2;
+                pub const by_name_number = 3;
+                pub const chosen_number = 4;
+                pub const fallback_number = 5;
 
-                pub const @"primary_field" = struct {
+                pub const primary_field = struct {
                     pub const number = 1;
                     pub const name = "primary";
                     pub const json_name = "primary";
                     pub const cardinality = "optional";
                     pub const kind = "message";
                     pub const type_name = "demo.imports.common.Profile";
-                    pub const zig_type = "?@\"pbz.generated.file\".imports.@\"imported_common.proto\".@\"demo\".@\"imports\".@\"common\".@\"Profile\"";
+                    pub const zig_type = "?@\"pbz.generated.file\".imports.@\"imported_common.proto\".demo.imports.common.Profile";
                     pub const has_type_ref = true;
-                    pub const type_ref = @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile";
+                    pub const type_ref = @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile;
                     pub const has_enum_ref = false;
                     pub const enum_ref = void;
                     pub const has_presence = true;
                     pub const default_value = "";
                     pub const is_packed = false;
                 };
-                pub const @"history_field" = struct {
+                pub const history_field = struct {
                     pub const number = 2;
                     pub const name = "history";
                     pub const json_name = "history";
                     pub const cardinality = "repeated";
                     pub const kind = "message";
                     pub const type_name = "demo.imports.common.Profile";
-                    pub const zig_type = "[]const @\"pbz.generated.file\".imports.@\"imported_common.proto\".@\"demo\".@\"imports\".@\"common\".@\"Profile\"";
+                    pub const zig_type = "[]const @\"pbz.generated.file\".imports.@\"imported_common.proto\".demo.imports.common.Profile";
                     pub const has_type_ref = true;
-                    pub const type_ref = @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile";
+                    pub const type_ref = @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile;
                     pub const has_enum_ref = false;
                     pub const enum_ref = void;
                     pub const has_presence = true;
                     pub const default_value = "";
                     pub const is_packed = false;
                 };
-                pub const @"by_name_field" = struct {
+                pub const by_name_field = struct {
                     pub const number = 3;
                     pub const name = "by_name";
                     pub const json_name = "byName";
                     pub const cardinality = "repeated";
                     pub const kind = "map";
                     pub const type_name = "";
-                    pub const zig_type = "[]const @\"by_nameEntry\"";
+                    pub const zig_type = "[]const by_nameEntry";
                     pub const has_type_ref = false;
                     pub const type_ref = void;
                     pub const has_enum_ref = false;
@@ -71,27 +71,27 @@ pub const @"demo" = struct {
                     pub const map_value_kind = "message";
                     pub const map_value_type_name = "demo.imports.common.Profile";
                     pub const map_value_has_type_ref = true;
-                    pub const map_value_type_ref = @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile";
+                    pub const map_value_type_ref = @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile;
                     pub const map_value_has_enum_ref = false;
                     pub const map_value_enum_ref = void;
                 };
-                pub const @"chosen_field" = struct {
+                pub const chosen_field = struct {
                     pub const number = 4;
                     pub const name = "chosen";
                     pub const json_name = "chosen";
                     pub const cardinality = "optional";
                     pub const kind = "message";
                     pub const type_name = "demo.imports.common.Profile";
-                    pub const zig_type = "@\"pbz.generated.file\".imports.@\"imported_common.proto\".@\"demo\".@\"imports\".@\"common\".@\"Profile\"";
+                    pub const zig_type = "@\"pbz.generated.file\".imports.@\"imported_common.proto\".demo.imports.common.Profile";
                     pub const has_type_ref = true;
-                    pub const type_ref = @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile";
+                    pub const type_ref = @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile;
                     pub const has_enum_ref = false;
                     pub const enum_ref = void;
                     pub const has_presence = true;
                     pub const default_value = "";
                     pub const is_packed = false;
                 };
-                pub const @"fallback_field" = struct {
+                pub const fallback_field = struct {
                     pub const number = 5;
                     pub const name = "fallback";
                     pub const json_name = "fallback";
@@ -108,28 +108,28 @@ pub const @"demo" = struct {
                     pub const is_packed = false;
                 };
 
-                pub const @"by_nameEntry" = struct {
+                pub const by_nameEntry = struct {
                     key: []const u8 = "",
-                    value: @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile" = .{},
+                    value: @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile = .{},
                 };
 
-                fn @"appendOrReplaceMapEntry_by_name"(allocator: std.mem.Allocator, list: *std.ArrayList(@"by_nameEntry"), entry: @"by_nameEntry") !void {
+                fn appendOrReplaceMapEntry_by_name(allocator: std.mem.Allocator, list: *std.ArrayList(by_nameEntry), entry: by_nameEntry) !void {
                     for (list.items) |*existing| {
                         if (std.mem.eql(u8, existing.key, entry.key)) { existing.value.deinit(allocator); existing.* = entry; return; }
                     }
                     try list.append(allocator, entry);
                 }
 
-                pub const @"selectedOneof" = union(enum) {
+                pub const selectedOneof = union(enum) {
                     none,
-                    @"chosen": @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile",
-                    @"fallback": []const u8,
+                    chosen: @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile,
+                    fallback: []const u8,
                 };
 
-                @"primary": ?@"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile" = null,
-                @"history": []const @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile" = &.{},
-                @"by_name": []const @"by_nameEntry" = &.{},
-                @"selected": @"selectedOneof" = .none,
+                primary: ?@"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile = null,
+                history: []const @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile = &.{},
+                by_name: []const by_nameEntry = &.{},
+                selected: selectedOneof = .none,
                 @"_json_arena": ?*std.heap.ArenaAllocator = null,
                 @"_unknown_fields": []const []const u8 = &.{},
 
@@ -138,13 +138,13 @@ pub const @"demo" = struct {
                 }
 
                 pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-                    if (self.@"primary") |*value| value.deinit(allocator);
-                    for (self.@"history") |value| { var mutable = value; mutable.deinit(allocator); }
-                    allocator.free(self.@"history");
-                    for (self.@"by_name") |entry| { var old_value = entry.value; old_value.deinit(allocator); }
-                    allocator.free(self.@"by_name");
-                    switch (self.@"selected") {
-                        .@"chosen" => |*value| value.deinit(allocator),
+                    if (self.primary) |*value| value.deinit(allocator);
+                    for (self.history) |value| { var mutable = value; mutable.deinit(allocator); }
+                    allocator.free(self.history);
+                    for (self.by_name) |entry| { var old_value = entry.value; old_value.deinit(allocator); }
+                    allocator.free(self.by_name);
+                    switch (self.selected) {
+                        .chosen => |*value| value.deinit(allocator),
                         else => {},
                     }
                     for (self.@"_unknown_fields") |raw| allocator.free(raw);
@@ -157,21 +157,21 @@ pub const @"demo" = struct {
                     var out = @This().init();
                     errdefer out.deinit(allocator);
                     const owned_allocator = try out.@"_pbzOwnedAllocator"(allocator);
-                    if (self.@"primary") |value| out.@"primary" = try value.cloneOwned(allocator);
-                    if (self.@"history".len != 0) {
-                        const cloned = try allocator.alloc(@"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile", self.@"history".len);
-                        for (self.@"history", 0..) |item, i| cloned[i] = try item.cloneOwned(allocator);
-                        out.@"history" = cloned;
+                    if (self.primary) |value| out.primary = try value.cloneOwned(allocator);
+                    if (self.history.len != 0) {
+                        const cloned = try allocator.alloc(@"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile, self.history.len);
+                        for (self.history, 0..) |item, i| cloned[i] = try item.cloneOwned(allocator);
+                        out.history = cloned;
                     }
-                    if (self.@"by_name".len != 0) {
-                        const cloned = try allocator.alloc(@"by_nameEntry", self.@"by_name".len);
-                        for (self.@"by_name", 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try entry.value.cloneOwned(allocator) };
-                        out.@"by_name" = cloned;
+                    if (self.by_name.len != 0) {
+                        const cloned = try allocator.alloc(by_nameEntry, self.by_name.len);
+                        for (self.by_name, 0..) |entry, i| cloned[i] = .{ .key = try owned_allocator.dupe(u8, entry.key), .value = try entry.value.cloneOwned(allocator) };
+                        out.by_name = cloned;
                     }
-                    out.@"selected" = switch (self.@"selected") {
+                    out.selected = switch (self.selected) {
                         .none => .none,
-                        .@"chosen" => |value| .{ .@"chosen" = try value.cloneOwned(allocator) },
-                        .@"fallback" => |value| .{ .@"fallback" = try owned_allocator.dupe(u8, value) },
+                        .chosen => |value| .{ .chosen = try value.cloneOwned(allocator) },
+                        .fallback => |value| .{ .fallback = try owned_allocator.dupe(u8, value) },
                     };
                     if (self.@"_unknown_fields".len != 0) {
                         const cloned_unknowns = try allocator.alloc([]const u8, self.@"_unknown_fields".len);
@@ -265,57 +265,57 @@ pub const @"demo" = struct {
                 // no same-file extension accessors
 
                 pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-                    if (other.@"primary") |other_value| {
-                        if (self.@"primary") |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.@"primary" = try other_value.cloneOwned(allocator); }
+                    if (other.primary) |other_value| {
+                        if (self.primary) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.primary = try other_value.cloneOwned(allocator); }
                     }
-                    if (other.@"history".len != 0) {
-                        const old = self.@"history";
-                        const merged = try allocator.alloc(@"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile", old.len + other.@"history".len);
+                    if (other.history.len != 0) {
+                        const old = self.history;
+                        const merged = try allocator.alloc(@"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile, old.len + other.history.len);
                         @memcpy(merged[0..old.len], old);
-                        for (other.@"history", 0..) |item, i| merged[old.len + i] = try item.cloneOwned(allocator);
-                        self.@"history" = merged;
+                        for (other.history, 0..) |item, i| merged[old.len + i] = try item.cloneOwned(allocator);
+                        self.history = merged;
                         if (old.len != 0) allocator.free(old);
                     }
-                    if (other.@"by_name".len != 0) {
-                        var list: std.ArrayList(@"by_nameEntry") = .empty;
+                    if (other.by_name.len != 0) {
+                        var list: std.ArrayList(by_nameEntry) = .empty;
                         errdefer { for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); } list.deinit(allocator); }
-                        for (self.@"by_name") |entry| try list.append(allocator, .{ .key = entry.key, .value = try entry.value.cloneOwned(allocator) });
-                        for (other.@"by_name") |entry| { var cloned_entry = entry; cloned_entry.value = try entry.value.cloneOwned(allocator); errdefer cloned_entry.value.deinit(allocator); try @This().@"appendOrReplaceMapEntry_by_name"(allocator, &list, cloned_entry); }
-                        const old = self.@"by_name";
+                        for (self.by_name) |entry| try list.append(allocator, .{ .key = entry.key, .value = try entry.value.cloneOwned(allocator) });
+                        for (other.by_name) |entry| { var cloned_entry = entry; cloned_entry.value = try entry.value.cloneOwned(allocator); errdefer cloned_entry.value.deinit(allocator); try @This().appendOrReplaceMapEntry_by_name(allocator, &list, cloned_entry); }
+                        const old = self.by_name;
                         const owned = try list.toOwnedSlice(allocator);
-                        self.@"by_name" = owned;
+                        self.by_name = owned;
                         for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); }
                         if (old.len != 0) allocator.free(old);
                     }
-                    switch (other.@"selected") {
+                    switch (other.selected) {
                         .none => {},
-                        .@"chosen" => |value| self.@"selected" = .{ .@"chosen" = try value.cloneOwned(allocator) },
-                        .@"fallback" => |value| self.@"selected" = .{ .@"fallback" = value },
+                        .chosen => |value| self.selected = .{ .chosen = try value.cloneOwned(allocator) },
+                        .fallback => |value| self.selected = .{ .fallback = value },
                     }
                     for (other.@"_unknown_fields") |raw| try self.appendUnknownRaw(allocator, raw);
                 }
 
                 pub fn encodedSize(self: @This()) usize {
                     var size: usize = 0;
-                    if (self.@"primary") |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
-                    for (self.@"history") |item| { const payload_len = item.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
-                    for (self.@"by_name") |entry| {
+                    if (self.primary) |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
+                    for (self.history) |item| { const payload_len = item.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
+                    for (self.by_name) |entry| {
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         size += 1 + pbz.wire.encodedVarintSize(entry_len) + entry_len;
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; },
-                        .@"fallback" => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
+                        .chosen => |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; },
+                        .fallback => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
                     }
                     for (self.@"_unknown_fields") |raw| size += raw.len;
                     return size;
                 }
 
                 pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-                    if (self.@"primary") |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
-                    for (self.@"history") |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
-                    for (self.@"by_name") |entry| {
+                    if (self.primary) |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
+                    for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
+                    for (self.by_name) |entry| {
                         if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         try w.writeTag(3, .length_delimited);
@@ -323,18 +323,18 @@ pub const @"demo" = struct {
                         try w.writeString(1, entry.key);
                         { const value_len = entry.value.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(value_len); try entry.value.writeTo(w); }
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
-                        .@"fallback" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        .chosen => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
+                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
                     }
                     for (self.@"_unknown_fields") |raw| try w.appendSlice(raw);
                 }
 
                 pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-                    if (self.@"primary") |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
-                    for (self.@"history") |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
-                    for (self.@"by_name") |entry| {
+                    if (self.primary) |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
+                    for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }
+                    for (self.by_name) |entry| {
                         if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8;
                         const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + blk: { const value_len = entry.value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                         w.writeTagAssumeCapacity(3, .length_delimited);
@@ -342,10 +342,10 @@ pub const @"demo" = struct {
                         w.writeStringAssumeCapacity(1, entry.key);
                         { const value_len = entry.value.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(value_len); try entry.value.writeTo(w); }
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
-                        .@"fallback" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                        .chosen => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
+                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
                     }
                     for (self.@"_unknown_fields") |raw| w.appendSliceAssumeCapacity(raw);
                 }
@@ -375,12 +375,12 @@ pub const @"demo" = struct {
                 pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {
                     var w = pbz.Writer.init(allocator);
                     errdefer w.deinit();
-                    if (self.@"primary") |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
-                    for (self.@"history") |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }
-                    if (self.@"by_name".len != 0) {
-                        const entries = try allocator.dupe(@"by_nameEntry", self.@"by_name");
+                    if (self.primary) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
+                    for (self.history) |item| { const payload = try item.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(2, payload); }
+                    if (self.by_name.len != 0) {
+                        const entries = try allocator.dupe(by_nameEntry, self.by_name);
                         defer allocator.free(entries);
-                        std.mem.sort(@"by_nameEntry", entries, {}, struct { fn lessThan(_: void, a: @"by_nameEntry", b: @"by_nameEntry") bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(by_nameEntry, entries, {}, struct { fn lessThan(_: void, a: by_nameEntry, b: by_nameEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
                         for (entries) |entry| {
                             var entry_writer = pbz.Writer.init(allocator);
                             defer entry_writer.deinit();
@@ -390,12 +390,12 @@ pub const @"demo" = struct {
                             try w.writeMessage(3, entry_writer.slice());
                         }
                     }
-                    switch (self.@"selected") {
-                        .@"chosen" => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(4, payload); },
+                    switch (self.selected) {
+                        .chosen => |value| { const payload = try value.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(4, payload); },
                         else => {},
                     }
-                    switch (self.@"selected") {
-                        .@"fallback" => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
+                    switch (self.selected) {
+                        .fallback => |value| { if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; try w.writeString(5, value); },
                         else => {},
                     }
                     if (self.@"_unknown_fields".len != 0) {
@@ -434,21 +434,21 @@ pub const @"demo" = struct {
                 pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                     var self = @This().init();
                     errdefer self.deinit(allocator);
-                    var @"history_list": std.ArrayList(@"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile") = .empty;
-                    defer @"history_list".deinit(allocator);
-                    errdefer for (@"history_list".items) |item| { var mutable = item; mutable.deinit(allocator); };
-                    var @"by_name_list": std.ArrayList(@"by_nameEntry") = .empty;
-                    defer @"by_name_list".deinit(allocator);
-                    errdefer for (@"by_name_list".items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
+                    var history_list: std.ArrayList(@"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile) = .empty;
+                    defer history_list.deinit(allocator);
+                    errdefer for (history_list.items) |item| { var mutable = item; mutable.deinit(allocator); };
+                    var by_name_list: std.ArrayList(by_nameEntry) = .empty;
+                    defer by_name_list.deinit(allocator);
+                    errdefer for (by_name_list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                     var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
                     errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
                     var r = pbz.Reader.init(bytes);
                     while (try r.nextTag()) |tag| {
                         switch (tag.number) {
-                            1 => { const payload = try r.readBytes(); var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".decode(allocator, payload); errdefer nested.deinit(allocator); if (self.@"primary") |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.@"primary" = nested; } },
-                            2 => { const payload = try r.readBytes(); var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".decode(allocator, payload); errdefer nested.deinit(allocator); try @"history_list".append(allocator, nested); },
+                            1 => { const payload = try r.readBytes(); var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.decode(allocator, payload); errdefer nested.deinit(allocator); if (self.primary) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.primary = nested; } },
+                            2 => { const payload = try r.readBytes(); var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.decode(allocator, payload); errdefer nested.deinit(allocator); try history_list.append(allocator, nested); },
                             3 => {
-                                var entry = @"by_nameEntry"{};
+                                var entry = by_nameEntry{};
                                 errdefer entry.value.deinit(allocator);
                                 const payload = try r.readBytes();
                                 var entry_reader = pbz.Reader.init(payload);
@@ -456,19 +456,19 @@ pub const @"demo" = struct {
                                 while (try entry_reader.nextTag()) |entry_tag| {
                                     switch (entry_tag.number) {
                                         1 => { const value = try entry_reader.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; entry.key = value; },
-                                        2 => { const value_payload = try entry_reader.readBytes(); entry.value.deinit(allocator); entry.value = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".decode(allocator, value_payload); },
+                                        2 => { const value_payload = try entry_reader.readBytes(); entry.value.deinit(allocator); entry.value = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.decode(allocator, value_payload); },
                                         else => try entry_reader.skipValue(entry_tag),
                                     }
                                 }
-                                if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); } else try @This().@"appendOrReplaceMapEntry_by_name"(allocator, &@"by_name_list", entry);
+                                if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); } else try @This().appendOrReplaceMapEntry_by_name(allocator, &by_name_list, entry);
                             },
-                            4 => { const payload = try r.readBytes(); self.@"selected" = .{ .@"chosen" = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".decode(allocator, payload) }; },
-                            5 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.@"selected" = .{ .@"fallback" = value }; },
+                            4 => { const payload = try r.readBytes(); self.selected = .{ .chosen = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.decode(allocator, payload) }; },
+                            5 => { const value = try r.readBytes(); if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
                             else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); },
                         }
                     }
-                    self.@"history" = if (@"history_list".items.len != 0 and @"history_list".items.len == @"history_list".capacity) @"history_list".toOwnedSliceAssert() else try @"history_list".toOwnedSlice(allocator);
-                    self.@"by_name" = if (@"by_name_list".items.len != 0 and @"by_name_list".items.len == @"by_name_list".capacity) @"by_name_list".toOwnedSliceAssert() else try @"by_name_list".toOwnedSlice(allocator);
+                    self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
+                    self.by_name = if (by_name_list.items.len != 0 and by_name_list.items.len == by_name_list.capacity) by_name_list.toOwnedSliceAssert() else try by_name_list.toOwnedSlice(allocator);
                     self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
                     return self;
                 }
@@ -499,18 +499,18 @@ pub const @"demo" = struct {
                 }
 
                 pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {
-                    if (self.@"primary") |nested| {
+                    if (self.primary) |nested| {
                         if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "primary.{s}", .{suffix}); }
                     }
-                    for (self.@"history") |nested| {
+                    for (self.history) |nested| {
                         if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "history.{s}", .{suffix}); }
                     }
-                    for (self.@"by_name") |entry| {
+                    for (self.by_name) |entry| {
                         if (try entry.value.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "by_name.{s}", .{suffix}); }
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |nested| {
+                        .chosen => |nested| {
                             if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "chosen.{s}", .{suffix}); }
                         },
                         else => {},
@@ -524,14 +524,14 @@ pub const @"demo" = struct {
 
                 pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                     try self.validateRequired();
-                    if (self.@"primary") |nested| try nested.validateRequiredRecursive(allocator);
-                    for (self.@"history") |nested| try nested.validateRequiredRecursive(allocator);
-                    for (self.@"by_name") |entry| {
+                    if (self.primary) |nested| try nested.validateRequiredRecursive(allocator);
+                    for (self.history) |nested| try nested.validateRequiredRecursive(allocator);
+                    for (self.by_name) |entry| {
                         try entry.value.validateRequiredRecursive(allocator);
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |nested| try nested.validateRequiredRecursive(allocator),
+                        .chosen => |nested| try nested.validateRequiredRecursive(allocator),
                         else => {},
                     }
                 }
@@ -560,26 +560,26 @@ pub const @"demo" = struct {
                 pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
                     try writer.writeAll("{");
                     var first = true;
-                    if (self.@"primary") |nested| {
+                    if (self.primary) |nested| {
                         if (!first) try writer.writeAll(","); first = false;
                         try writer.writeAll(if (options.preserve_proto_field_names) "\"primary\":" else "\"primary\":");
                         try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                     }
-                    if (self.@"history".len != 0 or options.always_print_primitive_fields) {
+                    if (self.history.len != 0 or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
                         try writer.writeAll(if (options.preserve_proto_field_names) "\"history\":" else "\"history\":");
                         try writer.writeAll("[");
-                        for (self.@"history", 0..) |item, i| {
+                        for (self.history, 0..) |item, i| {
                             if (i != 0) try writer.writeAll(",");
                             try item.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                         }
                         try writer.writeAll("]");
                     }
-                    if (self.@"by_name".len != 0 or options.always_print_primitive_fields) {
+                    if (self.by_name.len != 0 or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
                         try writer.writeAll(if (options.preserve_proto_field_names) "\"by_name\":" else "\"byName\":");
                         try writer.writeAll("{");
-                        for (self.@"by_name", 0..) |entry, i| {
+                        for (self.by_name, 0..) |entry, i| {
                             if (i != 0) try writer.writeAll(",");
                             try @This().jsonWriteString(writer, entry.key);
                             try writer.writeAll(":");
@@ -587,14 +587,14 @@ pub const @"demo" = struct {
                         }
                         try writer.writeAll("}");
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |value| {
+                        .chosen => |value| {
                             if (!first) try writer.writeAll(","); first = false;
                             try writer.writeAll(if (options.preserve_proto_field_names) "\"chosen\":" else "\"chosen\":");
                             try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                         },
-                        .@"fallback" => |value| {
+                        .fallback => |value| {
                             if (!first) try writer.writeAll(","); first = false;
                             try writer.writeAll(if (options.preserve_proto_field_names) "\"fallback\":" else "\"fallback\":");
                             try @This().jsonWriteString(writer, value);
@@ -644,57 +644,57 @@ pub const @"demo" = struct {
                         const value = entry.value_ptr.*;
                         if (value == .null) {
                             if (std.mem.eql(u8, key, "primary") or std.mem.eql(u8, key, "primary")) {
-                                if (self.@"primary") |*old_value| old_value.deinit(allocator); self.@"primary" = null;
+                                if (self.primary) |*old_value| old_value.deinit(allocator); self.primary = null;
                                 continue;
                             }
                             if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
-                                const old = self.@"history"; self.@"history" = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
+                                const old = self.history; self.history = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                                 continue;
                             }
                             if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
-                                const old = self.@"by_name"; self.@"by_name" = &.{}; for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old);
+                                const old = self.by_name; self.by_name = &.{}; for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old);
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) { self.@"selected" = .none; continue; }
-                            if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) { self.@"selected" = .none; continue; }
+                            if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) { self.selected = .none; continue; }
+                            if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) { self.selected = .none; continue; }
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
                         if (std.mem.eql(u8, key, "primary") or std.mem.eql(u8, key, "primary")) {
-                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             errdefer nested.deinit(arena_allocator);
-                            if (self.@"primary") |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(arena_allocator); } else { self.@"primary" = nested; }
+                            if (self.primary) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(arena_allocator); } else { self.primary = nested; }
                             continue;
                         }
                         if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
                             const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
-                            var list: std.ArrayList(@"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile") = .empty;
+                            var list: std.ArrayList(@"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile) = .empty;
                             errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
                             for (array.items) |item| {
-                                var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                                var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                                 errdefer nested.deinit(arena_allocator);
                                 try list.append(allocator, nested);
                             }
-                            { const old = self.@"history"; self.@"history" = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
+                            { const old = self.history; self.history = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                             continue;
                         }
                         if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
                             const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                            var list: std.ArrayList(@"by_nameEntry") = .empty;
+                            var list: std.ArrayList(by_nameEntry) = .empty;
                             errdefer { for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); } list.deinit(allocator); }
                             var map_it = object_value.iterator();
                             while (map_it.next()) |map_entry| {
-                                try @This().@"appendOrReplaceMapEntry_by_name"(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } });
+                                try @This().appendOrReplaceMapEntry_by_name(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } });
                             }
-                            self.@"by_name" = blk: { const old = self.@"by_name"; const owned = try list.toOwnedSlice(allocator); for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old); break :blk owned; };
+                            self.by_name = blk: { const old = self.by_name; const owned = try list.toOwnedSlice(allocator); for (old) |old_entry| { var old_value = old_entry.value; old_value.deinit(allocator); } if (old.len != 0) allocator.free(old); break :blk owned; };
                             continue;
                         }
                         if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) {
-                            self.@"selected" = .{ .@"chosen" = blk: { var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };
+                            self.selected = .{ .chosen = blk: { var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };
                             continue;
                         }
                         if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) {
-                            self.@"selected" = .{ .@"fallback" = try @This().jsonString(value) };
+                            self.selected = .{ .fallback = try @This().jsonString(value) };
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
@@ -1152,17 +1152,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
-                    if (self.@"primary") |nested| {
+                    if (self.primary) |nested| {
                         try writer.writeAll("primary {\n");
                         try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                         try writer.writeAll("}\n");
                     }
-                    for (self.@"history") |nested| {
+                    for (self.history) |nested| {
                         try writer.writeAll("history {\n");
                         try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                         try writer.writeAll("}\n");
                     }
-                    for (self.@"by_name") |entry| {
+                    for (self.by_name) |entry| {
                         try writer.writeAll("by_name {\n");
                         try writer.writeAll("key: "); if (!std.unicode.utf8ValidateSlice(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
                         try writer.writeAll("value {\n");
@@ -1170,14 +1170,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try writer.writeAll("}\n");
                         try writer.writeAll("}\n");
                     }
-                    switch (self.@"selected") {
+                    switch (self.selected) {
                         .none => {},
-                        .@"chosen" => |value| {
+                        .chosen => |value| {
                             try writer.writeAll("chosen {\n");
                             try value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                             try writer.writeAll("}\n");
                         },
-                        .@"fallback" => |value| {
+                        .fallback => |value| {
                             try writer.writeAll("fallback: "); try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n');
                         },
                     }
@@ -1195,12 +1195,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
                     var self = @This().init();
                     errdefer self.deinit(allocator);
-                    var @"history_list": std.ArrayList(@"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile") = .empty;
-                    defer @"history_list".deinit(allocator);
-                    errdefer for (@"history_list".items) |item| { var mutable = item; mutable.deinit(allocator); };
-                    var @"by_name_list": std.ArrayList(@"by_nameEntry") = .empty;
-                    defer @"by_name_list".deinit(allocator);
-                    errdefer for (@"by_name_list".items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
+                    var history_list: std.ArrayList(@"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile) = .empty;
+                    defer history_list.deinit(allocator);
+                    errdefer for (history_list.items) |item| { var mutable = item; mutable.deinit(allocator); };
+                    var by_name_list: std.ArrayList(by_nameEntry) = .empty;
+                    defer by_name_list.deinit(allocator);
+                    errdefer for (by_name_list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                     var @"_unknown_fields_list": std.ArrayList([]const u8) = .empty;
                     errdefer { for (@"_unknown_fields_list".items) |raw| allocator.free(raw); @"_unknown_fields_list".deinit(allocator); }
                     const normalized_text = try @This().textNormalizeSeparators(allocator, text);
@@ -1212,21 +1212,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         if (@This().textBlockField(line, "primary")) {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
-                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             defer nested.deinit(allocator);
-                            if (self.@"primary") |*existing| { try existing.mergeFrom(allocator, nested); } else { self.@"primary" = try nested.cloneOwned(allocator); }
+                            if (self.primary) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.primary = try nested.cloneOwned(allocator); }
                             continue;
                         }
                         if (@This().textBlockField(line, "history")) {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
-                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             defer nested.deinit(allocator);
-                            @"history_list".append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;
+                            history_list.append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;
                             continue;
                         }
                         if (@This().textBlockField(line, "by_name") or @This().textBlockField(line, "byName")) {
-                            var entry = @"by_nameEntry"{};
+                            var entry = by_nameEntry{};
                             errdefer entry.value.deinit(allocator);
                             const skip_entry = false;
                             while (lines.next()) |raw_entry_line| {
@@ -1237,7 +1237,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 if (@This().textBlockField(entry_line, "value")) {
                                     const block = try @This().textBlock(allocator, &lines);
                                     defer allocator.free(block);
-                                    var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                                    var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                                     defer nested.deinit(allocator);
                                     entry.value.deinit(allocator);
                                     entry.value = try nested.cloneOwned(allocator);
@@ -1246,25 +1246,25 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 return error.UnknownField;
                             }
                             if (skip_entry) continue;
-                            try @This().@"appendOrReplaceMapEntry_by_name"(allocator, &@"by_name_list", entry);
+                            try @This().appendOrReplaceMapEntry_by_name(allocator, &by_name_list, entry);
                             continue;
                         }
                         if (@This().textBlockField(line, "chosen")) {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
-                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".@"demo".@"imports".@"common".@"Profile".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            var nested = try @"pbz.generated.file".imports.@"imported_common.proto".demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             defer nested.deinit(allocator);
-                            self.@"selected" = .{ .@"chosen" = try nested.cloneOwned(allocator) };
+                            self.selected = .{ .chosen = try nested.cloneOwned(allocator) };
                             continue;
                         }
-                        if (@This().textFieldValue(line, "fallback")) |raw_value| { self.@"selected" = .{ .@"fallback" = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
+                        if (@This().textFieldValue(line, "fallback")) |raw_value| { self.selected = .{ .fallback = blk: { const decoded = try @This().textUnquote(try self.@"_pbzOwnedAllocator"(allocator), raw_value); if (!std.unicode.utf8ValidateSlice(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
                         if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
                         if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try @"_unknown_fields_list".append(allocator, raw); continue; }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    self.@"history" = if (@"history_list".items.len != 0 and @"history_list".items.len == @"history_list".capacity) @"history_list".toOwnedSliceAssert() else try @"history_list".toOwnedSlice(allocator);
-                    self.@"by_name" = if (@"by_name_list".items.len != 0 and @"by_name_list".items.len == @"by_name_list".capacity) @"by_name_list".toOwnedSliceAssert() else try @"by_name_list".toOwnedSlice(allocator);
+                    self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
+                    self.by_name = if (by_name_list.items.len != 0 and by_name_list.items.len == by_name_list.capacity) by_name_list.toOwnedSliceAssert() else try by_name_list.toOwnedSlice(allocator);
                     self.@"_unknown_fields" = try @"_unknown_fields_list".toOwnedSlice(allocator);
                     return self;
                 }

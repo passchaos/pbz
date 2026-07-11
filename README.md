@@ -50,7 +50,7 @@ validated feature set.
 - Protoc plugin and codegen helpers
   - CodeGeneratorRequest decode for file_to_generate, parameter, compiler_version, proto_file, and source_file_descriptors; CodeGeneratorResponse encode for error, supported_features, edition bounds, generated files, insertion points, and raw or structured generated_code_info; request-based generated plugin responses honor file_to_generate, parse basic generator parameters, reject unresolved type references, accept raw CodeGeneratorRequest bytes, expose writer-based plugin runners and an installed protoc-gen-pbz executable, emit file, top-level, nested message/enum, field, and enum-value GeneratedCodeInfo annotations, use all proto_file descriptors as a registry for imports, and advertise proto3 optional plus editions support
   - Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation generation, including proto `allow_alias` enum values emitted as Zig enum namespace aliases and generated enum `fromInt` / `fromName` / `toInt` / `protoName` / JSON parse/stringify and TextFormat parse/format helpers
-  - generated `proto_package`, `proto_syntax`, package-mirrored Zig namespaces, and import module aliases with import kind/path metadata plus registry-aware generation for same-package unqualified, direct, and transitive-public imported message type references and imported enum field resolution while preserving local/nested enum scope priority
+  - generated `proto_package`, `proto_syntax`, package-mirrored Zig namespaces, import module aliases with import kind/path metadata, and natural bare Zig identifiers whenever proto names are legal/non-shadowing Zig identifiers, plus registry-aware generation for same-package unqualified, direct, and transitive-public imported message type references and imported enum field resolution while preserving local/nested enum scope priority
   - generated proto2 extension metadata structs with extension number, registry-normalized extendee names for imported targets, cardinality, protobuf value type, Zig value type strings, typed `write`/`writeAll` plus `decodeValue`/`decodeAppend` helpers, and MessageSet-aware write helpers
   - generated service metadata with registry-aware method input/output type references plus lightweight typed Handler/Client adapters for unary and streaming method shapes while leaving concrete RPC transport ownership to callers
   - generated `encodeInitialized`/`decodeInitialized` helpers validate proto2 and editions legacy-required fields around typed encode/decode
@@ -117,6 +117,7 @@ The examples cover:
 - [`descriptors_codegen.zig`](examples/descriptors_codegen.zig): descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
 - [`generated_types.zig`](examples/generated_types.zig): C++/Rust-style use of a checked-in generated module from [`examples/proto/person.proto`](examples/proto/person.proto), using [`examples/generated/person.pb.zig`](examples/generated/person.pb.zig).
 - [`generated_imports.zig`](examples/generated_imports.zig): multi-file generated modules with proto imports and typed imported singular, repeated, map value, and oneof message fields from [`examples/proto/imported_app.proto`](examples/proto/imported_app.proto) / [`examples/proto/imported_common.proto`](examples/proto/imported_common.proto).
+- [`generated_groups.zig`](examples/generated_groups.zig): typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from [`examples/proto/groups.proto`](examples/proto/groups.proto).
 - [`well_known_types.zig`](examples/well_known_types.zig): Timestamp, Duration, FieldMask, wrapper, Any, and Struct helpers.
 - [`proto2_extensions.zig`](examples/proto2_extensions.zig): proto2 extensions via TextFormat/JSON and preserved unknown storage.
 - [`conformance.zig`](examples/conformance.zig): conformance-style JSON-to-protobuf conversion.
@@ -278,6 +279,11 @@ declarations under a Zig namespace that mirrors the proto package
 (`package demo.user;` becomes `generated.demo.user.Message`). They also expose
 an `imports` namespace that maps imported `.proto` paths to their generated
 `.pb.zig` module aliases while preserving import kind/path metadata.
+For readability, generated declarations and field accesses use bare Zig
+identifiers (`demo.user.Message.id`) whenever the proto name is a legal Zig
+identifier and does not shadow Zig keywords/primitives; escaped identifiers are
+kept only when needed, such as `.proto` import paths or proto names like
+`struct`.
 Generated message structs provide `encodedSize`, allocating `encode`, checked
 `encodeInto(buffer)`, and fastest-path `encodeIntoAssumeCapacity(buffer)` helpers
 in addition to writer-based `writeTo` / `writeToAssumeCapacity`, so callers can
