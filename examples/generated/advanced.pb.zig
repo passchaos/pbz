@@ -455,6 +455,10 @@ pub const demo = struct {
                 return buffer[0..w.slice().len];
             }
 
+            pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                return try self.encodeIntoAssumeCapacity(buffer);
+            }
+
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                 if (self.id != 0) try w.writeInt32(1, self.id);
                 if (self.kind != 0) try w.writeInt32(2, self.kind);
@@ -1668,6 +1672,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
                     if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
+                    if (self.at_unix != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(self.at_unix))); }
+                    for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                    return buffer[0..index];
+                }
+
+                pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                    var index: usize = 0;
+                    if (self.actor.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
                     if (self.at_unix != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(self.at_unix))); }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];

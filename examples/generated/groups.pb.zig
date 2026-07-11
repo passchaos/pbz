@@ -310,9 +310,31 @@ pub const demo = struct {
             }
 
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
-                var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
-                try self.writeToAssumeCapacity(&w);
-                return buffer[0..w.slice().len];
+                var index: usize = 0;
+                if (self.has_id) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
+                if (self.box) |value| { buffer[index] = 19; index += 1; _ = try value.encodeIntoAssumeCapacity(buffer[index..]); index += value.encodedSize(); buffer[index] = 20; index += 1; }
+                for (self.item) |item| { buffer[index] = 35; index += 1; _ = try item.encodeIntoAssumeCapacity(buffer[index..]); index += item.encodedSize(); buffer[index] = 36; index += 1; }
+                switch (self.picked) {
+                    .none => {},
+                    .picked_box => |value| { const payload_len = value.encodedSize(); buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; },
+                    .note => |value| { buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                }
+                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                return buffer[0..index];
+            }
+
+            pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                var index: usize = 0;
+                if (self.has_id) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
+                if (self.box) |value| { buffer[index] = 19; index += 1; _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..]); index += value.encodedSize(); buffer[index] = 20; index += 1; }
+                for (self.item) |item| { buffer[index] = 35; index += 1; _ = try item.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..]); index += item.encodedSize(); buffer[index] = 36; index += 1; }
+                switch (self.picked) {
+                    .none => {},
+                    .picked_box => |value| { const payload_len = value.encodedSize(); buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; },
+                    .note => |value| { buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                }
+                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                return buffer[0..index];
             }
 
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
@@ -1374,9 +1396,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
-                    var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
-                    try self.writeToAssumeCapacity(&w);
-                    return buffer[0..w.slice().len];
+                    var index: usize = 0;
+                    if (self.has_label) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                    for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                    return buffer[0..index];
+                }
+
+                pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                    var index: usize = 0;
+                    if (self.has_label) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                    for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                    return buffer[0..index];
                 }
 
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
@@ -2310,9 +2340,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
-                    var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
-                    try self.writeToAssumeCapacity(&w);
-                    return buffer[0..w.slice().len];
+                    var index: usize = 0;
+                    if (self.has_rank) { buffer[index] = 40; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.rank)))); }
+                    for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                    return buffer[0..index];
+                }
+
+                pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                    var index: usize = 0;
+                    if (self.has_rank) { buffer[index] = 40; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.rank)))); }
+                    for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                    return buffer[0..index];
                 }
 
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {

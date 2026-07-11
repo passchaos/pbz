@@ -384,6 +384,10 @@ pub const demo = struct {
             return buffer[0..w.slice().len];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            return try self.encodeIntoAssumeCapacity(buffer);
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.id != 0) try w.writeInt32(1, self.id);
             if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
@@ -1918,6 +1922,44 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.active) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, if (self.active) 1 else 0)); }
+            if (self.count != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.count); }
+            if (self.total != 0) { buffer[index] = 24; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.total); }
+            if (self.delta != 0) { buffer[index] = 32; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32(self.delta)); }
+            if (self.big_delta != 0) { buffer[index] = 40; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode64(self.big_delta)); }
+            if (self.checksum != 0) { buffer[index] = 53; index += 1; pbz.wire.writeRawLittleToSlice(u32, buffer, &index, self.checksum); }
+            if (self.token != 0) { buffer[index] = 57; index += 1; pbz.wire.writeRawLittleToSlice(u64, buffer, &index, self.token); }
+            if (self.signed_fixed != 0) { buffer[index] = 69; index += 1; pbz.wire.writeRawLittleToSlice(i32, buffer, &index, self.signed_fixed); }
+            if (self.signed_big_fixed != 0) { buffer[index] = 73; index += 1; pbz.wire.writeRawLittleToSlice(i64, buffer, &index, self.signed_big_fixed); }
+            if (self.ratio != 0) { buffer[index] = 85; index += 1; pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(self.ratio)); }
+            if (self.score != 0) { buffer[index] = 89; index += 1; pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(self.score)); }
+            if (self.kind != 0) { buffer[index] = 96; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+            if (self.flags.len != 0) {
+                const packed_len = self.flags.len * 1;
+                buffer[index] = 106; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                const payload = std.mem.sliceAsBytes(self.flags); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;
+            }
+            if (self.ids.len != 0) {
+                buffer[index] = 114; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.ids.len * 10);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.ids) |item| pbz.wire.writeVarintToSlice(buffer, &index, item);
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.active) try w.writeBool(1, self.active);
             if (self.count != 0) try w.writeUInt32(2, self.count);
@@ -3324,6 +3366,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.title.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.title.len); @memcpy(buffer[index..][0..self.title.len], self.title); index += self.title.len; }
+            if (self.payload.len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.payload.len); @memcpy(buffer[index..][0..self.payload.len], self.payload); index += self.payload.len; }
+            for (self.tags) |item| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
+            for (self.chunks) |item| { buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.title.len != 0) { if (!pbz.validateUtf8(self.title)) return error.InvalidUtf8; try w.writeString(1, self.title); }
             if (self.payload.len != 0) try w.writeBytes(2, self.payload);
@@ -4385,6 +4437,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.payload.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.payload.len); @memcpy(buffer[index..][0..self.payload.len], self.payload); index += self.payload.len; }
+            for (self.chunks) |item| { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.payload.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.payload.len); @memcpy(buffer[index..][0..self.payload.len], self.payload); index += self.payload.len; }
             for (self.chunks) |item| { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
@@ -5603,9 +5663,55 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
-            var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
-            try self.writeToAssumeCapacity(&w);
-            return buffer[0..w.slice().len];
+            var index: usize = 0;
+            if (self.child) |value| { const payload_len = value.encodedSize(); buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
+            switch (self.pick) {
+                .none => {},
+                .name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                .token => |value| { buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                .nested => |value| { const payload_len = value.encodedSize(); buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; },
+                .code => |value| { buffer[index] = 64; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(value))); },
+            }
+            switch (self._count) {
+                .none => {},
+                .count => |value| { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
+            }
+            switch (self._note) {
+                .none => {},
+                .note => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+            }
+            switch (self._raw) {
+                .none => {},
+                .raw => |value| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.child) |value| { const payload_len = value.encodedSize(); buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
+            switch (self.pick) {
+                .none => {},
+                .name => |value| { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                .token => |value| { buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                .nested => |value| { const payload_len = value.encodedSize(); buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; },
+                .code => |value| { buffer[index] = 64; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(value))); },
+            }
+            switch (self._count) {
+                .none => {},
+                .count => |value| { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
+            }
+            switch (self._note) {
+                .none => {},
+                .note => |value| { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+            }
+            switch (self._raw) {
+                .none => {},
+                .raw => |value| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
         }
 
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
@@ -6749,6 +6855,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return buffer[0..index];
             }
 
+            pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                var index: usize = 0;
+                if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
+                if (self.label.len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                return buffer[0..index];
+            }
+
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                 if (self.id != 0) try w.writeInt32(1, self.id);
                 if (self.label.len != 0) { if (!pbz.validateUtf8(self.label)) return error.InvalidUtf8; try w.writeString(2, self.label); }
@@ -7728,6 +7842,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, item))));
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 buffer[index] = 10; index += 1;
@@ -8758,6 +8892,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 4;
@@ -9748,6 +9894,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 8;
@@ -10760,6 +10918,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 4;
@@ -11750,6 +11920,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 8;
@@ -12762,6 +12944,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 4;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                if (comptime @import("builtin").target.cpu.arch.endian() == .little) { const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len; } else { for (self.values) |item| pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(item)); }
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 4;
@@ -13763,6 +13957,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 8;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                if (comptime @import("builtin").target.cpu.arch.endian() == .little) { const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len; } else { for (self.values) |item| pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(item)); }
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 8;
@@ -14748,6 +14954,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, item);
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 buffer[index] = 10; index += 1;
@@ -15773,6 +15999,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 5);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, item);
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 var packed_len: usize = 0;
@@ -16760,6 +17006,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(item)));
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 buffer[index] = 10; index += 1;
@@ -17785,6 +18051,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 5);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32(item));
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 var packed_len: usize = 0;
@@ -18772,6 +19058,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode64(item));
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 buffer[index] = 10; index += 1;
@@ -19786,6 +20092,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                const packed_len = self.values.len * 1;
+                buffer[index] = 10; index += 1;
+                pbz.wire.writeVarintToSlice(buffer, &index, packed_len);
+                const payload = std.mem.sliceAsBytes(self.values); @memcpy(buffer[index..][0..payload.len], payload); index += payload.len;
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.values.len != 0) {
                 const packed_len = self.values.len * 1;
@@ -20771,6 +21089,26 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
+            var index: usize = 0;
+            if (self.values.len != 0) {
+                buffer[index] = 10; index += 1;
+                const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
+                const packed_len_index = index; index += packed_len_reserved;
+                const payload_start = index;
+                for (self.values) |item| { if (item >= 0 and item < 0x80) { buffer[index] = @intCast(item); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, item)))); }
+                const packed_len = index - payload_start;
+                const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
+                if (packed_len_size != packed_len_reserved) {
+                    if (packed_len_size > packed_len_reserved) { std.mem.copyBackwards(u8, buffer[payload_start + (packed_len_size - packed_len_reserved) .. index + (packed_len_size - packed_len_reserved)], buffer[payload_start..index]); index += packed_len_size - packed_len_reserved; }
+                    else { std.mem.copyForwards(u8, buffer[payload_start - (packed_len_reserved - packed_len_size) .. index - (packed_len_reserved - packed_len_size)], buffer[payload_start..index]); index -= packed_len_reserved - packed_len_size; }
+                }
+                var packed_len_write_index = packed_len_index; pbz.wire.writeVarintToSlice(buffer, &packed_len_write_index, packed_len);
+            }
+            for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+            return buffer[0..index];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
                 buffer[index] = 10; index += 1;
@@ -21815,6 +22153,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
             try self.writeToAssumeCapacity(&w);
             return buffer[0..w.slice().len];
+        }
+
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            return try self.encodeIntoAssumeCapacity(buffer);
         }
 
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
@@ -23094,6 +23436,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..w.slice().len];
         }
 
+        pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+            return try self.encodeIntoAssumeCapacity(buffer);
+        }
+
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.id != 0) try w.writeInt32(1, self.id);
             if (self.audit) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
@@ -24339,6 +24685,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
+                if (self.at_unix != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(self.at_unix))); }
+                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                return buffer[0..index];
+            }
+
+            pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                var index: usize = 0;
+                if (self.actor.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
                 if (self.at_unix != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(self.at_unix))); }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];

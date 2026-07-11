@@ -3214,8 +3214,8 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {\n");
-    if (messageCanFastDirectEncode(ctx.file, message)) {
-        try writeFastDirectEncodeIntoAssumeCapacity(ctx, message, writer, depth + 1);
+    if (messageCanFastDirectEncode(ctx, message)) {
+        try writeFastDirectEncodeIntoAssumeCapacity(ctx, message, true, writer, depth + 1);
     } else {
         try indent(writer, depth + 1);
         try writer.writeAll("var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);\n");
@@ -3226,14 +3226,29 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
+
+    try writer.writeAll("\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {\n");
+    if (messageCanFastDirectEncode(ctx, message)) {
+        try writeFastDirectEncodeIntoAssumeCapacity(ctx, message, false, writer, depth + 1);
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try self.encodeIntoAssumeCapacity(buffer);\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
-fn messageCanFastDirectEncode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
-    if (message.oneofs.items.len != 0) return false;
+fn messageCanFastDirectEncode(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
+    const file = ctx.file;
     var has_packed_repeated = false;
     var has_length_delimited_scalar = false;
-    for (message.fields.items) |field| {
-        if (hasPresence(file, field)) return false;
+    var has_typed_message = false;
+    const has_oneof = message.oneofs.items.len != 0;
+    var has_presence = false;
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null and hasPresence(file, field.*)) has_presence = true;
         switch (field.kind) {
             .scalar => |scalar| switch (scalar) {
                 .string, .bytes => has_length_delimited_scalar = true,
@@ -3244,49 +3259,71 @@ fn messageCanFastDirectEncode(file: *const schema.FileDescriptor, message: *cons
             .enumeration => {
                 if (field.cardinality == .repeated and field.resolvedPacked(file)) has_packed_repeated = true;
             },
-            .message, .group, .map => return false,
+            .message, .group => {
+                if (field.oneof_name != null) {
+                    if (typedOneofMessageFieldWithContext(ctx, field) == null) return false;
+                } else if (field.cardinality == .repeated) {
+                    if (typedRepeatedMessageFieldWithContext(ctx, field) == null) return false;
+                } else {
+                    if (typedSingularMessageFieldWithContext(ctx, field) == null) return false;
+                }
+                has_typed_message = true;
+            },
+            .map => return false,
         }
     }
-    return has_packed_repeated or has_length_delimited_scalar or message.fields.items.len >= 8;
+    return has_packed_repeated or has_length_delimited_scalar or has_typed_message or has_oneof or has_presence or message.fields.items.len >= 8;
 }
 
-fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFastDirectEncodeIntoAssumeCapacity(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("var index: usize = 0;\n");
     for (message.fields.items) |*field| {
+        if (field.oneof_name != null) continue;
         if (field.cardinality == .repeated) {
             if (field.kind == .scalar and field.resolvedPacked(file)) {
                 try writeFastDirectPackedScalarEncode(field, field.kind.scalar, writer, depth);
             } else if (field.kind == .enumeration and field.resolvedPacked(file)) {
                 try writeFastDirectPackedEnumEncode(field, writer, depth);
             } else if (field.kind == .scalar) {
-                try writeFastDirectRepeatedScalarEncode(ctx.file, field, field.kind.scalar, writer, depth);
+                try writeFastDirectRepeatedScalarEncode(ctx.file, field, field.kind.scalar, validate_utf8, writer, depth);
             } else if (field.kind == .enumeration) {
                 try writeFastDirectRepeatedEnumEncode(field, writer, depth);
+            } else if (field.kind == .message or field.kind == .group) {
+                try writeFastDirectRepeatedMessageEncode(ctx, field, validate_utf8, writer, depth);
             }
             continue;
         }
         switch (field.kind) {
-            .scalar => |scalar| try writeFastDirectScalarEncode(ctx.file, field, scalar, writer, depth),
-            .enumeration => try writeFastDirectEnumEncode(field, writer, depth),
-            else => {},
+            .scalar => |scalar| try writeFastDirectScalarEncode(ctx.file, field, scalar, validate_utf8, writer, depth),
+            .enumeration => try writeFastDirectEnumEncode(ctx.file, field, writer, depth),
+            .message, .group => try writeFastDirectSingularMessageEncode(ctx, field, validate_utf8, writer, depth),
+            .map => {},
         }
     }
+    for (message.oneofs.items) |oneof| try writeFastDirectOneofEncode(ctx, message, oneof, validate_utf8, writer, depth);
     try indent(writer, depth);
     try writer.writeAll("for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }\n");
     try indent(writer, depth);
     try writer.writeAll("return buffer[0..index];\n");
 }
 
-fn writeFastDirectScalarEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFastDirectScalarEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(defaultSkipCondition(scalar));
+    try writer.writeAll("if (");
+    if (hasPresence(file, field.*)) {
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(") ");
+    } else {
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(defaultSkipCondition(scalar));
+    }
     try writer.writeAll("{ ");
     if (scalar == .string or scalar == .bytes) {
-        try writeFastDirectLengthDelimitedValidation(file, field, "self.", field.name, writer);
+        try writeFastDirectLengthDelimitedValidation(file, field, validate_utf8, "self.", field.name, writer);
         try writeFastDirectTag(field.number, .{ .scalar = scalar }, writer);
         try writer.writeAll(" ");
         try writeFastDirectLengthDelimitedPayload("self.", field.name, writer);
@@ -3299,24 +3336,32 @@ fn writeFastDirectScalarEncode(file: *const schema.FileDescriptor, field: *const
     try writer.writeAll(" }\n");
 }
 
-fn writeFastDirectEnumEncode(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFastDirectEnumEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" != 0) { ");
+    try writer.writeAll("if (");
+    if (hasPresence(file, field.*)) {
+        try writer.writeAll("self.");
+        try writePresenceIdent(field.name, writer);
+        try writer.writeAll(") ");
+    } else {
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" != 0) ");
+    }
+    try writer.writeAll("{ ");
     try writeFastDirectTag(field.number, .{ .enumeration = "" }, writer);
     try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(")))); }\n");
 }
 
-fn writeFastDirectRepeatedScalarEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeFastDirectRepeatedScalarEncode(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("for (self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(") |item| { ");
     if (scalar == .string or scalar == .bytes) {
-        try writeFastDirectLengthDelimitedValidation(file, field, "", "item", writer);
+        try writeFastDirectLengthDelimitedValidation(file, field, validate_utf8, "", "item", writer);
         try writeFastDirectTag(field.number, .{ .scalar = scalar }, writer);
         try writer.writeAll(" ");
         try writeFastDirectLengthDelimitedPayload("", "item", writer);
@@ -3329,8 +3374,91 @@ fn writeFastDirectRepeatedScalarEncode(file: *const schema.FileDescriptor, field
     try writer.writeAll(" }\n");
 }
 
-fn writeFastDirectLengthDelimitedValidation(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, prefix: []const u8, value_name: []const u8, writer: *std.Io.Writer) Error!void {
-    if (field.kind != .scalar or field.kind.scalar != .string or fieldUtf8Validation(file, field) != .verify) return;
+fn writeFastDirectSingularMessageEncode(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (typedSingularMessageFieldWithContext(ctx, field) == null) return;
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |value| { ");
+    try writeFastDirectMessagePayload(field, "value", validate_utf8, writer);
+    try writer.writeAll(" }\n");
+}
+
+fn writeFastDirectRepeatedMessageEncode(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (typedRepeatedMessageFieldWithContext(ctx, field) == null) return;
+    try indent(writer, depth);
+    try writer.writeAll("for (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(") |item| { ");
+    try writeFastDirectMessagePayload(field, "item", validate_utf8, writer);
+    try writer.writeAll(" }\n");
+}
+
+fn writeFastDirectOneofEncode(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, validate_utf8: bool, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll(".none => {},\n");
+    for (message.fields.items) |*field| {
+        const oneof_name = field.oneof_name orelse continue;
+        if (!std.mem.eql(u8, oneof_name, oneof.name)) continue;
+        try indent(writer, depth + 1);
+        try writer.writeAll(".");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" => |value| { ");
+        switch (field.kind) {
+            .scalar => |scalar| {
+                if (scalar == .string or scalar == .bytes) {
+                    try writeFastDirectLengthDelimitedValidation(ctx.file, field, validate_utf8, "", "value", writer);
+                    try writeFastDirectTag(field.number, .{ .scalar = scalar }, writer);
+                    try writer.writeAll(" ");
+                    try writeFastDirectLengthDelimitedPayload("", "value", writer);
+                } else {
+                    try writeFastDirectTag(field.number, .{ .scalar = scalar }, writer);
+                    try writer.writeAll(" ");
+                    try writeFastDirectScalarPayload("value", "", scalar, writer);
+                }
+            },
+            .enumeration => {
+                try writeFastDirectTag(field.number, .{ .enumeration = "" }, writer);
+                try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value))));");
+            },
+            .message, .group => try writeFastDirectMessagePayload(field, "value", validate_utf8, writer),
+            .map => try writer.writeAll("@compileError(\"unsupported oneof map\")"),
+        }
+        try writer.writeAll(" },\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeFastDirectMessagePayload(field: *const schema.FieldDescriptor, value_expr: []const u8, validate_utf8: bool, writer: *std.Io.Writer) Error!void {
+    if (field.kind == .group) {
+        try writeFastDirectRawTag(field.number, .start_group, writer);
+        try writer.writeAll(" _ = try ");
+        try writer.writeAll(value_expr);
+        try writer.writeAll(if (validate_utf8) ".encodeIntoAssumeCapacity(buffer[index..]);" else ".encodeIntoAssumeCapacityTrustedUtf8(buffer[index..]);");
+        try writer.writeAll(" index += ");
+        try writer.writeAll(value_expr);
+        try writer.writeAll(".encodedSize(); ");
+        try writeFastDirectRawTag(field.number, .end_group, writer);
+        return;
+    }
+    try writer.writeAll("const payload_len = ");
+    try writer.writeAll(value_expr);
+    try writer.writeAll(".encodedSize(); ");
+    try writeFastDirectTag(field.number, .{ .scalar = .bytes }, writer);
+    try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, payload_len); ");
+    try writer.writeAll("_ = try ");
+    try writer.writeAll(value_expr);
+    try writer.writeAll(if (validate_utf8) ".encodeIntoAssumeCapacity(buffer[index..][0..payload_len]);" else ".encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]);");
+    try writer.writeAll(" index += payload_len;");
+}
+
+fn writeFastDirectLengthDelimitedValidation(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, validate_utf8: bool, prefix: []const u8, value_name: []const u8, writer: *std.Io.Writer) Error!void {
+    if (!validate_utf8 or field.kind != .scalar or field.kind.scalar != .string or fieldUtf8Validation(file, field) != .verify) return;
     try writer.writeAll("if (!pbz.validateUtf8(");
     try writer.writeAll(prefix);
     if (value_name.len != 0) try writeQuotedIdent(value_name, writer);
@@ -3486,6 +3614,15 @@ fn writeFastDirectPackedEnumEncode(field: *const schema.FieldDescriptor, writer:
 
 fn writeFastDirectTag(number: u29, kind: schema.FieldKind, writer: *std.Io.Writer) Error!void {
     const tag = rawFieldTag(number, kind);
+    try writeFastDirectTagValue(tag, writer);
+}
+
+fn writeFastDirectRawTag(number: u29, wire_type: wire.WireType, writer: *std.Io.Writer) Error!void {
+    const tag = rawTagValue(number, wire_type);
+    try writeFastDirectTagValue(tag, writer);
+}
+
+fn writeFastDirectTagValue(tag: u64, writer: *std.Io.Writer) Error!void {
     if (tag <= std.math.maxInt(u8)) {
         try writer.print("buffer[index] = {d}; index += 1;", .{tag});
     } else {

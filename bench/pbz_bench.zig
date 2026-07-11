@@ -598,41 +598,8 @@ fn generatedTextBytesEncodeIntoReuse(ctx: GeneratedTextBytesEncodeIntoCtx) !void
 }
 
 fn generatedTextBytesTrustedUtf8EncodeIntoReuse(ctx: GeneratedTextBytesEncodeIntoCtx) !void {
-    const msg = ctx.message;
-    var index: usize = 0;
-    if (msg.title.len != 0) {
-        ctx.buffer[index] = 10;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, msg.title.len);
-        @memcpy(ctx.buffer[index..][0..msg.title.len], msg.title);
-        index += msg.title.len;
-    }
-    if (msg.payload.len != 0) {
-        ctx.buffer[index] = 18;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, msg.payload.len);
-        @memcpy(ctx.buffer[index..][0..msg.payload.len], msg.payload);
-        index += msg.payload.len;
-    }
-    for (msg.tags) |tag| {
-        ctx.buffer[index] = 26;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, tag.len);
-        @memcpy(ctx.buffer[index..][0..tag.len], tag);
-        index += tag.len;
-    }
-    for (msg.chunks) |chunk| {
-        ctx.buffer[index] = 34;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, chunk.len);
-        @memcpy(ctx.buffer[index..][0..chunk.len], chunk);
-        index += chunk.len;
-    }
-    for (msg._unknown_fields) |raw| {
-        @memcpy(ctx.buffer[index..][0..raw.len], raw);
-        index += raw.len;
-    }
-    std.mem.doNotOptimizeAway(ctx.buffer.ptr);
+    const bytes = try ctx.message.encodeIntoAssumeCapacityTrustedUtf8(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
 const GeneratedTextBytesDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
@@ -725,106 +692,9 @@ fn generatedPresenceMixEncodeIntoReuse(ctx: GeneratedPresenceMixEncodeIntoCtx) !
     std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
-inline fn presenceMixChildFastSize(child: person_pb.demo.PresenceMix.Child) usize {
-    var size: usize = 0;
-    if (child.id != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, child.id))));
-    if (child.label.len != 0) size += 1 + pbz.wire.encodedVarintSize(child.label.len) + child.label.len;
-    for (child._unknown_fields) |raw| size += raw.len;
-    return size;
-}
-
-inline fn writePresenceMixChildFast(buffer: []u8, index: *usize, child: person_pb.demo.PresenceMix.Child) void {
-    if (child.id != 0) {
-        buffer[index.*] = 8;
-        index.* += 1;
-        pbz.wire.writeVarintToSlice(buffer, index, @as(u64, @bitCast(@as(i64, child.id))));
-    }
-    if (child.label.len != 0) {
-        buffer[index.*] = 18;
-        index.* += 1;
-        pbz.wire.writeVarintToSlice(buffer, index, child.label.len);
-        @memcpy(buffer[index.*..][0..child.label.len], child.label);
-        index.* += child.label.len;
-    }
-    for (child._unknown_fields) |raw| {
-        @memcpy(buffer[index.*..][0..raw.len], raw);
-        index.* += raw.len;
-    }
-}
-
 fn generatedPresenceMixTrustedUtf8EncodeIntoReuse(ctx: GeneratedPresenceMixEncodeIntoCtx) !void {
-    const msg = ctx.message;
-    var index: usize = 0;
-    if (msg.child) |value| {
-        const payload_len = presenceMixChildFastSize(value);
-        ctx.buffer[index] = 34;
-        index += 1;
-        pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
-        writePresenceMixChildFast(ctx.buffer, &index, value);
-    }
-    switch (msg.pick) {
-        .none => {},
-        .name => |value| {
-            ctx.buffer[index] = 42;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
-            @memcpy(ctx.buffer[index..][0..value.len], value);
-            index += value.len;
-        },
-        .token => |value| {
-            ctx.buffer[index] = 50;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
-            @memcpy(ctx.buffer[index..][0..value.len], value);
-            index += value.len;
-        },
-        .nested => |value| {
-            const payload_len = presenceMixChildFastSize(value);
-            ctx.buffer[index] = 58;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, payload_len);
-            writePresenceMixChildFast(ctx.buffer, &index, value);
-        },
-        .code => |value| {
-            ctx.buffer[index] = 64;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(value)));
-        },
-    }
-    switch (msg._count) {
-        .none => {},
-        .count => |value| {
-            ctx.buffer[index] = 8;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, @as(u64, @bitCast(@as(i64, value))));
-        },
-    }
-    switch (msg._note) {
-        .none => {},
-        .note => |value| {
-            ctx.buffer[index] = 18;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
-            @memcpy(ctx.buffer[index..][0..value.len], value);
-            index += value.len;
-        },
-    }
-    switch (msg._raw) {
-        .none => {},
-        .raw => |value| {
-            ctx.buffer[index] = 26;
-            index += 1;
-            pbz.wire.writeVarintToSlice(ctx.buffer, &index, value.len);
-            @memcpy(ctx.buffer[index..][0..value.len], value);
-            index += value.len;
-        },
-    }
-    for (msg._unknown_fields) |raw| {
-        @memcpy(ctx.buffer[index..][0..raw.len], raw);
-        index += raw.len;
-    }
-    std.mem.doNotOptimizeAway(ctx.buffer.ptr);
-    std.mem.doNotOptimizeAway(index);
+    const bytes = try ctx.message.encodeIntoAssumeCapacityTrustedUtf8(ctx.buffer);
+    std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
 const GeneratedPresenceMixDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };

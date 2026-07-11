@@ -207,6 +207,14 @@ pub const demo = struct {
                     return buffer[0..index];
                 }
 
+                pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                    var index: usize = 0;
+                    if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
+                    if (self.name.len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); @memcpy(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
+                    for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
+                    return buffer[0..index];
+                }
+
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.id != 0) try w.writeInt32(1, self.id);
                     if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }

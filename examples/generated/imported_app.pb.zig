@@ -381,6 +381,10 @@ pub const demo = struct {
                     return buffer[0..w.slice().len];
                 }
 
+                pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
+                    return try self.encodeIntoAssumeCapacity(buffer);
+                }
+
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.primary) |item| { const payload_len = item.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
                     for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
