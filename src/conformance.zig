@@ -12,8 +12,8 @@ pub const WireFormat = enum(i32) {
     unspecified = 0,
     protobuf = 1,
     json = 2,
-    text_format = 3,
-    jspb = 4,
+    jspb = 3,
+    text_format = 4,
 };
 
 pub const TestCategory = enum(i32) {
@@ -205,6 +205,16 @@ test "conformance request decodes and response encodes" {
     try std.testing.expectEqual(TestCategory.binary_test, request.test_category);
     try std.testing.expectEqualSlices(u8, "demo.Message", request.message_type);
     try std.testing.expectEqualSlices(u8, "\x08\x01", request.payload.protobuf_payload);
+
+    writer.clearRetainingCapacity();
+    try writer.writeInt32(3, 3);
+    const jspb_format = try ConformanceRequest.decode(writer.slice());
+    try std.testing.expectEqual(WireFormat.jspb, jspb_format.requested_output_format);
+
+    writer.clearRetainingCapacity();
+    try writer.writeInt32(3, 4);
+    const text_format = try ConformanceRequest.decode(writer.slice());
+    try std.testing.expectEqual(WireFormat.text_format, text_format.requested_output_format);
 
     writer.clearRetainingCapacity();
     try writer.writeInt32(3, 99);

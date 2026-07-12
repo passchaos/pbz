@@ -260,6 +260,9 @@ the same parsing behavior plus recursive required-field validation.
 structures and a dynamic-message runner for integrating with protobuf conformance-style runners,
 including safe handling for unknown request enum values, deterministic registry-aware protobuf output,
 registry-aware parsing/printing for imported JSON/Text message and enum types, and parse errors that identify missing proto2 required field paths when available.
+The installed `pbz-conformance` executable implements the upstream length-prefixed subprocess protocol
+when supplied a `FileDescriptorSet`; `tools/smoke_conformance.py` exercises that protocol without needing
+the upstream runner, and `tools/run_conformance.sh` wraps a real `conformance-test-runner` when available.
 
 ## Protoc plugin helpers
 

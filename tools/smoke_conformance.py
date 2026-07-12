@@ -33,6 +33,24 @@ def field_bytes(number: int, value: bytes) -> bytes:
     return key(number, 2) + varint(len(value)) + value
 
 
+def run_framed(exe: list[str], request: bytes) -> bytes:
+    framed_request = struct.pack("<I", len(request)) + request
+    proc = subprocess.run(
+        exe,
+        input=framed_request,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    if len(proc.stdout) < 4:
+        raise AssertionError(f"missing response frame, stderr={proc.stderr!r}")
+    (response_len,) = struct.unpack("<I", proc.stdout[:4])
+    response = proc.stdout[4:]
+    if len(response) != response_len:
+        raise AssertionError(f"bad response length {len(response)} != {response_len}, stderr={proc.stderr!r}")
+    return response
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="pbz-conformance-") as tmp:
         tmp_path = Path(tmp)
@@ -50,6 +68,8 @@ def main() -> int:
         )
         subprocess.run(["zig", "build", "-Doptimize=ReleaseFast"], cwd=ROOT, check=True)
 
+        exe = [str(ROOT / "zig-out/bin/pbz-conformance"), "--descriptor_set", str(descriptor)]
+
         # ConformanceRequest:
         #   json_payload = {"id":7}
         #   requested_output_format = PROTOBUF (1)
@@ -63,24 +83,25 @@ def main() -> int:
                 field_varint(5, 2),
             ]
         )
-        framed_request = struct.pack("<I", len(request)) + request
-        proc = subprocess.run(
-            [str(ROOT / "zig-out/bin/pbz-conformance"), "--descriptor_set", str(descriptor)],
-            input=framed_request,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
-        if len(proc.stdout) < 4:
-            raise AssertionError(f"missing response frame, stderr={proc.stderr!r}")
-        (response_len,) = struct.unpack("<I", proc.stdout[:4])
-        response = proc.stdout[4:]
-        if len(response) != response_len:
-            raise AssertionError(f"bad response length {len(response)} != {response_len}")
+        response = run_framed(exe, request)
         # ConformanceResponse.protobuf_payload is field 3, length-delimited.
         expected = field_bytes(3, field_varint(1, 7))
         if response != expected:
-            raise AssertionError(f"unexpected response {response!r}, expected {expected!r}, stderr={proc.stderr!r}")
+            raise AssertionError(f"unexpected protobuf response {response!r}, expected {expected!r}")
+
+        # TEXT_FORMAT is WireFormat value 4 in upstream conformance.proto.
+        text_request = b"".join(
+            [
+                field_bytes(2, b'{"id":7}'),
+                field_varint(3, 4),
+                field_bytes(4, b"demo.Event"),
+                field_varint(5, 2),
+            ]
+        )
+        text_response = run_framed(exe, text_request)
+        expected_text = field_bytes(8, b"id: 7\n")
+        if text_response != expected_text:
+            raise AssertionError(f"unexpected text response {text_response!r}, expected {expected_text!r}")
     print("pbz-conformance smoke test passed")
     return 0
 
