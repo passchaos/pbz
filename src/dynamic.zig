@@ -543,7 +543,7 @@ pub const DynamicMessage = struct {
         for (unknown_indexes, 0..) |*index, i| index.* = i;
         std.mem.sort(usize, unknown_indexes, self, struct {
             fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
-                return unknownFieldLessThan(message.unknown_fields.items[a], message.unknown_fields.items[b]);
+                return unknownFieldIndexLessThan(message, a, b);
             }
         }.lessThan);
         for (unknown_indexes) |index| try writer.appendSlice(self.unknown_fields.items[index].data);
@@ -798,7 +798,7 @@ pub const DynamicMessage = struct {
             for (unknown_indexes, 0..) |*index, i| index.* = i;
             std.mem.sort(usize, unknown_indexes, self, struct {
                 fn lessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
-                    return unknownFieldLessThan(message.unknown_fields.items[a], message.unknown_fields.items[b]);
+                    return unknownFieldIndexLessThan(message, a, b);
                 }
             }.lessThan);
             for (unknown_indexes) |index| try encodeUnknownMessageSetField(&self.unknown_fields.items[index], writer);
@@ -1666,10 +1666,11 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
     };
 }
 
-fn unknownFieldLessThan(a: UnknownField, b: UnknownField) bool {
-    if (a.number != b.number) return a.number < b.number;
-    if (a.wire_type != b.wire_type) return @intFromEnum(a.wire_type) < @intFromEnum(b.wire_type);
-    return std.mem.lessThan(u8, a.data, b.data);
+fn unknownFieldIndexLessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
+    const lhs = message.unknown_fields.items[a];
+    const rhs = message.unknown_fields.items[b];
+    if (lhs.number != rhs.number) return lhs.number < rhs.number;
+    return a < b;
 }
 
 fn mapEntryLessThan(a: Value, b: Value) bool {
@@ -4076,8 +4077,8 @@ test "dynamic MessageSet accepts payload before type id and preserves unknown it
     defer allocator.free(deterministic);
     var expected = wire.Writer.init(allocator);
     defer expected.deinit();
-    try writeMessageSetItem(&expected, 150, &.{ 0x08, 0x01 });
     try writeMessageSetItem(&expected, 150, &.{ 0x08, 0x03 });
+    try writeMessageSetItem(&expected, 150, &.{ 0x08, 0x01 });
     try writeMessageSetItem(&expected, 160, &.{ 0x08, 0x02 });
     try std.testing.expectEqualSlices(u8, expected.slice(), deterministic);
 }
@@ -4303,7 +4304,7 @@ test "dynamic deterministic encoding sorts fields and unknowns stably" {
 
     const deterministic = try msg.encodedDeterministic(&file);
     defer allocator.free(deterministic);
-    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02, 0x1a, 0x01, 0x03, 0xc0, 0x02, 0x01, 0x90, 0x03, 0x01, 0x90, 0x03, 0x02, 0x92, 0x03, 0x01, 0x61 }, deterministic);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x02, 0x1a, 0x01, 0x03, 0xc0, 0x02, 0x01, 0x90, 0x03, 0x02, 0x92, 0x03, 0x01, 0x61, 0x90, 0x03, 0x01 }, deterministic);
 }
 
 test "dynamic deterministic encoding sorts map entries by key" {
@@ -4446,4 +4447,30 @@ test "dynamic unknownByNumberAlloc returns non-contiguous unknown fields" {
     try std.testing.expectEqual(@as(usize, 2), fields.len);
     try std.testing.expectEqual(@as(wire.FieldNumber, 100), fields[0].number);
     try std.testing.expectEqual(@as(wire.FieldNumber, 100), fields[1].number);
+}
+
+test "dynamic deterministic encoding preserves same-number unknown ordering" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Empty {}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Empty").?;
+
+    var payload = wire.Writer.init(allocator);
+    defer payload.deinit();
+    try payload.writeBytes(666, "abc");
+    try payload.writeUInt64(666, 123);
+    try payload.writeBytes(666, "def");
+    try payload.writeUInt64(666, 456);
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.decode(&file, payload.slice());
+
+    const deterministic = try msg.encodedDeterministic(&file);
+    defer allocator.free(deterministic);
+    try std.testing.expectEqualSlices(u8, payload.slice(), deterministic);
 }
