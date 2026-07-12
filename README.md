@@ -45,7 +45,7 @@ validated feature set.
 - JSON support
   - dynamic message stringify/parse for scalars, 64-bit numeric strings, bytes/base64, repeated fields, maps, UTF-8 validated string output, enums including editions open/closed enum numeric validation with imported enums honoring their owning-file features, nested and Any-expanded imported messages parsed/stringified under their owning-file features including proto2 explicit default presence, proto3 optional message presence, proto2 extension bracket keys including scoped extension names, initialized parse helpers with recursive required validation, and registry-aware imported message/enum parsing including same-package unqualified imports plus imported enum-name/default stringify
 - Well-known types
-  - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including canonical 0/3/6/9 fractional JSON output for Timestamp/Duration, lowercase `t`/`z` Timestamp parsing, wire-decode range/nanos validation, registry-aware Any expanded payload JSON plus strict standalone/dynamic Any object fields and UTF-8 type URLs, strict Timestamp timezone-offset and malformed-number parsing, Duration sign/range validation, Struct/Value non-finite number rejection, Struct map duplicate-key last-wins wire decode, WKT string/key UTF-8 validation, wrapper null/default parsing and float special values, strict FieldMask snake_case/lowerCamel JSON path validation, and strict Empty object parsing
+  - basic google.protobuf.Timestamp, Duration, FieldMask, Any, Empty, Struct/Value/ListValue, and wrapper wire/JSON parse/stringify helpers with validation plus dynamic JSON mapping, including canonical 0/3/6/9 fractional JSON output for Timestamp/Duration, strict uppercase `T`/`Z` Timestamp parsing, wire-decode range/nanos validation, registry-aware Any expanded payload JSON plus strict standalone/dynamic Any object fields and UTF-8 type URLs, strict Timestamp timezone-offset and malformed-number parsing, Duration sign/range validation, Struct/Value non-finite number rejection, Struct map duplicate-key last-wins wire decode, WKT string/key UTF-8 validation, wrapper null/default parsing and float special values, strict FieldMask snake_case/lowerCamel JSON path validation, and strict Empty object parsing
 - Conformance helpers
   - basic ConformanceRequest decode, safe enum handling, ConformanceResponse encode, and dynamic runner with deterministic registry-aware protobuf output including JSON/TextFormat input plus unknown-field/group preservation, JSON unknown omission, TextFormat unknown-field input, and TextFormat unknown-group output, registry-aware JSON/Text input, JSON ignore-unknown field/enum-name/closed-enum-number category handling, TextFormat closed-enum unknown rejection, imported JSON/Text type conversion paths, proto2 extension and MessageSet JSON/TextFormat paths, and missing-required path parse errors
 - Protoc plugin and codegen helpers
@@ -182,8 +182,9 @@ always-print primitive/repeated/map defaults, quoted 64-bit integers, bytes as
 standard/URL-safe base64, repeated fields as arrays, maps as JSON objects, enum
 names/numbers including unknown numeric enum values, default lowerCamelCase field names, null-as-absent parsing, and
 nested messages recursively. Duplicate field appearances, including proto field
-name plus lowerCamelCase/`json_name` alternate spellings, use protobuf JSON's
-last-value-wins parsing behavior; `parseJsonAllocWithRegistry` resolves imported
+name plus lowerCamelCase/`json_name` alternate spellings and multiple members of
+the same oneof, are rejected to match upstream protobuf JSON conformance;
+`parseJsonAllocWithRegistry` resolves imported
 message and enum field types through a `Registry`, `stringifyJsonAllocWithRegistry`
 uses the same registry to print imported enum names/defaults, and ignore-unknown parsing
 also skips unknown enum names for local and imported enum fields.
