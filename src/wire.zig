@@ -1007,14 +1007,7 @@ inline fn countPackedVarints(payload: []const u8) Error!usize {
 
 pub inline fn appendPackedBool(allocator: std.mem.Allocator, list: *std.ArrayList(bool), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len == 0) return;
-    var all_single_byte = true;
-    for (payload) |byte| {
-        if (byte >= 0x80) {
-            all_single_byte = false;
-            break;
-        }
-    }
-    if (all_single_byte) {
+    if (packedBoolAllSingleByte(payload)) {
         try list.ensureUnusedCapacity(allocator, payload.len);
         const out = list.addManyAsSliceAssumeCapacity(payload.len);
         for (payload, out) |byte, *value| value.* = byte != 0;
@@ -1034,6 +1027,27 @@ pub inline fn appendPackedBool(allocator: std.mem.Allocator, list: *std.ArrayLis
     try list.ensureUnusedCapacity(allocator, payload.len);
     var index: usize = 0;
     while (index < payload.len) list.appendAssumeCapacity((try readVarintAt(payload, &index)) != 0);
+}
+
+fn packedBoolAllSingleByte(payload: []const u8) bool {
+    const vector_len = std.simd.suggestVectorLength(u8) orelse 0;
+    if (vector_len >= 8) {
+        const V = @Vector(vector_len, u8);
+        var index: usize = 0;
+        const continuation_bit: V = @splat(0x80);
+        while (index + vector_len <= payload.len) : (index += vector_len) {
+            const chunk: V = payload[index..][0..vector_len].*;
+            if (@reduce(.Or, chunk >= continuation_bit)) return false;
+        }
+        for (payload[index..]) |byte| {
+            if (byte >= 0x80) return false;
+        }
+        return true;
+    }
+    for (payload) |byte| {
+        if (byte >= 0x80) return false;
+    }
+    return true;
 }
 
 pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
@@ -1300,6 +1314,9 @@ test "wire appends and iterates varint packed payloads" {
     try std.testing.expectEqual(@as(i32, 4), (try sint32_it.next()).?);
     try std.testing.expectEqual(@as(i32, 1), (try sint32_it.next()).?);
     try std.testing.expect((try sint32_it.next()) == null);
+
+    try std.testing.expect(packedBoolAllSingleByte(&.{ 0, 1, 2, 127 }));
+    try std.testing.expect(!packedBoolAllSingleByte(&.{ 0, 0x80, 1 }));
 }
 
 test "wire 32-bit varint readers truncate non-canonical 64-bit payloads" {
