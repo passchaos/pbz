@@ -120,6 +120,7 @@ The examples cover:
 - [`generated_performance.zig`](examples/generated_performance.zig): generated fastest-path APIs including trusted buffer encode, borrowed field slices/views, packed iterators, and known-schema decode reuse.
 - [`generated_imports.zig`](examples/generated_imports.zig): multi-file generated modules with proto imports and typed imported singular, repeated, map value, and oneof message fields from [`examples/proto/imported_app.proto`](examples/proto/imported_app.proto) / [`examples/proto/imported_common.proto`](examples/proto/imported_common.proto).
 - [`generated_groups.zig`](examples/generated_groups.zig): typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from [`examples/proto/groups.proto`](examples/proto/groups.proto).
+- [`generated_recursive.zig`](examples/generated_recursive.zig): generated self-recursive message usage with raw-payload singular recursion, typed repeated recursion, and decode recursion-limit enforcement from [`examples/proto/recursive.proto`](examples/proto/recursive.proto).
 - [`well_known_types.zig`](examples/well_known_types.zig): Timestamp, Duration, FieldMask, wrapper, Any, and Struct helpers.
 - [`proto2_extensions.zig`](examples/proto2_extensions.zig): proto2 extensions via TextFormat/JSON and preserved unknown storage.
 - [`conformance.zig`](examples/conformance.zig): conformance-style JSON-to-protobuf conversion.
