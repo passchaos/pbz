@@ -26,8 +26,13 @@ pub fn main() !void {
     var any_title = try pbz.Any.packEncoded(allocator, "google.protobuf.StringValue", title);
     defer any_title.deinit(allocator);
     std.debug.assert(any_title.isType("google.protobuf.StringValue"));
+    const any_title_json = try any_title.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_title_json);
+    std.debug.assert(std.mem.eql(u8, any_title_json, "{\"@type\":\"type.googleapis.com/google.protobuf.StringValue\",\"value\":\"hello\"}"));
 
-    var unpacked = try any_title.unpackEncodedOwned(pbz.StringValue, allocator, "google.protobuf.StringValue");
+    var parsed_any_title = try pbz.Any.jsonParse(allocator, any_title_json);
+    defer parsed_any_title.deinit(allocator);
+    var unpacked = try parsed_any_title.unpackEncodedOwned(pbz.StringValue, allocator, "google.protobuf.StringValue");
     defer unpacked.deinit(allocator);
     std.debug.assert(std.mem.eql(u8, unpacked.value, "hello"));
 
@@ -38,4 +43,10 @@ pub fn main() !void {
     const object_json = try object.jsonStringifyAlloc(allocator);
     defer allocator.free(object_json);
     std.debug.assert(std.mem.indexOf(u8, object_json, "enabled") != null);
+
+    var object_any = try pbz.Any.packEncoded(allocator, "google.protobuf.Struct", object);
+    defer object_any.deinit(allocator);
+    const object_any_json = try object_any.jsonStringifyAlloc(allocator);
+    defer allocator.free(object_any_json);
+    std.debug.assert(std.mem.indexOf(u8, object_any_json, "\"value\":{") != null);
 }

@@ -832,7 +832,7 @@ fn parseWrapperValue(allocator: std.mem.Allocator, kind: schema.FieldKind, json_
     };
 }
 
-fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, name: []const u8, message: *const dynamic.DynamicMessage, options: Options, writer: *std.Io.Writer) !bool {
+fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, name: []const u8, message: *const dynamic.DynamicMessage, options: Options, writer: *std.Io.Writer) Error!bool {
     if (typeNameEquals(name, "google.protobuf.Timestamp")) {
         const ts = wkt.Timestamp{ .seconds = readInt64Field(message, "seconds"), .nanos = readInt32Field(message, "nanos") };
         try ts.jsonStringify(writer);
@@ -861,7 +861,7 @@ fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const regis
             try writer.writeAll("}");
             return true;
         }
-        try any.jsonStringify(writer);
+        try writeStandaloneAnyJson(message.allocator, any, writer);
         return true;
     }
     if (typeNameEquals(name, "google.protobuf.FieldMask")) {
@@ -891,6 +891,28 @@ fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const regis
         return true;
     }
     return false;
+}
+
+fn writeStandaloneAnyJson(allocator: std.mem.Allocator, any: wkt.Any, writer: *std.Io.Writer) Error!void {
+    any.jsonStringifyWithAllocator(allocator, writer) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.WriteFailed => return error.WriteFailed,
+        error.TypeMismatch => return error.TypeMismatch,
+        error.InvalidUtf8 => return error.InvalidUtf8,
+        error.InvalidWireType => return error.InvalidWireType,
+        error.InvalidFieldNumber => return error.InvalidFieldNumber,
+        error.MalformedVarint => return error.MalformedVarint,
+        error.TruncatedInput => return error.TruncatedInput,
+        error.UnsupportedWireType => return error.UnsupportedWireType,
+        error.Overflow => return error.Overflow,
+        error.RecursionLimitExceeded => return error.RecursionLimitExceeded,
+        error.TimestampOutOfRange => return error.TimestampOutOfRange,
+        error.InvalidNanos => return error.InvalidNanos,
+        error.DurationOutOfRange => return error.DurationOutOfRange,
+        error.DurationSignMismatch => return error.DurationSignMismatch,
+        error.InvalidFieldMask => return error.InvalidFieldMask,
+        else => return error.TypeMismatch,
+    };
 }
 
 fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value, options: Options) !?*dynamic.DynamicMessage {

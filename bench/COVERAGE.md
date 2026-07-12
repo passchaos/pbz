@@ -119,7 +119,8 @@ benchmark harness.
   generated decode recursion-limit propagation.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing and unknown
   preservation.
-- `examples/well_known_types.zig` covers selected well known types.
+- `examples/well_known_types.zig` covers selected well known types, including
+  standalone `Any` JSON mapping for embedded WKT payload values.
 - `src/dynamic.zig` and `src/wire.zig` tests cover dynamic decode recursion
   limits for nested length-delimited messages, maps, MessageSet payloads, and
   groups.
@@ -137,7 +138,7 @@ claiming broad superiority beyond the covered workloads:
   conformance run.
 - The comparison matrix is intentionally broad but not infinite: additional
   workloads such as arena-style ownership patterns, streaming RPC transports,
-  and every well-known-type edge case may deserve separate rows.
+  and remaining well-known-type edge cases may deserve separate rows.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

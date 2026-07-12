@@ -20,6 +20,6 @@ library API.
 - `generated_imports.zig` — multi-file generated modules using proto imports with typed imported singular, repeated, map value, and oneof message fields from `proto/imported_app.proto` / `proto/imported_common.proto`.
 - `generated_groups.zig` — typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from `proto/groups.proto`.
 - `generated_recursive.zig` — generated self-recursive message usage from `proto/recursive.proto`, including raw-payload singular recursion, typed repeated recursion, and decode recursion-limit enforcement.
-- `well_known_types.zig` — Timestamp, Duration, FieldMask, wrappers, Any, and Struct helpers.
+- `well_known_types.zig` — Timestamp, Duration, FieldMask, wrappers, Any including embedded WKT JSON values, and Struct helpers.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON and preserved unknown storage.
 - `conformance.zig` — conformance-style JSON-to-protobuf conversion.
