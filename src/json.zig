@@ -1592,11 +1592,40 @@ fn writeBase64String(bytes: []const u8, writer: *std.Io.Writer) Error!void {
 
 fn writeJsonString(value: []const u8, writer: *std.Io.Writer) Error!void {
     if (!std.unicode.utf8ValidateSlice(value)) return error.InvalidUtf8;
+    if (!jsonStringNeedsEscape(value)) {
+        try writer.writeByte('"');
+        try writer.writeAll(value);
+        try writer.writeByte('"');
+        return;
+    }
     try std.json.Stringify.value(value, .{}, writer);
 }
 
 fn writeJsonStringContents(value: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll(value);
+}
+
+fn jsonStringNeedsEscape(value: []const u8) bool {
+    const vector_len = std.simd.suggestVectorLength(u8) orelse 0;
+    if (vector_len >= 8) {
+        const V = @Vector(vector_len, u8);
+        var index: usize = 0;
+        const quote: V = @splat('"');
+        const slash: V = @splat('\\');
+        const control: V = @splat(0x20);
+        while (index + vector_len <= value.len) : (index += vector_len) {
+            const chunk: V = value[index..][0..vector_len].*;
+            if (@reduce(.Or, (chunk == quote) | (chunk == slash) | (chunk < control))) return true;
+        }
+        for (value[index..]) |byte| {
+            if (byte == '"' or byte == '\\' or byte < 0x20) return true;
+        }
+        return false;
+    }
+    for (value) |byte| {
+        if (byte == '"' or byte == '\\' or byte < 0x20) return true;
+    }
+    return false;
 }
 
 fn writeJsonStringFmt(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) Error!void {
@@ -2579,6 +2608,13 @@ test "json parses bytes from base64 variants" {
     var url_safe_short = try parseAlloc(allocator, &file, desc, "{\"raw\":\"-_\"}", .{});
     defer url_safe_short.deinit();
     try std.testing.expectEqualSlices(u8, &.{0xfb}, url_safe_short.get("raw").?.values.items[0].bytes);
+}
+
+test "json string escape scanner distinguishes fast and escaped paths" {
+    try std.testing.expect(!jsonStringNeedsEscape("plain ascii and 世界"));
+    try std.testing.expect(jsonStringNeedsEscape("quote\""));
+    try std.testing.expect(jsonStringNeedsEscape("slash\\"));
+    try std.testing.expect(jsonStringNeedsEscape("line\n"));
 }
 
 test "json accepts integral float spellings for 32-bit integers" {

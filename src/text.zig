@@ -483,10 +483,39 @@ fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?
 
 fn writeQuoted(bytes: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("\"");
+    if (!textStringNeedsEscape(bytes)) {
+        try writer.writeAll(bytes);
+        try writer.writeAll("\"");
+        return;
+    }
     for (bytes) |c| {
         if (c == '\\') try writer.writeAll("\\\\") else if (c == '"') try writer.writeAll("\\\"") else if (c == '\n') try writer.writeAll("\\n") else if (c == '\r') try writer.writeAll("\\r") else if (c == '\t') try writer.writeAll("\\t") else if (c >= 0x20 and c <= 0x7e) try writer.writeByte(c) else try writer.print("\\{o:0>3}", .{c});
     }
     try writer.writeAll("\"");
+}
+
+fn textStringNeedsEscape(bytes: []const u8) bool {
+    const vector_len = std.simd.suggestVectorLength(u8) orelse 0;
+    if (vector_len >= 8) {
+        const V = @Vector(vector_len, u8);
+        var index: usize = 0;
+        const quote: V = @splat('"');
+        const slash: V = @splat('\\');
+        const min_printable: V = @splat(0x20);
+        const max_printable: V = @splat(0x7e);
+        while (index + vector_len <= bytes.len) : (index += vector_len) {
+            const chunk: V = bytes[index..][0..vector_len].*;
+            if (@reduce(.Or, (chunk == quote) | (chunk == slash) | (chunk < min_printable) | (chunk > max_printable))) return true;
+        }
+        for (bytes[index..]) |byte| {
+            if (byte == '"' or byte == '\\' or byte < 0x20 or byte > 0x7e) return true;
+        }
+        return false;
+    }
+    for (bytes) |byte| {
+        if (byte == '"' or byte == '\\' or byte < 0x20 or byte > 0x7e) return true;
+    }
+    return false;
 }
 
 fn writeIndent(writer: *std.Io.Writer, options: Options, depth: usize) Error!void {
@@ -2490,6 +2519,14 @@ test "text format parser decodes unicode escapes and rejects invalid string lite
     try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: '\\U00110000'"));
     try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: '\\ud800'"));
     try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: '\\ud801\\udc37'"));
+}
+
+test "text format quoted string escape scanner distinguishes fast and escaped paths" {
+    try std.testing.expect(!textStringNeedsEscape("plain ascii"));
+    try std.testing.expect(textStringNeedsEscape("quote\""));
+    try std.testing.expect(textStringNeedsEscape("slash\\"));
+    try std.testing.expect(textStringNeedsEscape("line\n"));
+    try std.testing.expect(textStringNeedsEscape("non-ascii 世界"));
 }
 
 test "text format parser accepts angle bracket message and map delimiters" {
