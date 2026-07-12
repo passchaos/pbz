@@ -285,6 +285,55 @@ missing requested names or invalid parameters, emit structured
 `GeneratedCodeInfo` annotations for generated files, top-level symbols, nested messages/enums, fields, and enum values, and still build a registry
 from every `proto_file` descriptor so generated imports can resolve cross-file
 message/enum references.
+For build-time code generation, pbz's `build.zig` exports `generateProtobuf`,
+which shells out to `protoc` with the same `protoc-gen-pbz` plugin and therefore
+uses the same parameter surface as the executable:
+
+```zig
+const std = @import("std");
+const pbz_build = @import("pbz");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const pbz_dep = b.dependency("pbz", .{ .target = target, .optimize = optimize });
+    const pbz_mod = pbz_dep.module("pbz");
+
+    const generated = pbz_build.generateProtobuf(b, .{
+        .dependency = pbz_dep,
+        .proto_files = &.{"proto/person.proto"},
+        .include_paths = &.{"proto"},
+        .parameter = "paths=source_relative,generated_info=false",
+    });
+    const person_pb = generated.addModule(
+        b,
+        "person_pb",
+        "proto/person.proto",
+        target,
+        optimize,
+        pbz_mod,
+    );
+
+    const exe = b.addExecutable(.{
+        .name = "app",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "pbz", .module = pbz_mod },
+                .{ .name = "person_pb", .module = person_pb },
+            },
+        }),
+    });
+    exe.step.dependOn(generated.step);
+}
+```
+
+The returned `ProtobufCodegen` also exposes `output_dir`, `step`, and
+`generatedFile(b, proto_path)` for custom wiring. `zig build build-codegen-smoke`
+exercises this helper in this repository.
 `pbz.generateZigFile` emits
 a starter Zig typed scalar/repeated-scalar/enum/message-payload/map skeleton with AST syntax validation with field constants, fields, init, encode with proto3 default elision, and basic decode methods including repeated scalar/enum/message payload and map storage, plus required validation and optional/required/oneof presence flags and oneof tagged union mapping for parsed descriptors.
 Generated files expose `proto_package`, `proto_syntax`, and top-level
