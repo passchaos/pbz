@@ -5,7 +5,7 @@ const dynamic = @import("dynamic.zig");
 const wkt = @import("wkt.zig");
 const registry_mod = @import("registry.zig");
 
-pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch, InvalidFieldMask };
+pub const Error = std.Io.Writer.Error || dynamic.DecodeError || error{ TimestampOutOfRange, DurationOutOfRange, InvalidNanos, DurationSignMismatch, InvalidFieldMask, InvalidNumber };
 
 pub const Options = struct {
     enum_as_name: bool = true,
@@ -152,10 +152,12 @@ fn fillMessageObject(
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
-        const duplicate = seenJsonField(seen_fields.items, field.number);
-        if (duplicate) clearJsonField(allocator, message, field);
+        if (entry.value_ptr.* == .null and jsonNullSkipsField(file, registry, message.descriptor, field)) continue;
+        if (seenJsonField(seen_fields.items, field.number)) return error.DuplicateField;
+        if (field.oneof_name) |oneof_name| {
+            if (seenJsonOneof(seen_fields.items, message.descriptor, oneof_name, field.number)) return error.DuplicateField;
+        }
         try seen_fields.append(allocator, field.number);
-        if (entry.value_ptr.* == .null) continue;
         if (field.kind == .map) {
             try parseMapField(allocator, file, registry, message, field, entry.value_ptr.*, options);
         } else if (field.cardinality == .repeated) {
@@ -193,15 +195,42 @@ fn seenJsonField(seen_fields: []const wire.FieldNumber, number: wire.FieldNumber
     return false;
 }
 
-fn clearJsonField(allocator: std.mem.Allocator, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor) void {
-    var index: usize = 0;
-    while (index < message.fields.items.len) : (index += 1) {
-        if (message.fields.items[index].descriptor.number == field.number) {
-            message.fields.items[index].deinit(allocator);
-            _ = message.fields.swapRemove(index);
-            return;
-        }
+fn seenJsonOneof(seen_fields: []const wire.FieldNumber, descriptor: *const schema.MessageDescriptor, oneof_name: []const u8, current_number: wire.FieldNumber) bool {
+    for (seen_fields) |seen| {
+        if (seen == current_number) continue;
+        const field = descriptor.findFieldByNumber(seen) orelse continue;
+        const seen_oneof = field.oneof_name orelse continue;
+        if (std.mem.eql(u8, seen_oneof, oneof_name)) return true;
     }
+    return false;
+}
+
+fn jsonNullSkipsField(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+    switch (field.kind) {
+        .message => |name| {
+            if (typeNameEqualsInFile(file, name, "google.protobuf.Value")) return false;
+        },
+        .enumeration => |name| {
+            if (field.oneof_name != null and typeNameEqualsInFile(file, name, "google.protobuf.NullValue")) return false;
+        },
+        else => {},
+    }
+    if (field.oneof_name != null) {
+        if (fieldKindIsNullValueEnum(file, registry, current, field.kind)) return false;
+    }
+    return true;
+}
+
+fn fieldKindIsNullValueEnum(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) bool {
+    const enum_name = switch (kind) {
+        .enumeration, .message => |name| name,
+        else => return false,
+    };
+    if (typeNameEqualsInFile(file, enum_name, "google.protobuf.NullValue")) return true;
+    if (registryEnumDescriptor(file, registry, current, enum_name)) |enum_desc| {
+        return enum_desc.findValue("NULL_VALUE") != null and enum_desc.values.items.len == 1;
+    }
+    return false;
 }
 
 fn parseMapField(
@@ -333,6 +362,7 @@ fn parseEnum(file: *const schema.FileDescriptor, name: []const u8, json_value: s
             }
             return .{ .enumeration = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue };
         },
+        .null => if (typeNameEqualsInFile(file, name, "google.protobuf.NullValue")) .{ .enumeration = 0 } else error.TypeMismatch,
         else => return .{ .enumeration = try numberAsInt(i32, json_value) },
     }
 }
@@ -351,6 +381,15 @@ fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const r
                 if (enumIsClosed(file, registry, enum_desc) and !enumHasNumber(enum_desc, number)) return error.InvalidEnumValue;
             }
             return .{ .enumeration = number };
+        },
+        .null => {
+            if (typeNameEqualsInFile(file, name, "google.protobuf.NullValue")) return .{ .enumeration = 0 };
+            if (enumeration) |enum_desc| {
+                if (enum_desc.findValue("NULL_VALUE")) |value| {
+                    if (value.number == 0 and enum_desc.values.items.len == 1) return .{ .enumeration = 0 };
+                }
+            }
+            return error.TypeMismatch;
         },
         else => {
             const number = try numberAsInt(i32, json_value);
@@ -392,12 +431,33 @@ fn numberAsInt(comptime T: type, json_value: std.json.Value) !T {
             if (value < std.math.minInt(T) or value > std.math.maxInt(T)) return error.Overflow;
             return @intCast(value);
         },
-        .number_string, .string => |value| return try std.fmt.parseInt(T, value, 10),
+        .float => |value| return try floatAsInt(T, value),
+        .number_string, .string => |value| return std.fmt.parseInt(T, value, 10) catch |int_err| switch (int_err) {
+            error.InvalidCharacter => try floatAsInt(T, try std.fmt.parseFloat(f64, value)),
+            error.Overflow => return error.Overflow,
+        },
         else => {
             _ = info;
             return error.TypeMismatch;
         },
     }
+}
+
+fn floatAsInt(comptime T: type, value: f64) !T {
+    if (!std.math.isFinite(value)) return error.InvalidNumber;
+    if (@trunc(value) != value) return error.TypeMismatch;
+    const info = @typeInfo(T).int;
+    if (info.signedness == .unsigned and value < 0) return error.Overflow;
+    if (info.bits < 64) {
+        if (value < @as(f64, @floatFromInt(std.math.minInt(T))) or value > @as(f64, @floatFromInt(std.math.maxInt(T)))) return error.Overflow;
+        return @intFromFloat(value);
+    }
+    if (info.signedness == .signed) {
+        if (value < -9223372036854775808.0 or value >= 9223372036854775808.0) return error.Overflow;
+    } else {
+        if (value < 0 or value >= 18446744073709551616.0) return error.Overflow;
+    }
+    return @intFromFloat(value);
 }
 
 fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
@@ -420,18 +480,61 @@ fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
 }
 
 fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-    return decodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-        decodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-        decodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-        decodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
-}
-
-fn decodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
-    const size = try decoder.calcSizeForSlice(value);
+    var data_chars: usize = 0;
+    var padding_chars: usize = 0;
+    var saw_padding = false;
+    for (value) |byte| {
+        if (byte == '=') {
+            saw_padding = true;
+            padding_chars += 1;
+            continue;
+        }
+        if (saw_padding) return error.InvalidPadding;
+        _ = base64Index(byte) orelse return error.InvalidCharacter;
+        data_chars += 1;
+    }
+    if (data_chars % 4 == 1) return error.InvalidPadding;
+    if (padding_chars > 2) return error.InvalidPadding;
+    if (padding_chars != 0) {
+        const expected_padding: usize = switch (data_chars % 4) {
+            0 => 0,
+            2 => 2,
+            3 => 1,
+            else => unreachable,
+        };
+        if (padding_chars != expected_padding) return error.InvalidPadding;
+    }
+    const size = (data_chars * 6) / 8;
     const out = try allocator.alloc(u8, size);
     errdefer allocator.free(out);
-    try decoder.decode(out, value);
+    var out_index: usize = 0;
+    var acc: u32 = 0;
+    var acc_bits: u5 = 0;
+    for (value) |byte| {
+        if (byte == '=') break;
+        const idx = base64Index(byte).?;
+        acc = (acc << 6) | idx;
+        acc_bits += 6;
+        while (acc_bits >= 8) {
+            acc_bits -= 8;
+            out[out_index] = @truncate(acc >> acc_bits);
+            out_index += 1;
+            acc &= (@as(u32, 1) << acc_bits) - 1;
+        }
+    }
+    std.debug.assert(out_index == out.len);
     return out;
+}
+
+fn base64Index(byte: u8) ?u32 {
+    return switch (byte) {
+        'A'...'Z' => byte - 'A',
+        'a'...'z' => 26 + byte - 'a',
+        '0'...'9' => 52 + byte - '0',
+        '+', '-' => 62,
+        '/', '_' => 63,
+        else => null,
+    };
 }
 
 fn resolveMessageDescriptor(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.MessageDescriptor {
@@ -456,6 +559,9 @@ fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, regi
 }
 
 fn registryEnumDescriptor(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) ?*const schema.EnumDescriptor {
+    if (typeNameEqualsInFile(file, name, "google.protobuf.NullValue")) {
+        if (file.findEnumDeep("NullValue")) |enumeration| return enumeration;
+    }
     if (registry) |reg| {
         if (std.mem.indexOfScalar(u8, name, '.') == null) {
             if (current.findEnumDeep(name) orelse file.findEnumDeep(name)) |enumeration| return enumeration;
@@ -720,6 +826,7 @@ fn writeValueMessage(message: *const dynamic.DynamicMessage, writer: *std.Io.Wri
     if (message.get("null_value")) |_| return try writer.writeAll("null");
     if (message.get("number_value")) |field| {
         if (field.values.items.len == 0 or field.values.items[0] != .double) return error.TypeMismatch;
+        if (!std.math.isFinite(field.values.items[0].double)) return error.InvalidNumber;
         return try writeFloat(field.values.items[0].double, writer);
     }
     if (message.get("string_value")) |field| {
@@ -1062,6 +1169,17 @@ fn wrapperKind(name: []const u8) ?schema.FieldKind {
     return null;
 }
 
+fn typeNameEqualsInFile(file: *const schema.FileDescriptor, name: []const u8, expected: []const u8) bool {
+    if (typeNameEquals(name, expected)) return true;
+    const normalized = if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
+    if (std.mem.indexOfScalar(u8, normalized, '.') != null) return false;
+    if (file.package.len == 0) return false;
+    if (!std.mem.startsWith(u8, expected, file.package)) return false;
+    if (expected.len != file.package.len + 1 + normalized.len) return false;
+    if (expected[file.package.len] != '.') return false;
+    return std.mem.eql(u8, expected[file.package.len + 1 ..], normalized);
+}
+
 fn addKnownTimeFields(message: *dynamic.DynamicMessage, seconds: i64, nanos: i32) !void {
     if (seconds != 0) try message.add(message.descriptor.findField("seconds") orelse return error.TypeMismatch, .{ .int64 = seconds });
     if (nanos != 0) try message.add(message.descriptor.findField("nanos") orelse return error.TypeMismatch, .{ .int32 = nanos });
@@ -1283,6 +1401,9 @@ fn writeEnum(
         .enumeration => |v| v,
         else => return error.TypeMismatch,
     };
+    if (typeNameEqualsInFile(file, name, "google.protobuf.NullValue")) {
+        if (number == 0) return try writer.writeAll("null");
+    }
     if (options.enum_as_name) {
         if (registryEnumDescriptor(file, registry, current, name)) |enumeration| {
             for (enumeration.values.items) |enum_value| {
@@ -2200,7 +2321,7 @@ test "json uses default lowerCamelCase field names" {
     try std.testing.expectEqualSlices(u8, "Trae", parsed.get("display_name").?.values.items[0].string);
 }
 
-test "json parser treats alternate spellings as duplicate fields with last value winning" {
+test "json parser rejects alternate spelling and oneof duplicate fields" {
     const allocator = std.testing.allocator;
     const source =
         \\syntax = "proto3";
@@ -2210,7 +2331,7 @@ test "json parser treats alternate spellings as duplicate fields with last value
         \\  repeated string tag_list = 2;
         \\  map<string, int32> count_map = 3;
         \\  Child child_msg = 4;
-        \\  oneof choice { int32 choice_id = 5; }
+        \\  oneof choice { int32 choice_id = 5; string choice_text = 7; }
         \\  string explicit_name = 6 [json_name = "shownName"];
         \\}
     ;
@@ -2218,36 +2339,13 @@ test "json parser treats alternate spellings as duplicate fields with last value
     defer file.deinit();
     const desc = file.findMessage("Names").?;
 
-    var parsed = try parseAlloc(allocator, &file, desc,
-        \\{
-        \\  "user_id": 1,
-        \\  "userId": 2,
-        \\  "tag_list": ["a"],
-        \\  "tagList": ["b"],
-        \\  "count_map": {"a": 1},
-        \\  "countMap": {"b": 2},
-        \\  "child_msg": {"id": 1},
-        \\  "childMsg": {"name": "two"},
-        \\  "choice_id": 7,
-        \\  "choiceId": 8,
-        \\  "explicit_name": "proto",
-        \\  "shownName": "json"
-        \\}
-    , .{});
-    defer parsed.deinit();
-
-    try std.testing.expectEqual(@as(i32, 2), parsed.get("user_id").?.values.items[0].int32);
-    try std.testing.expectEqual(@as(usize, 1), parsed.get("tag_list").?.values.items.len);
-    try std.testing.expectEqualSlices(u8, "b", parsed.get("tag_list").?.values.items[0].string);
-    try std.testing.expectEqual(@as(usize, 1), parsed.get("count_map").?.values.items.len);
-    const count = parsed.get("count_map").?.values.items[0].map_entry;
-    try std.testing.expectEqualSlices(u8, "b", count.key.string);
-    try std.testing.expectEqual(@as(i32, 2), count.value.int32);
-    const child = parsed.get("child_msg").?.values.items[0].message;
-    try std.testing.expect(child.get("id") == null);
-    try std.testing.expectEqualSlices(u8, "two", child.get("name").?.values.items[0].string);
-    try std.testing.expectEqual(@as(i32, 8), parsed.get("choice_id").?.values.items[0].int32);
-    try std.testing.expectEqualSlices(u8, "json", parsed.get("explicit_name").?.values.items[0].string);
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"user_id\":1,\"userId\":2}", .{}));
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"tag_list\":[\"a\"],\"tagList\":[\"b\"]}", .{}));
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"count_map\":{\"a\":1},\"countMap\":{\"b\":2}}", .{}));
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"child_msg\":{\"id\":1},\"childMsg\":{\"name\":\"two\"}}", .{}));
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"choice_id\":7,\"choiceId\":8}", .{}));
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"choiceId\":7,\"choiceText\":\"text\"}", .{}));
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc, "{\"choice_id\":7,\"shownName\":\"json\",\"explicit_name\":\"proto\"}", .{}));
 }
 
 test "json round-trips proto3 optional message fields" {
@@ -2371,6 +2469,32 @@ test "json parses bytes from base64 variants" {
     var url_safe_no_pad = try parseAlloc(allocator, &file, desc, "{\"raw\":\"--8\"}", .{});
     defer url_safe_no_pad.deinit();
     try std.testing.expectEqualSlices(u8, &.{ 0xfb, 0xef }, url_safe_no_pad.get("raw").?.values.items[0].bytes);
+
+    var url_safe_short = try parseAlloc(allocator, &file, desc, "{\"raw\":\"-_\"}", .{});
+    defer url_safe_short.deinit();
+    try std.testing.expectEqualSlices(u8, &.{0xfb}, url_safe_short.get("raw").?.values.items[0].bytes);
+}
+
+test "json accepts integral float spellings for 32-bit integers" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Numbers { int32 i32 = 1; uint32 u32 = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Numbers").?;
+
+    var parsed = try parseAlloc(allocator, &file, desc, "{\"i32\":1e5,\"u32\":4.294967295e9}", .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i32, 100000), parsed.get("i32").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(u32, 4294967295), parsed.get("u32").?.values.items[0].uint32);
+
+    var quoted = try parseAlloc(allocator, &file, desc, "{\"i32\":\"1e5\"}", .{});
+    defer quoted.deinit();
+    try std.testing.expectEqual(@as(i32, 100000), quoted.get("i32").?.values.items[0].int32);
+
+    try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, desc, "{\"i32\":1.5}", .{}));
 }
 
 test "json maps Timestamp and Duration messages as well-known strings" {
@@ -2765,4 +2889,38 @@ test "json maps Struct Value and ListValue messages" {
     defer parsed.deinit();
     const parsed_struct = parsed.get("data").?.values.items[0].message;
     try std.testing.expectEqual(@as(usize, 2), parsed_struct.get("fields").?.values.items.len);
+
+    const holder_value_source =
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\enum NullValue { NULL_VALUE = 0; }
+        \\message Struct { map<string, Value> fields = 1; }
+        \\message ListValue { repeated Value values = 1; }
+        \\message Value {
+        \\  oneof kind {
+        \\    NullValue null_value = 1;
+        \\    double number_value = 2;
+        \\    string string_value = 3;
+        \\    bool bool_value = 4;
+        \\    Struct struct_value = 5;
+        \\    ListValue list_value = 6;
+        \\  }
+        \\}
+        \\message HolderValue { .google.protobuf.Value value = 1; }
+    ;
+    var value_file = try @import("parser.zig").Parser.parse(allocator, holder_value_source);
+    defer value_file.deinit();
+    const holder_value_desc = value_file.findMessage("HolderValue").?;
+    var parsed_null = try parseAlloc(allocator, &value_file, holder_value_desc, "{\"value\":null}", .{});
+    defer parsed_null.deinit();
+    const value_msg = parsed_null.get("value").?.values.items[0].message;
+    try std.testing.expect(value_msg.get("null_value") != null);
+
+    var bad_holder = dynamic.DynamicMessage.init(allocator, holder_value_desc);
+    defer bad_holder.deinit();
+    const bad_value = try allocator.create(dynamic.DynamicMessage);
+    bad_value.* = dynamic.DynamicMessage.init(allocator, value_file.findMessage("Value").?);
+    try bad_value.add(value_file.findMessage("Value").?.findField("number_value").?, .{ .double = std.math.inf(f64) });
+    try bad_holder.add(holder_value_desc.findField("value").?, .{ .message = bad_value });
+    try std.testing.expectError(error.InvalidNumber, stringifyAlloc(allocator, &value_file, &bad_holder, .{}));
 }
