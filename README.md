@@ -264,8 +264,9 @@ The installed `pbz-conformance` executable implements the upstream length-prefix
 when supplied a `FileDescriptorSet`; `tools/smoke_conformance.py` exercises that protocol without needing
 the upstream runner, `tools/fetch_conformance_runner.sh` can download/build the upstream runner and descriptor set,
 and `tools/run_conformance.sh` wraps a real or fetched `conformance-test-runner` when available. The upstream
-runner path writes failure-list helper files under `.zig-cache/pbz-conformance/results` by default; the current
-implementation still has known full-suite gaps, so this command is an audit gate rather than a passing release gate.
+runner path writes failure-list helper files under `.zig-cache/pbz-conformance/results` by default. A current
+upstream run passes the Binary/JSON suite with zero skips and the TextFormat suite with zero unexpected failures
+and four skipped optional unknown-field-printing cases.
 
 ## Protoc plugin helpers
 

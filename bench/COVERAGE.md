@@ -130,7 +130,9 @@ benchmark harness.
 - `src/pbz_conformance.zig`, `tools/smoke_conformance.py`,
   `tools/fetch_conformance_runner.sh`, and `tools/run_conformance.sh` provide a
   conformance-test-runner-compatible subprocess executable, descriptor-set
-  smoke test, and reproducible fetch/build path for the upstream runner.
+  smoke test, reproducible fetch/build path for the upstream runner, and a
+  passing upstream conformance run: Binary/JSON has zero skips and TextFormat
+  has zero unexpected failures with four optional unknown-field-printing skips.
 - `src/dynamic.zig` and `src/wire.zig` tests cover dynamic decode recursion
   limits for nested length-delimited messages, maps, MessageSet payloads, and
   groups.
@@ -143,11 +145,10 @@ benchmark harness.
 These are not current full-gate blockers, but they should be revisited before
 claiming broad superiority beyond the covered workloads:
 
-- The full Protobuf conformance test suite is not vendored here; the repository
-  now has a conformance-test-runner-compatible executable, smoke test, and
-  fetch/build wrapper for the upstream runner. A current upstream-runner audit
-  exercises the real suite but still reports known unexpected failures, so it is
-  not yet a passing release gate.
+- The full Protobuf conformance test suite is not vendored here; use
+  `tools/run_conformance.sh` to fetch/build and run the upstream runner. The
+  current upstream audit is a passing gate with only optional TextFormat unknown
+  field printing skipped.
 - The comparison matrix is intentionally broad but not infinite: additional
   workloads such as remaining well-known-type edge cases may deserve separate
   rows.
