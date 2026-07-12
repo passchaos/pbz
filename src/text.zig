@@ -765,6 +765,9 @@ const TextParser = struct {
                 } else if (field.?.kind == .map or field.?.kind == .group or (field.?.kind == .message and !self.fieldIsRegistryEnum(file, message.descriptor, field.?))) {
                     const close = try self.consumeAggregateStart();
                     try self.parseAggregateField(file, message, field.?, close);
+                } else if (field.?.cardinality == .repeated and self.peek() == '[') {
+                    try self.parseRepeatedList(file, message, field.?);
+                    self.consumeSeparator();
                 } else {
                     var value = try self.parseValue(file, message.descriptor, field.?, field.?.kind);
                     message.add(field.?, value) catch |err| {
@@ -782,6 +785,24 @@ const TextParser = struct {
                     try self.parseAggregateField(file, message, field.?, close);
                 }
             } else return error.UnexpectedToken;
+        }
+    }
+
+    fn parseRepeatedList(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor) !void {
+        try self.expect('[');
+        self.skipSpace();
+        if (self.consume(']')) return;
+        while (true) {
+            var value = try self.parseValue(file, message.descriptor, field, field.kind);
+            message.add(field, value) catch |err| {
+                dynamic.deinitValue(&value, self.allocator);
+                return err;
+            };
+            self.skipSpace();
+            if (self.consume(']')) return;
+            try self.expect(',');
+            self.skipSpace();
+            if (self.peek() == ']') return error.UnexpectedToken;
         }
     }
 
@@ -1195,7 +1216,7 @@ const TextParser = struct {
     fn readAtom(self: *TextParser) ![]const u8 {
         self.skipSpace();
         const start = self.index;
-        while (!self.eof() and !std.ascii.isWhitespace(self.peek()) and self.peek() != '}' and self.peek() != '>' and self.peek() != ',' and self.peek() != ';') self.index += 1;
+        while (!self.eof() and !std.ascii.isWhitespace(self.peek()) and self.peek() != '}' and self.peek() != '>' and self.peek() != ']' and self.peek() != ',' and self.peek() != ';') self.index += 1;
         if (self.index == start) return error.UnexpectedToken;
         return self.input[start..self.index];
     }
@@ -1354,6 +1375,34 @@ fn parseTextFloat(comptime T: type, atom: []const u8) !T {
         const value = std.math.inf(T);
         return if (negative) -value else value;
     }
+    if (text.len >= 2 and text[0] == '0' and std.ascii.isDigit(text[1])) return error.InvalidCharacter;
+    if (text.len >= 3 and text[0] == '0' and (text[1] == 'x' or text[1] == 'X')) return error.InvalidCharacter;
+    var parse_atom = atom;
+    if (parse_atom.len != 0 and (parse_atom[parse_atom.len - 1] == 'f' or parse_atom[parse_atom.len - 1] == 'F')) {
+        parse_atom = parse_atom[0 .. parse_atom.len - 1];
+        if (parse_atom.len == 0) return error.InvalidCharacter;
+    }
+    if (parse_atom.len != 0 and parse_atom[0] == '.') {
+        var buf: [256]u8 = undefined;
+        if (parse_atom.len + 1 > buf.len) return error.InvalidCharacter;
+        buf[0] = '0';
+        @memcpy(buf[1 .. parse_atom.len + 1], parse_atom);
+        parse_atom = buf[0 .. parse_atom.len + 1];
+        return parseFloatAllowOverflow(T, parse_atom);
+    }
+    if (parse_atom.len >= 2 and (parse_atom[0] == '+' or parse_atom[0] == '-') and parse_atom[1] == '.') {
+        var buf: [256]u8 = undefined;
+        if (parse_atom.len + 1 > buf.len) return error.InvalidCharacter;
+        buf[0] = parse_atom[0];
+        buf[1] = '0';
+        @memcpy(buf[2 .. parse_atom.len + 1], parse_atom[1..]);
+        parse_atom = buf[0 .. parse_atom.len + 1];
+        return parseFloatAllowOverflow(T, parse_atom);
+    }
+    return parseFloatAllowOverflow(T, parse_atom);
+}
+
+fn parseFloatAllowOverflow(comptime T: type, atom: []const u8) !T {
     return try std.fmt.parseFloat(T, atom);
 }
 
@@ -2070,6 +2119,32 @@ test "text format parser accepts comma and semicolon separators" {
     try std.testing.expectEqual(@as(i32, 1), msg.get("a").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), msg.get("b").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
+}
+
+test "text format parser accepts repeated list and float literal variants" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { repeated int32 nums = 1; repeated string names = 2; float f = 3; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = try parseAlloc(allocator, &file, desc, "nums: [1,2] names: [\"a\", \"b\"] f: -.123e2F");
+    defer msg.deinit();
+    try std.testing.expectEqual(@as(usize, 2), msg.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 1), msg.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 2), msg.get("nums").?.values.items[1].int32);
+    try std.testing.expectEqualSlices(u8, "a", msg.get("names").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, "b", msg.get("names").?.values.items[1].string);
+    try std.testing.expectEqual(@as(f32, -12.3), msg.get("f").?.values.items[0].float);
+
+    try std.testing.expectError(error.UnexpectedToken, parseAlloc(allocator, &file, desc, "nums: [1,]"));
+    try std.testing.expectError(error.UnexpectedToken, parseAlloc(allocator, &file, desc, "nums: [1,,2]"));
+    try std.testing.expectError(error.UnexpectedToken, parseAlloc(allocator, &file, desc, "nums: [1;2]"));
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "f: 0x1"));
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "f: 012"));
 }
 
 test "text format parser accepts angle bracket message and map delimiters" {
