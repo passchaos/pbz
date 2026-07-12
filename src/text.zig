@@ -9,6 +9,7 @@ pub const Error = std.Io.Writer.Error || wire.Error || std.mem.Allocator.Error |
 pub const Options = struct {
     indent: []const u8 = "  ",
     enum_as_name: bool = true,
+    print_unknown_fields: bool = false,
 };
 
 pub fn formatAlloc(
@@ -69,7 +70,9 @@ fn writeMessageFields(
             try writeField(file, registry, message.descriptor, entry.descriptor, entry.descriptor.name, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer, depth);
         }
     }
-    for (message.unknown_fields.items) |*unknown| try writeUnknownRaw(unknown.data, options, writer, depth);
+    if (options.print_unknown_fields) {
+        for (message.unknown_fields.items) |*unknown| try writeUnknownRaw(unknown.data, options, writer, depth);
+    }
 }
 
 fn writeUnknownRaw(
@@ -2035,7 +2038,7 @@ test "text format formats and parses proto2 extensions" {
     try msg.add(note, .{ .message = nested });
     try msg.add(role, .{ .enumeration = 1 });
 
-    const text = try formatAlloc(allocator, &file, &msg, .{});
+    const text = try formatAlloc(allocator, &file, &msg, .{ .print_unknown_fields = true });
     defer allocator.free(text);
     try std.testing.expectEqualSlices(u8,
         \\id: 7
@@ -2176,7 +2179,7 @@ test "text format formats and parses MessageSet extensions" {
     try nested.add(note_desc.findField("text").?, .{ .string = try allocator.dupe(u8, "body") });
     try msg.add(note, .{ .message = nested });
 
-    const text = try formatAlloc(allocator, &file, &msg, .{});
+    const text = try formatAlloc(allocator, &file, &msg, .{ .print_unknown_fields = true });
     defer allocator.free(text);
     try std.testing.expectEqualSlices(u8,
         \\[demo.note] {
@@ -2275,7 +2278,7 @@ test "text format formats and parses numeric unknown fields" {
     try raw_bytes.writeBytes(101, "blob");
     try msg.unknown_fields.append(allocator, .{ .number = 101, .wire_type = .length_delimited, .data = try allocator.dupe(u8, raw_bytes.slice()) });
 
-    const text = try formatAlloc(allocator, &file, &msg, .{});
+    const text = try formatAlloc(allocator, &file, &msg, .{ .print_unknown_fields = true });
     defer allocator.free(text);
     try std.testing.expectEqualSlices(u8,
         \\id: 7
@@ -2324,7 +2327,7 @@ test "text format parses numeric unknown groups" {
     try std.testing.expectEqual(wire.WireType.start_group, parsed.unknown_fields.items[0].wire_type);
     try std.testing.expectEqualSlices(u8, raw_group.slice(), parsed.unknown_fields.items[0].data);
 
-    const text = try formatAlloc(allocator, &file, &parsed, .{});
+    const text = try formatAlloc(allocator, &file, &parsed, .{ .print_unknown_fields = true });
     defer allocator.free(text);
     try std.testing.expect(std.mem.indexOf(u8, text, "100 {\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "101: 1\n") != null);

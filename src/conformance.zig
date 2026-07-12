@@ -30,6 +30,7 @@ pub const ConformanceRequest = struct {
     requested_output_format: WireFormat = .unspecified,
     message_type: []const u8 = "",
     test_category: TestCategory = .unspecified,
+    print_unknown_fields: bool = false,
 
     pub const Payload = union(enum) {
         none,
@@ -51,6 +52,7 @@ pub const ConformanceRequest = struct {
                 5 => out.test_category = std.enums.fromInt(TestCategory, try reader.readInt32()) orelse .unspecified,
                 7 => out.payload = .{ .jspb_payload = try reader.readBytes() },
                 8 => out.payload = .{ .text_payload = try reader.readBytes() },
+                9 => out.print_unknown_fields = try reader.readBool(),
                 else => try reader.skipValue(tag),
             }
         }
@@ -135,7 +137,10 @@ pub fn runDynamic(
             break :blk try (ConformanceResponse{ .result = .{ .json_payload = payload } }).encode(allocator);
         },
         .text_format => blk: {
-            const payload = text.formatAllocWithRegistry(allocator, file, registry, &message, .{}) catch |err| return try serializeError(allocator, err);
+            if (request.print_unknown_fields and message.unknownCount() != 0) {
+                break :blk try (ConformanceResponse{ .result = .{ .skipped = "printing unknown TextFormat fields is unsupported" } }).encode(allocator);
+            }
+            const payload = text.formatAllocWithRegistry(allocator, file, registry, &message, .{ .print_unknown_fields = request.print_unknown_fields }) catch |err| return try serializeError(allocator, err);
             defer allocator.free(payload);
             break :blk try (ConformanceResponse{ .result = .{ .text_payload = payload } }).encode(allocator);
         },
@@ -219,9 +224,11 @@ test "conformance request decodes and response encodes" {
     writer.clearRetainingCapacity();
     try writer.writeInt32(3, 99);
     try writer.writeInt32(5, 99);
+    try writer.writeBool(9, true);
     const invalid_enums = try ConformanceRequest.decode(writer.slice());
     try std.testing.expectEqual(WireFormat.unspecified, invalid_enums.requested_output_format);
     try std.testing.expectEqual(TestCategory.unspecified, invalid_enums.test_category);
+    try std.testing.expect(invalid_enums.print_unknown_fields);
 
     const response = try (ConformanceResponse{ .result = .{ .json_payload = "{}" } }).encode(allocator);
     defer allocator.free(response);
@@ -929,7 +936,7 @@ test "conformance dynamic runner omits unknown protobuf fields from json" {
     try std.testing.expectEqualSlices(u8, "{}", try reader.readBytes());
 }
 
-test "conformance dynamic runner formats unknown protobuf groups as text" {
+test "conformance dynamic runner skips requested unknown TextFormat printing" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { optional int32 id = 1; }");
     defer file.deinit();
@@ -947,12 +954,13 @@ test "conformance dynamic runner formats unknown protobuf groups as text" {
         .requested_output_format = .text_format,
         .message_type = "demo.Msg",
         .test_category = .binary_test,
+        .print_unknown_fields = true,
     });
     defer allocator.free(response_bytes);
     var reader = wire.Reader.init(response_bytes);
     const tag = (try reader.nextTag()).?;
-    try std.testing.expectEqual(@as(wire.FieldNumber, 8), tag.number);
-    try std.testing.expectEqualSlices(u8, "100 {\n  101: 7\n}\n", try reader.readBytes());
+    try std.testing.expectEqual(@as(wire.FieldNumber, 5), tag.number);
+    try std.testing.expectEqualSlices(u8, "printing unknown TextFormat fields is unsupported", try reader.readBytes());
 }
 
 test "conformance dynamic runner preserves unknown protobuf groups" {
