@@ -117,6 +117,9 @@ benchmark harness.
 - `examples/generated_recursive.zig` covers generated self-recursive schemas,
   including raw-payload singular recursion, typed repeated recursion, and
   generated decode recursion-limit propagation.
+- `examples/generated_streaming.zig` covers generated service client/handler
+  adapters over a transport abstraction for unary, client-streaming,
+  server-streaming, and bidirectional-streaming RPC shapes.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff, and
   generated decode reuse.
@@ -140,8 +143,8 @@ claiming broad superiority beyond the covered workloads:
   has conformance-style helpers and examples, but not an exhaustive upstream
   conformance run.
 - The comparison matrix is intentionally broad but not infinite: additional
-  workloads such as streaming RPC transports and remaining well-known-type edge
-  cases may deserve separate rows.
+  workloads such as remaining well-known-type edge cases may deserve separate
+  rows.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

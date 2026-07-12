@@ -46,6 +46,7 @@ pub fn build(b: *std.Build) void {
         "generated_imports",
         "generated_groups",
         "generated_recursive",
+        "generated_streaming",
         "ownership_patterns",
         "well_known_types",
         "proto2_extensions",
