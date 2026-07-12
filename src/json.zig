@@ -401,7 +401,7 @@ fn numberAsInt(comptime T: type, json_value: std.json.Value) !T {
 }
 
 fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
-    return switch (json_value) {
+    const out: T = switch (json_value) {
         .integer => |value| @floatFromInt(value),
         .float => |value| @floatCast(value),
         .number_string => |value| try std.fmt.parseFloat(T, value),
@@ -413,8 +413,10 @@ fn numberAsFloat(comptime T: type, json_value: std.json.Value) !T {
             -std.math.inf(T)
         else
             try std.fmt.parseFloat(T, value),
-        else => error.TypeMismatch,
+        else => return error.TypeMismatch,
     };
+    if (json_value != .string and !std.math.isFinite(out)) return error.InvalidNumber;
+    return out;
 }
 
 fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
@@ -803,8 +805,7 @@ fn parseValueMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
         .null => try message.add(descriptor.findField("null_value") orelse return error.TypeMismatch, .{ .enumeration = 0 }),
         .bool => |value| try message.add(descriptor.findField("bool_value") orelse return error.TypeMismatch, .{ .boolean = value }),
         .integer => |value| try message.add(descriptor.findField("number_value") orelse return error.TypeMismatch, .{ .double = @floatFromInt(value) }),
-        .float => |value| try message.add(descriptor.findField("number_value") orelse return error.TypeMismatch, .{ .double = value }),
-        .number_string => |value| try message.add(descriptor.findField("number_value") orelse return error.TypeMismatch, .{ .double = try std.fmt.parseFloat(f64, value) }),
+        .float, .number_string => try message.add(descriptor.findField("number_value") orelse return error.TypeMismatch, .{ .double = try numberAsFloat(f64, json_value) }),
         .string => |value| try message.add(descriptor.findField("string_value") orelse return error.TypeMismatch, .{ .string = try allocator.dupe(u8, value) }),
         .object => {
             const struct_desc = resolveMessageDescriptor(file, descriptor, "Struct") orelse return error.TypeMismatch;

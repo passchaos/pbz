@@ -1761,8 +1761,15 @@ fn valueFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value) 
         .null => return .null_value,
         .bool => |value| return .{ .bool_value = value },
         .integer => |value| return .{ .number_value = @floatFromInt(value) },
-        .float => |value| return .{ .number_value = value },
-        .number_string => |value| return .{ .number_value = try std.fmt.parseFloat(f64, value) },
+        .float => |value| {
+            if (!std.math.isFinite(value)) return error.InvalidNumber;
+            return .{ .number_value = value };
+        },
+        .number_string => |value| {
+            const parsed = try std.fmt.parseFloat(f64, value);
+            if (!std.math.isFinite(parsed)) return error.InvalidNumber;
+            return .{ .number_value = parsed };
+        },
         .string => |value| return .{ .string_value = try allocator.dupe(u8, value) },
         .object => {
             const nested = try allocator.create(Struct);
@@ -1879,6 +1886,9 @@ test "value json and wire reject invalid null enum and non-finite numbers" {
     var string_inf = try Value.jsonParse(allocator, "\"Infinity\"");
     defer string_inf.deinit(allocator);
     try std.testing.expectEqualSlices(u8, "Infinity", string_inf.string_value);
+    try std.testing.expectError(error.InvalidNumber, Value.jsonParse(allocator, "1e9999"));
+    try std.testing.expectError(error.InvalidNumber, Struct.jsonParse(allocator, "{\"tooBig\":1e9999}"));
+    try std.testing.expectError(error.InvalidNumber, ListValue.jsonParse(allocator, "[1e9999]"));
 
     var writer = wire.Writer.init(allocator);
     defer writer.deinit();
