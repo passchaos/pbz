@@ -28,6 +28,17 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(plugin_exe);
 
+    const conformance_exe = b.addExecutable(.{
+        .name = "pbz-conformance",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/pbz_conformance.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "pbz", .module = mod }},
+        }),
+    });
+    b.installArtifact(conformance_exe);
+
     const tests = b.addTest(.{
         .root_module = mod,
     });

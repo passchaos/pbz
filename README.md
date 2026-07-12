@@ -125,7 +125,7 @@ The examples cover:
 - [`ownership_patterns.zig`](examples/ownership_patterns.zig): arena-style ownership for generated and dynamic messages, cloning arena-backed values into long-lived allocators, and generated decode reuse.
 - [`well_known_types.zig`](examples/well_known_types.zig): Timestamp, Duration, FieldMask, wrapper, Any, and Struct helpers.
 - [`proto2_extensions.zig`](examples/proto2_extensions.zig): proto2 extensions via TextFormat/JSON and preserved unknown storage.
-- [`conformance.zig`](examples/conformance.zig): conformance-style JSON-to-protobuf conversion.
+- [`conformance.zig`](examples/conformance.zig): conformance-style JSON-to-protobuf conversion. The installed `pbz-conformance` executable implements the upstream length-prefixed subprocess protocol when supplied a `FileDescriptorSet`.
 
 ## Type registry
 

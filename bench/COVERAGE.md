@@ -127,6 +127,9 @@ benchmark harness.
   preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   standalone `Any` JSON mapping for embedded WKT payload values.
+- `src/pbz_conformance.zig` plus `tools/smoke_conformance.py` provide a
+  conformance-test-runner-compatible subprocess executable and a descriptor-set
+  smoke test for the length-prefixed request/response protocol.
 - `src/dynamic.zig` and `src/wire.zig` tests cover dynamic decode recursion
   limits for nested length-delimited messages, maps, MessageSet payloads, and
   groups.
@@ -140,8 +143,8 @@ These are not current full-gate blockers, but they should be revisited before
 claiming broad superiority beyond the covered workloads:
 
 - The full Protobuf conformance test suite is not vendored here; the repository
-  has conformance-style helpers and examples, but not an exhaustive upstream
-  conformance run.
+  now has a conformance-test-runner-compatible executable and smoke test, but
+  not an exhaustive upstream conformance run.
 - The comparison matrix is intentionally broad but not infinite: additional
   workloads such as remaining well-known-type edge cases may deserve separate
   rows.
