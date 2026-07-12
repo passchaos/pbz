@@ -681,6 +681,7 @@ fn writeMessageContents(
 ) Error!void {
     for (message.fields.items) |*entry| {
         if (entry.values.items.len == 0) continue;
+        if (shouldSkipDefaultJsonField(file, registry, message.descriptor, entry)) continue;
         if (!first.*) try writer.writeAll(",");
         first.* = false;
         try writeFieldName(file, registry, entry.descriptor, options, writer);
@@ -709,6 +710,55 @@ fn writeMessageContents(
             try writeAbsentFieldDefault(file, registry, message.descriptor, field, options, writer);
         }
     }
+}
+
+fn shouldSkipDefaultJsonField(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, entry: *const dynamic.FieldValue) bool {
+    if (entry.descriptor.isRepeatedLike() or entry.descriptor.oneof_name != null or entry.values.items.len != 1) return false;
+    if (jsonFieldHasPresence(file, registry, current, entry.descriptor)) return false;
+    return jsonValueIsDefault(file, registry, current, entry.descriptor, entry.values.items[0]);
+}
+
+fn jsonFieldHasPresence(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+    if (file.syntax == .proto3 and !field.proto3_optional and field.oneof_name == null and field.cardinality != .required and (field.kind == .scalar or field.kind == .enumeration or jsonFieldKindIsRegistryEnum(file, registry, current, field.kind))) return false;
+    if (field.cardinality == .required or field.cardinality == .optional or field.proto3_optional or field.oneof_name != null or field.kind == .group) return true;
+    if (field.kind == .message and registryEnumDescriptor(file, registry, current, field.kind.message) == null) return true;
+    if (field.cardinality == .repeated or field.kind == .map) return false;
+    if (field.features) |features| return features.field_presence != .implicit;
+    return file.features.field_presence != .implicit;
+}
+
+fn jsonValueIsDefault(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: dynamic.Value) bool {
+    if (field.default_value != null) return false;
+    if (jsonFieldKindIsRegistryEnum(file, registry, current, field.kind)) return value == .enumeration and value.enumeration == 0;
+    return switch (field.kind) {
+        .scalar => |scalar| switch (scalar) {
+            .double => value == .double and value.double == 0,
+            .float => value == .float and value.float == 0,
+            .int32 => value == .int32 and value.int32 == 0,
+            .int64 => value == .int64 and value.int64 == 0,
+            .uint32 => value == .uint32 and value.uint32 == 0,
+            .uint64 => value == .uint64 and value.uint64 == 0,
+            .sint32 => value == .sint32 and value.sint32 == 0,
+            .sint64 => value == .sint64 and value.sint64 == 0,
+            .fixed32 => value == .fixed32 and value.fixed32 == 0,
+            .fixed64 => value == .fixed64 and value.fixed64 == 0,
+            .sfixed32 => value == .sfixed32 and value.sfixed32 == 0,
+            .sfixed64 => value == .sfixed64 and value.sfixed64 == 0,
+            .bool => value == .boolean and !value.boolean,
+            .string => value == .string and value.string.len == 0,
+            .bytes => value == .bytes and value.bytes.len == 0,
+        },
+        .enumeration => value == .enumeration and value.enumeration == 0,
+        else => false,
+    };
+}
+
+fn jsonFieldKindIsRegistryEnum(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind) bool {
+    const enum_name = switch (kind) {
+        .enumeration, .message => |name| name,
+        else => return false,
+    };
+    return registryEnumDescriptor(file, registry, current, enum_name) != null;
 }
 
 fn shouldPrintAbsentField(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
@@ -2551,6 +2601,28 @@ test "json accepts integral float spellings for 32-bit integers" {
     try std.testing.expectEqual(@as(i32, 100000), quoted.get("i32").?.values.items[0].int32);
 
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, desc, "{\"i32\":1.5}", .{}));
+}
+
+test "json omits proto3 implicit default scalar fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Defaults {
+        \\  int32 count = 1;
+        \\  string name = 2;
+        \\  bool enabled = 3;
+        \\  optional int32 present = 4;
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Defaults").?;
+
+    var parsed = try parseAlloc(allocator, &file, desc, "{\"count\":0,\"name\":\"\",\"enabled\":false,\"present\":0}", .{});
+    defer parsed.deinit();
+    const rendered = try stringifyAlloc(allocator, &file, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expectEqualSlices(u8, "{\"present\":0}", rendered);
 }
 
 test "json maps Timestamp and Duration messages as well-known strings" {
