@@ -1273,6 +1273,13 @@ const TextParser = struct {
                         if (digits == 0) return error.InvalidCharacter;
                         try out.append(self.allocator, value);
                     },
+                    'u', 'U' => {
+                        const count: usize = if (esc == 'u') 4 else 8;
+                        const codepoint = try self.readUnicodeEscape(count);
+                        var buf: [4]u8 = undefined;
+                        const len = std.unicode.utf8Encode(codepoint, &buf) catch return error.InvalidCharacter;
+                        try out.appendSlice(self.allocator, buf[0..len]);
+                    },
                     '0'...'7' => {
                         var value: u8 = esc - '0';
                         var digits: usize = 1;
@@ -1284,9 +1291,25 @@ const TextParser = struct {
                     },
                     else => try out.append(self.allocator, esc),
                 }
-            } else try out.append(self.allocator, c);
+            } else {
+                if (c == '\n' or c == '\r') return error.InvalidCharacter;
+                try out.append(self.allocator, c);
+            }
         }
         return error.UnexpectedEof;
+    }
+
+    fn readUnicodeEscape(self: *TextParser, count: usize) !u21 {
+        var value: u32 = 0;
+        var i: usize = 0;
+        while (i < count) : (i += 1) {
+            if (self.eof()) return error.UnexpectedEof;
+            const digit = hexValue(self.peek()) orelse return error.InvalidCharacter;
+            value = value * 16 + digit;
+            self.index += 1;
+        }
+        if (value > 0x10ffff or (value >= 0xd800 and value <= 0xdfff)) return error.InvalidCharacter;
+        return @intCast(value);
     }
 
     fn readIdent(self: *TextParser) ![]const u8 {
@@ -2260,6 +2283,27 @@ test "text format parser ignores reserved field names" {
     );
     defer msg.deinit();
     try std.testing.expectEqual(@as(i32, 7), msg.get("id").?.values.items[0].int32);
+}
+
+test "text format parser decodes unicode escapes and rejects invalid string literals" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { string s = 1; bytes b = 2; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = try parseAlloc(allocator, &file, desc, "s: '\\u1234\\U00010437' b: '\\u1234'");
+    defer msg.deinit();
+    try std.testing.expectEqualSlices(u8, "ሴ𐐷", msg.get("s").?.values.items[0].string);
+    try std.testing.expectEqualSlices(u8, "ሴ", msg.get("b").?.values.items[0].bytes);
+
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: 'first\nsecond'"));
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: '\\U00110000'"));
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: '\\ud800'"));
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "s: '\\ud801\\udc37'"));
 }
 
 test "text format parser accepts angle bracket message and map delimiters" {
