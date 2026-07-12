@@ -284,9 +284,7 @@ pub const PackedUInt32Iterator = struct {
 
     pub fn next(self: *PackedUInt32Iterator) Error!?u32 {
         if (self.index >= self.payload.len) return null;
-        const raw = try readVarintAt(self.payload, &self.index);
-        if (raw > std.math.maxInt(u32)) return error.Overflow;
-        return @intCast(raw);
+        return @as(u32, @truncate(try readVarintAt(self.payload, &self.index)));
     }
 };
 
@@ -306,9 +304,7 @@ pub const PackedSInt32Iterator = struct {
 
     pub fn next(self: *PackedSInt32Iterator) Error!?i32 {
         if (self.index >= self.payload.len) return null;
-        const raw = try readVarintAt(self.payload, &self.index);
-        if (raw > std.math.maxInt(u32)) return error.Overflow;
-        return zigZagDecode32(@intCast(raw));
+        return zigZagDecode32(@as(u32, @truncate(try readVarintAt(self.payload, &self.index))));
     }
 };
 
@@ -788,7 +784,10 @@ pub const Reader = struct {
 
     pub fn nextTag(self: *Reader) Error!?Tag {
         if (self.eof()) return null;
-        return try Tag.decode(try self.readVarint());
+        const tag_start = self.index;
+        const raw = try self.readVarint();
+        if (self.index - tag_start > 5) return error.MalformedVarint;
+        return try Tag.decode(raw);
     }
 
     pub fn expectWireType(tag: Tag, expected: WireType) Error!void {
@@ -796,9 +795,7 @@ pub const Reader = struct {
     }
 
     pub fn readUInt32(self: *Reader) Error!u32 {
-        const value = try self.readVarint();
-        if (value > std.math.maxInt(u32)) return error.Overflow;
-        return @intCast(value);
+        return @as(u32, @truncate(try self.readVarint()));
     }
 
     pub fn readUInt64(self: *Reader) Error!u64 {
@@ -815,7 +812,7 @@ pub const Reader = struct {
     }
 
     pub fn readSInt32(self: *Reader) Error!i32 {
-        return zigZagDecode32(try self.readUInt32());
+        return zigZagDecode32(@as(u32, @truncate(try self.readVarint())));
     }
 
     pub fn readSInt64(self: *Reader) Error!i64 {
@@ -1046,11 +1043,7 @@ pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayL
         const out = try allocator.alloc(u32, count);
         errdefer allocator.free(out);
         var index: usize = 0;
-        for (out) |*value| {
-            const raw = try readVarintAt(payload, &index);
-            if (raw > std.math.maxInt(u32)) return error.Overflow;
-            value.* = @intCast(raw);
-        }
+        for (out) |*value| value.* = @as(u32, @truncate(try readVarintAt(payload, &index)));
         list.* = std.ArrayList(u32).fromOwnedSlice(out);
         return;
     }
@@ -1058,11 +1051,7 @@ pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayL
     const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
     try list.ensureUnusedCapacity(allocator, required);
     var index: usize = 0;
-    while (index < payload.len) {
-        const raw = try readVarintAt(payload, &index);
-        if (raw > std.math.maxInt(u32)) return error.Overflow;
-        list.appendAssumeCapacity(@intCast(raw));
-    }
+    while (index < payload.len) list.appendAssumeCapacity(@as(u32, @truncate(try readVarintAt(payload, &index))));
 }
 
 pub inline fn appendPackedUInt64(allocator: std.mem.Allocator, list: *std.ArrayList(u64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
@@ -1090,11 +1079,7 @@ pub inline fn appendPackedSInt32(allocator: std.mem.Allocator, list: *std.ArrayL
         const out = try allocator.alloc(i32, count);
         errdefer allocator.free(out);
         var index: usize = 0;
-        for (out) |*value| {
-            const raw = try readVarintAt(payload, &index);
-            if (raw > std.math.maxInt(u32)) return error.Overflow;
-            value.* = zigZagDecode32(@intCast(raw));
-        }
+        for (out) |*value| value.* = zigZagDecode32(@as(u32, @truncate(try readVarintAt(payload, &index))));
         list.* = std.ArrayList(i32).fromOwnedSlice(out);
         return;
     }
@@ -1102,11 +1087,7 @@ pub inline fn appendPackedSInt32(allocator: std.mem.Allocator, list: *std.ArrayL
     const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
     try list.ensureUnusedCapacity(allocator, required);
     var index: usize = 0;
-    while (index < payload.len) {
-        const raw = try readVarintAt(payload, &index);
-        if (raw > std.math.maxInt(u32)) return error.Overflow;
-        list.appendAssumeCapacity(zigZagDecode32(@intCast(raw)));
-    }
+    while (index < payload.len) list.appendAssumeCapacity(zigZagDecode32(@as(u32, @truncate(try readVarintAt(payload, &index)))));
 }
 
 pub inline fn appendPackedSInt64(allocator: std.mem.Allocator, list: *std.ArrayList(i64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
@@ -1267,10 +1248,13 @@ test "wire appends and iterates varint packed payloads" {
     try uint32_payload.writeVarint(1);
     try uint32_payload.writeVarint(128);
     try uint32_payload.writeVarint(4097);
+    try uint32_payload.writeVarint(@as(u64, 1) << 33);
+    try uint32_payload.writeVarint((@as(u64, 1) << 33) + 1);
+    try uint32_payload.writeVarint(std.math.maxInt(u64));
     var uint32_list: std.ArrayList(u32) = .empty;
     defer uint32_list.deinit(allocator);
     try appendPackedUInt32(allocator, &uint32_list, uint32_payload.slice());
-    try std.testing.expectEqualSlices(u32, &.{ 1, 128, 4097 }, uint32_list.items);
+    try std.testing.expectEqualSlices(u32, &.{ 1, 128, 4097, 0, 1, std.math.maxInt(u32) }, uint32_list.items);
 
     var int64_payload = Writer.init(allocator);
     defer int64_payload.deinit();
@@ -1285,10 +1269,11 @@ test "wire appends and iterates varint packed payloads" {
     defer sint32_payload.deinit();
     try sint32_payload.writeVarint(zigZagEncode32(-3));
     try sint32_payload.writeVarint(zigZagEncode32(4));
+    try sint32_payload.writeVarint((@as(u64, 1) << 32) | 2);
     var sint32_list: std.ArrayList(i32) = .empty;
     defer sint32_list.deinit(allocator);
     try appendPackedSInt32(allocator, &sint32_list, sint32_payload.slice());
-    try std.testing.expectEqualSlices(i32, &.{ -3, 4 }, sint32_list.items);
+    try std.testing.expectEqualSlices(i32, &.{ -3, 4, 1 }, sint32_list.items);
 
     var fields = Writer.init(allocator);
     defer fields.deinit();
@@ -1300,6 +1285,9 @@ test "wire appends and iterates varint packed payloads" {
     try std.testing.expectEqual(@as(u32, 1), (try uint32_it.next()).?);
     try std.testing.expectEqual(@as(u32, 128), (try uint32_it.next()).?);
     try std.testing.expectEqual(@as(u32, 4097), (try uint32_it.next()).?);
+    try std.testing.expectEqual(@as(u32, 0), (try uint32_it.next()).?);
+    try std.testing.expectEqual(@as(u32, 1), (try uint32_it.next()).?);
+    try std.testing.expectEqual(@as(u32, std.math.maxInt(u32)), (try uint32_it.next()).?);
     try std.testing.expect((try uint32_it.next()) == null);
 
     var int64_it = (try packedInt64FieldIterator(fields.slice(), 2)).?;
@@ -1310,7 +1298,19 @@ test "wire appends and iterates varint packed payloads" {
     var sint32_it = (try packedSInt32FieldIterator(fields.slice(), 3)).?;
     try std.testing.expectEqual(@as(i32, -3), (try sint32_it.next()).?);
     try std.testing.expectEqual(@as(i32, 4), (try sint32_it.next()).?);
+    try std.testing.expectEqual(@as(i32, 1), (try sint32_it.next()).?);
     try std.testing.expect((try sint32_it.next()) == null);
+}
+
+test "wire 32-bit varint readers truncate non-canonical 64-bit payloads" {
+    var uint_reader = Reader.init(&.{ 0x80, 0x80, 0x80, 0x80, 0x20 });
+    try std.testing.expectEqual(@as(u32, 0), try uint_reader.readUInt32());
+
+    var sint_reader = Reader.init(&.{ 0x82, 0x80, 0x80, 0x80, 0x10 });
+    try std.testing.expectEqual(@as(i32, 1), try sint_reader.readSInt32());
+
+    var tag_reader = Reader.init(&.{ 0x88, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00, 0xd2, 0x09 });
+    try std.testing.expectError(error.MalformedVarint, tag_reader.nextTag());
 }
 
 test "wire exposes borrowed bytes field view" {

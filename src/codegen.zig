@@ -6887,10 +6887,10 @@ fn writeKnownReuseRepeatedScalarPayload(field: *const schema.FieldDescriptor, sc
 fn writeKnownReuseRepeatedScalarDecodeExpr(scalar: schema.ScalarType, payload_expr: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
         .uint64 => try writer.print("try pbz.wire.readVarintAt({s}, &payload_index)", .{payload_expr}),
-        .uint32 => try writer.print("@intCast(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
+        .uint32 => try writer.print("@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &payload_index)))", .{payload_expr}),
         .int32 => try writer.print("@truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt({s}, &payload_index))))", .{payload_expr}),
         .int64 => try writer.print("@bitCast(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
-        .sint32 => try writer.print("pbz.wire.zigZagDecode32(@intCast(try pbz.wire.readVarintAt({s}, &payload_index)))", .{payload_expr}),
+        .sint32 => try writer.print("pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &payload_index))))", .{payload_expr}),
         .sint64 => try writer.print("pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
         else => try writer.writeAll("@compileError(\"unsupported known reuse scalar\")"),
     }
