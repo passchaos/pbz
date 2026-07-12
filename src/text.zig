@@ -1712,7 +1712,7 @@ test "text parser merges duplicate singular message and group fields" {
     try std.testing.expectEqualSlices(u8, "two", parsed.get("children").?.values.items[1].message.get("name").?.values.items[0].string);
 
     const picked = parsed.get("picked").?.values.items[0].message;
-    try std.testing.expect(picked.get("id") == null);
+    try std.testing.expectEqual(@as(i32, 1), picked.get("id").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "two", picked.get("name").?.values.items[0].string);
     try std.testing.expectEqual(@as(usize, 1), picked.get("nums").?.values.items.len);
     try std.testing.expectEqual(@as(i32, 20), picked.get("nums").?.values.items[0].int32);

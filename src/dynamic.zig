@@ -275,13 +275,18 @@ pub const DynamicMessage = struct {
     }
 
     pub fn add(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
+        var owned = value;
+        if (try self.mergeSingularMessageValue(field, owned)) {
+            deinitValue(&owned, self.allocator);
+            return;
+        }
         if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
-        if (field.kind == .map and value == .map_entry) {
+        if (field.kind == .map and owned == .map_entry) {
             for (entry.values.items) |*existing| {
-                if (existing.* == .map_entry and valueEqual(existing.map_entry.key, value.map_entry.key)) {
+                if (existing.* == .map_entry and valueEqual(existing.map_entry.key, owned.map_entry.key)) {
                     deinitValue(existing, self.allocator);
-                    existing.* = value;
+                    existing.* = owned;
                     return;
                 }
             }
@@ -290,7 +295,7 @@ pub const DynamicMessage = struct {
             deinitValue(&entry.values.items[0], self.allocator);
             entry.values.items.len = 0;
         }
-        try entry.values.append(self.allocator, value);
+        try entry.values.append(self.allocator, owned);
     }
 
     pub fn addClone(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
@@ -1493,7 +1498,7 @@ fn fieldIsRequired(field: *const schema.FieldDescriptor) bool {
 }
 
 fn shouldMergeSingularMessageField(field: *const schema.FieldDescriptor) bool {
-    if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null) return false;
+    if (field.cardinality == .repeated or field.kind == .map) return false;
     return field.kind == .message or field.kind == .group;
 }
 
@@ -2969,10 +2974,11 @@ test "dynamic decode merges duplicate singular message and group fields" {
     try std.testing.expectEqualSlices(u8, "two", parent.get("children").?.values.items[1].message.get("name").?.values.items[0].string);
 
     const picked = parent.get("picked").?.values.items[0].message;
-    try std.testing.expect(picked.get("id") == null);
+    try std.testing.expectEqual(@as(i32, 1), picked.get("id").?.values.items[0].int32);
     try std.testing.expectEqualSlices(u8, "two", picked.get("name").?.values.items[0].string);
-    try std.testing.expectEqual(@as(usize, 1), picked.get("nums").?.values.items.len);
-    try std.testing.expectEqual(@as(i32, 20), picked.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 2), picked.get("nums").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 10), picked.get("nums").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(i32, 20), picked.get("nums").?.values.items[1].int32);
 }
 
 test "dynamic mergeFrom recursively merges singular messages and groups" {
