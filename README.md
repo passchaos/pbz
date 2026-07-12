@@ -8,6 +8,7 @@ It provides:
 - `.proto` parser, descriptor model, descriptor set encode/decode
 - multi-file registry/import loader
 - dynamic messages
+- reflection facade over registry descriptors and dynamic messages
 - generated Zig message types through `protoc-gen-pbz`
 - JSON and TextFormat support
 - selected well-known types
@@ -27,6 +28,8 @@ benchmarks, and upstream conformance suite:
 - unknown field preservation, deterministic encoding, MessageSet support, and
   proto2 extensions
 - descriptor and descriptor-set workflows
+- reflection helpers for runtime message creation, field lookup, typed
+  get/set/add/clear, repeated fields, maps, and oneof inspection
 - generated Zig structs with public fields and package-mirrored namespaces
 - generated imports, generated enum helpers, service metadata, and lightweight
   service client/handler adapters
