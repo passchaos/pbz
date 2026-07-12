@@ -84,6 +84,25 @@ Latest accepted comparison ended with:
 All parsed cross-language rows are pbz wins.
 ```
 
+Representative rows from that run:
+
+| workload | baseline | pbz best | baseline best | ratio |
+|---|---:|---:|---:|---:|
+| binary encode | Rust quick-protobuf | 20.96 ns/op | 50.54 ns/op | 2.41x |
+| binary encode | C++ protobuf | 20.96 ns/op | 99.45 ns/op | 4.74x |
+| binary decode | C++ protobuf | 149.10 ns/op | 227.21 ns/op | 1.52x |
+| scalarmix decode | C++ protobuf | 47.35 ns/op | 87.51 ns/op | 1.85x |
+| text/bytes encode | Rust quick-protobuf | 24.99 ns/op | 33.35 ns/op | 1.33x |
+| complex decode | C++ protobuf | 237.03 ns/op | 392.15 ns/op | 1.65x |
+| complex JSON parse | Go protobuf | 5777.56 ns/op | 7095.49 ns/op | 1.23x |
+| TextFormat parse | C++ protobuf | 1718.86 ns/op | 5092.89 ns/op | 2.96x |
+| packed int32 decode | C++ protobuf | 744.31 ns/op | 976.97 ns/op | 1.31x |
+| packed bool encode | C++ protobuf | 14.55 ns/op | 15.84 ns/op | 1.09x |
+| packed bool decode | C++ protobuf | 574.41 ns/op | 819.12 ns/op | 1.43x |
+| large bytes decode | C++ protobuf | 92.20 ns/op | 2805.31 ns/op | 30.43x |
+| large map decode | C++ protobuf | 32901.60 ns/op | 92500.70 ns/op | 2.81x |
+| shuffled large-map deterministic encode | C++ protobuf | 60569.95 ns/op | 95427.20 ns/op | 1.58x |
+
 The matrix covers binary encode/decode, deterministic encode, JSON, TextFormat,
 packed scalars, large bytes, maps, oneof/optional workloads, and complex nested
 messages. Benchmark results are hardware-sensitive; compare full same-machine
