@@ -137,9 +137,6 @@ pub fn runDynamic(
             break :blk try (ConformanceResponse{ .result = .{ .json_payload = payload } }).encode(allocator);
         },
         .text_format => blk: {
-            if (request.print_unknown_fields and message.unknownCount() != 0) {
-                break :blk try (ConformanceResponse{ .result = .{ .skipped = "printing unknown TextFormat fields is unsupported" } }).encode(allocator);
-            }
             const payload = text.formatAllocWithRegistry(allocator, file, registry, &message, .{ .print_unknown_fields = request.print_unknown_fields }) catch |err| return try serializeError(allocator, err);
             defer allocator.free(payload);
             break :blk try (ConformanceResponse{ .result = .{ .text_payload = payload } }).encode(allocator);
@@ -936,7 +933,7 @@ test "conformance dynamic runner omits unknown protobuf fields from json" {
     try std.testing.expectEqualSlices(u8, "{}", try reader.readBytes());
 }
 
-test "conformance dynamic runner skips requested unknown TextFormat printing" {
+test "conformance dynamic runner formats requested unknown protobuf groups as text" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; package demo; message Msg { optional int32 id = 1; }");
     defer file.deinit();
@@ -959,8 +956,8 @@ test "conformance dynamic runner skips requested unknown TextFormat printing" {
     defer allocator.free(response_bytes);
     var reader = wire.Reader.init(response_bytes);
     const tag = (try reader.nextTag()).?;
-    try std.testing.expectEqual(@as(wire.FieldNumber, 5), tag.number);
-    try std.testing.expectEqualSlices(u8, "printing unknown TextFormat fields is unsupported", try reader.readBytes());
+    try std.testing.expectEqual(@as(wire.FieldNumber, 8), tag.number);
+    try std.testing.expectEqualSlices(u8, "100 {\n  101: 7\n}\n", try reader.readBytes());
 }
 
 test "conformance dynamic runner preserves unknown protobuf groups" {

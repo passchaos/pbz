@@ -265,8 +265,8 @@ when supplied a `FileDescriptorSet`; `tools/smoke_conformance.py` exercises that
 the upstream runner, `tools/fetch_conformance_runner.sh` can download/build the upstream runner and descriptor set,
 and `tools/run_conformance.sh` wraps a real or fetched `conformance-test-runner` when available. The upstream
 runner path writes failure-list helper files under `.zig-cache/pbz-conformance/results` by default. A current
-upstream run passes the Binary/JSON suite with zero skips and the TextFormat suite with zero unexpected failures
-and four skipped optional unknown-field-printing cases.
+upstream run passes both the Binary/JSON and TextFormat suites with zero skips
+and zero unexpected failures.
 
 ## Protoc plugin helpers
 

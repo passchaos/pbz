@@ -107,9 +107,18 @@ fn writeUnknownField(
         },
         .length_delimited => {
             try writeIndent(writer, options, depth);
-            try writer.print("{d}: ", .{tag.number});
-            try writeQuoted(try reader.readBytes(), writer);
-            try writer.writeAll("\n");
+            const bytes = try reader.readBytes();
+            if (isLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var nested = wire.Reader.init(bytes);
+                while (try nested.nextTag()) |inner| try writeUnknownField(inner, &nested, options, writer, depth + 1);
+                try writeIndent(writer, options, depth);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try writeQuoted(bytes, writer);
+                try writer.writeAll("\n");
+            }
         },
         .start_group => {
             try writeIndent(writer, options, depth);
@@ -126,6 +135,16 @@ fn writeUnknownField(
             return error.TypeMismatch;
         },
         .end_group => return error.TypeMismatch,
+    }
+}
+
+fn isLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = wire.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
     }
 }
 
@@ -2277,6 +2296,10 @@ test "text format formats and parses numeric unknown fields" {
     defer raw_bytes.deinit();
     try raw_bytes.writeBytes(101, "blob");
     try msg.unknown_fields.append(allocator, .{ .number = 101, .wire_type = .length_delimited, .data = try allocator.dupe(u8, raw_bytes.slice()) });
+    var raw_message = wire.Writer.init(allocator);
+    defer raw_message.deinit();
+    try raw_message.writeMessage(102, raw_varint.slice());
+    try msg.unknown_fields.append(allocator, .{ .number = 102, .wire_type = .length_delimited, .data = try allocator.dupe(u8, raw_message.slice()) });
 
     const text = try formatAlloc(allocator, &file, &msg, .{ .print_unknown_fields = true });
     defer allocator.free(text);
@@ -2284,6 +2307,9 @@ test "text format formats and parses numeric unknown fields" {
         \\id: 7
         \\100: 123
         \\101: "blob"
+        \\102 {
+        \\  100: 123
+        \\}
         \\
     , text);
 
