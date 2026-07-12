@@ -755,7 +755,14 @@ const TextParser = struct {
                 }
             }
             const unknown_number = if (self.peekIsDigit() != null) try self.readUnknownNumber() else null;
-            const field = if (unknown_number != null) null else try self.readFieldReference(message.descriptor);
+            const field = if (unknown_number != null) null else self.readFieldReference(message.descriptor) catch |err| switch (err) {
+                error.ReservedField => {
+                    try self.skipReservedFieldValue();
+                    self.consumeSeparator();
+                    continue;
+                },
+                else => return err,
+            };
             self.skipSpace();
             if (self.consume(':')) {
                 self.skipSpace();
@@ -784,6 +791,65 @@ const TextParser = struct {
                 } else {
                     try self.parseAggregateField(file, message, field.?, close);
                 }
+            } else return error.UnexpectedToken;
+        }
+    }
+
+    fn skipReservedFieldValue(self: *TextParser) anyerror!void {
+        self.skipSpace();
+        if (self.consume(':')) self.skipSpace();
+        if (!self.eof() and (self.peek() == '{' or self.peek() == '<')) {
+            const close = try self.consumeAggregateStart();
+            try self.skipAggregate(close);
+            return;
+        }
+        if (!self.eof() and self.peek() == '[') {
+            try self.skipList();
+            return;
+        }
+        if (!self.eof() and (self.peek() == '"' or self.peek() == '\'')) {
+            const bytes = try self.readString();
+            self.allocator.free(bytes);
+            return;
+        }
+        _ = try self.readAtom();
+    }
+
+    fn skipList(self: *TextParser) anyerror!void {
+        try self.expect('[');
+        self.skipSpace();
+        if (self.consume(']')) return;
+        while (true) {
+            if (self.eof()) return error.UnexpectedEof;
+            if (self.peek() == '{' or self.peek() == '<') {
+                const close = try self.consumeAggregateStart();
+                try self.skipAggregate(close);
+            } else if (self.peek() == '[') {
+                try self.skipList();
+            } else if (self.peek() == '"' or self.peek() == '\'') {
+                const bytes = try self.readString();
+                self.allocator.free(bytes);
+            } else {
+                _ = try self.readAtom();
+            }
+            self.skipSpace();
+            if (self.consume(']')) return;
+            try self.expect(',');
+            self.skipSpace();
+            if (self.peek() == ']') return error.UnexpectedToken;
+        }
+    }
+
+    fn skipAggregate(self: *TextParser, close: u8) anyerror!void {
+        while (true) {
+            self.skipSpace();
+            if (self.eof()) return error.UnexpectedEof;
+            if (self.consume(close)) return;
+            _ = try self.readFieldLikeName();
+            self.skipSpace();
+            if (self.peek() == ':' or self.peek() == '{' or self.peek() == '<') {
+                try self.skipReservedFieldValue();
+                self.consumeSeparator();
             } else return error.UnexpectedToken;
         }
     }
@@ -879,7 +945,26 @@ const TextParser = struct {
             return self.findExtension(descriptor, name) orelse return error.UnknownField;
         }
         const name = try self.readIdent();
+        if (isReservedName(descriptor, name)) return error.ReservedField;
         return descriptor.findField(name) orelse findGroupFieldByTypeName(descriptor, name) orelse return error.UnknownField;
+    }
+
+    fn readFieldLikeName(self: *TextParser) ![]const u8 {
+        self.skipSpace();
+        if (self.consume('[')) return try self.readExtensionName();
+        if (self.peekIsDigit() != null) {
+            const start = self.index;
+            _ = try self.readUnknownNumber();
+            return self.input[start..self.index];
+        }
+        return try self.readIdent();
+    }
+
+    fn isReservedName(descriptor: *const schema.MessageDescriptor, name: []const u8) bool {
+        for (descriptor.reserved_names.items) |reserved| {
+            if (std.mem.eql(u8, reserved, name)) return true;
+        }
+        return false;
     }
 
     fn readExtensionName(self: *TextParser) ![]const u8 {
@@ -2145,6 +2230,36 @@ test "text format parser accepts repeated list and float literal variants" {
     try std.testing.expectError(error.UnexpectedToken, parseAlloc(allocator, &file, desc, "nums: [1;2]"));
     try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "f: 0x1"));
     try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "f: 012"));
+}
+
+test "text format parser ignores reserved field names" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M {
+        \\  reserved "reserved_field";
+        \\  int32 id = 1;
+        \\}
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\reserved_field: true
+        \\reserved_field: -123
+        \\reserved_field: 0.123
+        \\reserved_field: ENUM_VALUE
+        \\reserved_field: "hello"
+        \\reserved_field: { a: 123 }
+        \\reserved_field: < a: 123 >
+        \\reserved_field: [-123, 456]
+        \\reserved_field: [0.123, 1e-10]
+        \\reserved_field: ["hello", "world"]
+        \\id: 7
+    );
+    defer msg.deinit();
+    try std.testing.expectEqual(@as(i32, 7), msg.get("id").?.values.items[0].int32);
 }
 
 test "text format parser accepts angle bracket message and map delimiters" {
