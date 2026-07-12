@@ -4,7 +4,7 @@ const dynamic = @import("dynamic.zig");
 const registry_mod = @import("registry.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.Io.Writer.Error || wire.Error || error{ TypeMismatch, InvalidUtf8 };
+pub const Error = std.Io.Writer.Error || wire.Error || std.mem.Allocator.Error || error{ TypeMismatch, InvalidUtf8 };
 
 pub const Options = struct {
     indent: []const u8 = "  ",
@@ -183,7 +183,9 @@ fn writeField(
                 .message => |message| {
                     try writeFieldName(file, field, name, writer);
                     try writer.writeAll(" {\n");
-                    try writeMessageFields(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer, depth + 1);
+                    if (!try writeAnyContents(file, registry, message, options, writer, depth + 1)) {
+                        try writeMessageFields(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer, depth + 1);
+                    }
                     try writeIndent(writer, options, depth);
                     try writer.writeAll("}\n");
                 },
@@ -211,6 +213,70 @@ fn writeField(
             try writeValue(file, registry, current, kind, value, options, writer);
             try writer.writeAll("\n");
         },
+    }
+}
+
+fn writeAnyContents(
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+    writer: *std.Io.Writer,
+    depth: usize,
+) (Error || std.mem.Allocator.Error)!bool {
+    if (!isAnyDescriptor(message.descriptor)) return false;
+    const type_url = readStringField(message, "type_url") orelse return false;
+    const value = readBytesField(message, "value") orelse return false;
+    const payload_desc = resolveMessageDescriptorWithRegistry(file, registry, message.descriptor, anyTypeName(type_url)) orelse return false;
+    var nested = dynamic.DynamicMessage.init(message.allocator, payload_desc);
+    defer nested.deinit();
+    const payload_file = messageDescriptorFile(file, registry, payload_desc);
+    if (registry) |reg| {
+        try nested.decodeWithRegistry(payload_file, reg, value);
+    } else {
+        try nested.decode(payload_file, value);
+    }
+    try writeIndent(writer, options, depth);
+    try writer.print("[{s}] {{\n", .{type_url});
+    try writeMessageFields(payload_file, registry, &nested, options, writer, depth + 1);
+    try writeIndent(writer, options, depth);
+    try writer.writeAll("}\n");
+    return true;
+}
+
+fn isAnyDescriptor(descriptor: *const schema.MessageDescriptor) bool {
+    return std.mem.eql(u8, descriptor.name, "Any") and
+        descriptor.findField("type_url") != null and
+        descriptor.findField("value") != null;
+}
+
+fn readStringField(message: *const dynamic.DynamicMessage, name: []const u8) ?[]const u8 {
+    if (message.get(name)) |field| if (field.values.items.len != 0 and field.values.items[0] == .string) return field.values.items[0].string;
+    return null;
+}
+
+fn readBytesField(message: *const dynamic.DynamicMessage, name: []const u8) ?[]const u8 {
+    if (message.get(name)) |field| if (field.values.items.len != 0 and field.values.items[0] == .bytes) return field.values.items[0].bytes;
+    return null;
+}
+
+fn anyTypeName(type_url: []const u8) []const u8 {
+    return if (std.mem.lastIndexOfScalar(u8, type_url, '/')) |idx| type_url[idx + 1 ..] else type_url;
+}
+
+fn anyTypeUrlIsValid(type_url: []const u8) bool {
+    const slash = std.mem.lastIndexOfScalar(u8, type_url, '/') orelse return false;
+    return slash != type_url.len - 1;
+}
+
+fn validateAnyTypeUrlPercentEscapes(type_url: []const u8) !void {
+    var index: usize = 0;
+    while (index < type_url.len) : (index += 1) {
+        if (type_url[index] != '%') continue;
+        if (index + 2 >= type_url.len) return error.InvalidCharacter;
+        _ = hexValue(type_url[index + 1]) orelse return error.InvalidCharacter;
+        _ = hexValue(type_url[index + 2]) orelse return error.InvalidCharacter;
+        index += 2;
     }
 }
 
@@ -741,7 +807,7 @@ const TextParser = struct {
     registry: ?*const registry_mod.Registry = null,
     index: usize = 0,
 
-    fn parseMessage(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, end: ?u8) !void {
+    fn parseMessage(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, end: ?u8) anyerror!void {
         while (true) {
             self.skipSpace();
             if (self.eof()) {
@@ -753,6 +819,11 @@ const TextParser = struct {
                     self.index += 1;
                     return;
                 }
+            }
+            if (isAnyDescriptor(message.descriptor) and self.peek() == '[') {
+                try self.parseAnyExpandedField(file, message);
+                self.consumeSeparator();
+                continue;
             }
             const unknown_number = if (self.peekIsDigit() != null) try self.readUnknownNumber() else null;
             const field = if (unknown_number != null) null else self.readFieldReference(message.descriptor) catch |err| switch (err) {
@@ -793,6 +864,24 @@ const TextParser = struct {
                 }
             } else return error.UnexpectedToken;
         }
+    }
+
+    fn parseAnyExpandedField(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage) anyerror!void {
+        const type_url = try self.readAnyTypeUrl();
+        defer self.allocator.free(type_url);
+        if (!anyTypeUrlIsValid(type_url)) return error.TypeMismatch;
+        const close = try self.consumeAggregateStart();
+        const payload_desc = resolveMessageDescriptorWithRegistry(file, self.registry, message.descriptor, anyTypeName(type_url)) orelse return error.TypeMismatch;
+        var payload = dynamic.DynamicMessage.init(self.allocator, payload_desc);
+        defer payload.deinit();
+        const payload_file = messageDescriptorFile(file, self.registry, payload_desc);
+        try self.parseMessage(payload_file, &payload, close);
+        const encoded = try payload.encodedDeterministicWithRegistry(payload_file, self.registry);
+        defer self.allocator.free(encoded);
+        const type_field = message.descriptor.findField("type_url") orelse return error.TypeMismatch;
+        const value_field = message.descriptor.findField("value") orelse return error.TypeMismatch;
+        try message.add(type_field, .{ .string = try self.allocator.dupe(u8, type_url) });
+        try message.add(value_field, .{ .bytes = try self.allocator.dupe(u8, encoded) });
     }
 
     fn skipReservedFieldValue(self: *TextParser) anyerror!void {
@@ -976,6 +1065,35 @@ const TextParser = struct {
         try self.expect(']');
         if (raw.len == 0) return error.UnexpectedToken;
         return raw;
+    }
+
+    fn readAnyTypeUrl(self: *TextParser) ![]const u8 {
+        self.skipSpace();
+        try self.expect('[');
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        while (true) {
+            if (self.eof()) return error.UnexpectedEof;
+            const c = self.peek();
+            if (c == ']') {
+                self.index += 1;
+                const text = try out.toOwnedSlice(self.allocator);
+                errdefer self.allocator.free(text);
+                if (text.len == 0) return error.UnexpectedToken;
+                try validateAnyTypeUrlPercentEscapes(text);
+                return text;
+            }
+            if (std.ascii.isWhitespace(c)) {
+                self.index += 1;
+                continue;
+            }
+            if (c == '#') {
+                while (!self.eof() and self.peek() != '\n') self.index += 1;
+                continue;
+            }
+            try out.append(self.allocator, c);
+            self.index += 1;
+        }
     }
 
     fn findGroupFieldByTypeName(descriptor: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
@@ -2283,6 +2401,45 @@ test "text format parser ignores reserved field names" {
     );
     defer msg.deinit();
     try std.testing.expectEqual(@as(i32, 7), msg.get("id").?.values.items[0].int32);
+}
+
+test "text format parses and formats expanded Any fields" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Payload { int32 id = 1; }
+        \\message Any { string type_url = 1; bytes value = 2; }
+        \\message Holder { .google.protobuf.Any any = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const holder_desc = file.findMessage("Holder").?;
+    const payload_desc = file.findMessage("Payload").?;
+
+    var parsed = try parseAlloc(allocator, &file, holder_desc,
+        \\any {
+        \\  [type.googleapis.com/demo.Payload] { id: 123 }
+        \\}
+    );
+    defer parsed.deinit();
+    const any = parsed.get("any").?.values.items[0].message;
+    try std.testing.expectEqualSlices(u8, "type.googleapis.com/demo.Payload", any.get("type_url").?.values.items[0].string);
+    var payload = dynamic.DynamicMessage.init(allocator, payload_desc);
+    defer payload.deinit();
+    try payload.decode(&file, any.get("value").?.values.items[0].bytes);
+    try std.testing.expectEqual(@as(i32, 123), payload.get("id").?.values.items[0].int32);
+
+    const rendered = try formatAlloc(allocator, &file, &parsed, .{});
+    defer allocator.free(rendered);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "[type.googleapis.com/demo.Payload]") != null);
+
+    var whitespace = try parseAlloc(allocator, &file, holder_desc,
+        "any { [ type.goog # c\nleapis.com/demo.Pay\tload ] { id: 7 } }",
+    );
+    defer whitespace.deinit();
+    try std.testing.expectEqualSlices(u8, "type.googleapis.com/demo.Payload", whitespace.get("any").?.values.items[0].message.get("type_url").?.values.items[0].string);
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, holder_desc, "any { [bad/%ZZ/demo.Payload] { id: 1 } }"));
 }
 
 test "text format parser decodes unicode escapes and rejects invalid string literals" {

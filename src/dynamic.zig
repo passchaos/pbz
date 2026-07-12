@@ -1506,8 +1506,8 @@ fn isDefaultSingularValue(field: *const schema.FieldDescriptor, value: Value) bo
     if (field.default_value != null) return false;
     return switch (field.kind) {
         .scalar => |scalar| switch (scalar) {
-            .double => value == .double and value.double == 0,
-            .float => value == .float and value.float == 0,
+            .double => value == .double and value.double == 0 and !std.math.isNegativeZero(value.double),
+            .float => value == .float and value.float == 0 and !std.math.isNegativeZero(value.float),
             .int32 => value == .int32 and value.int32 == 0,
             .int64 => value == .int64 and value.int64 == 0,
             .uint32 => value == .uint32 and value.uint32 == 0,
@@ -4473,4 +4473,24 @@ test "dynamic deterministic encoding preserves same-number unknown ordering" {
     const deterministic = try msg.encodedDeterministic(&file);
     defer allocator.free(deterministic);
     try std.testing.expectEqualSlices(u8, payload.slice(), deterministic);
+}
+
+test "dynamic proto3 encoding preserves negative zero presence" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Floats { float f = 1; double d = 2; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Floats").?;
+
+    var msg = DynamicMessage.init(allocator, desc);
+    defer msg.deinit();
+    try msg.add(desc.findField("f").?, .{ .float = -0.0 });
+    try msg.add(desc.findField("d").?, .{ .double = -0.0 });
+
+    const encoded = try msg.encodedDeterministic(&file);
+    defer allocator.free(encoded);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0d, 0x00, 0x00, 0x00, 0x80, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80 }, encoded);
 }
