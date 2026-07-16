@@ -98,7 +98,8 @@ APIs:
   fixed-width packed zero-copy views
 - `valuesPackedFixedSlices(header, values)` / `valuesPackedFixed32Slices(...)`
   for borrowed fixed-width packed output
-- `valuesPackedIterator(bytes)` for packed varint scans
+- `valuesPackedIterator(bytes)` for zero-allocation varint scans across every
+  packed or unpacked occurrence of the repeated field
 
 `examples/generated_performance.zig` demonstrates these APIs outside the
 benchmark harness.

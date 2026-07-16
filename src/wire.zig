@@ -261,163 +261,152 @@ pub fn packedFixed32FieldView(bytes: []const u8, number: FieldNumber) Error!?[]a
 pub const PackedUInt64Iterator = struct {
     payload: []const u8,
     index: usize = 0,
+    remaining_fields: []const u8 = &.{},
+    field_number: FieldNumber = 0,
 
     pub fn next(self: *PackedUInt64Iterator) Error!?u64 {
-        if (self.index >= self.payload.len) return null;
-        return try readVarintAt(self.payload, &self.index);
+        return try nextPackedVarint(self);
     }
 };
 
 pub const PackedInt32Iterator = struct {
     payload: []const u8,
     index: usize = 0,
+    remaining_fields: []const u8 = &.{},
+    field_number: FieldNumber = 0,
 
     pub fn next(self: *PackedInt32Iterator) Error!?i32 {
-        if (self.index >= self.payload.len) return null;
-        return @truncate(@as(i64, @bitCast(try readVarintAt(self.payload, &self.index))));
+        const value = (try nextPackedVarint(self)) orelse return null;
+        return @truncate(@as(i64, @bitCast(value)));
     }
 };
 
 pub const PackedUInt32Iterator = struct {
     payload: []const u8,
     index: usize = 0,
+    remaining_fields: []const u8 = &.{},
+    field_number: FieldNumber = 0,
 
     pub fn next(self: *PackedUInt32Iterator) Error!?u32 {
-        if (self.index >= self.payload.len) return null;
-        return @as(u32, @truncate(try readVarintAt(self.payload, &self.index)));
+        const value = (try nextPackedVarint(self)) orelse return null;
+        return @as(u32, @truncate(value));
     }
 };
 
 pub const PackedInt64Iterator = struct {
     payload: []const u8,
     index: usize = 0,
+    remaining_fields: []const u8 = &.{},
+    field_number: FieldNumber = 0,
 
     pub fn next(self: *PackedInt64Iterator) Error!?i64 {
-        if (self.index >= self.payload.len) return null;
-        return @bitCast(try readVarintAt(self.payload, &self.index));
+        const value = (try nextPackedVarint(self)) orelse return null;
+        return @bitCast(value);
     }
 };
 
 pub const PackedSInt32Iterator = struct {
     payload: []const u8,
     index: usize = 0,
+    remaining_fields: []const u8 = &.{},
+    field_number: FieldNumber = 0,
 
     pub fn next(self: *PackedSInt32Iterator) Error!?i32 {
-        if (self.index >= self.payload.len) return null;
-        return zigZagDecode32(@as(u32, @truncate(try readVarintAt(self.payload, &self.index))));
+        const value = (try nextPackedVarint(self)) orelse return null;
+        return zigZagDecode32(@as(u32, @truncate(value)));
     }
 };
 
 pub const PackedSInt64Iterator = struct {
     payload: []const u8,
     index: usize = 0,
+    remaining_fields: []const u8 = &.{},
+    field_number: FieldNumber = 0,
 
     pub fn next(self: *PackedSInt64Iterator) Error!?i64 {
-        if (self.index >= self.payload.len) return null;
-        return zigZagDecode64(try readVarintAt(self.payload, &self.index));
+        const value = (try nextPackedVarint(self)) orelse return null;
+        return zigZagDecode64(value);
     }
 };
 
-pub fn packedUInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedUInt64Iterator {
+const PackedVarintSegment = struct {
+    payload: []const u8,
+    remaining_fields: []const u8,
+};
+
+/// Finds the next occurrence of a repeated varint field without allocating.
+///
+/// Protobuf merges every occurrence of a repeated primitive field, and parsers
+/// must accept packed and unpacked representations even when the schema's
+/// preferred encoding is packed. Keeping the unvisited wire bytes in the
+/// iterator lets the public packed iterators preserve that behavior rather
+/// than silently stopping after the first occurrence.
+fn nextPackedVarintSegment(bytes: []const u8, number: FieldNumber) Error!?PackedVarintSegment {
     var reader = Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         if (tag.number == number) {
-            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
-            if (tag.wire_type == .varint) {
-                const payload_start = reader.position();
-                _ = try reader.readUInt64();
-                return .{ .payload = bytes[payload_start..reader.position()] };
-            }
-            return error.InvalidWireType;
+            const payload = switch (tag.wire_type) {
+                .length_delimited => try reader.readBytes(),
+                .varint => payload: {
+                    const start = reader.position();
+                    _ = try reader.readVarint();
+                    break :payload bytes[start..reader.position()];
+                },
+                else => return error.InvalidWireType,
+            };
+            return .{ .payload = payload, .remaining_fields = reader.remaining() };
         }
         try reader.skipValue(tag);
     }
     return null;
+}
+
+inline fn nextPackedVarint(iterator: anytype) Error!?u64 {
+    while (true) {
+        if (iterator.index < iterator.payload.len) {
+            @branchHint(.likely);
+            return try readVarintAt(iterator.payload, &iterator.index);
+        }
+
+        // A zero field number is the sentinel used by callers that construct an
+        // iterator directly over a raw packed payload. Such iterators retain
+        // the original one-segment behavior.
+        if (iterator.field_number == 0) return null;
+        const segment = (try nextPackedVarintSegment(iterator.remaining_fields, iterator.field_number)) orelse return null;
+        iterator.payload = segment.payload;
+        iterator.index = 0;
+        iterator.remaining_fields = segment.remaining_fields;
+    }
+}
+
+pub fn packedUInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedUInt64Iterator {
+    const segment = (try nextPackedVarintSegment(bytes, number)) orelse return null;
+    return .{ .payload = segment.payload, .remaining_fields = segment.remaining_fields, .field_number = number };
 }
 
 pub fn packedInt32FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedInt32Iterator {
-    var reader = Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == number) {
-            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
-            if (tag.wire_type == .varint) {
-                const payload_start = reader.position();
-                _ = try reader.readInt32();
-                return .{ .payload = bytes[payload_start..reader.position()] };
-            }
-            return error.InvalidWireType;
-        }
-        try reader.skipValue(tag);
-    }
-    return null;
+    const segment = (try nextPackedVarintSegment(bytes, number)) orelse return null;
+    return .{ .payload = segment.payload, .remaining_fields = segment.remaining_fields, .field_number = number };
 }
 
 pub fn packedUInt32FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedUInt32Iterator {
-    var reader = Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == number) {
-            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
-            if (tag.wire_type == .varint) {
-                const payload_start = reader.position();
-                _ = try reader.readUInt32();
-                return .{ .payload = bytes[payload_start..reader.position()] };
-            }
-            return error.InvalidWireType;
-        }
-        try reader.skipValue(tag);
-    }
-    return null;
+    const segment = (try nextPackedVarintSegment(bytes, number)) orelse return null;
+    return .{ .payload = segment.payload, .remaining_fields = segment.remaining_fields, .field_number = number };
 }
 
 pub fn packedInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedInt64Iterator {
-    var reader = Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == number) {
-            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
-            if (tag.wire_type == .varint) {
-                const payload_start = reader.position();
-                _ = try reader.readInt64();
-                return .{ .payload = bytes[payload_start..reader.position()] };
-            }
-            return error.InvalidWireType;
-        }
-        try reader.skipValue(tag);
-    }
-    return null;
+    const segment = (try nextPackedVarintSegment(bytes, number)) orelse return null;
+    return .{ .payload = segment.payload, .remaining_fields = segment.remaining_fields, .field_number = number };
 }
 
 pub fn packedSInt32FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedSInt32Iterator {
-    var reader = Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == number) {
-            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
-            if (tag.wire_type == .varint) {
-                const payload_start = reader.position();
-                _ = try reader.readSInt32();
-                return .{ .payload = bytes[payload_start..reader.position()] };
-            }
-            return error.InvalidWireType;
-        }
-        try reader.skipValue(tag);
-    }
-    return null;
+    const segment = (try nextPackedVarintSegment(bytes, number)) orelse return null;
+    return .{ .payload = segment.payload, .remaining_fields = segment.remaining_fields, .field_number = number };
 }
 
 pub fn packedSInt64FieldIterator(bytes: []const u8, number: FieldNumber) Error!?PackedSInt64Iterator {
-    var reader = Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == number) {
-            if (tag.wire_type == .length_delimited) return .{ .payload = try reader.readBytes() };
-            if (tag.wire_type == .varint) {
-                const payload_start = reader.position();
-                _ = try reader.readSInt64();
-                return .{ .payload = bytes[payload_start..reader.position()] };
-            }
-            return error.InvalidWireType;
-        }
-        try reader.skipValue(tag);
-    }
-    return null;
+    const segment = (try nextPackedVarintSegment(bytes, number)) orelse return null;
+    return .{ .payload = segment.payload, .remaining_fields = segment.remaining_fields, .field_number = number };
 }
 
 pub fn bytesFieldView(bytes: []const u8, number: FieldNumber) Error!?[]const u8 {
@@ -1317,6 +1306,47 @@ test "wire appends and iterates varint packed payloads" {
 
     try std.testing.expect(packedBoolAllSingleByte(&.{ 0, 1, 2, 127 }));
     try std.testing.expect(!packedBoolAllSingleByte(&.{ 0, 0x80, 1 }));
+}
+
+test "packed varint iterators merge split packed and unpacked occurrences" {
+    const allocator = std.testing.allocator;
+
+    var first_payload = Writer.init(allocator);
+    defer first_payload.deinit();
+    try first_payload.writeVarint(1);
+    try first_payload.writeVarint(128);
+
+    var second_payload = Writer.init(allocator);
+    defer second_payload.deinit();
+    try second_payload.writeVarint(4097);
+    try second_payload.writeVarint(std.math.maxInt(u32));
+
+    var fields = Writer.init(allocator);
+    defer fields.deinit();
+    try fields.writeUInt32(9, 99);
+    try fields.writeBytes(1, first_payload.slice());
+    try fields.writeBytes(1, &.{});
+    try fields.writeUInt32(8, 88);
+    try fields.writeUInt32(1, 7);
+    try fields.writeBytes(1, second_payload.slice());
+
+    var it = (try packedUInt32FieldIterator(fields.slice(), 1)).?;
+    try std.testing.expectEqual(@as(u32, 1), (try it.next()).?);
+    try std.testing.expectEqual(@as(u32, 128), (try it.next()).?);
+    try std.testing.expectEqual(@as(u32, 7), (try it.next()).?);
+    try std.testing.expectEqual(@as(u32, 4097), (try it.next()).?);
+    try std.testing.expectEqual(@as(u32, std.math.maxInt(u32)), (try it.next()).?);
+    try std.testing.expect((try it.next()) == null);
+
+    // Errors in later occurrences must not be hidden merely because the first
+    // packed segment was valid.
+    var invalid_fields = Writer.init(allocator);
+    defer invalid_fields.deinit();
+    try invalid_fields.writeBytes(1, &.{1});
+    try invalid_fields.writeFixed32(1, 2);
+    var invalid_it = (try packedUInt32FieldIterator(invalid_fields.slice(), 1)).?;
+    try std.testing.expectEqual(@as(u32, 1), (try invalid_it.next()).?);
+    try std.testing.expectError(error.InvalidWireType, invalid_it.next());
 }
 
 test "wire 32-bit varint readers truncate non-canonical 64-bit payloads" {
