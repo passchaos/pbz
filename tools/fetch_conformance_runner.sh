@@ -32,10 +32,11 @@ if [ ! -x "$RUNNER" ]; then
     -Dprotobuf_BUILD_LIBPROTOC=ON \
     -Dprotobuf_INSTALL=OFF \
     -Dprotobuf_FORCE_FETCH_DEPENDENCIES="${PROTOBUF_FORCE_FETCH_DEPENDENCIES:-ON}" \
-    -Dprotobuf_LOCAL_DEPENDENCIES_ONLY=OFF
+    -Dprotobuf_LOCAL_DEPENDENCIES_ONLY=OFF \
+    1>&2
   fi
   echo "building conformance_test_runner" >&2
-  cmake --build "$BUILD_DIR" --target conformance_test_runner
+  cmake --build "$BUILD_DIR" --target conformance_test_runner 1>&2
 fi
 if [ ! -f "$DESC" ]; then
   PROTOC="$BUILD_DIR/protoc"

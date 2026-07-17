@@ -145,8 +145,11 @@ benchmark harness.
   `tools/fetch_conformance_runner.sh`, and `tools/run_conformance.sh` provide a
   conformance-test-runner-compatible subprocess executable, descriptor-set
   smoke test, reproducible fetch/build path for the upstream runner, and a
-  passing upstream conformance run: both Binary/JSON and TextFormat have zero
-  skips and zero unexpected failures.
+  passing upstream conformance run. The latest accepted upstream run is recorded
+  in `/tmp/pbz-upstream-conformance-fixed.log`: Binary/JSON reported `2808
+  successes, 0 skipped, 0 expected failures, 0 unexpected failures`, and
+  TextFormat reported `445 successes, 0 skipped, 0 expected failures, 0
+  unexpected failures`.
 - `src/dynamic.zig` and `src/wire.zig` tests cover dynamic decode recursion
   limits for nested length-delimited messages, maps, MessageSet payloads, and
   groups.
