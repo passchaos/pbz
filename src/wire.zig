@@ -319,9 +319,8 @@ pub const PackedSInt32Iterator = struct {
     remaining_fields: []const u8 = &.{},
     field_number: FieldNumber = 0,
 
-    pub fn next(self: *PackedSInt32Iterator) Error!?i32 {
-        const value = (try nextPackedVarint(self)) orelse return null;
-        return zigZagDecode32(@as(u32, @truncate(value)));
+    pub inline fn next(self: *PackedSInt32Iterator) Error!?i32 {
+        return try nextPackedSInt32(self);
     }
 };
 
@@ -374,6 +373,56 @@ inline fn nextPackedVarint(iterator: anytype) Error!?u64 {
         if (iterator.index < iterator.payload.len) {
             @branchHint(.likely);
             return try readVarintAt(iterator.payload, &iterator.index);
+        }
+
+        // A zero field number is the sentinel used by callers that construct an
+        // iterator directly over a raw packed payload. Such iterators retain
+        // the original one-segment behavior.
+        if (iterator.field_number == 0) return null;
+        const segment = (try nextPackedVarintSegment(iterator.remaining_fields, iterator.field_number)) orelse return null;
+        iterator.payload = segment.payload;
+        iterator.index = 0;
+        iterator.remaining_fields = segment.remaining_fields;
+    }
+}
+
+inline fn nextPackedSInt32(iterator: *PackedSInt32Iterator) Error!?i32 {
+    while (true) {
+        if (iterator.index < iterator.payload.len) {
+            @branchHint(.likely);
+            const start = iterator.index;
+            const payload = iterator.payload;
+            var index = start;
+
+            // SInt32-heavy payloads in generated code usually encode in one or
+            // two bytes after zig-zagging. Decode that common case in u32 form
+            // and fall back to the fully general varint reader only for longer
+            // or deliberately non-canonical encodings. Keeping the fallback
+            // preserves protobuf's accepted 64-bit varint truncation behavior
+            // for 32-bit scalar readers.
+            const first = payload[index];
+            index += 1;
+            var raw: u32 = first & 0x7f;
+            if (first < 0x80) {
+                iterator.index = index;
+                return zigZagDecode32(raw);
+            }
+
+            if (index >= payload.len) {
+                iterator.index = index;
+                return error.TruncatedInput;
+            }
+            const second = payload[index];
+            index += 1;
+            raw |= @as(u32, second & 0x7f) << 7;
+            if (second < 0x80) {
+                iterator.index = index;
+                return zigZagDecode32(raw);
+            }
+
+            iterator.index = start;
+            const value = try readVarintAt(payload, &iterator.index);
+            return zigZagDecode32(@as(u32, @truncate(value)));
         }
 
         // A zero field number is the sentinel used by callers that construct an
@@ -1334,14 +1383,26 @@ test "packed varint iterators merge split packed and unpacked occurrences" {
     try second_payload.writeVarint(4097);
     try second_payload.writeVarint(std.math.maxInt(u32));
 
+    var first_sint_payload = Writer.init(allocator);
+    defer first_sint_payload.deinit();
+    try first_sint_payload.writeVarint(zigZagEncode32(-3));
+    try first_sint_payload.writeVarint(zigZagEncode32(4));
+
+    var second_sint_payload = Writer.init(allocator);
+    defer second_sint_payload.deinit();
+    try second_sint_payload.writeVarint((@as(u64, 1) << 32) | 2);
+
     var fields = Writer.init(allocator);
     defer fields.deinit();
     try fields.writeUInt32(9, 99);
     try fields.writeBytes(1, first_payload.slice());
+    try fields.writeBytes(3, first_sint_payload.slice());
     try fields.writeBytes(1, &.{});
     try fields.writeUInt32(8, 88);
     try fields.writeUInt32(1, 7);
+    try fields.writeSInt32(3, -5);
     try fields.writeBytes(1, second_payload.slice());
+    try fields.writeBytes(3, second_sint_payload.slice());
 
     var it = (try packedUInt32FieldIterator(fields.slice(), 1)).?;
     try std.testing.expectEqual(@as(u32, 1), (try it.next()).?);
@@ -1350,6 +1411,13 @@ test "packed varint iterators merge split packed and unpacked occurrences" {
     try std.testing.expectEqual(@as(u32, 4097), (try it.next()).?);
     try std.testing.expectEqual(@as(u32, std.math.maxInt(u32)), (try it.next()).?);
     try std.testing.expect((try it.next()) == null);
+
+    var sint_it = (try packedSInt32FieldIterator(fields.slice(), 3)).?;
+    try std.testing.expectEqual(@as(i32, -3), (try sint_it.next()).?);
+    try std.testing.expectEqual(@as(i32, 4), (try sint_it.next()).?);
+    try std.testing.expectEqual(@as(i32, -5), (try sint_it.next()).?);
+    try std.testing.expectEqual(@as(i32, 1), (try sint_it.next()).?);
+    try std.testing.expect((try sint_it.next()) == null);
 
     // Errors in later occurrences must not be hidden merely because the first
     // packed segment was valid.
