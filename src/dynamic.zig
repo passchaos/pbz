@@ -304,14 +304,47 @@ pub const DynamicMessage = struct {
         try self.add(field, cloned);
     }
 
-    fn addPackedInt32(self: *DynamicMessage, field: *const schema.FieldDescriptor, payload: []const u8) (std.mem.Allocator.Error || wire.Error)!void {
+    fn addPackedVarintScalar(self: *DynamicMessage, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, payload: []const u8) (std.mem.Allocator.Error || wire.Error || error{TypeMismatch})!void {
+        switch (scalar) {
+            .int32, .int64, .uint32, .uint64, .sint32, .sint64, .bool => {},
+            else => return error.TypeMismatch,
+        }
+
+        // Packed fields are always repeated, so decoding can append directly to
+        // the destination FieldValue. That avoids routing every scalar through
+        // add(), whose singular/map/oneof bookkeeping is useful for public
+        // mutation but pure overhead for a validated packed payload.
         if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
         try entry.values.ensureUnusedCapacity(self.allocator, payload.len);
         var index: usize = 0;
-        while (index < payload.len) {
-            const raw = try wire.readVarintAt(payload, &index);
-            entry.values.appendAssumeCapacity(.{ .int32 = @truncate(@as(i64, @bitCast(raw))) });
+        switch (scalar) {
+            .int32 => while (index < payload.len) {
+                const raw = try wire.readVarintAt(payload, &index);
+                entry.values.appendAssumeCapacity(.{ .int32 = @truncate(@as(i64, @bitCast(raw))) });
+            },
+            .int64 => while (index < payload.len) {
+                const raw = try wire.readVarintAt(payload, &index);
+                entry.values.appendAssumeCapacity(.{ .int64 = @bitCast(raw) });
+            },
+            .uint32 => while (index < payload.len) {
+                const raw = try wire.readVarintAt(payload, &index);
+                entry.values.appendAssumeCapacity(.{ .uint32 = @as(u32, @truncate(raw)) });
+            },
+            .uint64 => while (index < payload.len) {
+                entry.values.appendAssumeCapacity(.{ .uint64 = try wire.readVarintAt(payload, &index) });
+            },
+            .sint32 => while (index < payload.len) {
+                const raw = try wire.readVarintAt(payload, &index);
+                entry.values.appendAssumeCapacity(.{ .sint32 = wire.zigZagDecode32(@as(u32, @truncate(raw))) });
+            },
+            .sint64 => while (index < payload.len) {
+                entry.values.appendAssumeCapacity(.{ .sint64 = wire.zigZagDecode64(try wire.readVarintAt(payload, &index)) });
+            },
+            .bool => while (index < payload.len) {
+                entry.values.appendAssumeCapacity(.{ .boolean = (try wire.readVarintAt(payload, &index)) != 0 });
+            },
+            else => unreachable,
         }
     }
 
@@ -821,17 +854,15 @@ pub const DynamicMessage = struct {
             // fields regardless of whether the schema currently emits packed
             // or expanded encoding. This is especially important across
             // proto2 options, proto3 defaults, and editions features.
-            if (tag.wire_type == .length_delimited and field.kind == .scalar and field.kind.scalar == .int32 and field.isPackable()) {
-                const payload = try reader.readBytes();
-                try self.addPackedInt32(field, payload);
-                continue;
-            }
             if (tag.wire_type == .length_delimited and field.kind == .scalar and field.isPackable()) {
                 if (fixedWidthPackedScalarSize(field.kind.scalar) != null) {
                     const payload = try reader.readBytes();
                     try self.addPackedFixedWidth(field, field.kind.scalar, payload);
                     continue;
                 }
+                const payload = try reader.readBytes();
+                try self.addPackedVarintScalar(field, field.kind.scalar, payload);
+                continue;
             }
             if (tag.wire_type == .length_delimited and field.isPackable()) {
                 const payload = try reader.readBytes();
@@ -2494,6 +2525,90 @@ test "dynamic editions honors repeated field encoding features and accepts packe
     try std.testing.expectEqual(@as(usize, 2), packed_decoded_from_expanded.get("values").?.values.items.len);
     try std.testing.expectEqual(@as(i32, 1), packed_decoded_from_expanded.get("values").?.values.items[0].int32);
     try std.testing.expectEqual(@as(i32, 2), packed_decoded_from_expanded.get("values").?.values.items[1].int32);
+}
+
+test "dynamic decode accepts packed varint scalar families" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Metrics {
+        \\  repeated uint32 u32s = 1;
+        \\  repeated uint64 u64s = 2;
+        \\  repeated sint32 s32s = 3;
+        \\  repeated sint64 s64s = 4;
+        \\  repeated bool flags = 5;
+        \\}
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Metrics").?;
+
+    var u32_payload = wire.Writer.init(allocator);
+    defer u32_payload.deinit();
+    try u32_payload.writeVarint(1);
+    try u32_payload.writeVarint(300);
+    try u32_payload.writeVarint(70_000);
+
+    var u64_payload = wire.Writer.init(allocator);
+    defer u64_payload.deinit();
+    try u64_payload.writeVarint(1);
+    try u64_payload.writeVarint(@as(u64, 1) << 40);
+
+    var s32_payload = wire.Writer.init(allocator);
+    defer s32_payload.deinit();
+    try s32_payload.writeVarint(wire.zigZagEncode32(-1));
+    try s32_payload.writeVarint(wire.zigZagEncode32(2));
+
+    var s64_payload = wire.Writer.init(allocator);
+    defer s64_payload.deinit();
+    try s64_payload.writeVarint(wire.zigZagEncode64(-9_000_000_000));
+    try s64_payload.writeVarint(wire.zigZagEncode64(12));
+
+    var flags_payload = wire.Writer.init(allocator);
+    defer flags_payload.deinit();
+    try flags_payload.writeVarint(0);
+    try flags_payload.writeVarint(1);
+    // Protobuf bool values are varints; any non-zero payload decodes as true.
+    try flags_payload.writeVarint(300);
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    try encoded.writeMessage(1, u32_payload.slice());
+    try encoded.writeMessage(2, u64_payload.slice());
+    try encoded.writeMessage(3, s32_payload.slice());
+    try encoded.writeMessage(4, s64_payload.slice());
+    try encoded.writeMessage(5, flags_payload.slice());
+
+    var decoded = DynamicMessage.init(allocator, desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, encoded.slice());
+
+    const u32s = decoded.get("u32s").?.values.items;
+    try std.testing.expectEqual(@as(usize, 3), u32s.len);
+    try std.testing.expectEqual(@as(u32, 1), u32s[0].uint32);
+    try std.testing.expectEqual(@as(u32, 300), u32s[1].uint32);
+    try std.testing.expectEqual(@as(u32, 70_000), u32s[2].uint32);
+
+    const u64s = decoded.get("u64s").?.values.items;
+    try std.testing.expectEqual(@as(usize, 2), u64s.len);
+    try std.testing.expectEqual(@as(u64, 1), u64s[0].uint64);
+    try std.testing.expectEqual(@as(u64, 1) << 40, u64s[1].uint64);
+
+    const s32s = decoded.get("s32s").?.values.items;
+    try std.testing.expectEqual(@as(usize, 2), s32s.len);
+    try std.testing.expectEqual(@as(i32, -1), s32s[0].sint32);
+    try std.testing.expectEqual(@as(i32, 2), s32s[1].sint32);
+
+    const s64s = decoded.get("s64s").?.values.items;
+    try std.testing.expectEqual(@as(usize, 2), s64s.len);
+    try std.testing.expectEqual(@as(i64, -9_000_000_000), s64s[0].sint64);
+    try std.testing.expectEqual(@as(i64, 12), s64s[1].sint64);
+
+    const flags = decoded.get("flags").?.values.items;
+    try std.testing.expectEqual(@as(usize, 3), flags.len);
+    try std.testing.expect(!flags[0].boolean);
+    try std.testing.expect(flags[1].boolean);
+    try std.testing.expect(flags[2].boolean);
 }
 
 test "dynamic implicit presence skips default values while explicit presence keeps them" {
