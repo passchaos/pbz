@@ -337,6 +337,114 @@ pub const DynamicMessage = struct {
         }
     }
 
+    fn addDecodedMapEntry(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
+        std.debug.assert(field.kind == .map);
+        std.debug.assert(value == .map_entry);
+
+        if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
+        var entry = try self.getOrCreateMutable(field);
+        try entry.values.append(self.allocator, value);
+    }
+
+    fn deduplicateDecodedMapFields(self: *DynamicMessage) std.mem.Allocator.Error!void {
+        for (self.fields.items) |*entry| {
+            if (entry.descriptor.kind == .map) try self.deduplicateDecodedMapField(entry);
+        }
+    }
+
+    fn deduplicateDecodedMapField(self: *DynamicMessage, entry: *FieldValue) std.mem.Allocator.Error!void {
+        if (entry.values.items.len < 2) return;
+        if (entry.values.items.len < 16) {
+            self.deduplicateDecodedMapFieldLinear(entry);
+            return;
+        }
+
+        // Map fields have last-wins semantics, but checking for an existing
+        // key on every decoded entry makes large maps quadratic. Decode now
+        // appends entries in wire order and performs one hash-assisted
+        // compaction pass here. The retained slot is the first occurrence of a
+        // key (matching the public add() ordering), while its payload is
+        // replaced by the last occurrence.
+        var retained_by_key: std.HashMapUnmanaged(Value, usize, MapKeyContext, std.hash_map.default_max_load_percentage) = .empty;
+        defer retained_by_key.deinit(self.allocator);
+        const expected_count: u32 = std.math.cast(u32, entry.values.items.len) orelse return error.OutOfMemory;
+        try retained_by_key.ensureTotalCapacityContext(self.allocator, expected_count, .{});
+
+        var write_index: usize = 0;
+        var read_index: usize = 0;
+        while (read_index < entry.values.items.len) : (read_index += 1) {
+            const value = entry.values.items[read_index];
+            if (value != .map_entry) {
+                if (write_index != read_index) {
+                    entry.values.items[write_index] = value;
+                    entry.values.items[read_index] = undefined;
+                }
+                write_index += 1;
+                continue;
+            }
+
+            const result = retained_by_key.getOrPutAssumeCapacityContext(value.map_entry.key, .{});
+            if (result.found_existing) {
+                const retained_index = result.value_ptr.*;
+                // For string keys the hash-table key is a borrowed slice into
+                // the retained map entry. Repoint it before destroying the old
+                // entry so later duplicate probes never read freed key bytes.
+                result.key_ptr.* = value.map_entry.key;
+                deinitValue(&entry.values.items[retained_index], self.allocator);
+                entry.values.items[retained_index] = value;
+                entry.values.items[read_index] = undefined;
+                continue;
+            }
+
+            result.value_ptr.* = write_index;
+            if (write_index != read_index) {
+                entry.values.items[write_index] = value;
+                entry.values.items[read_index] = undefined;
+            }
+            write_index += 1;
+        }
+        entry.values.items.len = write_index;
+    }
+
+    fn deduplicateDecodedMapFieldLinear(self: *DynamicMessage, entry: *FieldValue) void {
+        var write_index: usize = 0;
+        var read_index: usize = 0;
+        while (read_index < entry.values.items.len) : (read_index += 1) {
+            const value = entry.values.items[read_index];
+            if (value != .map_entry) {
+                if (write_index != read_index) {
+                    entry.values.items[write_index] = value;
+                    entry.values.items[read_index] = undefined;
+                }
+                write_index += 1;
+                continue;
+            }
+
+            var duplicate_index: ?usize = null;
+            var retained_index: usize = 0;
+            while (retained_index < write_index) : (retained_index += 1) {
+                const retained = entry.values.items[retained_index];
+                if (retained == .map_entry and valueEqual(retained.map_entry.key, value.map_entry.key)) {
+                    duplicate_index = retained_index;
+                    break;
+                }
+            }
+            if (duplicate_index) |index| {
+                deinitValue(&entry.values.items[index], self.allocator);
+                entry.values.items[index] = value;
+                entry.values.items[read_index] = undefined;
+                continue;
+            }
+
+            if (write_index != read_index) {
+                entry.values.items[write_index] = value;
+                entry.values.items[read_index] = undefined;
+            }
+            write_index += 1;
+        }
+        entry.values.items.len = write_index;
+    }
+
     pub fn mergeFrom(self: *DynamicMessage, other: *const DynamicMessage) std.mem.Allocator.Error!void {
         for (other.fields.items) |*entry| {
             for (entry.values.items) |value| try self.mergeFieldFrom(entry.descriptor, value);
@@ -606,12 +714,14 @@ pub const DynamicMessage = struct {
         self.clear();
         var reader = wire.Reader.init(bytes);
         try self.decodeStream(file, null, &reader, null);
+        try self.deduplicateDecodedMapFields();
     }
 
     pub fn decodeWithRegistry(self: *DynamicMessage, file: *const schema.FileDescriptor, registry: *const registry_mod.Registry, bytes: []const u8) DecodeError!void {
         self.clear();
         var reader = wire.Reader.init(bytes);
         try self.decodeStream(file, registry, &reader, null);
+        try self.deduplicateDecodedMapFields();
     }
 
     pub fn decodeInitialized(self: *DynamicMessage, file: *const schema.FileDescriptor, bytes: []const u8) (DecodeError || ValidationError)!void {
@@ -674,7 +784,7 @@ pub const DynamicMessage = struct {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                     continue;
                 };
-                self.addOwned(field, value) catch |err| {
+                self.addDecodedMapEntry(field, value) catch |err| {
                     deinitValue(&value, self.allocator);
                     return err;
                 };
@@ -862,6 +972,33 @@ pub const DynamicMessage = struct {
             deinitValue(&value, self.allocator);
             return err;
         };
+    }
+};
+
+const MapKeyContext = struct {
+    pub fn hash(_: MapKeyContext, key: Value) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(std.mem.asBytes(&std.meta.activeTag(key)));
+        switch (key) {
+            .boolean => |value| hasher.update(std.mem.asBytes(&value)),
+            .int32 => |value| hasher.update(std.mem.asBytes(&value)),
+            .int64 => |value| hasher.update(std.mem.asBytes(&value)),
+            .uint32 => |value| hasher.update(std.mem.asBytes(&value)),
+            .uint64 => |value| hasher.update(std.mem.asBytes(&value)),
+            .sint32 => |value| hasher.update(std.mem.asBytes(&value)),
+            .sint64 => |value| hasher.update(std.mem.asBytes(&value)),
+            .fixed32 => |value| hasher.update(std.mem.asBytes(&value)),
+            .fixed64 => |value| hasher.update(std.mem.asBytes(&value)),
+            .sfixed32 => |value| hasher.update(std.mem.asBytes(&value)),
+            .sfixed64 => |value| hasher.update(std.mem.asBytes(&value)),
+            .string => |bytes| hasher.update(bytes),
+            else => {},
+        }
+        return hasher.final();
+    }
+
+    pub fn eql(_: MapKeyContext, a: Value, b: Value) bool {
+        return valueEqual(a, b);
     }
 };
 
@@ -1228,6 +1365,7 @@ fn decodeMessagePayload(
     }
     const descriptor_file = messageDescriptorFile(file, registry, descriptor);
     try message.decodeStream(descriptor_file, registry, reader, null);
+    try message.deduplicateDecodedMapFields();
     return .{ .message = message };
 }
 
@@ -1351,6 +1489,7 @@ fn decodeGroupValue(
     try reader.enterRecursion();
     defer reader.leaveRecursion();
     try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
+    try message.deduplicateDecodedMapFields();
     return .{ .group = message };
 }
 
@@ -1376,6 +1515,7 @@ fn decodeDelimitedMessageValue(
     try reader.enterRecursion();
     defer reader.leaveRecursion();
     try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
+    try message.deduplicateDecodedMapFields();
     return .{ .message = message };
 }
 
@@ -2201,6 +2341,102 @@ test "dynamic map fields replace duplicate keys with last value" {
     const entry = decoded.get("counts").?.values.items[0].map_entry;
     try std.testing.expectEqualStrings("red", entry.key.string);
     try std.testing.expectEqual(@as(i32, 9), entry.value.int32);
+}
+
+test "dynamic decode batches duplicate map key replacement" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message M { map<string, int32> counts = 1; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var encoded = wire.Writer.init(allocator);
+    defer encoded.deinit();
+    inline for (.{
+        .{ "alpha", 1 },
+        .{ "beta", 2 },
+        .{ "gamma", 3 },
+        .{ "alpha", 4 },
+        .{ "delta", 5 },
+        .{ "beta", 6 },
+        .{ "epsilon", 7 },
+        .{ "zeta", 8 },
+        .{ "eta", 9 },
+        .{ "theta", 10 },
+        .{ "iota", 11 },
+        .{ "kappa", 12 },
+        .{ "lambda", 13 },
+        .{ "mu", 14 },
+        .{ "nu", 15 },
+        .{ "xi", 16 },
+        .{ "omicron", 17 },
+        .{ "alpha", 18 },
+    }) |item| {
+        var entry = wire.Writer.init(allocator);
+        defer entry.deinit();
+        try entry.writeString(1, item[0]);
+        try entry.writeInt32(2, item[1]);
+        try encoded.writeMessage(1, entry.slice());
+    }
+
+    var decoded = DynamicMessage.init(allocator, desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, encoded.slice());
+
+    const counts = decoded.get("counts").?;
+    try std.testing.expectEqual(@as(usize, 15), counts.values.items.len);
+
+    // The batched compactor keeps the first key's position stable, mirroring
+    // add(), but moves ownership to the last wire value for duplicate keys.
+    try std.testing.expectEqualStrings("alpha", counts.values.items[0].map_entry.key.string);
+    try std.testing.expectEqual(@as(i32, 18), counts.values.items[0].map_entry.value.int32);
+    try std.testing.expectEqualStrings("beta", counts.values.items[1].map_entry.key.string);
+    try std.testing.expectEqual(@as(i32, 6), counts.values.items[1].map_entry.value.int32);
+    try std.testing.expectEqualStrings("gamma", counts.values.items[2].map_entry.key.string);
+    try std.testing.expectEqual(@as(i32, 3), counts.values.items[2].map_entry.value.int32);
+}
+
+test "dynamic nested message decode deduplicates map keys" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Child { map<string, int32> counts = 1; }
+        \\message Parent { Child child = 1; }
+    ;
+    var file = try parser.Parser.parse(allocator, source);
+    defer file.deinit();
+    const parent_desc = file.findMessage("Parent").?;
+
+    var first_entry = wire.Writer.init(allocator);
+    defer first_entry.deinit();
+    try first_entry.writeString(1, "same");
+    try first_entry.writeInt32(2, 1);
+    var second_entry = wire.Writer.init(allocator);
+    defer second_entry.deinit();
+    try second_entry.writeString(1, "same");
+    try second_entry.writeInt32(2, 2);
+
+    var child_payload = wire.Writer.init(allocator);
+    defer child_payload.deinit();
+    try child_payload.writeMessage(1, first_entry.slice());
+    try child_payload.writeMessage(1, second_entry.slice());
+
+    var parent_payload = wire.Writer.init(allocator);
+    defer parent_payload.deinit();
+    try parent_payload.writeMessage(1, child_payload.slice());
+
+    var decoded = DynamicMessage.init(allocator, parent_desc);
+    defer decoded.deinit();
+    try decoded.decode(&file, parent_payload.slice());
+
+    const child = decoded.get("child").?.values.items[0].message;
+    const counts = child.get("counts").?;
+    try std.testing.expectEqual(@as(usize, 1), counts.values.items.len);
+    try std.testing.expectEqualStrings("same", counts.values.items[0].map_entry.key.string);
+    try std.testing.expectEqual(@as(i32, 2), counts.values.items[0].map_entry.value.int32);
 }
 
 test "dynamic editions honors repeated field encoding features and accepts packed compatibility" {
