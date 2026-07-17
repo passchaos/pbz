@@ -283,8 +283,8 @@ pub const PackedInt32Iterator = struct {
     remaining_fields: []const u8 = &.{},
     field_number: FieldNumber = 0,
 
-    pub fn next(self: *PackedInt32Iterator) Error!?i32 {
-        const value = (try nextPackedVarint(self)) orelse return null;
+    pub inline fn next(self: *PackedInt32Iterator) Error!?i32 {
+        const value = (try nextPackedVarint32Hot(self)) orelse return null;
         return @truncate(@as(i64, @bitCast(value)));
     }
 };
@@ -320,7 +320,8 @@ pub const PackedSInt32Iterator = struct {
     field_number: FieldNumber = 0,
 
     pub inline fn next(self: *PackedSInt32Iterator) Error!?i32 {
-        return try nextPackedSInt32(self);
+        const value = (try nextPackedVarint32Hot(self)) orelse return null;
+        return zigZagDecode32(@as(u32, @truncate(value)));
     }
 };
 
@@ -386,7 +387,7 @@ inline fn nextPackedVarint(iterator: anytype) Error!?u64 {
     }
 }
 
-inline fn nextPackedSInt32(iterator: *PackedSInt32Iterator) Error!?i32 {
+inline fn nextPackedVarint32Hot(iterator: anytype) Error!?u64 {
     while (true) {
         if (iterator.index < iterator.payload.len) {
             @branchHint(.likely);
@@ -394,10 +395,10 @@ inline fn nextPackedSInt32(iterator: *PackedSInt32Iterator) Error!?i32 {
             const payload = iterator.payload;
             var index = start;
 
-            // SInt32-heavy payloads in generated code usually encode in one or
-            // two bytes after zig-zagging. Decode that common case in u32 form
-            // and fall back to the fully general varint reader only for longer
-            // or deliberately non-canonical encodings. Keeping the fallback
+            // Int32/SInt32-heavy payloads in generated code usually encode in
+            // one or two bytes. Decode that common case in u32 form and fall
+            // back to the fully general varint reader only for longer or
+            // deliberately non-canonical encodings. Keeping the fallback
             // preserves protobuf's accepted 64-bit varint truncation behavior
             // for 32-bit scalar readers.
             const first = payload[index];
@@ -405,7 +406,7 @@ inline fn nextPackedSInt32(iterator: *PackedSInt32Iterator) Error!?i32 {
             var raw: u32 = first & 0x7f;
             if (first < 0x80) {
                 iterator.index = index;
-                return zigZagDecode32(raw);
+                return raw;
             }
 
             if (index >= payload.len) {
@@ -417,12 +418,11 @@ inline fn nextPackedSInt32(iterator: *PackedSInt32Iterator) Error!?i32 {
             raw |= @as(u32, second & 0x7f) << 7;
             if (second < 0x80) {
                 iterator.index = index;
-                return zigZagDecode32(raw);
+                return raw;
             }
 
             iterator.index = start;
-            const value = try readVarintAt(payload, &iterator.index);
-            return zigZagDecode32(@as(u32, @truncate(value)));
+            return try readVarintAt(payload, &iterator.index);
         }
 
         // A zero field number is the sentinel used by callers that construct an
