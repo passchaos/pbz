@@ -671,6 +671,12 @@ fn generatedPresenceMixDecode(ctx: GeneratedPresenceMixDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedPresenceMixDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.PresenceMix };
+fn generatedPresenceMixDecodeReuse(ctx: GeneratedPresenceMixDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const LargeBytesBorrowedViewCtx = struct { bytes: []const u8 };
 fn largeBytesBorrowedViewDecode(ctx: LargeBytesBorrowedViewCtx) !void {
     const payload = (try person_pb.demo.LargeBytes.payloadBytesView(ctx.bytes)) orelse return error.InvalidWireType;
@@ -2006,6 +2012,8 @@ pub fn main() !void {
     try reusable_presence_mix_writer.bytes.ensureTotalCapacity(allocator, generated_presence_mix_bytes.len);
     const generated_presence_mix_buffer = try allocator.alloc(u8, generated_presence_mix_bytes.len);
     defer allocator.free(generated_presence_mix_buffer);
+    var generated_presence_mix_decode_reuse = try generated_presence_mix.cloneOwned(allocator);
+    defer generated_presence_mix_decode_reuse.deinit(allocator);
     const generated_complex_bytes = try generated_complex.encode(allocator);
     defer allocator.free(generated_complex_bytes);
     var reusable_complex_writer = pbz.Writer.init(allocator);
@@ -2198,6 +2206,7 @@ pub fn main() !void {
         try runTimed(io, "generated presencemix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeIntoCtx{ .buffer = generated_presence_mix_buffer, .message = &generated_presence_mix }, generatedPresenceMixEncodeIntoReuse),
         try runTimed(io, "generated presencemix trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeIntoCtx{ .buffer = generated_presence_mix_buffer, .message = &generated_presence_mix }, generatedPresenceMixTrustedUtf8EncodeIntoReuse),
         try runTimed(io, "generated presencemix decode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes }, generatedPresenceMixDecode),
+        try runTimed(io, "generated presencemix decode reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeReuseCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes, .message = &generated_presence_mix_decode_reuse }, generatedPresenceMixDecodeReuse),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),

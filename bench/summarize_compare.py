@@ -178,7 +178,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "presencemix decode",
-        ("generated presencemix decode",),
+        ("generated presencemix decode", "generated presencemix decode reuse"),
         {
             "rust prost": ("prost presencemix decode",),
             "rust quick-protobuf": ("quick-protobuf presencemix decode",),
