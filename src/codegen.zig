@@ -6846,8 +6846,8 @@ fn writeDecodeKnownReuse(ctx: *const CodegenContext, message: *const schema.Mess
             continue;
         }
         switch (field.kind) {
-            .scalar => |scalar| try writeRawTagDecodeSingularScalarCase(ctx.file, field, scalar, writer, depth + 3),
-            .enumeration => try writeRawTagDecodeSingularEnumCase(ctx.file, field, writer, depth + 3),
+            .scalar => |scalar| try writeKnownReuseSingularScalarCase(ctx.file, field, scalar, writer, depth + 3),
+            .enumeration => try writeKnownReuseSingularEnumCase(ctx.file, field, writer, depth + 3),
             else => {},
         }
     }
@@ -6956,6 +6956,31 @@ fn writeKnownReuseRepeatedEnumCases(field: *const schema.FieldDescriptor, writer
     try writer.writeAll("},\n");
 }
 
+fn writeKnownReuseSingularScalarCase(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{ self.", .{rawFieldTag(field.number, .{ .scalar = scalar })});
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = ");
+    try writeKnownReuseSingularScalarDecodeExpr(scalar, "r.input", "r.index", writer);
+    try writer.writeAll(";");
+    if (scalar == .string and fieldUtf8Validation(file, field) == .verify) {
+        try writer.writeAll(" if (!pbz.validateUtf8(self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(")) return error.InvalidUtf8;");
+    }
+    try writeSetPresence(file, field, writer);
+    try writer.writeAll(" },\n");
+}
+
+fn writeKnownReuseSingularEnumCase(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{ const value = try pbz.wire.readInt32At(r.input, &r.index); self.", .{rawTagValue(field.number, .varint)});
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = value;");
+    try writeSetPresence(file, field, writer);
+    try writer.writeAll(" },\n");
+}
+
 fn writeKnownReuseRepeatedScalarPayload(field: *const schema.FieldDescriptor, scalar: schema.ScalarType, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     if (scalar == .bool) {
         try indent(writer, depth);
@@ -7036,6 +7061,25 @@ fn writeKnownReuseRepeatedScalarPayload(field: *const schema.FieldDescriptor, sc
     try writer.writeAll(" += 1;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn writeKnownReuseSingularScalarDecodeExpr(scalar: schema.ScalarType, input_expr: []const u8, index_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .double => try writer.print("@bitCast(try pbz.wire.readRawLittleAt(u64, {s}, &{s}))", .{ input_expr, index_expr }),
+        .float => try writer.print("@bitCast(try pbz.wire.readRawLittleAt(u32, {s}, &{s}))", .{ input_expr, index_expr }),
+        .int32 => try writer.print("try pbz.wire.readInt32At({s}, &{s})", .{ input_expr, index_expr }),
+        .int64 => try writer.print("@bitCast(try pbz.wire.readVarintAt({s}, &{s}))", .{ input_expr, index_expr }),
+        .uint32 => try writer.print("@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &{s})))", .{ input_expr, index_expr }),
+        .uint64 => try writer.print("try pbz.wire.readVarintAt({s}, &{s})", .{ input_expr, index_expr }),
+        .sint32 => try writer.print("try pbz.wire.readSInt32At({s}, &{s})", .{ input_expr, index_expr }),
+        .sint64 => try writer.print("pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt({s}, &{s}))", .{ input_expr, index_expr }),
+        .fixed32 => try writer.print("try pbz.wire.readRawLittleAt(u32, {s}, &{s})", .{ input_expr, index_expr }),
+        .fixed64 => try writer.print("try pbz.wire.readRawLittleAt(u64, {s}, &{s})", .{ input_expr, index_expr }),
+        .sfixed32 => try writer.print("@bitCast(try pbz.wire.readRawLittleAt(u32, {s}, &{s}))", .{ input_expr, index_expr }),
+        .sfixed64 => try writer.print("@bitCast(try pbz.wire.readRawLittleAt(u64, {s}, &{s}))", .{ input_expr, index_expr }),
+        .bool => try writer.print("(try pbz.wire.readVarintAt({s}, &{s})) != 0", .{ input_expr, index_expr }),
+        .string, .bytes => try writer.writeAll("try r.readBytes()"),
+    }
 }
 
 fn writeKnownReuseRepeatedScalarDecodeExpr(scalar: schema.ScalarType, payload_expr: []const u8, writer: *std.Io.Writer) Error!void {

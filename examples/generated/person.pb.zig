@@ -2391,18 +2391,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const first_tag_byte = try r.readByte();
                 const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
                 switch (raw_tag) {
-                    8 => { self.active = try r.readBool(); },
-                    16 => { self.count = try r.readUInt32(); },
-                    24 => { self.total = try r.readUInt64(); },
-                    32 => { self.delta = try r.readSInt32(); },
-                    40 => { self.big_delta = try r.readSInt64(); },
-                    53 => { self.checksum = try r.readFixed32(); },
-                    57 => { self.token = try r.readFixed64(); },
-                    69 => { self.signed_fixed = try r.readSFixed32(); },
-                    73 => { self.signed_big_fixed = try r.readSFixed64(); },
-                    85 => { self.ratio = try r.readFloat(); },
-                    89 => { self.score = try r.readDouble(); },
-                    96 => { const value = try r.readInt32(); self.kind = value; },
+                    8 => { self.active = (try pbz.wire.readVarintAt(r.input, &r.index)) != 0; },
+                    16 => { self.count = @as(u32, @truncate(try pbz.wire.readVarintAt(r.input, &r.index))); },
+                    24 => { self.total = try pbz.wire.readVarintAt(r.input, &r.index); },
+                    32 => { self.delta = try pbz.wire.readSInt32At(r.input, &r.index); },
+                    40 => { self.big_delta = pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt(r.input, &r.index)); },
+                    53 => { self.checksum = try pbz.wire.readRawLittleAt(u32, r.input, &r.index); },
+                    57 => { self.token = try pbz.wire.readRawLittleAt(u64, r.input, &r.index); },
+                    69 => { self.signed_fixed = @bitCast(try pbz.wire.readRawLittleAt(u32, r.input, &r.index)); },
+                    73 => { self.signed_big_fixed = @bitCast(try pbz.wire.readRawLittleAt(u64, r.input, &r.index)); },
+                    85 => { self.ratio = @bitCast(try pbz.wire.readRawLittleAt(u32, r.input, &r.index)); },
+                    89 => { self.score = @bitCast(try pbz.wire.readRawLittleAt(u64, r.input, &r.index)); },
+                    96 => { const value = try pbz.wire.readInt32At(r.input, &r.index); self.kind = value; },
                     106 => {
                         const payload = try r.readBytes();
                         for (payload) |byte| {

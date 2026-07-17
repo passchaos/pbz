@@ -1016,6 +1016,14 @@ pub inline fn readVarintAt(input: []const u8, index_ptr: *usize) Error!u64 {
     return error.MalformedVarint;
 }
 
+pub inline fn readRawLittleAt(comptime T: type, input: []const u8, index_ptr: *usize) Error!T {
+    const start = index_ptr.*;
+    if (start > input.len or input.len - start < @sizeOf(T)) return error.TruncatedInput;
+    const end = start + @sizeOf(T);
+    index_ptr.* = end;
+    return std.mem.readInt(T, input[start..][0..@sizeOf(T)], .little);
+}
+
 pub inline fn readInt32At(input: []const u8, index_ptr: *usize) Error!i32 {
     const start = index_ptr.*;
     var index = start;
