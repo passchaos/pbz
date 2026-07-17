@@ -996,6 +996,11 @@ fn generatedUInt64PackedDecodeReuse(ctx: GeneratedUInt64PackedDecodeReuseCtx) !v
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+fn generatedUInt64PackedKnownDecodeReuse(ctx: GeneratedUInt64PackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedUInt32PackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.UInt32Packed };
 fn generatedUInt32PackedEncode(ctx: GeneratedUInt32PackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -1019,6 +1024,11 @@ fn generatedUInt32PackedDecode(ctx: GeneratedUInt32PackedDecodeCtx) !void {
 const GeneratedUInt32PackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.UInt32Packed };
 fn generatedUInt32PackedDecodeReuse(ctx: GeneratedUInt32PackedDecodeReuseCtx) !void {
     try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+fn generatedUInt32PackedKnownDecodeReuse(ctx: GeneratedUInt32PackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
@@ -2016,7 +2026,7 @@ pub fn main() !void {
     defer allocator.free(generated_uint64_packed_bytes);
     const generated_uint64_packed_buffer = try allocator.alloc(u8, generated_uint64_packed_bytes.len);
     defer allocator.free(generated_uint64_packed_buffer);
-    var generated_uint64_packed_decode_reuse = person_pb.demo.UInt64Packed.init();
+    var generated_uint64_packed_decode_reuse = try generated_uint64_packed.cloneOwned(allocator);
     defer generated_uint64_packed_decode_reuse.deinit(allocator);
     const dynamic_uint64_packed_bytes = try dynamic_uint64_packed.encoded(&file);
     defer allocator.free(dynamic_uint64_packed_bytes);
@@ -2024,7 +2034,7 @@ pub fn main() !void {
     defer allocator.free(generated_uint32_packed_bytes);
     const generated_uint32_packed_buffer = try allocator.alloc(u8, generated_uint32_packed_bytes.len);
     defer allocator.free(generated_uint32_packed_buffer);
-    var generated_uint32_packed_decode_reuse = person_pb.demo.UInt32Packed.init();
+    var generated_uint32_packed_decode_reuse = try generated_uint32_packed.cloneOwned(allocator);
     defer generated_uint32_packed_decode_reuse.deinit(allocator);
     const dynamic_uint32_packed_bytes = try dynamic_uint32_packed.encoded(&file);
     defer allocator.free(dynamic_uint32_packed_bytes);
@@ -2207,6 +2217,7 @@ pub fn main() !void {
         try runTimed(io, "generated uint64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedEncodeIntoCtx{ .buffer = generated_uint64_packed_buffer, .message = &generated_uint64_packed }, generatedUInt64PackedEncodeIntoReuse),
         try runTimed(io, "generated uint64 packed decode", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_uint64_packed_bytes }, generatedUInt64PackedDecode),
         try runTimed(io, "generated uint64 packed decode reuse", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_uint64_packed_bytes, .message = &generated_uint64_packed_decode_reuse }, generatedUInt64PackedDecodeReuse),
+        try runTimed(io, "generated uint64 packed fast known-schema decode reuse", iters.packed_binary, generated_uint64_packed_bytes.len, GeneratedUInt64PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_uint64_packed_bytes, .message = &generated_uint64_packed_decode_reuse }, generatedUInt64PackedKnownDecodeReuse),
         try runTimed(io, "generated uint64 packed iterator decode", iters.packed_binary, generated_uint64_packed_bytes.len, UInt64PackedIteratorCtx{ .bytes = generated_uint64_packed_bytes }, uint64PackedIteratorDecode),
         try runTimed(io, "dynamic uint64 packed encode", iters.packed_binary, dynamic_uint64_packed_bytes.len, DynamicUInt64PackedEncodeCtx{ .message = &dynamic_uint64_packed, .file = &file }, dynamicUInt64PackedEncode),
         try runTimed(io, "dynamic uint64 packed decode", iters.packed_binary, dynamic_uint64_packed_bytes.len, DynamicUInt64PackedDecodeCtx{ .allocator = allocator, .descriptor = uint64_packed_desc, .file = &file, .bytes = dynamic_uint64_packed_bytes }, dynamicUInt64PackedDecode),
@@ -2214,6 +2225,7 @@ pub fn main() !void {
         try runTimed(io, "generated uint32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedEncodeIntoCtx{ .buffer = generated_uint32_packed_buffer, .message = &generated_uint32_packed }, generatedUInt32PackedEncodeIntoReuse),
         try runTimed(io, "generated uint32 packed decode", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedDecodeCtx{ .allocator = allocator, .bytes = generated_uint32_packed_bytes }, generatedUInt32PackedDecode),
         try runTimed(io, "generated uint32 packed decode reuse", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_uint32_packed_bytes, .message = &generated_uint32_packed_decode_reuse }, generatedUInt32PackedDecodeReuse),
+        try runTimed(io, "generated uint32 packed fast known-schema decode reuse", iters.packed_binary, generated_uint32_packed_bytes.len, GeneratedUInt32PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_uint32_packed_bytes, .message = &generated_uint32_packed_decode_reuse }, generatedUInt32PackedKnownDecodeReuse),
         try runTimed(io, "generated uint32 packed iterator decode", iters.packed_binary, generated_uint32_packed_bytes.len, UInt32PackedIteratorCtx{ .bytes = generated_uint32_packed_bytes }, uint32PackedIteratorDecode),
         try runTimed(io, "dynamic uint32 packed encode", iters.packed_binary, dynamic_uint32_packed_bytes.len, DynamicUInt32PackedEncodeCtx{ .message = &dynamic_uint32_packed, .file = &file }, dynamicUInt32PackedEncode),
         try runTimed(io, "dynamic uint32 packed decode", iters.packed_binary, dynamic_uint32_packed_bytes.len, DynamicUInt32PackedDecodeCtx{ .allocator = allocator, .descriptor = uint32_packed_desc, .file = &file, .bytes = dynamic_uint32_packed_bytes }, dynamicUInt32PackedDecode),
