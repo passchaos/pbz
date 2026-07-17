@@ -1208,10 +1208,7 @@ pub inline fn appendPackedInt32(allocator: std.mem.Allocator, list: *std.ArrayLi
     const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
     try list.ensureUnusedCapacity(allocator, required);
     var index: usize = 0;
-    while (index < payload.len) {
-        const value = try readVarintAt(payload, &index);
-        list.appendAssumeCapacity(@truncate(@as(i64, @bitCast(value))));
-    }
+    while (index < payload.len) list.appendAssumeCapacity(try readInt32At(payload, &index));
 }
 
 pub inline fn appendPackedInt64(allocator: std.mem.Allocator, list: *std.ArrayList(i64), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
