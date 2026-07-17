@@ -348,6 +348,26 @@ pub const DynamicMessage = struct {
         }
     }
 
+    fn addPackedEnum(self: *DynamicMessage, field: *const schema.FieldDescriptor, enumeration: *const schema.EnumDescriptor, closed: bool, payload: []const u8) DecodeError!void {
+        // Open enum payloads can be appended just like packed int32 values.
+        // Closed enums still need per-value validation, but the common known
+        // value path should not pay the public add() bookkeeping cost.
+        if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
+        var entry = try self.getOrCreateMutable(field);
+        try entry.values.ensureUnusedCapacity(self.allocator, payload.len);
+        var index: usize = 0;
+        while (index < payload.len) {
+            const value_start = index;
+            const raw = try wire.readVarintAt(payload, &index);
+            const value: i32 = @truncate(@as(i64, @bitCast(raw)));
+            if (closed and !enumHasNumber(enumeration, value)) {
+                try self.addUnknownVarintPayload(field.number, payload[value_start..index]);
+                continue;
+            }
+            entry.values.appendAssumeCapacity(.{ .enumeration = value });
+        }
+    }
+
     fn addPackedFixedWidth(self: *DynamicMessage, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, payload: []const u8) (std.mem.Allocator.Error || wire.Error || error{TypeMismatch})!void {
         const width = fixedWidthPackedScalarSize(scalar) orelse return error.TypeMismatch;
         if (payload.len % width != 0) return error.InvalidWireType;
@@ -827,17 +847,7 @@ pub const DynamicMessage = struct {
             if (registryEnumDescriptor(file, registry, self.descriptor, field.kind)) |enumeration| {
                 if (tag.wire_type == .length_delimited and field.cardinality == .repeated) {
                     const payload = try reader.readBytes();
-                    var packed_reader = wire.Reader.init(payload);
-                    while (!packed_reader.eof()) {
-                        const value_start = packed_reader.position();
-                        const value = try packed_reader.readInt32();
-                        const value_end = packed_reader.position();
-                        if (enumIsClosed(file, registry, enumeration) and !enumHasNumber(enumeration, value)) {
-                            try self.addUnknownVarintPayload(field.number, payload[value_start..value_end]);
-                        } else {
-                            try self.add(field, .{ .enumeration = value });
-                        }
-                    }
+                    try self.addPackedEnum(field, enumeration, enumIsClosed(file, registry, enumeration), payload);
                     continue;
                 }
                 if (tag.wire_type != .varint) return error.InvalidWireType;
@@ -4522,21 +4532,29 @@ test "dynamic open enums keep unknown numeric values" {
     var file = try parser.Parser.parse(allocator,
         \\syntax = "proto3";
         \\enum Kind { A = 0; B = 1; }
-        \\message M { Kind single = 1; repeated Kind many = 2; }
+        \\message M { Kind single = 1; repeated Kind many = 2; repeated Kind packed = 3; }
     );
     defer file.deinit();
     const desc = file.findMessage("M").?;
+
+    var packed_payload = wire.Writer.init(allocator);
+    defer packed_payload.deinit();
+    try packed_payload.writeVarint(123);
+    try packed_payload.writeVarint(1);
 
     var encoded = wire.Writer.init(allocator);
     defer encoded.deinit();
     try encoded.writeInt32(1, 123);
     try encoded.writeInt32(2, 123);
+    try encoded.writeBytes(3, packed_payload.slice());
 
     var msg = DynamicMessage.init(allocator, desc);
     defer msg.deinit();
     try msg.decode(&file, encoded.slice());
     try std.testing.expectEqual(@as(i32, 123), msg.get("single").?.values.items[0].enumeration);
     try std.testing.expectEqual(@as(i32, 123), msg.get("many").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 123), msg.get("packed").?.values.items[0].enumeration);
+    try std.testing.expectEqual(@as(i32, 1), msg.get("packed").?.values.items[1].enumeration);
     try std.testing.expectEqual(@as(usize, 0), msg.unknownCount());
 }
 
