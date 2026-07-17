@@ -1128,6 +1128,12 @@ fn generatedBoolPackedDecode(ctx: GeneratedBoolPackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedBoolPackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.BoolPacked };
+fn generatedBoolPackedKnownDecodeReuse(ctx: GeneratedBoolPackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedEnumPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.EnumPacked };
 fn generatedEnumPackedEncode(ctx: GeneratedEnumPackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -2050,6 +2056,8 @@ pub fn main() !void {
     defer allocator.free(generated_bool_packed_bytes);
     const generated_bool_packed_buffer = try allocator.alloc(u8, generated_bool_packed_bytes.len);
     defer allocator.free(generated_bool_packed_buffer);
+    var generated_bool_packed_decode_reuse = try generated_bool_packed.cloneOwned(allocator);
+    defer generated_bool_packed_decode_reuse.deinit(allocator);
     const dynamic_bool_packed_bytes = try dynamic_bool_packed.encoded(&file);
     defer allocator.free(dynamic_bool_packed_bytes);
     const generated_enum_packed_bytes = try generated_enum_packed.encode(allocator);
@@ -2234,6 +2242,7 @@ pub fn main() !void {
         try runTimed(io, "generated bool packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedEncodeIntoCtx{ .buffer = generated_bool_packed_buffer, .message = &generated_bool_packed }, generatedBoolPackedEncodeIntoReuse),
         try runTimed(io, "generated bool packed borrowed slices encode", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedSlicesCtx{ .message = &generated_bool_packed }, generatedBoolPackedBorrowedSlices),
         try runTimed(io, "generated bool packed decode", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedDecodeCtx{ .allocator = allocator, .bytes = generated_bool_packed_bytes }, generatedBoolPackedDecode),
+        try runTimed(io, "generated bool packed fast known-schema decode reuse", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_bool_packed_bytes, .message = &generated_bool_packed_decode_reuse }, generatedBoolPackedKnownDecodeReuse),
         try runTimed(io, "dynamic bool packed encode", iters.packed_binary, dynamic_bool_packed_bytes.len, DynamicBoolPackedEncodeCtx{ .message = &dynamic_bool_packed, .file = &file }, dynamicBoolPackedEncode),
         try runTimed(io, "dynamic bool packed decode", iters.packed_binary, dynamic_bool_packed_bytes.len, DynamicBoolPackedDecodeCtx{ .allocator = allocator, .descriptor = bool_packed_desc, .file = &file, .bytes = dynamic_bool_packed_bytes }, dynamicBoolPackedDecode),
         try runTimed(io, "generated enum packed encode", iters.packed_binary, generated_enum_packed_bytes.len, GeneratedEnumPackedEncodeCtx{ .allocator = allocator, .message = &generated_enum_packed }, generatedEnumPackedEncode),

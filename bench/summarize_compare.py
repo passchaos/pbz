@@ -683,7 +683,10 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed bool decode",
-        ("generated bool packed decode",),
+        (
+            "generated bool packed decode",
+            "generated bool packed fast known-schema decode reuse",
+        ),
         {
             "rust prost": ("prost bool packed decode",),
             "rust quick-protobuf": ("quick-protobuf bool packed decode",),
