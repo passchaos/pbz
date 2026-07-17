@@ -8687,7 +8687,7 @@ fn writeMapEntryEncodeUtf8Check(file: *const schema.FileDescriptor, field: *cons
 
 fn writeMapKeyLessExpr(scalar: schema.ScalarType, a: []const u8, b: []const u8, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
-        .string => try writer.print("std.mem.lessThan(u8, {s}, {s})", .{ a, b }),
+        .string => try writer.print("pbz.wire.bytesLessThan({s}, {s})", .{ a, b }),
         .bool => try writer.print("!{s} and {s}", .{ a, b }),
         .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("{s} < {s}", .{ a, b }),
         .double, .float, .bytes => try writer.writeAll("false"),
@@ -14612,7 +14612,7 @@ test "codegen emits map entry types and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeDeterministicIntoAssumeCapacity(self: @This(), allocator: std.mem.Allocator, buffer: []u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.sort(countsEntry, entries") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.lessThan(u8, a.key, b.key)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pbz.wire.bytesLessThan(a.key, b.key)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const insertion_sort_limit: usize = 32;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(countsEntry), 1));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var stack_entries: [stack_entry_count]countsEntry = undefined;") != null);

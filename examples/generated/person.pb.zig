@@ -479,7 +479,7 @@ pub const demo = struct {
                 const entries_already_sorted = sorted: {
                     var check_i: usize = 1;
                     while (check_i < entries.len) : (check_i += 1) {
-                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
                     break :sorted true;
                 };
@@ -489,11 +489,11 @@ pub const demo = struct {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
                 for (entries) |entry| {
@@ -547,7 +547,7 @@ pub const demo = struct {
                 const entries_already_sorted = sorted: {
                     var check_i: usize = 1;
                     while (check_i < entries.len) : (check_i += 1) {
-                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
                     break :sorted true;
                 };
@@ -557,11 +557,11 @@ pub const demo = struct {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
                 for (entries) |entry| {
@@ -24261,7 +24261,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const entries_already_sorted = sorted: {
                     var check_i: usize = 1;
                     while (check_i < entries.len) : (check_i += 1) {
-                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
                     break :sorted true;
                 };
@@ -24271,11 +24271,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
                 for (entries) |entry| {
@@ -24320,7 +24320,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const entries_already_sorted = sorted: {
                     var check_i: usize = 1;
                     while (check_i < entries.len) : (check_i += 1) {
-                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
                     break :sorted true;
                 };
@@ -24330,11 +24330,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
                 for (entries) |entry| {
@@ -25662,7 +25662,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const entries_already_sorted = sorted: {
                     var check_i: usize = 1;
                     while (check_i < entries.len) : (check_i += 1) {
-                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
                     break :sorted true;
                 };
@@ -25672,11 +25672,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
                 for (entries) |entry| {
@@ -25736,7 +25736,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const entries_already_sorted = sorted: {
                     var check_i: usize = 1;
                     while (check_i < entries.len) : (check_i += 1) {
-                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
                     break :sorted true;
                 };
@@ -25746,11 +25746,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
                 for (entries) |entry| {

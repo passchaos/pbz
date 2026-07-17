@@ -79,6 +79,25 @@ pub inline fn encodedVarintSize(value: u64) usize {
     return (@as(usize, 64 - @clz(value)) + 6) / 7;
 }
 
+pub inline fn bytesLessThan(lhs: []const u8, rhs: []const u8) bool {
+    const common_len = @min(lhs.len, rhs.len);
+    var i: usize = 0;
+    while (common_len - i >= @sizeOf(u64)) : (i += @sizeOf(u64)) {
+        // Reading a whole chunk as big-endian preserves lexicographic byte
+        // order: the first differing byte becomes the most-significant
+        // differing bits of the integer comparison. This keeps deterministic
+        // string-map sorting fast for common fixed-width keys while falling
+        // back to byte comparisons for the tail.
+        const lhs_word = std.mem.readInt(u64, lhs[i..][0..@sizeOf(u64)], .big);
+        const rhs_word = std.mem.readInt(u64, rhs[i..][0..@sizeOf(u64)], .big);
+        if (lhs_word != rhs_word) return lhs_word < rhs_word;
+    }
+    while (i < common_len) : (i += 1) {
+        if (lhs[i] != rhs[i]) return lhs[i] < rhs[i];
+    }
+    return lhs.len < rhs.len;
+}
+
 pub fn tagSize(number: FieldNumber, wire_type: WireType) Error!usize {
     return encodedVarintSize(try (Tag{ .number = number, .wire_type = wire_type }).encode());
 }
@@ -1370,6 +1389,28 @@ test "wire varint writer covers all encoded lengths" {
         var direct_index: usize = 0;
         writeVarintToSlice(&buffer, &direct_index, case.value);
         try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_index]);
+    }
+}
+
+test "wire byte less-than helper preserves lexicographic order" {
+    const cases = [_]struct {
+        lhs: []const u8,
+        rhs: []const u8,
+    }{
+        .{ .lhs = "", .rhs = "a" },
+        .{ .lhs = "abc", .rhs = "abc0" },
+        .{ .lhs = "abcd", .rhs = "abce" },
+        .{ .lhs = "key-0009", .rhs = "key-0010" },
+        .{ .lhs = "prefix-00000000-a", .rhs = "prefix-00000000-b" },
+        .{ .lhs = "short", .rhs = "shorter" },
+        .{ .lhs = "\x00\xff", .rhs = "\x01\x00" },
+    };
+
+    for (cases) |case| {
+        try std.testing.expect(bytesLessThan(case.lhs, case.rhs));
+        try std.testing.expectEqual(std.mem.lessThan(u8, case.lhs, case.rhs), bytesLessThan(case.lhs, case.rhs));
+        try std.testing.expectEqual(std.mem.lessThan(u8, case.rhs, case.lhs), bytesLessThan(case.rhs, case.lhs));
+        try std.testing.expect(!bytesLessThan(case.lhs, case.lhs));
     }
 }
 

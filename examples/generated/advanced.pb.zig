@@ -522,11 +522,11 @@ pub const demo = struct {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                     for (entries) |entry| {
                         if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -585,11 +585,11 @@ pub const demo = struct {
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
                             var sort_j = sort_i;
-                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                     for (entries) |entry| {
                         if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
