@@ -786,7 +786,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeDecode(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
-    if (messageCanDecodeReuseFast(message)) {
+    if (messageCanDecodeReuseFast(ctx, message)) {
         try writeDecodeReuse(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
         if (messageCanDecodeKnownReuse(ctx.file, message)) {
@@ -6690,14 +6690,15 @@ fn rawTagValue(number: u29, wire_type: wire.WireType) u64 {
     return (@as(u64, number) << 3) | @intFromEnum(wire_type);
 }
 
-fn messageCanDecodeReuseFast(message: *const schema.MessageDescriptor) bool {
-    if (message.oneofs.items.len != 0) return false;
+fn messageCanDecodeReuseFast(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
     for (message.fields.items) |field| {
         switch (field.kind) {
             .scalar => {},
             .enumeration => {},
             .map => {},
-            .message, .group => return false,
+            .message, .group => |name| {
+                if (!codegenCanReferenceMessageWithContext(ctx, name) and field.cardinality != .repeated and field.oneof_name == null) {}
+            },
         }
     }
     return true;
@@ -6756,9 +6757,10 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try indent(writer, depth + 1);
     try writer.writeAll("self._unknown_fields = &.{};\n");
     for (message.fields.items) |*field| try writeDecodeReuseClearMap(ctx, field, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeDecodeReuseClearOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
-    for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx.file, field, writer, depth + 1);
+    for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
     try indent(writer, depth + 1);
@@ -6819,7 +6821,7 @@ fn writeDecodeKnownReuse(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("self._unknown_fields = &.{};\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
-    for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx.file, field, writer, depth + 1);
+    for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     try indent(writer, depth + 1);
@@ -7069,6 +7071,12 @@ fn writeRepeatedReuseListDecl(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll(").fromOwnedSlice(@constCast(self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll("));\n");
+    if (typedRepeatedMessageFieldWithContext(ctx, field) != null) {
+        try indent(writer, depth);
+        try writer.writeAll("for (");
+        try writeQuotedIdentWithSuffix(field.name, "_list", writer);
+        try writer.writeAll(".items) |*item| item.deinit(allocator);\n");
+    }
     try indent(writer, depth);
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
     try writer.writeAll(".clearRetainingCapacity();\n");
@@ -7082,16 +7090,28 @@ fn writeRepeatedReuseListDecl(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll(".deinit(allocator);\n");
 }
 
-fn writeDecodeReuseResetField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeDecodeReuseResetField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (field.oneof_name != null) return;
     if (field.kind == .map) return;
     if (field.cardinality == .repeated) return;
+    if (typedSingularMessageFieldWithContext(ctx, field) != null) {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |*value| value.deinit(allocator);\n");
+        try indent(writer, depth);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = null;\n");
+        return;
+    }
     try indent(writer, depth);
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = ");
-    try writeFieldDefault(file, field.*, writer);
+    try writeFieldDefault(ctx.file, field.*, writer);
     try writer.writeAll(";\n");
-    if (hasPresence(file, field.*)) {
+    if (hasPresence(ctx.file, field.*)) {
         try indent(writer, depth);
         try writer.writeAll("self.");
         try writePresenceIdent(field.name, writer);
@@ -7111,6 +7131,41 @@ fn writeDecodeReuseClearMap(ctx: *const CodegenContext, field: *const schema.Fie
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".clearRetainingCapacity();\n");
+}
+
+fn writeDecodeReuseClearOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    var has_typed_message = false;
+    for (message.fields.items) |*field| {
+        const name = field.oneof_name orelse continue;
+        if (!std.mem.eql(u8, name, oneof.name)) continue;
+        if (typedOneofMessageFieldWithContext(ctx, field) != null) {
+            has_typed_message = true;
+            break;
+        }
+    }
+    if (has_typed_message) {
+        try indent(writer, depth);
+        try writer.writeAll("switch (self.");
+        try writeQuotedIdent(oneof.name, writer);
+        try writer.writeAll(") {\n");
+        for (message.fields.items) |*field| {
+            const name = field.oneof_name orelse continue;
+            if (!std.mem.eql(u8, name, oneof.name)) continue;
+            if (typedOneofMessageFieldWithContext(ctx, field) == null) continue;
+            try indent(writer, depth + 1);
+            try writer.writeAll(".");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(" => |*value| value.deinit(allocator),\n");
+        }
+        try indent(writer, depth + 1);
+        try writer.writeAll("else => {},\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(" = .none;\n");
 }
 
 fn messageHasRepeatedOrMap(message: *const schema.MessageDescriptor) bool {

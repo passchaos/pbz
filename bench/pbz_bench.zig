@@ -722,6 +722,12 @@ fn generatedComplexDecode(ctx: GeneratedComplexDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedComplexDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Complex };
+fn generatedComplexDecodeReuse(ctx: GeneratedComplexDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedComplexJsonStringifyCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.Complex };
 fn generatedComplexJsonStringify(ctx: GeneratedComplexJsonStringifyCtx) !void {
     const json = try ctx.message.jsonStringifyAlloc(ctx.allocator);
@@ -2007,6 +2013,8 @@ pub fn main() !void {
     try reusable_complex_writer.bytes.ensureTotalCapacity(allocator, generated_complex_bytes.len);
     const generated_complex_buffer = try allocator.alloc(u8, generated_complex_bytes.len);
     defer allocator.free(generated_complex_buffer);
+    var generated_complex_decode_reuse = try generated_complex.cloneOwned(allocator);
+    defer generated_complex_decode_reuse.deinit(allocator);
     const generated_complex_json = try generated_complex.jsonStringifyAlloc(allocator);
     defer allocator.free(generated_complex_json);
     const generated_complex_text = try generated_complex.formatTextAlloc(allocator);
@@ -2195,6 +2203,7 @@ pub fn main() !void {
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),
         try runTimed(io, "generated complex trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexManualEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexManualEncodeIntoReuse),
         try runTimed(io, "generated complex decode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeCtx{ .allocator = allocator, .bytes = generated_complex_bytes }, generatedComplexDecode),
+        try runTimed(io, "generated complex decode reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeReuseCtx{ .allocator = allocator, .bytes = generated_complex_bytes, .message = &generated_complex_decode_reuse }, generatedComplexDecodeReuse),
         try runTimed(io, "generated complex JSON stringify", iters.json, generated_complex_json.len, GeneratedComplexJsonStringifyCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexJsonStringify),
         try runTimed(io, "generated complex JSON parse", iters.json, generated_complex_json.len, GeneratedComplexJsonParseCtx{ .allocator = allocator, .json = generated_complex_json }, generatedComplexJsonParse),
         try runTimed(io, "generated complex TextFormat format", iters.text, generated_complex_text.len, GeneratedComplexTextFormatCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexTextFormat),

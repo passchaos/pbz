@@ -6190,6 +6190,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            switch (self.pick) {
+                .nested => |*value| value.deinit(allocator),
+                else => {},
+            }
+            self.pick = .none;
+            self._count = .none;
+            self._note = .none;
+            self._raw = .none;
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self.child) |*value| value.deinit(allocator);
+            self.child = null;
+            errdefer self.deinit(allocator);
+            var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
+            errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+            var r = pbz.Reader.init(bytes);
+            while (try r.nextTag()) |tag| {
+                switch (tag.number) {
+                    1 => self._count = .{ .count = try r.readInt32() },
+                    2 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._note = .{ .note = value }; },
+                    3 => self._raw = .{ .raw = try r.readBytes() },
+                    4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
+                    5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.pick = .{ .name = value }; },
+                    6 => self.pick = .{ .token = try r.readBytes() },
+                    7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.pick = .{ .nested = try Child.decodeFromReader(allocator, &payload_reader) }; },
+                    8 => self.pick = .{ .code = try r.readInt64() },
+                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                }
+            }
+            self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+        }
+
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var decoded = try @This().decode(allocator, bytes);
             defer decoded.deinit(allocator);
@@ -24880,6 +24915,60 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
             return self;
+        }
+
+        pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            var history_list: std.ArrayList(Audit) = std.ArrayList(Audit).fromOwnedSlice(@constCast(self.history));
+            for (history_list.items) |*item| item.deinit(allocator);
+            history_list.clearRetainingCapacity();
+            self.history = &.{};
+            errdefer history_list.deinit(allocator);
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
+            self.audits.clearRetainingCapacity();
+            switch (self.subject) {
+                .audit_subject => |*value| value.deinit(allocator),
+                else => {},
+            }
+            self.subject = .none;
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            self.id = 0;
+            if (self.audit) |*value| value.deinit(allocator);
+            self.audit = null;
+            errdefer self.deinit(allocator);
+            var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
+            errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+            var r = pbz.Reader.init(bytes);
+            while (try r.nextTag()) |tag| {
+                switch (tag.number) {
+                    1 => { self.id = try r.readInt32(); },
+                    2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
+                    3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try history_list.append(allocator, nested); },
+                    4 => {
+                        var entry = auditsEntry{};
+                        errdefer entry.value.deinit(allocator);
+                        const payload = try r.readBytes();
+                        var entry_reader = try r.nested(payload);
+                        const skip_entry = false;
+                        while (try entry_reader.nextTag()) |entry_tag| {
+                            switch (entry_tag.number) {
+                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
+                                2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
+                                else => try entry_reader.skipValue(entry_tag),
+                            }
+                        }
+                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                    },
+                    5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
+                    6 => self.subject = .{ .organization_id = try r.readBytes() },
+                    7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
+                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                }
+            }
+            self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
+            self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {

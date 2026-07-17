@@ -207,7 +207,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "complex decode",
-        ("generated complex decode",),
+        ("generated complex decode", "generated complex decode reuse"),
         {
             "rust prost": ("prost complex decode",),
             "rust quick-protobuf": ("quick-protobuf complex decode",),
