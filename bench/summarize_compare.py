@@ -583,7 +583,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed int64 decode",
-        ("generated int64 packed decode", "generated int64 packed iterator decode"),
+        (
+            "generated int64 packed decode",
+            "generated int64 packed fast known-schema decode reuse",
+            "generated int64 packed iterator decode",
+        ),
         {
             "rust prost": ("prost int64 packed decode",),
             "rust quick-protobuf": ("quick-protobuf int64 packed decode",),
@@ -645,7 +649,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed sint64 decode",
-        ("generated sint64 packed decode", "generated sint64 packed iterator decode"),
+        (
+            "generated sint64 packed decode",
+            "generated sint64 packed fast known-schema decode reuse",
+            "generated sint64 packed iterator decode",
+        ),
         {
             "rust prost": ("prost sint64 packed decode",),
             "rust quick-protobuf": ("quick-protobuf sint64 packed decode",),
