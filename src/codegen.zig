@@ -1063,9 +1063,11 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const normalized_text = try @This().textNormalizeSeparators(allocator, text);\n");
+    try writer.writeAll("const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(normalized_text);\n");
+    try writer.writeAll("const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer if (needs_normalized_text) allocator.free(normalized_text);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var lines = std.mem.splitScalar(u8, normalized_text, '\\n');\n");
     try indent(writer, depth + 1);
@@ -10905,6 +10907,47 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try out.toOwnedSlice(allocator);
         \\}
         \\
+        \\fn textNeedsSeparatorNormalization(text: []const u8) bool {
+        \\    var quote: ?u8 = null;
+        \\    var escaped = false;
+        \\    for (text, 0..) |c, index| {
+        \\        if (escaped) {
+        \\            escaped = false;
+        \\            continue;
+        \\        }
+        \\        if (quote) |q| {
+        \\            if (c == '\\') {
+        \\                escaped = true;
+        \\            } else if (c == q) {
+        \\                quote = null;
+        \\            }
+        \\            continue;
+        \\        }
+        \\        if (c == '"' or c == '\'') {
+        \\            quote = c;
+        \\        } else if (c == ';' or c == ',') {
+        \\            return true;
+        \\        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+        \\            return true;
+        \\        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+        \\            return true;
+        \\        }
+        \\    }
+        \\    return false;
+        \\}
+        \\
+        \\fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+        \\    var i = index + 1;
+        \\    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+        \\    return i >= text.len or text[i] == '\n';
+        \\}
+        \\
+        \\fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+        \\    var i = index;
+        \\    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+        \\    return i == 0 or text[i - 1] == '\n';
+        \\}
+        \\
         \\fn textCleanLine(raw_line: []const u8) []const u8 {
         \\    var end = raw_line.len;
         \\    var quote: ?u8 = null;
@@ -14388,7 +14431,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextInitializedWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const normalized_text = try @This().textNormalizeSeparators(allocator, text);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var lines = std.mem.splitScalar(u8, normalized_text, '\\n');") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }") != null);

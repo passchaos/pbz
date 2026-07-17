@@ -1053,6 +1053,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -1389,8 +1430,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer counts_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -2851,6 +2893,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -3190,8 +3273,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer ids_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -4118,6 +4202,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -4448,8 +4573,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer chunks_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -5192,6 +5318,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -5518,8 +5685,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer chunks_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -6608,6 +6776,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -6968,8 +7177,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -7676,6 +7886,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -8000,8 +8251,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-                defer allocator.free(normalized_text);
+                const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+                const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+                defer if (needs_normalized_text) allocator.free(normalized_text);
                 var lines = std.mem.splitScalar(u8, normalized_text, '\n');
                 while (lines.next()) |raw_line| {
                     const line = @This().textCleanLine(raw_line);
@@ -8761,6 +9013,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -9086,8 +9379,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -9844,6 +10138,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -10169,8 +10504,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -10919,6 +11255,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -11244,8 +11621,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -11994,6 +12372,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -12319,8 +12738,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -13069,6 +13489,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -13394,8 +13855,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -14144,6 +14606,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -14469,8 +14972,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -15219,6 +15723,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -15544,8 +16089,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -16300,6 +16846,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -16625,8 +17212,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -17381,6 +17969,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -17706,8 +18335,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -18462,6 +19092,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -18787,8 +19458,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -19543,6 +20215,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -19868,8 +20581,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -20624,6 +21338,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -20949,8 +21704,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -21683,6 +22439,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -22008,8 +22805,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -22763,6 +23561,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -23087,8 +23926,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -23880,6 +24720,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -24211,8 +25092,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer counts_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -25388,6 +26270,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -25748,8 +26671,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer for (audits_list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-            defer allocator.free(normalized_text);
+            const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+            const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+            defer if (needs_normalized_text) allocator.free(normalized_text);
             var lines = std.mem.splitScalar(u8, normalized_text, '\n');
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line);
@@ -26492,6 +27416,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -26816,8 +27781,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-                defer allocator.free(normalized_text);
+                const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+                const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+                defer if (needs_normalized_text) allocator.free(normalized_text);
                 var lines = std.mem.splitScalar(u8, normalized_text, '\n');
                 while (lines.next()) |raw_line| {
                     const line = @This().textCleanLine(raw_line);
