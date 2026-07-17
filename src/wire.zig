@@ -56,7 +56,7 @@ pub fn zigZagEncode32(value: i32) u32 {
     return @as(u32, @bitCast((value << 1) ^ (value >> 31)));
 }
 
-pub fn zigZagDecode32(value: u32) i32 {
+pub inline fn zigZagDecode32(value: u32) i32 {
     const half: i32 = @intCast(value >> 1);
     const sign: i32 = -@as(i32, @intCast(value & 1));
     return half ^ sign;
@@ -66,7 +66,7 @@ pub inline fn zigZagEncode64(value: i64) u64 {
     return @as(u64, @bitCast((value << 1) ^ (value >> 63)));
 }
 
-pub fn zigZagDecode64(value: u64) i64 {
+pub inline fn zigZagDecode64(value: u64) i64 {
     const half: i64 = @intCast(value >> 1);
     const sign: i64 = -@as(i64, @intCast(value & 1));
     return half ^ sign;
