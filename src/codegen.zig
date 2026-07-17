@@ -3820,7 +3820,7 @@ fn writeFastDirectVarintFieldPayload(prefix: []const u8, field_name: []const u8,
 fn writeFastDirectPackedScalarPayload(value_expr: []const u8, scalar: schema.ScalarType, writer: *std.Io.Writer) Error!void {
     switch (scalar) {
         .int32 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, {s}))));", .{value_expr}),
-        .int64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast({s})));", .{value_expr}),
+        .int64 => try writer.print("if ({s} < 0) pbz.wire.writeNegativeInt64VarintToSlice(buffer, &index, {s}) else pbz.wire.writeVarintToSlice(buffer, &index, @intCast({s}));", .{ value_expr, value_expr, value_expr }),
         .uint32, .uint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, {s});", .{value_expr}),
         .sint32 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32({s}));", .{value_expr}),
         .sint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode64({s}));", .{value_expr}),

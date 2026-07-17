@@ -18601,7 +18601,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
                 const packed_len_index = index; index += packed_len_reserved;
                 const payload_start = index;
-                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(item)));
+                for (self.values) |item| if (item < 0) pbz.wire.writeNegativeInt64VarintToSlice(buffer, &index, item) else pbz.wire.writeVarintToSlice(buffer, &index, @intCast(item));
                 const packed_len = index - payload_start;
                 const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
                 if (packed_len_size != packed_len_reserved) {
@@ -18621,7 +18621,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const packed_len_reserved = pbz.wire.encodedVarintSize(self.values.len * 10);
                 const packed_len_index = index; index += packed_len_reserved;
                 const payload_start = index;
-                for (self.values) |item| pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(item)));
+                for (self.values) |item| if (item < 0) pbz.wire.writeNegativeInt64VarintToSlice(buffer, &index, item) else pbz.wire.writeVarintToSlice(buffer, &index, @intCast(item));
                 const packed_len = index - payload_start;
                 const packed_len_size = pbz.wire.encodedVarintSize(packed_len);
                 if (packed_len_size != packed_len_reserved) {

@@ -217,6 +217,24 @@ pub inline fn writeVarintToSlice(buffer: []u8, index: *usize, value: u64) void {
     index.* += writeVarintToBuffer(buffer[index.*..], value);
 }
 
+pub inline fn writeNegativeInt64VarintToSlice(buffer: []u8, index: *usize, value: i64) void {
+    std.debug.assert(value < 0);
+
+    // Protobuf encodes negative int64 values as the full ten-byte varint of
+    // their two's-complement representation.  This is the same sequence as the
+    // generic writer, but specialized for callers that already know the value
+    // is negative so they can avoid repeated termination checks.
+    var v: u64 = @bitCast(value);
+    const start = index.*;
+    var out = buffer[start..][0..10];
+    inline for (0..9) |i| {
+        out[i] = @truncate(v | 0x80);
+        v >>= 7;
+    }
+    out[9] = @truncate(v);
+    index.* = start + 10;
+}
+
 pub inline fn writeRawLittleToSlice(comptime T: type, buffer: []u8, index: *usize, value: T) void {
     const start = index.*;
     index.* = start + @sizeOf(T);
@@ -1418,6 +1436,24 @@ test "wire varint writer covers all encoded lengths" {
         var direct_index: usize = 0;
         writeVarintToSlice(&buffer, &direct_index, case.value);
         try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_index]);
+    }
+}
+
+test "wire negative int64 varint writer matches canonical encoding" {
+    const cases = [_]i64{ -1, -2, -1234567, std.math.minInt(i64) };
+
+    for (cases) |value| {
+        var canonical: [10]u8 = undefined;
+        var canonical_index: usize = 0;
+        writeVarintToSlice(&canonical, &canonical_index, @bitCast(value));
+
+        var direct: [10]u8 = undefined;
+        var direct_index: usize = 0;
+        writeNegativeInt64VarintToSlice(&direct, &direct_index, value);
+
+        try std.testing.expectEqual(@as(usize, 10), canonical_index);
+        try std.testing.expectEqual(canonical_index, direct_index);
+        try std.testing.expectEqualSlices(u8, canonical[0..canonical_index], direct[0..direct_index]);
     }
 }
 
