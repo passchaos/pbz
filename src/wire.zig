@@ -620,11 +620,21 @@ pub const Writer = struct {
     }
 
     pub fn writeTag(self: *Writer, number: FieldNumber, wire_type: WireType) (std.mem.Allocator.Error || Error)!void {
-        try self.writeVarint(try (Tag{ .number = number, .wire_type = wire_type }).encode());
+        const raw = try (Tag{ .number = number, .wire_type = wire_type }).encode();
+        if (raw < 0x80) {
+            try self.appendByte(@intCast(raw));
+        } else {
+            try self.writeVarint(raw);
+        }
     }
 
     pub fn writeTagAssumeCapacity(self: *Writer, number: FieldNumber, wire_type: WireType) void {
-        self.writeVarintAssumeCapacity((@as(u64, number) << 3) | @intFromEnum(wire_type));
+        const raw = (@as(u64, number) << 3) | @intFromEnum(wire_type);
+        if (raw < 0x80) {
+            self.appendByteAssumeCapacity(@intCast(raw));
+        } else {
+            self.writeVarintAssumeCapacity(raw);
+        }
     }
 
     pub fn writeUInt32(self: *Writer, number: FieldNumber, value: u32) !void {
@@ -1390,6 +1400,21 @@ test "wire varint writer covers all encoded lengths" {
         writeVarintToSlice(&buffer, &direct_index, case.value);
         try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_index]);
     }
+}
+
+test "wire tag writers preserve single and multi-byte tags" {
+    var writer = Writer.init(std.testing.allocator);
+    defer writer.deinit();
+
+    try writer.writeTag(15, .fixed32);
+    try writer.writeTag(16, .varint);
+    try std.testing.expectEqualSlices(u8, &.{ 0x7d, 0x80, 0x01 }, writer.slice());
+
+    var buffer: [3]u8 = undefined;
+    var buffered = Writer.initBuffer(std.testing.allocator, &buffer);
+    buffered.writeTagAssumeCapacity(15, .fixed32);
+    buffered.writeTagAssumeCapacity(16, .varint);
+    try std.testing.expectEqualSlices(u8, writer.slice(), buffered.slice());
 }
 
 test "wire byte less-than helper preserves lexicographic order" {
