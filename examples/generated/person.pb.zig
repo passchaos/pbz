@@ -470,20 +470,31 @@ pub const demo = struct {
                 for (self.scores) |item| try w.writeVarint(@as(u64, @bitCast(@as(i64, item))));
             }
             if (self.counts.count() != 0) {
-                var stack_entries: [32]countsEntry = undefined;
+                const insertion_sort_limit: usize = 32;
+                const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(countsEntry), 1));
+                var stack_entries: [stack_entry_count]countsEntry = undefined;
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                if (use_stack_entries) {
-                    var sort_i: usize = 1;
-                    while (sort_i < entries.len) : (sort_i += 1) {
-                        const item = entries[sort_i];
-                        var sort_j = sort_i;
-                        while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                        entries[sort_j] = item;
+                const entries_already_sorted = sorted: {
+                    var check_i: usize = 1;
+                    while (check_i < entries.len) : (check_i += 1) {
+                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
-                } else {
-                    std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    break :sorted true;
+                };
+                if (!entries_already_sorted) {
+                    if (entries.len <= insertion_sort_limit) {
+                        var sort_i: usize = 1;
+                        while (sort_i < entries.len) : (sort_i += 1) {
+                            const item = entries[sort_i];
+                            var sort_j = sort_i;
+                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            entries[sort_j] = item;
+                        }
+                    } else {
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    }
                 }
                 for (entries) |entry| {
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -527,20 +538,31 @@ pub const demo = struct {
                 for (self.scores) |item| w.writeVarintAssumeCapacity(@as(u64, @bitCast(@as(i64, item))));
             }
             if (self.counts.count() != 0) {
-                var stack_entries: [32]countsEntry = undefined;
+                const insertion_sort_limit: usize = 32;
+                const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(countsEntry), 1));
+                var stack_entries: [stack_entry_count]countsEntry = undefined;
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                if (use_stack_entries) {
-                    var sort_i: usize = 1;
-                    while (sort_i < entries.len) : (sort_i += 1) {
-                        const item = entries[sort_i];
-                        var sort_j = sort_i;
-                        while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                        entries[sort_j] = item;
+                const entries_already_sorted = sorted: {
+                    var check_i: usize = 1;
+                    while (check_i < entries.len) : (check_i += 1) {
+                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
-                } else {
-                    std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    break :sorted true;
+                };
+                if (!entries_already_sorted) {
+                    if (entries.len <= insertion_sort_limit) {
+                        var sort_i: usize = 1;
+                        while (sort_i < entries.len) : (sort_i += 1) {
+                            const item = entries[sort_i];
+                            var sort_j = sort_i;
+                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            entries[sort_j] = item;
+                        }
+                    } else {
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    }
                 }
                 for (entries) |entry| {
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -24223,20 +24245,31 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.counts.count() != 0) {
-                var stack_entries: [32]countsEntry = undefined;
+                const insertion_sort_limit: usize = 32;
+                const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(countsEntry), 1));
+                var stack_entries: [stack_entry_count]countsEntry = undefined;
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                if (use_stack_entries) {
-                    var sort_i: usize = 1;
-                    while (sort_i < entries.len) : (sort_i += 1) {
-                        const item = entries[sort_i];
-                        var sort_j = sort_i;
-                        while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                        entries[sort_j] = item;
+                const entries_already_sorted = sorted: {
+                    var check_i: usize = 1;
+                    while (check_i < entries.len) : (check_i += 1) {
+                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
-                } else {
-                    std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    break :sorted true;
+                };
+                if (!entries_already_sorted) {
+                    if (entries.len <= insertion_sort_limit) {
+                        var sort_i: usize = 1;
+                        while (sort_i < entries.len) : (sort_i += 1) {
+                            const item = entries[sort_i];
+                            var sort_j = sort_i;
+                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            entries[sort_j] = item;
+                        }
+                    } else {
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    }
                 }
                 for (entries) |entry| {
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -24271,20 +24304,31 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
             if (self.counts.count() != 0) {
-                var stack_entries: [32]countsEntry = undefined;
+                const insertion_sort_limit: usize = 32;
+                const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(countsEntry), 1));
+                var stack_entries: [stack_entry_count]countsEntry = undefined;
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                if (use_stack_entries) {
-                    var sort_i: usize = 1;
-                    while (sort_i < entries.len) : (sort_i += 1) {
-                        const item = entries[sort_i];
-                        var sort_j = sort_i;
-                        while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                        entries[sort_j] = item;
+                const entries_already_sorted = sorted: {
+                    var check_i: usize = 1;
+                    while (check_i < entries.len) : (check_i += 1) {
+                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
-                } else {
-                    std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    break :sorted true;
+                };
+                if (!entries_already_sorted) {
+                    if (entries.len <= insertion_sort_limit) {
+                        var sort_i: usize = 1;
+                        while (sort_i < entries.len) : (sort_i += 1) {
+                            const item = entries[sort_i];
+                            var sort_j = sort_i;
+                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            entries[sort_j] = item;
+                        }
+                    } else {
+                        std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    }
                 }
                 for (entries) |entry| {
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -25602,20 +25646,31 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.audit) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
             for (self.history) |item| { const payload_len = item.encodedSize(); try w.writeTag(3, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
             if (self.audits.count() != 0) {
-                var stack_entries: [32]auditsEntry = undefined;
+                const insertion_sort_limit: usize = 32;
+                const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(auditsEntry), 1));
+                var stack_entries: [stack_entry_count]auditsEntry = undefined;
                 const use_stack_entries = self.audits.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                if (use_stack_entries) {
-                    var sort_i: usize = 1;
-                    while (sort_i < entries.len) : (sort_i += 1) {
-                        const item = entries[sort_i];
-                        var sort_j = sort_i;
-                        while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                        entries[sort_j] = item;
+                const entries_already_sorted = sorted: {
+                    var check_i: usize = 1;
+                    while (check_i < entries.len) : (check_i += 1) {
+                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
-                } else {
-                    std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    break :sorted true;
+                };
+                if (!entries_already_sorted) {
+                    if (entries.len <= insertion_sort_limit) {
+                        var sort_i: usize = 1;
+                        while (sort_i < entries.len) : (sort_i += 1) {
+                            const item = entries[sort_i];
+                            var sort_j = sort_i;
+                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            entries[sort_j] = item;
+                        }
+                    } else {
+                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    }
                 }
                 for (entries) |entry| {
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -25665,20 +25720,31 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.audit) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
             for (self.history) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(3, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
             if (self.audits.count() != 0) {
-                var stack_entries: [32]auditsEntry = undefined;
+                const insertion_sort_limit: usize = 32;
+                const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(auditsEntry), 1));
+                var stack_entries: [stack_entry_count]auditsEntry = undefined;
                 const use_stack_entries = self.audits.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                if (use_stack_entries) {
-                    var sort_i: usize = 1;
-                    while (sort_i < entries.len) : (sort_i += 1) {
-                        const item = entries[sort_i];
-                        var sort_j = sort_i;
-                        while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                        entries[sort_j] = item;
+                const entries_already_sorted = sorted: {
+                    var check_i: usize = 1;
+                    while (check_i < entries.len) : (check_i += 1) {
+                        if (std.mem.lessThan(u8, entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                     }
-                } else {
-                    std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    break :sorted true;
+                };
+                if (!entries_already_sorted) {
+                    if (entries.len <= insertion_sort_limit) {
+                        var sort_i: usize = 1;
+                        while (sort_i < entries.len) : (sort_i += 1) {
+                            const item = entries[sort_i];
+                            var sort_j = sort_i;
+                            while (sort_j > 0 and std.mem.lessThan(u8, item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                            entries[sort_j] = item;
+                        }
+                    } else {
+                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return std.mem.lessThan(u8, a.key, b.key); } }.lessThan);
+                    }
                 }
                 for (entries) |entry| {
                     if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
