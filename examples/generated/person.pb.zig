@@ -23270,10 +23270,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 switch (raw_tag) {
                     10 => {
                         const payload = try r.readBytes();
+                        if (pbz.wire.packedEnumAllSingleByte(payload)) {
+                            for (payload) |byte| {
+                                values_buffer[values_len] = @intCast(byte);
+                                values_len += 1;
+                            }
+                        } else {
                         var payload_index: usize = 0;
                         while (payload_index < payload.len) {
                             values_buffer[values_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))));
                             values_len += 1;
+                        }
                         }
                     },
                     8 => {

@@ -1096,6 +1096,10 @@ fn packedBoolAllSingleByte(payload: []const u8) bool {
     return true;
 }
 
+pub inline fn packedEnumAllSingleByte(payload: []const u8) bool {
+    return packedBoolAllSingleByte(payload);
+}
+
 pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     if (payload.len == 0) return;
     if (list.items.len == 0 and list.capacity == 0) {
