@@ -712,7 +712,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed enum decode",
-        ("generated enum packed decode", "generated enum packed decode reuse"),
+        (
+            "generated enum packed decode",
+            "generated enum packed decode reuse",
+            "generated enum packed fast known-schema decode reuse",
+        ),
         {
             "rust prost": ("prost enum packed decode",),
             "rust quick-protobuf": ("quick-protobuf enum packed decode",),

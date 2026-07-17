@@ -49,7 +49,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
   arrays
 - generated typed iterators for packed varint fields
 - generated known-schema decode reuse for trusted same-schema hot paths,
-  including packed repeated scalar messages with reusable destination storage
+  including packed repeated scalar and open-enum messages with reusable destination storage
 - JSON stringify/parse
 - TextFormat format/parse
 

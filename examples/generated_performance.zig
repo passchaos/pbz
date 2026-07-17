@@ -82,6 +82,20 @@ pub fn main() !void {
     try reusable_packed.decodeKnownReuse(allocator, packed_bytes);
     std.debug.assert(std.mem.eql(i32, reusable_packed.values, packed_msg.values));
 
+    var enum_packed = person_pb.demo.EnumPacked.init();
+    defer enum_packed.deinit(allocator);
+    enum_packed.values = try allocator.dupe(i32, &.{
+        person_pb.demo.BenchKind.BENCH_KIND_UNKNOWN.toInt(),
+        person_pb.demo.BenchKind.BENCH_KIND_ALPHA.toInt(),
+        person_pb.demo.BenchKind.BENCH_KIND_BETA.toInt(),
+    });
+    const enum_packed_bytes = try enum_packed.encode(allocator);
+    defer allocator.free(enum_packed_bytes);
+    var reusable_enum_packed = try enum_packed.cloneOwned(allocator);
+    defer reusable_enum_packed.deinit(allocator);
+    try reusable_enum_packed.decodeKnownReuse(allocator, enum_packed_bytes);
+    std.debug.assert(std.mem.eql(i32, reusable_enum_packed.values, enum_packed.values));
+
     // Known-schema decode reuse keeps previously allocated repeated buffers and
     // skips unknown-field preservation for trusted hot-loop payloads.
     var scalar = person_pb.demo.ScalarMix.init();

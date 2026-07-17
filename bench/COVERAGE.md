@@ -94,8 +94,8 @@ APIs:
 - `writeDeterministicToAssumeCapacity(allocator, writer)`
 - `decodeReuse(allocator, bytes)`
 - `decodeKnownReuse(allocator, bytes)` for trusted same-schema hot paths
-  including packed-only repeated scalar messages where the caller reuses a
-  correctly-sized destination buffer
+  including packed-only repeated scalar and open-enum messages where the caller
+  reuses a correctly-sized destination buffer
 - `*FieldView` / `*BytesView` / `*StringView` for length-delimited views
 - `*FieldSlices` / `*BytesSlices` / `*StringSlices` for borrowed
   length-delimited output

@@ -6709,8 +6709,11 @@ fn messageCanDecodeKnownReuse(file: *const schema.FileDescriptor, message: *cons
     for (message.fields.items) |field| {
         if (field.cardinality == .repeated) {
             has_repeated = true;
-            if (field.kind != .scalar) return false;
-            if (knownReuseRepeatedScalarSupported(field.kind.scalar) == false) return false;
+            switch (field.kind) {
+                .scalar => |scalar| if (knownReuseRepeatedScalarSupported(scalar) == false) return false,
+                .enumeration => |name| if (enumIsClosed(file, name)) return false,
+                else => return false,
+            }
             continue;
         }
         switch (field.kind) {
@@ -6818,7 +6821,11 @@ fn writeDecodeKnownReuse(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("switch (raw_tag) {\n");
     for (message.fields.items) |*field| {
         if (field.cardinality == .repeated) {
-            if (field.kind == .scalar) try writeKnownReuseRepeatedScalarCases(ctx.file, field, field.kind.scalar, writer, depth + 3);
+            switch (field.kind) {
+                .scalar => |scalar| try writeKnownReuseRepeatedScalarCases(ctx.file, field, scalar, writer, depth + 3),
+                .enumeration => try writeKnownReuseRepeatedEnumCases(field, writer, depth + 3),
+                else => {},
+            }
             continue;
         }
         switch (field.kind) {
@@ -6871,6 +6878,42 @@ fn writeKnownReuseRepeatedScalarCases(file: *const schema.FileDescriptor, field:
     try writer.writeAll("] = try r.");
     try writer.writeAll(scalarReaderName(scalar));
     try writer.writeAll("();\n");
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll(" += 1;\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+}
+
+fn writeKnownReuseRepeatedEnumCases(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .length_delimited)});
+    try indent(writer, depth + 1);
+    try writer.writeAll("const payload = try r.readBytes();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var payload_index: usize = 0;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("while (payload_index < payload.len) {\n");
+    try indent(writer, depth + 2);
+    try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+    try writer.writeAll("[");
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll("] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))));\n");
+    try indent(writer, depth + 2);
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll(" += 1;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
+
+    try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .varint)});
+    try indent(writer, depth + 1);
+    try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+    try writer.writeAll("[");
+    try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+    try writer.writeAll("] = try r.readInt32();\n");
     try indent(writer, depth + 1);
     try writeQuotedIdentWithSuffix(field.name, "_len", writer);
     try writer.writeAll(" += 1;\n");
@@ -14065,14 +14108,16 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
-test "codegen emits known-schema decode reuse for packed-only scalar messages" {
+test "codegen emits known-schema decode reuse for packed-only scalar and enum messages" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
+        \\enum Kind { UNKNOWN = 0; HOT = 1; }
         \\message M {
         \\  bool active = 1;
         \\  repeated int32 ids = 2;
         \\  repeated sint32 deltas = 3;
+        \\  repeated Kind kinds = 4;
         \\}
     );
     defer file.deinit();
@@ -14085,8 +14130,11 @@ test "codegen emits known-schema decode reuse for packed-only scalar messages" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const deltas_buffer = @constCast(self.deltas);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "ids_buffer[ids_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "deltas_buffer[deltas_len] = pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const kinds_buffer = @constCast(self.kinds);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "kinds_buffer[kinds_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (ids_len != ids_buffer.len) return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (deltas_len != deltas_buffer.len) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (kinds_len != kinds_buffer.len) return error.InvalidWireType;") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

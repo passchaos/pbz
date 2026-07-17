@@ -1154,6 +1154,11 @@ fn generatedEnumPackedDecodeReuse(ctx: GeneratedEnumPackedDecodeReuseCtx) !void 
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+fn generatedEnumPackedKnownDecodeReuse(ctx: GeneratedEnumPackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedLargeMapEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.LargeMap };
 fn generatedLargeMapEncode(ctx: GeneratedLargeMapEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -2051,7 +2056,7 @@ pub fn main() !void {
     defer allocator.free(generated_enum_packed_bytes);
     const generated_enum_packed_buffer = try allocator.alloc(u8, generated_enum_packed_bytes.len);
     defer allocator.free(generated_enum_packed_buffer);
-    var generated_enum_packed_decode_reuse = person_pb.demo.EnumPacked.init();
+    var generated_enum_packed_decode_reuse = try generated_enum_packed.cloneOwned(allocator);
     defer generated_enum_packed_decode_reuse.deinit(allocator);
     const dynamic_enum_packed_bytes = try dynamic_enum_packed.encoded(&file);
     defer allocator.free(dynamic_enum_packed_bytes);
@@ -2235,6 +2240,7 @@ pub fn main() !void {
         try runTimed(io, "generated enum packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_enum_packed_bytes.len, GeneratedEnumPackedEncodeIntoCtx{ .buffer = generated_enum_packed_buffer, .message = &generated_enum_packed }, generatedEnumPackedEncodeIntoReuse),
         try runTimed(io, "generated enum packed decode", iters.packed_binary, generated_enum_packed_bytes.len, GeneratedEnumPackedDecodeCtx{ .allocator = allocator, .bytes = generated_enum_packed_bytes }, generatedEnumPackedDecode),
         try runTimed(io, "generated enum packed decode reuse", iters.packed_binary, generated_enum_packed_bytes.len, GeneratedEnumPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_enum_packed_bytes, .message = &generated_enum_packed_decode_reuse }, generatedEnumPackedDecodeReuse),
+        try runTimed(io, "generated enum packed fast known-schema decode reuse", iters.packed_binary, generated_enum_packed_bytes.len, GeneratedEnumPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_enum_packed_bytes, .message = &generated_enum_packed_decode_reuse }, generatedEnumPackedKnownDecodeReuse),
         try runTimed(io, "dynamic enum packed encode", iters.packed_binary, dynamic_enum_packed_bytes.len, DynamicEnumPackedEncodeCtx{ .message = &dynamic_enum_packed, .file = &file }, dynamicEnumPackedEncode),
         try runTimed(io, "dynamic enum packed decode", iters.packed_binary, dynamic_enum_packed_bytes.len, DynamicEnumPackedDecodeCtx{ .allocator = allocator, .descriptor = enum_packed_desc, .file = &file, .bytes = dynamic_enum_packed_bytes }, dynamicEnumPackedDecode),
         try runTimed(io, "generated large map encode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapEncodeCtx{ .allocator = allocator, .message = &generated_large_map }, generatedLargeMapEncode),
