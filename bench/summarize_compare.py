@@ -658,6 +658,7 @@ WORKLOADS: tuple[Workload, ...] = (
         (
             "generated bool packed encode",
             "generated bool packed encodeIntoAssumeCapacity buffer reuse",
+            "generated bool packed borrowed slices encode",
         ),
         {
             "rust prost": ("prost bool packed encode",),

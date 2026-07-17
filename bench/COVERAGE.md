@@ -103,6 +103,7 @@ APIs:
   fixed-width packed zero-copy views
 - `valuesPackedFixedSlices(header, values)` / `valuesPackedFixed32Slices(...)`
   for borrowed fixed-width packed output
+- `valuesPackedBoolSlices(header, values)` for borrowed packed bool output
 - `valuesPackedIterator(bytes)` for zero-allocation varint scans across every
   packed or unpacked occurrence of the repeated field
 

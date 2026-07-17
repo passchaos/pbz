@@ -45,6 +45,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - packed `uint32` / `uint64` / `int64` / `sint32` / `sint64` varint, `bool`, and enum encode/decode
 - generated zero-copy borrowed payload views for packed fixed-width fields when
   the caller only needs to inspect the wire buffer
+- generated borrowed packed bool slices for copy-free output of trusted bool
+  arrays
 - generated typed iterators for packed varint fields
 - generated known-schema decode reuse for trusted same-schema hot paths,
   including packed repeated scalar messages with reusable destination storage

@@ -229,6 +229,14 @@ pub fn packedFixed32FieldSlices(header: *[20]u8, number: FieldNumber, values: []
     return try packedFixedWidthFieldSlices(u32, header, number, values);
 }
 
+pub fn packedBoolFieldSlices(header: *[20]u8, number: FieldNumber, values: []const bool) Error!BorrowedFieldSlices {
+    // Zig stores bool slices as one byte per element, and pbz's normal packed
+    // bool encoder already emits that byte representation. Exposing the same
+    // header+payload split lets callers feed trusted generated values to vectored
+    // I/O without copying the payload into a temporary writer first.
+    return try lengthDelimitedFieldSlices(header, number, std.mem.sliceAsBytes(values));
+}
+
 pub fn packedFixedWidthView(comptime T: type, payload: []const u8) Error![]align(1) const T {
     if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
         @compileError("packedFixedWidthView requires u32, i32, f32, u64, i64, or f64");
@@ -1217,6 +1225,11 @@ test "wire exposes borrowed packed fixed32 view" {
     defer packed_writer.deinit();
     try writePackedFixedWidthPayload(u64, &packed_writer, &.{ 1, 0x0102030405060708 });
     try std.testing.expectEqualSlices(u8, &.{ 1, 0, 0, 0, 0, 0, 0, 0, 8, 7, 6, 5, 4, 3, 2, 1 }, packed_writer.slice());
+
+    const bool_values = [_]bool{ true, false, true };
+    const bool_slices = try packedBoolFieldSlices(&header, 2, &bool_values);
+    try std.testing.expectEqualSlices(u8, &.{ 0x12, 0x03 }, bool_slices.header);
+    try std.testing.expectEqual(@intFromPtr(std.mem.sliceAsBytes(&bool_values).ptr), @intFromPtr(bool_slices.payload.ptr));
 }
 
 test "wire appends fixed-width packed payloads in bulk" {

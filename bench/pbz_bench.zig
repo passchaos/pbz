@@ -1101,6 +1101,14 @@ fn generatedBoolPackedEncodeIntoReuse(ctx: GeneratedBoolPackedEncodeIntoCtx) !vo
     std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
+const GeneratedBoolPackedSlicesCtx = struct { message: *const person_pb.demo.BoolPacked };
+fn generatedBoolPackedBorrowedSlices(ctx: GeneratedBoolPackedSlicesCtx) !void {
+    var header: [20]u8 = undefined;
+    const slices = try person_pb.demo.BoolPacked.valuesPackedBoolSlices(&header, ctx.message.values);
+    std.mem.doNotOptimizeAway(slices.header.ptr);
+    std.mem.doNotOptimizeAway(slices.payload.ptr);
+}
+
 const GeneratedBoolPackedDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedBoolPackedDecode(ctx: GeneratedBoolPackedDecodeCtx) !void {
     var decoded = try person_pb.demo.BoolPacked.decode(ctx.allocator, ctx.bytes);
@@ -2192,6 +2200,7 @@ pub fn main() !void {
         try runTimed(io, "dynamic sint64 packed decode", iters.packed_binary, dynamic_sint64_packed_bytes.len, DynamicSInt64PackedDecodeCtx{ .allocator = allocator, .descriptor = sint64_packed_desc, .file = &file, .bytes = dynamic_sint64_packed_bytes }, dynamicSInt64PackedDecode),
         try runTimed(io, "generated bool packed encode", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedEncodeCtx{ .allocator = allocator, .message = &generated_bool_packed }, generatedBoolPackedEncode),
         try runTimed(io, "generated bool packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedEncodeIntoCtx{ .buffer = generated_bool_packed_buffer, .message = &generated_bool_packed }, generatedBoolPackedEncodeIntoReuse),
+        try runTimed(io, "generated bool packed borrowed slices encode", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedSlicesCtx{ .message = &generated_bool_packed }, generatedBoolPackedBorrowedSlices),
         try runTimed(io, "generated bool packed decode", iters.packed_binary, generated_bool_packed_bytes.len, GeneratedBoolPackedDecodeCtx{ .allocator = allocator, .bytes = generated_bool_packed_bytes }, generatedBoolPackedDecode),
         try runTimed(io, "dynamic bool packed encode", iters.packed_binary, dynamic_bool_packed_bytes.len, DynamicBoolPackedEncodeCtx{ .message = &dynamic_bool_packed, .file = &file }, dynamicBoolPackedEncode),
         try runTimed(io, "dynamic bool packed decode", iters.packed_binary, dynamic_bool_packed_bytes.len, DynamicBoolPackedDecodeCtx{ .allocator = allocator, .descriptor = bool_packed_desc, .file = &file, .bytes = dynamic_bool_packed_bytes }, dynamicBoolPackedDecode),

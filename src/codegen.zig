@@ -4597,6 +4597,10 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
         }
         if (field.cardinality != .repeated) continue;
         if (!field.resolvedPacked(file)) continue;
+        if (field.kind.scalar == .bool) {
+            try writePackedBoolSlicesMethod(field, writer, depth);
+            continue;
+        }
         if (packedVarintIteratorType(field.kind.scalar)) |iterator_type| {
             try writePackedVarintIteratorMethod(field, iterator_type, writer, depth);
             continue;
@@ -4650,6 +4654,17 @@ fn writeBorrowedViewMethods(file: *const schema.FileDescriptor, message: *const 
             try writer.writeAll("}\n\n");
         }
     }
+}
+
+fn writePackedBoolSlicesMethod(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("pub fn ");
+    try writeQuotedIdentWithSuffix(field.name, "PackedBoolSlices", writer);
+    try writer.writeAll("(header: *[20]u8, values: []const bool) !pbz.wire.BorrowedFieldSlices {\n");
+    try indent(writer, depth + 1);
+    try writer.print("return try pbz.wire.packedBoolFieldSlices(header, {d}, values);\n", .{field.number});
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writePackedVarintIteratorMethod(field: *const schema.FieldDescriptor, iterator_type: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -14306,6 +14321,25 @@ test "codegen emits packed fixed-width borrowed field helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldView(u64, bytes, 2);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn big_valuesPackedFixedSlices(header: *[20]u8, values: []const u64) !pbz.wire.BorrowedFieldSlices") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedFixedWidthFieldSlices(u64, header, 2, values);") != null);
+}
+
+test "codegen emits borrowed packed bool slices helper" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { repeated bool values = 1; }
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn valuesPackedBoolSlices(header: *[20]u8, values: []const bool) !pbz.wire.BorrowedFieldSlices") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedBoolFieldSlices(header, 1, values);") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
 test "codegen emits map duplicate-key last-wins helpers" {

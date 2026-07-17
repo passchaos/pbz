@@ -1835,6 +1835,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = &.{};
         }
 
+        pub fn flagsPackedBoolSlices(header: *[20]u8, values: []const bool) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.packedBoolFieldSlices(header, 13, values);
+        }
+
         pub fn idsPackedIterator(bytes: []const u8) !?pbz.wire.PackedUInt64Iterator {
             return try pbz.wire.packedUInt64FieldIterator(bytes, 14);
         }
@@ -20800,6 +20804,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self._unknown_fields) |raw| allocator.free(raw);
             if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
             self._unknown_fields = &.{};
+        }
+
+        pub fn valuesPackedBoolSlices(header: *[20]u8, values: []const bool) !pbz.wire.BorrowedFieldSlices {
+            return try pbz.wire.packedBoolFieldSlices(header, 1, values);
         }
 
 

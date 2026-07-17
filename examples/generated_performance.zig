@@ -56,6 +56,13 @@ pub fn main() !void {
     const fixed_slices = try person_pb.demo.SFixedPacked.valuesPackedFixedSlices(&fixed_header, fixed.values);
     std.debug.assert(std.mem.eql(u8, fixed_slices.payload, std.mem.sliceAsBytes(fixed.values)));
 
+    var bools = person_pb.demo.BoolPacked.init();
+    defer bools.deinit(allocator);
+    bools.values = try allocator.dupe(bool, &.{ true, false, true });
+    var bool_header: [20]u8 = undefined;
+    const bool_slices = try person_pb.demo.BoolPacked.valuesPackedBoolSlices(&bool_header, bools.values);
+    std.debug.assert(std.mem.eql(u8, bool_slices.payload, std.mem.sliceAsBytes(bools.values)));
+
     // Packed varint fields expose typed iterators for no-allocation scans.
     var packed_msg = person_pb.demo.Packed.init();
     defer packed_msg.deinit(allocator);
