@@ -761,13 +761,21 @@ pub const Writer = struct {
 
     pub fn writeBytes(self: *Writer, number: FieldNumber, value: []const u8) !void {
         try self.writeTag(number, .length_delimited);
-        try self.writeVarint(value.len);
+        if (value.len < 0x80) {
+            try self.appendByte(@intCast(value.len));
+        } else {
+            try self.writeVarint(value.len);
+        }
         try self.appendSlice(value);
     }
 
     pub fn writeBytesAssumeCapacity(self: *Writer, number: FieldNumber, value: []const u8) void {
         self.writeTagAssumeCapacity(number, .length_delimited);
-        self.writeVarintAssumeCapacity(value.len);
+        if (value.len < 0x80) {
+            self.appendByteAssumeCapacity(@intCast(value.len));
+        } else {
+            self.writeVarintAssumeCapacity(value.len);
+        }
         self.appendSliceAssumeCapacity(value);
     }
 
@@ -1415,6 +1423,29 @@ test "wire tag writers preserve single and multi-byte tags" {
     buffered.writeTagAssumeCapacity(15, .fixed32);
     buffered.writeTagAssumeCapacity(16, .varint);
     try std.testing.expectEqualSlices(u8, writer.slice(), buffered.slice());
+}
+
+test "wire bytes writers preserve short and multi-byte lengths" {
+    var small_writer = Writer.init(std.testing.allocator);
+    defer small_writer.deinit();
+    try small_writer.writeBytes(1, "abc");
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x03, 'a', 'b', 'c' }, small_writer.slice());
+
+    var payload: [128]u8 = undefined;
+    for (&payload, 0..) |*byte, i| byte.* = @intCast(i & 0xff);
+
+    var expected = Writer.init(std.testing.allocator);
+    defer expected.deinit();
+    try expected.writeBytes(1, &payload);
+    try std.testing.expectEqual(@as(u8, 0x0a), expected.slice()[0]);
+    try std.testing.expectEqual(@as(u8, 0x80), expected.slice()[1]);
+    try std.testing.expectEqual(@as(u8, 0x01), expected.slice()[2]);
+    try std.testing.expectEqualSlices(u8, &payload, expected.slice()[3..]);
+
+    var buffer: [131]u8 = undefined;
+    var buffered = Writer.initBuffer(std.testing.allocator, &buffer);
+    buffered.writeBytesAssumeCapacity(1, &payload);
+    try std.testing.expectEqualSlices(u8, expected.slice(), buffered.slice());
 }
 
 test "wire byte less-than helper preserves lexicographic order" {
