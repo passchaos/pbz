@@ -790,6 +790,12 @@ fn generatedPackedDecode(ctx: GeneratedPackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedPackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Packed };
+fn generatedPackedKnownDecodeReuse(ctx: GeneratedPackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedFixedPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.FixedPacked };
 fn generatedFixedPackedEncode(ctx: GeneratedFixedPackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -1054,6 +1060,12 @@ fn generatedSInt32PackedDecode(ctx: GeneratedSInt32PackedDecodeCtx) !void {
     var decoded = try person_pb.demo.SInt32Packed.decode(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
+}
+
+const GeneratedSInt32PackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.SInt32Packed };
+fn generatedSInt32PackedKnownDecodeReuse(ctx: GeneratedSInt32PackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
 }
 
 const GeneratedSInt64PackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.SInt64Packed };
@@ -1921,6 +1933,8 @@ pub fn main() !void {
     try reusable_packed_writer.bytes.ensureTotalCapacity(allocator, generated_packed_bytes.len);
     const generated_packed_buffer = try allocator.alloc(u8, generated_packed_bytes.len);
     defer allocator.free(generated_packed_buffer);
+    var generated_packed_decode_reuse = try generated_packed.cloneOwned(allocator);
+    defer generated_packed_decode_reuse.deinit(allocator);
     const dynamic_packed_bytes = try dynamic_packed.encoded(&file);
     defer allocator.free(dynamic_packed_bytes);
     const generated_fixed_packed_bytes = try generated_fixed_packed.encode(allocator);
@@ -1985,6 +1999,8 @@ pub fn main() !void {
     defer allocator.free(generated_sint32_packed_bytes);
     const generated_sint32_packed_buffer = try allocator.alloc(u8, generated_sint32_packed_bytes.len);
     defer allocator.free(generated_sint32_packed_buffer);
+    var generated_sint32_packed_decode_reuse = try generated_sint32_packed.cloneOwned(allocator);
+    defer generated_sint32_packed_decode_reuse.deinit(allocator);
     const dynamic_sint32_packed_bytes = try dynamic_sint32_packed.encoded(&file);
     defer allocator.free(dynamic_sint32_packed_bytes);
     const generated_sint64_packed_bytes = try generated_sint64_packed.encode(allocator);
@@ -2089,6 +2105,7 @@ pub fn main() !void {
         try runTimed(io, "generated packed writeToAssumeCapacity reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedWriteToCtx{ .writer = &reusable_packed_writer, .message = &generated_packed }, generatedPackedWriteToReuse),
         try runTimed(io, "generated packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeIntoCtx{ .buffer = generated_packed_buffer, .message = &generated_packed }, generatedPackedEncodeIntoReuse),
         try runTimed(io, "generated packed decode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_packed_bytes }, generatedPackedDecode),
+        try runTimed(io, "generated packed fast known-schema decode reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_packed_bytes, .message = &generated_packed_decode_reuse }, generatedPackedKnownDecodeReuse),
         try runTimed(io, "generated int32 packed iterator decode", iters.packed_binary, generated_packed_bytes.len, Int32PackedIteratorCtx{ .bytes = generated_packed_bytes }, int32PackedIteratorDecode),
         try runTimed(io, "dynamic packed encode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedEncodeCtx{ .message = &dynamic_packed, .file = &file }, dynamicPackedEncode),
         try runTimed(io, "dynamic packed decode", iters.packed_binary, dynamic_packed_bytes.len, DynamicPackedDecodeCtx{ .allocator = allocator, .descriptor = packed_desc, .file = &file, .bytes = dynamic_packed_bytes }, dynamicPackedDecode),
@@ -2163,6 +2180,7 @@ pub fn main() !void {
         try runTimed(io, "generated sint32 packed encode", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedEncodeCtx{ .allocator = allocator, .message = &generated_sint32_packed }, generatedSInt32PackedEncode),
         try runTimed(io, "generated sint32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedEncodeIntoCtx{ .buffer = generated_sint32_packed_buffer, .message = &generated_sint32_packed }, generatedSInt32PackedEncodeIntoReuse),
         try runTimed(io, "generated sint32 packed decode", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedDecodeCtx{ .allocator = allocator, .bytes = generated_sint32_packed_bytes }, generatedSInt32PackedDecode),
+        try runTimed(io, "generated sint32 packed fast known-schema decode reuse", iters.packed_binary, generated_sint32_packed_bytes.len, GeneratedSInt32PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_sint32_packed_bytes, .message = &generated_sint32_packed_decode_reuse }, generatedSInt32PackedKnownDecodeReuse),
         try runTimed(io, "generated sint32 packed iterator decode", iters.packed_binary, generated_sint32_packed_bytes.len, SInt32PackedIteratorCtx{ .bytes = generated_sint32_packed_bytes }, sint32PackedIteratorDecode),
         try runTimed(io, "dynamic sint32 packed encode", iters.packed_binary, dynamic_sint32_packed_bytes.len, DynamicSInt32PackedEncodeCtx{ .message = &dynamic_sint32_packed, .file = &file }, dynamicSInt32PackedEncode),
         try runTimed(io, "dynamic sint32 packed decode", iters.packed_binary, dynamic_sint32_packed_bytes.len, DynamicSInt32PackedDecodeCtx{ .allocator = allocator, .descriptor = sint32_packed_desc, .file = &file, .bytes = dynamic_sint32_packed_bytes }, dynamicSInt32PackedDecode),

@@ -46,7 +46,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - generated zero-copy borrowed payload views for packed fixed-width fields when
   the caller only needs to inspect the wire buffer
 - generated typed iterators for packed varint fields
-- generated known-schema decode reuse for trusted same-schema hot paths
+- generated known-schema decode reuse for trusted same-schema hot paths,
+  including packed repeated scalar messages with reusable destination storage
 - JSON stringify/parse
 - TextFormat format/parse
 

@@ -70,6 +70,11 @@ pub fn main() !void {
     }
     std.debug.assert(packed_count == packed_msg.values.len);
 
+    var reusable_packed = try packed_msg.cloneOwned(allocator);
+    defer reusable_packed.deinit(allocator);
+    try reusable_packed.decodeKnownReuse(allocator, packed_bytes);
+    std.debug.assert(std.mem.eql(i32, reusable_packed.values, packed_msg.values));
+
     // Known-schema decode reuse keeps previously allocated repeated buffers and
     // skips unknown-field preservation for trusted hot-loop payloads.
     var scalar = person_pb.demo.ScalarMix.init();

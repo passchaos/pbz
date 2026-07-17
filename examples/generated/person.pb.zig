@@ -2293,6 +2293,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
         }
 
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
         pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             const flags_buffer = @constCast(self.flags);
             var flags_len: usize = 0;
@@ -8389,6 +8392,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+        }
+
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            values_buffer[values_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))));
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readInt32();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -15619,6 +15657,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
         }
 
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            values_buffer[values_len] = try pbz.wire.readVarintAt(payload, &payload_index);
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readUInt64();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
+        }
+
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var decoded = try @This().decode(allocator, bytes);
             defer decoded.deinit(allocator);
@@ -16663,6 +16736,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+        }
+
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            values_buffer[values_len] = @as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index)));
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readUInt32();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -17711,6 +17819,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
         }
 
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            values_buffer[values_len] = @bitCast(try pbz.wire.readVarintAt(payload, &payload_index));
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readInt64();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
+        }
+
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var decoded = try @This().decode(allocator, bytes);
             defer decoded.deinit(allocator);
@@ -18755,6 +18898,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+        }
+
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            values_buffer[values_len] = pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index))));
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readSInt32();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -19803,6 +19981,41 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
         }
 
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        var payload_index: usize = 0;
+                        while (payload_index < payload.len) {
+                            values_buffer[values_len] = pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt(payload, &payload_index));
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readSInt64();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
+        }
+
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var decoded = try @This().decode(allocator, bytes);
             defer decoded.deinit(allocator);
@@ -20822,6 +21035,40 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+        }
+
+        /// Trusted same-schema hot path that reuses existing repeated buffers.
+        /// The caller must pre-size those buffers for the decoded element counts.
+        /// Unknown or schema-mismatched fields are rejected instead of preserved.
+        pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            const values_buffer = @constCast(self.values);
+            var values_len: usize = 0;
+            for (self._unknown_fields) |raw| allocator.free(raw);
+            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+            self._unknown_fields = &.{};
+            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            var r = pbz.Reader.init(bytes);
+            while (!r.eof()) {
+                const raw_tag_start = r.position();
+                const first_tag_byte = try r.readByte();
+                const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                switch (raw_tag) {
+                    10 => {
+                        const payload = try r.readBytes();
+                        for (payload) |byte| {
+                            values_buffer[values_len] = byte != 0;
+                            values_len += 1;
+                        }
+                    },
+                    8 => {
+                        values_buffer[values_len] = try r.readBool();
+                        values_len += 1;
+                    },
+                    else => return error.InvalidWireType,
+                }
+            }
+            if (values_len != values_buffer.len) return error.InvalidWireType;
+            self.values = values_buffer;
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {

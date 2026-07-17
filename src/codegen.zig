@@ -6689,13 +6689,20 @@ fn messageCanDecodeReuseFast(message: *const schema.MessageDescriptor) bool {
 }
 
 fn messageCanDecodeKnownReuse(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
-    if (!messageCanFastRawTagDecode(file, message)) return false;
+    if (message.oneofs.items.len != 0) return false;
     var has_repeated = false;
     for (message.fields.items) |field| {
-        if (field.cardinality != .repeated) continue;
-        has_repeated = true;
-        if (field.kind != .scalar) return false;
-        if (knownReuseRepeatedScalarSupported(field.kind.scalar) == false) return false;
+        if (field.cardinality == .repeated) {
+            has_repeated = true;
+            if (field.kind != .scalar) return false;
+            if (knownReuseRepeatedScalarSupported(field.kind.scalar) == false) return false;
+            continue;
+        }
+        switch (field.kind) {
+            .scalar => {},
+            .enumeration => |name| if (enumIsClosed(file, name)) return false,
+            .message, .group, .map => return false,
+        }
     }
     return has_repeated;
 }
@@ -6752,6 +6759,12 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
 }
 
 fn writeDecodeKnownReuse(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("/// Trusted same-schema hot path that reuses existing repeated buffers.\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// The caller must pre-size those buffers for the decoded element counts.\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// Unknown or schema-mismatched fields are rejected instead of preserved.\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
     for (message.fields.items) |*field| {
@@ -14030,6 +14043,36 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.writeTag(2, .varint); try unknown_writer.appendSlice(payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try ids_list.append(allocator, try r.readInt32())") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits known-schema decode reuse for packed-only scalar messages" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  bool active = 1;
+        \\  repeated int32 ids = 2;
+        \\  repeated sint32 deltas = 3;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "/// The caller must pre-size those buffers for the decoded element counts.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const ids_buffer = @constCast(self.ids);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const deltas_buffer = @constCast(self.deltas);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "ids_buffer[ids_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "deltas_buffer[deltas_len] = pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (ids_len != ids_buffer.len) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (deltas_len != deltas_buffer.len) return error.InvalidWireType;") != null);
+
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
