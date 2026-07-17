@@ -39,13 +39,20 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
+is `/tmp/pbz-compare-direct-enum-payload.log` summarized by
+`/tmp/pbz-summary-direct-enum-payload.txt`. The fail-on-loss summary gate:
+
+```sh
+python3 bench/summarize_compare.py /tmp/pbz-compare-direct-enum-payload.log --fail-on-loss
+```
+
 ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
 ```
 
-Also keep these green for functional coverage:
+The same audit pass also kept these functional coverage gates green:
 
 ```sh
 zig build test
