@@ -7069,7 +7069,7 @@ fn writeKnownReuseSingularScalarDecodeExpr(scalar: schema.ScalarType, input_expr
         .float => try writer.print("@bitCast(try pbz.wire.readRawLittleAt(u32, {s}, &{s}))", .{ input_expr, index_expr }),
         .int32 => try writer.print("try pbz.wire.readInt32At({s}, &{s})", .{ input_expr, index_expr }),
         .int64 => try writer.print("@bitCast(try pbz.wire.readVarintAt({s}, &{s}))", .{ input_expr, index_expr }),
-        .uint32 => try writer.print("@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &{s})))", .{ input_expr, index_expr }),
+        .uint32 => try writer.print("try pbz.wire.readUInt32At({s}, &{s})", .{ input_expr, index_expr }),
         .uint64 => try writer.print("try pbz.wire.readVarintAt({s}, &{s})", .{ input_expr, index_expr }),
         .sint32 => try writer.print("try pbz.wire.readSInt32At({s}, &{s})", .{ input_expr, index_expr }),
         .sint64 => try writer.print("pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt({s}, &{s}))", .{ input_expr, index_expr }),

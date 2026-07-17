@@ -1024,6 +1024,39 @@ pub inline fn readRawLittleAt(comptime T: type, input: []const u8, index_ptr: *u
     return std.mem.readInt(T, input[start..][0..@sizeOf(T)], .little);
 }
 
+pub inline fn readUInt32At(input: []const u8, index_ptr: *usize) Error!u32 {
+    const start = index_ptr.*;
+    var index = start;
+
+    // Generated hot paths often decode small uint32 counters.  Handle the
+    // dominant one- and two-byte varints locally, but still fall back to the
+    // canonical 64-bit reader for wider encodings so non-canonical payloads
+    // keep the same truncation and malformed-varint behavior as Reader.readUInt32.
+    if (index >= input.len) return error.TruncatedInput;
+    const first = input[index];
+    index += 1;
+    var raw: u32 = first & 0x7f;
+    if (first < 0x80) {
+        index_ptr.* = index;
+        return raw;
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const second = input[index];
+    index += 1;
+    raw |= @as(u32, second & 0x7f) << 7;
+    if (second < 0x80) {
+        index_ptr.* = index;
+        return raw;
+    }
+
+    index_ptr.* = start;
+    return @truncate(try readVarintAt(input, index_ptr));
+}
+
 pub inline fn readInt32At(input: []const u8, index_ptr: *usize) Error!i32 {
     const start = index_ptr.*;
     var index = start;
@@ -1351,6 +1384,26 @@ test "wire int32 hot varint readers preserve generic semantics" {
         try std.testing.expectEqual(case.bytes.len, index);
     }
 
+    const UIntCase = struct {
+        bytes: []const u8,
+        value: u32,
+    };
+    const uint_cases = [_]UIntCase{
+        .{ .bytes = &.{0x00}, .value = 0 },
+        .{ .bytes = &.{0x7f}, .value = 127 },
+        .{ .bytes = &.{ 0x80, 0x01 }, .value = 128 },
+        .{ .bytes = &.{ 0xff, 0x7f }, .value = 16383 },
+        .{ .bytes = &.{ 0x80, 0x80, 0x01 }, .value = 16384 },
+        // Wider accepted varints are truncated to the 32-bit field width.
+        .{ .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x20 }, .value = 0 },
+    };
+
+    for (uint_cases) |case| {
+        var index: usize = 0;
+        try std.testing.expectEqual(case.value, try readUInt32At(case.bytes, &index));
+        try std.testing.expectEqual(case.bytes.len, index);
+    }
+
     const SIntCase = struct {
         bytes: []const u8,
         value: i32,
@@ -1378,6 +1431,14 @@ test "wire int32 hot varint readers preserve generic semantics" {
     var int_truncated_fallback_index: usize = 0;
     try std.testing.expectError(error.TruncatedInput, readInt32At(&.{ 0x80, 0x80 }, &int_truncated_fallback_index));
     try std.testing.expectEqual(@as(usize, 2), int_truncated_fallback_index);
+
+    var uint_truncated_one_byte_index: usize = 0;
+    try std.testing.expectError(error.TruncatedInput, readUInt32At(&.{0x80}, &uint_truncated_one_byte_index));
+    try std.testing.expectEqual(@as(usize, 1), uint_truncated_one_byte_index);
+
+    var uint_truncated_fallback_index: usize = 0;
+    try std.testing.expectError(error.TruncatedInput, readUInt32At(&.{ 0x80, 0x80 }, &uint_truncated_fallback_index));
+    try std.testing.expectEqual(@as(usize, 2), uint_truncated_fallback_index);
 
     var truncated_one_byte_index: usize = 0;
     try std.testing.expectError(error.TruncatedInput, readSInt32At(&.{0x80}, &truncated_one_byte_index));

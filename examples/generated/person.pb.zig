@@ -2392,7 +2392,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
                 switch (raw_tag) {
                     8 => { self.active = (try pbz.wire.readVarintAt(r.input, &r.index)) != 0; },
-                    16 => { self.count = @as(u32, @truncate(try pbz.wire.readVarintAt(r.input, &r.index))); },
+                    16 => { self.count = try pbz.wire.readUInt32At(r.input, &r.index); },
                     24 => { self.total = try pbz.wire.readVarintAt(r.input, &r.index); },
                     32 => { self.delta = try pbz.wire.readSInt32At(r.input, &r.index); },
                     40 => { self.big_delta = pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt(r.input, &r.index)); },
