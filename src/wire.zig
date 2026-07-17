@@ -62,7 +62,7 @@ pub fn zigZagDecode32(value: u32) i32 {
     return half ^ sign;
 }
 
-pub fn zigZagEncode64(value: i64) u64 {
+pub inline fn zigZagEncode64(value: i64) u64 {
     return @as(u64, @bitCast((value << 1) ^ (value >> 63)));
 }
 
