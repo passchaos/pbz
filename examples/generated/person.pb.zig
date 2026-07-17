@@ -476,23 +476,23 @@ pub const demo = struct {
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                const entries_already_sorted = sorted: {
-                    var check_i: usize = 1;
-                    while (check_i < entries.len) : (check_i += 1) {
-                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                if (entries.len <= insertion_sort_limit) {
+                    var sort_i: usize = 1;
+                    while (sort_i < entries.len) : (sort_i += 1) {
+                        const item = entries[sort_i];
+                        var sort_j = sort_i;
+                        while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                        entries[sort_j] = item;
                     }
-                    break :sorted true;
-                };
-                if (!entries_already_sorted) {
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
+                } else {
+                    const entries_already_sorted = sorted: {
+                        var check_i: usize = 1;
+                        while (check_i < entries.len) : (check_i += 1) {
+                            if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                         }
-                    } else {
+                        break :sorted true;
+                    };
+                    if (!entries_already_sorted) {
                         std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
@@ -544,23 +544,23 @@ pub const demo = struct {
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                const entries_already_sorted = sorted: {
-                    var check_i: usize = 1;
-                    while (check_i < entries.len) : (check_i += 1) {
-                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                if (entries.len <= insertion_sort_limit) {
+                    var sort_i: usize = 1;
+                    while (sort_i < entries.len) : (sort_i += 1) {
+                        const item = entries[sort_i];
+                        var sort_j = sort_i;
+                        while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                        entries[sort_j] = item;
                     }
-                    break :sorted true;
-                };
-                if (!entries_already_sorted) {
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
+                } else {
+                    const entries_already_sorted = sorted: {
+                        var check_i: usize = 1;
+                        while (check_i < entries.len) : (check_i += 1) {
+                            if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                         }
-                    } else {
+                        break :sorted true;
+                    };
+                    if (!entries_already_sorted) {
                         std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
@@ -24258,23 +24258,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                const entries_already_sorted = sorted: {
-                    var check_i: usize = 1;
-                    while (check_i < entries.len) : (check_i += 1) {
-                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                if (entries.len <= insertion_sort_limit) {
+                    var sort_i: usize = 1;
+                    while (sort_i < entries.len) : (sort_i += 1) {
+                        const item = entries[sort_i];
+                        var sort_j = sort_i;
+                        while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                        entries[sort_j] = item;
                     }
-                    break :sorted true;
-                };
-                if (!entries_already_sorted) {
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
+                } else {
+                    const entries_already_sorted = sorted: {
+                        var check_i: usize = 1;
+                        while (check_i < entries.len) : (check_i += 1) {
+                            if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                         }
-                    } else {
+                        break :sorted true;
+                    };
+                    if (!entries_already_sorted) {
                         std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
@@ -24317,23 +24317,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const use_stack_entries = self.counts.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.counts.count()]; } else blk: { const owned = try allocator.alloc(countsEntry, self.counts.count()); var map_it = self.counts.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                const entries_already_sorted = sorted: {
-                    var check_i: usize = 1;
-                    while (check_i < entries.len) : (check_i += 1) {
-                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                if (entries.len <= insertion_sort_limit) {
+                    var sort_i: usize = 1;
+                    while (sort_i < entries.len) : (sort_i += 1) {
+                        const item = entries[sort_i];
+                        var sort_j = sort_i;
+                        while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                        entries[sort_j] = item;
                     }
-                    break :sorted true;
-                };
-                if (!entries_already_sorted) {
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
+                } else {
+                    const entries_already_sorted = sorted: {
+                        var check_i: usize = 1;
+                        while (check_i < entries.len) : (check_i += 1) {
+                            if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                         }
-                    } else {
+                        break :sorted true;
+                    };
+                    if (!entries_already_sorted) {
                         std.mem.sort(countsEntry, entries, {}, struct { fn lessThan(_: void, a: countsEntry, b: countsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
@@ -25659,23 +25659,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const use_stack_entries = self.audits.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                const entries_already_sorted = sorted: {
-                    var check_i: usize = 1;
-                    while (check_i < entries.len) : (check_i += 1) {
-                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                if (entries.len <= insertion_sort_limit) {
+                    var sort_i: usize = 1;
+                    while (sort_i < entries.len) : (sort_i += 1) {
+                        const item = entries[sort_i];
+                        var sort_j = sort_i;
+                        while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                        entries[sort_j] = item;
                     }
-                    break :sorted true;
-                };
-                if (!entries_already_sorted) {
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
+                } else {
+                    const entries_already_sorted = sorted: {
+                        var check_i: usize = 1;
+                        while (check_i < entries.len) : (check_i += 1) {
+                            if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                         }
-                    } else {
+                        break :sorted true;
+                    };
+                    if (!entries_already_sorted) {
                         std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
@@ -25733,23 +25733,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const use_stack_entries = self.audits.count() <= stack_entries.len;
                 const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                 defer if (!use_stack_entries) allocator.free(entries);
-                const entries_already_sorted = sorted: {
-                    var check_i: usize = 1;
-                    while (check_i < entries.len) : (check_i += 1) {
-                        if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                if (entries.len <= insertion_sort_limit) {
+                    var sort_i: usize = 1;
+                    while (sort_i < entries.len) : (sort_i += 1) {
+                        const item = entries[sort_i];
+                        var sort_j = sort_i;
+                        while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
+                        entries[sort_j] = item;
                     }
-                    break :sorted true;
-                };
-                if (!entries_already_sorted) {
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
+                } else {
+                    const entries_already_sorted = sorted: {
+                        var check_i: usize = 1;
+                        while (check_i < entries.len) : (check_i += 1) {
+                            if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
                         }
-                    } else {
+                        break :sorted true;
+                    };
+                    if (!entries_already_sorted) {
                         std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
                     }
                 }
