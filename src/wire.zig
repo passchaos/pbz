@@ -931,9 +931,20 @@ pub const Reader = struct {
     }
 
     pub fn readBytes(self: *Reader) Error![]const u8 {
-        const len64 = try self.readVarint();
-        if (len64 > std.math.maxInt(usize)) return error.Overflow;
-        const len: usize = @intCast(len64);
+        if (self.index >= self.input.len) return error.TruncatedInput;
+        const first_len_byte = self.input[self.index];
+        // Most generated string/bytes/message fields in the hot benchmarks
+        // have sub-128-byte payloads.  Decode that dominant one-byte length
+        // locally, but leave multi-byte lengths on the canonical varint reader
+        // so truncation, overflow, and malformed-varint behavior stays shared.
+        const len: usize = if (first_len_byte < 0x80) blk: {
+            self.index += 1;
+            break :blk first_len_byte;
+        } else blk: {
+            const len64 = try self.readVarint();
+            if (len64 > std.math.maxInt(usize)) return error.Overflow;
+            break :blk @intCast(len64);
+        };
         if (self.input.len - self.index < len) return error.TruncatedInput;
         const start = self.index;
         self.index += len;
@@ -1446,6 +1457,23 @@ test "wire bytes writers preserve short and multi-byte lengths" {
     var buffered = Writer.initBuffer(std.testing.allocator, &buffer);
     buffered.writeBytesAssumeCapacity(1, &payload);
     try std.testing.expectEqualSlices(u8, expected.slice(), buffered.slice());
+}
+
+test "wire byte readers preserve short and multi-byte lengths" {
+    var short_reader = Reader.init(&.{ 0x03, 'a', 'b', 'c' });
+    try std.testing.expectEqualSlices(u8, "abc", try short_reader.readBytes());
+    try std.testing.expect(short_reader.eof());
+
+    var payload: [128]u8 = undefined;
+    for (&payload, 0..) |*byte, i| byte.* = @intCast((i * 17) & 0xff);
+
+    var encoded: [130]u8 = undefined;
+    encoded[0] = 0x80;
+    encoded[1] = 0x01;
+    @memcpy(encoded[2..], &payload);
+    var long_reader = Reader.init(&encoded);
+    try std.testing.expectEqualSlices(u8, &payload, try long_reader.readBytes());
+    try std.testing.expect(long_reader.eof());
 }
 
 test "wire byte less-than helper preserves lexicographic order" {
