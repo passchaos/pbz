@@ -91,19 +91,19 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |
 |---|---:|---:|---:|---:|---:|
-| binary encode | 20.96 | 126.17 (6.02x) | 50.54 (2.41x) | 99.45 (4.74x) | 818.79 (39.06x) |
-| binary decode | 149.10 | 254.41 (1.71x) | 233.23 (1.56x) | 227.21 (1.52x) | 865.07 (5.80x) |
-| scalarmix decode | 47.35 | 160.82 (3.40x) | 173.99 (3.67x) | 87.51 (1.85x) | 296.22 (6.26x) |
-| textbytes encode | 24.99 | 76.16 (3.05x) | 33.35 (1.33x) | 120.09 (4.81x) | 159.89 (6.40x) |
-| complex decode | 237.03 | 443.29 (1.87x) | 451.58 (1.91x) | 392.15 (1.65x) | 1347.22 (5.68x) |
-| complex JSON parse | 5777.56 | — | — | 12197.70 (2.11x) | 7095.49 (1.23x) |
-| TextFormat parse | 1718.86 | — | — | 5092.89 (2.96x) | 6223.14 (3.62x) |
-| packed int32 decode | 744.31 | 1939.13 (2.61x) | 3279.35 (4.41x) | 976.97 (1.31x) | 3501.54 (4.70x) |
-| packed bool encode | 14.55 | 1358.98 (93.40x) | 618.21 (42.49x) | 15.84 (1.09x) | 2275.07 (156.36x) |
-| packed bool decode | 574.41 | 1560.04 (2.72x) | 6224.53 (10.84x) | 819.12 (1.43x) | 1770.44 (3.08x) |
-| largebytes decode | 92.20 | 5614.26 (60.89x) | 3035.17 (32.92x) | 2805.31 (30.43x) | 22389.56 (242.84x) |
-| large map decode | 32901.60 | 101192.04 (3.08x) | 137444.91 (4.18x) | 92500.70 (2.81x) | 265577.42 (8.07x) |
-| shuffled large map deterministic encode | 60569.95 | — | — | 95427.20 (1.58x) | 374220.30 (6.18x) |
+| binary encode | 17.75 | 125.33 (7.06x) | 64.87 (3.65x) | 135.46 (7.63x) | 810.90 (45.68x) |
+| binary decode | 153.03 | 251.82 (1.65x) | 299.98 (1.96x) | 231.61 (1.51x) | 921.84 (6.02x) |
+| scalarmix decode | 49.40 | 137.16 (2.78x) | 213.68 (4.33x) | 86.52 (1.75x) | 306.90 (6.21x) |
+| textbytes encode | 21.74 | 77.01 (3.54x) | 43.64 (2.01x) | 124.08 (5.71x) | 146.49 (6.74x) |
+| complex decode | 246.25 | 399.68 (1.62x) | 334.59 (1.36x) | 391.23 (1.59x) | 1326.52 (5.39x) |
+| complex JSON parse | 2391.16 | — | — | 12025.20 (5.03x) | 7472.63 (3.13x) |
+| TextFormat parse | 1698.70 | — | — | 5055.27 (2.98x) | 6307.03 (3.71x) |
+| packed int32 decode | 766.45 | 1966.64 (2.57x) | 4240.33 (5.53x) | 948.50 (1.24x) | 3353.46 (4.38x) |
+| packed bool encode | 14.53 | 1366.47 (94.04x) | 532.17 (36.63x) | 23.50 (1.62x) | 2233.19 (153.70x) |
+| packed bool decode | 321.34 | 1542.61 (4.80x) | 2555.41 (7.95x) | 815.82 (2.54x) | 2022.71 (6.29x) |
+| largebytes decode | 92.38 | 5559.01 (60.18x) | 3032.38 (32.83x) | 2793.35 (30.24x) | 22499.93 (243.56x) |
+| large map decode | 31878.91 | 91271.12 (2.86x) | 90265.30 (2.83x) | 92230.60 (2.89x) | 272944.34 (8.56x) |
+| shuffled large map deterministic encode | 61156.72 | — | — | 94267.50 (1.54x) | 373334.56 (6.10x) |
 
 The matrix covers binary encode/decode, deterministic encode, JSON, TextFormat,
 packed scalars, large bytes, maps, oneof/optional workloads, and complex nested

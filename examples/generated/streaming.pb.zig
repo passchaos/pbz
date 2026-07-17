@@ -14,7 +14,7 @@ pub const demo = struct {
                 pub const number = 1;
                 pub const name = "id";
                 pub const json_name = "id";
-                pub const cardinality = "implicit";
+                pub const cardinality = "optional";
                 pub const kind = "int32";
                 pub const type_name = "int32";
                 pub const zig_type = "i32";
@@ -30,7 +30,7 @@ pub const demo = struct {
                 pub const number = 2;
                 pub const name = "note";
                 pub const json_name = "note";
-                pub const cardinality = "implicit";
+                pub const cardinality = "optional";
                 pub const kind = "string";
                 pub const type_name = "string";
                 pub const zig_type = "[]const u8";
@@ -451,10 +451,22 @@ pub const demo = struct {
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
                 const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+                self._json_arena = arena;
+                return self;
+            }
+
+            /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+            /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+            pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+                return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+            }
+
+            /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+            pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
-                try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-                self._json_arena = arena;
+                try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
                 return self;
             }
 
@@ -1019,8 +1031,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub const name = "Pipe";
                 pub const Get = struct {
                     pub const name = "Get";
-                    pub const input_type = "Event";
-                    pub const output_type = "Event";
+                    pub const input_type = ".demo.streaming.Event";
+                    pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
                     pub const input_type_ref = Event;
                     pub const output_has_type_ref = true;
@@ -1030,8 +1042,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Upload = struct {
                     pub const name = "Upload";
-                    pub const input_type = "Event";
-                    pub const output_type = "Event";
+                    pub const input_type = ".demo.streaming.Event";
+                    pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
                     pub const input_type_ref = Event;
                     pub const output_has_type_ref = true;
@@ -1041,8 +1053,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Watch = struct {
                     pub const name = "Watch";
-                    pub const input_type = "Event";
-                    pub const output_type = "Event";
+                    pub const input_type = ".demo.streaming.Event";
+                    pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
                     pub const input_type_ref = Event;
                     pub const output_has_type_ref = true;
@@ -1052,8 +1064,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Chat = struct {
                     pub const name = "Chat";
-                    pub const input_type = "Event";
-                    pub const output_type = "Event";
+                    pub const input_type = ".demo.streaming.Event";
+                    pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
                     pub const input_type_ref = Event;
                     pub const output_has_type_ref = true;

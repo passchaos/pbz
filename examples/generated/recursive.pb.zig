@@ -14,9 +14,9 @@ pub const demo = struct {
                 pub const number = 1;
                 pub const name = "child";
                 pub const json_name = "child";
-                pub const cardinality = "implicit";
+                pub const cardinality = "optional";
                 pub const kind = "message";
-                pub const type_name = "Node";
+                pub const type_name = "demo.recursive.Node";
                 pub const zig_type = "[]const u8";
                 pub const has_type_ref = true;
                 pub const type_ref = Node;
@@ -32,7 +32,7 @@ pub const demo = struct {
                 pub const json_name = "children";
                 pub const cardinality = "repeated";
                 pub const kind = "message";
-                pub const type_name = "Node";
+                pub const type_name = "demo.recursive.Node";
                 pub const zig_type = "[]const Node";
                 pub const has_type_ref = true;
                 pub const type_ref = Node;
@@ -451,10 +451,22 @@ pub const demo = struct {
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
                 const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+                self._json_arena = arena;
+                return self;
+            }
+
+            /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+            /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+            pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+                return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+            }
+
+            /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+            pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
-                try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-                self._json_arena = arena;
+                try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
                 return self;
             }
 
@@ -492,7 +504,7 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "child") or std.mem.eql(u8, key, "child")) {
-                        var nested = try Node.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        var nested = try Node.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(arena_allocator);
                         self.child = try nested.encode(arena_allocator);
                         self.has_child = true;
@@ -503,8 +515,8 @@ pub const demo = struct {
                         var list: std.ArrayList(Node) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
                         for (array.items) |item| {
-                            var nested = try Node.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            errdefer nested.deinit(arena_allocator);
+                            var nested = try Node.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            errdefer nested.deinit(allocator);
                             try list.append(allocator, nested);
                         }
                         { const old = self.children; self.children = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }

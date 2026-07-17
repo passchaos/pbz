@@ -19,6 +19,9 @@ functionality and measured hot-path performance.
   in `bench/summarize_compare.py`.
 - Performance wins should come from public generated or runtime APIs rather than
   benchmark-only hand-written code wherever possible.
+- Generated JSON parsing should avoid avoidable reserialization of nested
+  `std.json.Value` subtrees; nested generated messages now parse directly from
+  pre-parsed JSON values via `jsonParseValueWithOptions`.
 
 ## Verification commands
 
@@ -156,5 +159,9 @@ claiming broad superiority beyond the covered workloads:
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.
+- `jsonParseValue` / `jsonParseValueWithOptions` are intended for callers that
+  already have a parsed `std.json.Value` and can keep the provided arena alive
+  for borrowed string/bytes storage; `jsonParse` remains the owning text entry
+  point.
 - Benchmark results are hardware- and compiler-sensitive; keep using
   `--fail-on-loss` on the same machine before making performance claims.

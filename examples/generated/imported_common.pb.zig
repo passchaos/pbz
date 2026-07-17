@@ -314,11 +314,15 @@ pub const demo = struct {
                 }
 
                 pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+                    var r = pbz.Reader.init(bytes);
+                    return try @This().decodeFromReader(allocator, &r);
+                }
+
+                pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                     var self = @This().init();
                     errdefer self.deinit(allocator);
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                     errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                    var r = pbz.Reader.init(bytes);
                     while (!r.eof()) {
                         const raw_tag_start = r.position();
                         const first_tag_byte = try r.readByte();
@@ -448,10 +452,22 @@ pub const demo = struct {
                     arena.* = std.heap.ArenaAllocator.init(allocator);
                     errdefer arena.deinit();
                     const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                    var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+                    self._json_arena = arena;
+                    return self;
+                }
+
+                /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+                /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+                pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+                    return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+                }
+
+                /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+                pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
                     var self = @This().init();
                     errdefer self.deinit(allocator);
-                    try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-                    self._json_arena = arena;
+                    try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
                     return self;
                 }
 

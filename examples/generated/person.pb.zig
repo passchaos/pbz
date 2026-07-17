@@ -606,13 +606,17 @@ pub const demo = struct {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var scores_list: std.ArrayList(i32) = .empty;
             defer scores_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => { self.id = try r.readInt32(); },
@@ -628,7 +632,7 @@ pub const demo = struct {
                     4 => {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
-                        var entry_reader = pbz.Reader.init(payload);
+                        var entry_reader = try r.nested(payload);
                         const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
@@ -678,7 +682,7 @@ pub const demo = struct {
                     4 => {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
-                        var entry_reader = pbz.Reader.init(payload);
+                        var entry_reader = try r.nested(payload);
                         const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
@@ -809,10 +813,22 @@ pub const demo = struct {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -2164,6 +2180,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var flags_list: std.ArrayList(bool) = .empty;
@@ -2172,7 +2193,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer ids_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (!r.eof()) {
                 const raw_tag_start = r.position();
                 const first_tag_byte = try r.readByte();
@@ -2509,10 +2529,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -3673,6 +3705,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var tags_list: std.ArrayList([]const u8) = .empty;
@@ -3681,7 +3718,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer chunks_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (!r.eof()) {
                 const raw_tag_start = r.position();
                 const first_tag_byte = try r.readByte();
@@ -3841,10 +3877,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -4777,13 +4825,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var chunks_list: std.ArrayList([]const u8) = .empty;
             defer chunks_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (!r.eof()) {
                 const raw_tag_start = r.position();
                 const first_tag_byte = try r.readByte();
@@ -4919,10 +4971,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -6093,20 +6157,24 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => self._count = .{ .count = try r.readInt32() },
                     2 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._note = .{ .note = value }; },
                     3 => self._raw = .{ .raw = try r.readBytes() },
-                    4 => { const payload = try r.readBytes(); var nested = try Child.decode(allocator, payload); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
+                    4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.pick = .{ .name = value }; },
                     6 => self.pick = .{ .token = try r.readBytes() },
-                    7 => { const payload = try r.readBytes(); self.pick = .{ .nested = try Child.decode(allocator, payload) }; },
+                    7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.pick = .{ .nested = try Child.decodeFromReader(allocator, &payload_reader) }; },
                     8 => self.pick = .{ .code = try r.readInt64() },
                     else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
                 }
@@ -6259,10 +6327,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -6302,9 +6382,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return error.UnknownField;
                 }
                 if (std.mem.eql(u8, key, "child") or std.mem.eql(u8, key, "child")) {
-                    var nested = try Child.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    errdefer nested.deinit(arena_allocator);
-                    if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(arena_allocator); } else { self.child = nested; }
+                    var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                    errdefer nested.deinit(allocator);
+                    if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; }
                     continue;
                 }
                 if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
@@ -6316,7 +6396,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (std.mem.eql(u8, key, "nested") or std.mem.eql(u8, key, "nested")) {
-                    self.pick = .{ .nested = blk: { var nested = try Child.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };
+                    self.pick = .{ .nested = blk: { var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } };
                     continue;
                 }
                 if (std.mem.eql(u8, key, "code") or std.mem.eql(u8, key, "code")) {
@@ -7204,11 +7284,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+                var r = pbz.Reader.init(bytes);
+                return try @This().decodeFromReader(allocator, &r);
+            }
+
+            pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                var r = pbz.Reader.init(bytes);
                 while (!r.eof()) {
                     const raw_tag_start = r.position();
                     const first_tag_byte = try r.readByte();
@@ -7338,10 +7422,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
                 const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+                self._json_arena = arena;
+                return self;
+            }
+
+            /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+            /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+            pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+                return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+            }
+
+            /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+            pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
-                try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-                self._json_arena = arena;
+                try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
                 return self;
             }
 
@@ -8236,13 +8332,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -8377,10 +8477,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -9257,13 +9369,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -9398,10 +9514,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -10270,13 +10398,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u64) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -10411,10 +10543,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -11283,13 +11427,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -11424,10 +11572,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -12296,13 +12456,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i64) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -12437,10 +12601,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -13309,13 +13485,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(f32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -13450,10 +13630,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -14322,13 +14514,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(f64) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -14463,10 +14659,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -15352,13 +15560,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u64) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -15493,10 +15705,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -16382,13 +16606,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -16523,10 +16751,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -17412,13 +17652,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i64) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -17553,10 +17797,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -18442,13 +18698,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -18583,10 +18843,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -19472,13 +19744,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i64) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -19613,10 +19889,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -20477,13 +20765,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(bool) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -20618,10 +20910,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -21503,13 +21807,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
             defer values_list.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
@@ -21644,10 +21952,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -22589,17 +22909,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
-                        var entry_reader = pbz.Reader.init(payload);
+                        var entry_reader = try r.nested(payload);
                         const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
@@ -22632,7 +22956,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     1 => {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
-                        var entry_reader = pbz.Reader.init(payload);
+                        var entry_reader = try r.nested(payload);
                         const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
@@ -22743,10 +23067,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -23937,6 +24273,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+            var r = pbz.Reader.init(bytes);
+            return try @This().decodeFromReader(allocator, &r);
+        }
+
+        pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var history_list: std.ArrayList(Audit) = .empty;
@@ -23944,22 +24285,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer for (history_list.items) |item| { var mutable = item; mutable.deinit(allocator); };
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-            var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
                     1 => { self.id = try r.readInt32(); },
-                    2 => { const payload = try r.readBytes(); var nested = try Audit.decode(allocator, payload); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
-                    3 => { const payload = try r.readBytes(); var nested = try Audit.decode(allocator, payload); errdefer nested.deinit(allocator); try history_list.append(allocator, nested); },
+                    2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
+                    3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try history_list.append(allocator, nested); },
                     4 => {
                         var entry = auditsEntry{};
                         errdefer entry.value.deinit(allocator);
                         const payload = try r.readBytes();
-                        var entry_reader = pbz.Reader.init(payload);
+                        var entry_reader = try r.nested(payload);
                         const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => { const value_payload = try entry_reader.readBytes(); entry.value.deinit(allocator); entry.value = try Audit.decode(allocator, value_payload); },
+                                2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -23967,7 +24307,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
                     6 => self.subject = .{ .organization_id = try r.readBytes() },
-                    7 => { const payload = try r.readBytes(); self.subject = .{ .audit_subject = try Audit.decode(allocator, payload) }; },
+                    7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
                     else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
                 }
             }
@@ -24132,10 +24472,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
             const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+            self._json_arena = arena;
+            return self;
+        }
+
+        /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+        /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+        pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+            return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+        }
+
+        /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+        pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
-            try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-            self._json_arena = arena;
+            try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
             return self;
         }
 
@@ -24187,9 +24539,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (std.mem.eql(u8, key, "audit") or std.mem.eql(u8, key, "audit")) {
-                    var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    errdefer nested.deinit(arena_allocator);
-                    if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(arena_allocator); } else { self.audit = nested; }
+                    var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                    errdefer nested.deinit(allocator);
+                    if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; }
                     continue;
                 }
                 if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
@@ -24197,8 +24549,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var list: std.ArrayList(Audit) = .empty;
                     errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
                     for (array.items) |item| {
-                        var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, item, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        errdefer nested.deinit(arena_allocator);
+                        var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        errdefer nested.deinit(allocator);
                         try list.append(allocator, nested);
                     }
                     { const old = self.history; self.history = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
@@ -24211,7 +24563,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                     var map_it = object_value.iterator();
                     while (map_it.next()) |map_entry| {
-                        try @This().appendOrReplaceMapEntry_audits(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, map_entry.value_ptr.*, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } });
+                        try @This().appendOrReplaceMapEntry_audits(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } });
                     }
                     @This().deinitMap_audits(allocator, &self.audits);
                     try self.audits.ensureUnusedCapacity(allocator, list.items.len);
@@ -24227,7 +24579,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
-                    self.subject = .{ .audit_subject = blk: { var nested = try Audit.jsonParseWithOptions(arena_allocator, try std.json.Stringify.valueAlloc(arena_allocator, value, .{}), .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(arena_allocator); break :blk nested; } };
+                    self.subject = .{ .audit_subject = blk: { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } };
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -25135,11 +25487,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
+                var r = pbz.Reader.init(bytes);
+                return try @This().decodeFromReader(allocator, &r);
+            }
+
+            pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                var r = pbz.Reader.init(bytes);
                 while (!r.eof()) {
                     const raw_tag_start = r.position();
                     const first_tag_byte = try r.readByte();
@@ -25269,10 +25625,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
                 const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
+                self._json_arena = arena;
+                return self;
+            }
+
+            /// Parse a pre-parsed JSON subtree without serializing it back to text first.
+            /// The caller must keep `arena_allocator` alive for borrowed string/bytes data.
+            pub fn jsonParseValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value) !@This() {
+                return try @This().jsonParseValueWithOptions(allocator, arena_allocator, json_value, .{});
+            }
+
+            /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
+            pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
-                try self.jsonFillFromValue(allocator, arena.allocator(), parsed, options);
-                self._json_arena = arena;
+                try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
                 return self;
             }
 
