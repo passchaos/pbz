@@ -1566,6 +1566,12 @@ fn generatedDecode(ctx: GeneratedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Person };
+fn generatedDecodeReuse(ctx: GeneratedDecodeReuseCtx) !void {
+    try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedUnknownDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedUnknownDecode(ctx: GeneratedUnknownDecodeCtx) !void {
     var decoded = try person_pb.demo.Person.decode(ctx.allocator, ctx.bytes);
@@ -1880,6 +1886,8 @@ pub fn main() !void {
     try reusable_writer.bytes.ensureTotalCapacity(allocator, generated_bytes.len);
     const generated_buffer = try allocator.alloc(u8, generated_bytes.len);
     defer allocator.free(generated_buffer);
+    var generated_person_decode_reuse = try generated_person.cloneOwned(allocator);
+    defer generated_person_decode_reuse.deinit(allocator);
     const dynamic_bytes = try dynamic_person.encoded(&file);
     defer allocator.free(dynamic_bytes);
     const generated_unknown_bytes = try makeUnknownFieldPayload(allocator, generated_bytes, UnknownFieldStressCount);
@@ -2067,6 +2075,7 @@ pub fn main() !void {
         try runTimed(io, "generated deterministic binary encode", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedDeterministicEncode),
         try runTimed(io, "generated deterministic binary encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_bytes.len, GeneratedDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_buffer, .person = &generated_person }, generatedDeterministicEncodeIntoReuse),
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
+        try runTimed(io, "generated binary decode reuse", iters.generated_binary, generated_bytes.len, GeneratedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_bytes, .message = &generated_person_decode_reuse }, generatedDecodeReuse),
         try runTimed(io, "generated unknown fields decode", iters.large_map, generated_unknown_bytes.len, GeneratedUnknownDecodeCtx{ .allocator = allocator, .bytes = generated_unknown_bytes }, generatedUnknownDecode),
         try runTimed(io, "generated unknown fields count by number", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownQueryCtx{ .message = &generated_unknown_person, .number = UnknownFieldStressFirstNumber }, generatedUnknownCountByNumber),
         try runTimed(io, "generated scalarmix encode", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeCtx{ .allocator = allocator, .message = &generated_scalar_mix }, generatedScalarMixEncode),

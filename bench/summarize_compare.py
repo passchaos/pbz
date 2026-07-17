@@ -52,7 +52,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "binary decode",
-        ("generated binary decode",),
+        ("generated binary decode", "generated binary decode reuse"),
         {
             "rust prost": ("prost binary decode",),
             "rust quick-protobuf": ("quick-protobuf binary decode",),
