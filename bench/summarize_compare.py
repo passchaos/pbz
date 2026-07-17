@@ -346,7 +346,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed fixed32 decode",
-        ("generated fixed32 packed decode", "generated fixed32 packed borrowed view decode"),
+        (
+            "generated fixed32 packed decode",
+            "generated fixed32 packed fast known-schema decode reuse",
+            "generated fixed32 packed borrowed view decode",
+        ),
         {
             "rust prost": ("prost fixed32 packed decode",),
             "rust quick-protobuf": ("quick-protobuf fixed32 packed decode",),
@@ -376,7 +380,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed fixed64 decode",
-        ("generated fixed64 packed decode", "generated fixed64 packed borrowed view decode"),
+        (
+            "generated fixed64 packed decode",
+            "generated fixed64 packed fast known-schema decode reuse",
+            "generated fixed64 packed borrowed view decode",
+        ),
         {
             "rust prost": ("prost fixed64 packed decode",),
             "rust quick-protobuf": ("quick-protobuf fixed64 packed decode",),
@@ -406,7 +414,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed sfixed32 decode",
-        ("generated sfixed32 packed decode", "generated sfixed32 packed borrowed view decode"),
+        (
+            "generated sfixed32 packed decode",
+            "generated sfixed32 packed fast known-schema decode reuse",
+            "generated sfixed32 packed borrowed view decode",
+        ),
         {
             "rust prost": ("prost sfixed32 packed decode",),
             "rust quick-protobuf": ("quick-protobuf sfixed32 packed decode",),
@@ -436,7 +448,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed sfixed64 decode",
-        ("generated sfixed64 packed decode", "generated sfixed64 packed borrowed view decode"),
+        (
+            "generated sfixed64 packed decode",
+            "generated sfixed64 packed fast known-schema decode reuse",
+            "generated sfixed64 packed borrowed view decode",
+        ),
         {
             "rust prost": ("prost sfixed64 packed decode",),
             "rust quick-protobuf": ("quick-protobuf sfixed64 packed decode",),
@@ -466,7 +482,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed float decode",
-        ("generated float packed decode", "generated float packed borrowed view decode"),
+        (
+            "generated float packed decode",
+            "generated float packed fast known-schema decode reuse",
+            "generated float packed borrowed view decode",
+        ),
         {
             "rust prost": ("prost float packed decode",),
             "rust quick-protobuf": ("quick-protobuf float packed decode",),
@@ -496,7 +516,11 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "packed double decode",
-        ("generated double packed decode", "generated double packed borrowed view decode"),
+        (
+            "generated double packed decode",
+            "generated double packed fast known-schema decode reuse",
+            "generated double packed borrowed view decode",
+        ),
         {
             "rust prost": ("prost double packed decode",),
             "rust quick-protobuf": ("quick-protobuf double packed decode",),

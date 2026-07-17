@@ -824,6 +824,12 @@ fn generatedFixedPackedDecode(ctx: GeneratedFixedPackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedFixedPackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.FixedPacked };
+fn generatedFixedPackedKnownDecodeReuse(ctx: GeneratedFixedPackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const FixedPackedBorrowedViewCtx = struct { bytes: []const u8 };
 fn fixedPackedBorrowedViewDecode(ctx: FixedPackedBorrowedViewCtx) !void {
     const values = (try person_pb.demo.FixedPacked.valuesPackedFixed32View(ctx.bytes)) orelse return error.InvalidWireType;
@@ -858,6 +864,12 @@ fn generatedFixed64PackedDecode(ctx: GeneratedFixed64PackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedFixed64PackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Fixed64Packed };
+fn generatedFixed64PackedKnownDecodeReuse(ctx: GeneratedFixed64PackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedSFixedPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.SFixedPacked };
 fn generatedSFixedPackedEncode(ctx: GeneratedSFixedPackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -884,6 +896,12 @@ fn generatedSFixedPackedDecode(ctx: GeneratedSFixedPackedDecodeCtx) !void {
     var decoded = try person_pb.demo.SFixedPacked.decode(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
+}
+
+const GeneratedSFixedPackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.SFixedPacked };
+fn generatedSFixedPackedKnownDecodeReuse(ctx: GeneratedSFixedPackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
 }
 
 const GeneratedSFixed64PackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.SFixed64Packed };
@@ -914,6 +932,12 @@ fn generatedSFixed64PackedDecode(ctx: GeneratedSFixed64PackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedSFixed64PackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.SFixed64Packed };
+fn generatedSFixed64PackedKnownDecodeReuse(ctx: GeneratedSFixed64PackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedFloatPackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.FloatPacked };
 fn generatedFloatPackedEncode(ctx: GeneratedFloatPackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -942,6 +966,12 @@ fn generatedFloatPackedDecode(ctx: GeneratedFloatPackedDecodeCtx) !void {
     decoded.deinit(ctx.allocator);
 }
 
+const GeneratedFloatPackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.FloatPacked };
+fn generatedFloatPackedKnownDecodeReuse(ctx: GeneratedFloatPackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedDoublePackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.DoublePacked };
 fn generatedDoublePackedEncode(ctx: GeneratedDoublePackedEncodeCtx) !void {
     const bytes = try ctx.message.encode(ctx.allocator);
@@ -968,6 +998,12 @@ fn generatedDoublePackedDecode(ctx: GeneratedDoublePackedDecodeCtx) !void {
     var decoded = try person_pb.demo.DoublePacked.decode(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(&decoded);
     decoded.deinit(ctx.allocator);
+}
+
+const GeneratedDoublePackedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.DoublePacked };
+fn generatedDoublePackedKnownDecodeReuse(ctx: GeneratedDoublePackedDecodeReuseCtx) !void {
+    try ctx.message.decodeKnownReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
 }
 
 const GeneratedUInt64PackedEncodeCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.UInt64Packed };
@@ -1990,36 +2026,48 @@ pub fn main() !void {
     defer allocator.free(generated_fixed_packed_bytes);
     const generated_fixed_packed_buffer = try allocator.alloc(u8, generated_fixed_packed_bytes.len);
     defer allocator.free(generated_fixed_packed_buffer);
+    var generated_fixed_packed_decode_reuse = try generated_fixed_packed.cloneOwned(allocator);
+    defer generated_fixed_packed_decode_reuse.deinit(allocator);
     const dynamic_fixed_packed_bytes = try dynamic_fixed_packed.encoded(&file);
     defer allocator.free(dynamic_fixed_packed_bytes);
     const generated_fixed64_packed_bytes = try generated_fixed64_packed.encode(allocator);
     defer allocator.free(generated_fixed64_packed_bytes);
     const generated_fixed64_packed_buffer = try allocator.alloc(u8, generated_fixed64_packed_bytes.len);
     defer allocator.free(generated_fixed64_packed_buffer);
+    var generated_fixed64_packed_decode_reuse = try generated_fixed64_packed.cloneOwned(allocator);
+    defer generated_fixed64_packed_decode_reuse.deinit(allocator);
     const dynamic_fixed64_packed_bytes = try dynamic_fixed64_packed.encoded(&file);
     defer allocator.free(dynamic_fixed64_packed_bytes);
     const generated_sfixed_packed_bytes = try generated_sfixed_packed.encode(allocator);
     defer allocator.free(generated_sfixed_packed_bytes);
     const generated_sfixed_packed_buffer = try allocator.alloc(u8, generated_sfixed_packed_bytes.len);
     defer allocator.free(generated_sfixed_packed_buffer);
+    var generated_sfixed_packed_decode_reuse = try generated_sfixed_packed.cloneOwned(allocator);
+    defer generated_sfixed_packed_decode_reuse.deinit(allocator);
     const dynamic_sfixed_packed_bytes = try dynamic_sfixed_packed.encoded(&file);
     defer allocator.free(dynamic_sfixed_packed_bytes);
     const generated_sfixed64_packed_bytes = try generated_sfixed64_packed.encode(allocator);
     defer allocator.free(generated_sfixed64_packed_bytes);
     const generated_sfixed64_packed_buffer = try allocator.alloc(u8, generated_sfixed64_packed_bytes.len);
     defer allocator.free(generated_sfixed64_packed_buffer);
+    var generated_sfixed64_packed_decode_reuse = try generated_sfixed64_packed.cloneOwned(allocator);
+    defer generated_sfixed64_packed_decode_reuse.deinit(allocator);
     const dynamic_sfixed64_packed_bytes = try dynamic_sfixed64_packed.encoded(&file);
     defer allocator.free(dynamic_sfixed64_packed_bytes);
     const generated_float_packed_bytes = try generated_float_packed.encode(allocator);
     defer allocator.free(generated_float_packed_bytes);
     const generated_float_packed_buffer = try allocator.alloc(u8, generated_float_packed_bytes.len);
     defer allocator.free(generated_float_packed_buffer);
+    var generated_float_packed_decode_reuse = try generated_float_packed.cloneOwned(allocator);
+    defer generated_float_packed_decode_reuse.deinit(allocator);
     const dynamic_float_packed_bytes = try dynamic_float_packed.encoded(&file);
     defer allocator.free(dynamic_float_packed_bytes);
     const generated_double_packed_bytes = try generated_double_packed.encode(allocator);
     defer allocator.free(generated_double_packed_bytes);
     const generated_double_packed_buffer = try allocator.alloc(u8, generated_double_packed_bytes.len);
     defer allocator.free(generated_double_packed_buffer);
+    var generated_double_packed_decode_reuse = try generated_double_packed.cloneOwned(allocator);
+    defer generated_double_packed_decode_reuse.deinit(allocator);
     const dynamic_double_packed_bytes = try dynamic_double_packed.encoded(&file);
     defer allocator.free(dynamic_double_packed_bytes);
     const generated_uint64_packed_bytes = try generated_uint64_packed.encode(allocator);
@@ -2169,6 +2217,7 @@ pub fn main() !void {
         try runTimed(io, "generated fixed32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedEncodeIntoCtx{ .buffer = generated_fixed_packed_buffer, .message = &generated_fixed_packed }, generatedFixedPackedEncodeIntoReuse),
         try runTimed(io, "generated fixed32 packed borrowed slices encode", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedSlicesCtx{ .message = &generated_fixed_packed }, generatedFixedPackedBorrowedSlices),
         try runTimed(io, "generated fixed32 packed decode", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_fixed_packed_bytes }, generatedFixedPackedDecode),
+        try runTimed(io, "generated fixed32 packed fast known-schema decode reuse", iters.packed_binary, generated_fixed_packed_bytes.len, GeneratedFixedPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_fixed_packed_bytes, .message = &generated_fixed_packed_decode_reuse }, generatedFixedPackedKnownDecodeReuse),
         try runTimed(io, "generated fixed32 packed borrowed view decode", iters.packed_binary, generated_fixed_packed_bytes.len, FixedPackedBorrowedViewCtx{ .bytes = generated_fixed_packed_bytes }, fixedPackedBorrowedViewDecode),
         try runTimed(io, "dynamic fixed32 packed encode", iters.packed_binary, dynamic_fixed_packed_bytes.len, DynamicFixedPackedEncodeCtx{ .message = &dynamic_fixed_packed, .file = &file }, dynamicFixedPackedEncode),
         try runTimed(io, "dynamic fixed32 packed decode", iters.packed_binary, dynamic_fixed_packed_bytes.len, DynamicFixedPackedDecodeCtx{ .allocator = allocator, .descriptor = fixed_packed_desc, .file = &file, .bytes = dynamic_fixed_packed_bytes }, dynamicFixedPackedDecode),
@@ -2177,6 +2226,7 @@ pub fn main() !void {
         try runTimed(io, "generated fixed64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedEncodeIntoCtx{ .buffer = generated_fixed64_packed_buffer, .message = &generated_fixed64_packed }, generatedFixed64PackedEncodeIntoReuse),
         try runTimed(io, "generated fixed64 packed borrowed slices encode", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedSlicesCtx{ .message = &generated_fixed64_packed }, generatedFixed64PackedBorrowedSlices),
         try runTimed(io, "generated fixed64 packed decode", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_fixed64_packed_bytes }, generatedFixed64PackedDecode),
+        try runTimed(io, "generated fixed64 packed fast known-schema decode reuse", iters.packed_binary, generated_fixed64_packed_bytes.len, GeneratedFixed64PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_fixed64_packed_bytes, .message = &generated_fixed64_packed_decode_reuse }, generatedFixed64PackedKnownDecodeReuse),
         try runTimed(io, "generated fixed64 packed borrowed view decode", iters.packed_binary, generated_fixed64_packed_bytes.len, Fixed64PackedBorrowedViewCtx{ .bytes = generated_fixed64_packed_bytes }, fixed64PackedBorrowedViewDecode),
         try runTimed(io, "dynamic fixed64 packed encode", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedEncodeCtx{ .message = &dynamic_fixed64_packed, .file = &file }, dynamicFixed64PackedEncode),
         try runTimed(io, "dynamic fixed64 packed decode", iters.packed_binary, dynamic_fixed64_packed_bytes.len, DynamicFixed64PackedDecodeCtx{ .allocator = allocator, .descriptor = fixed64_packed_desc, .file = &file, .bytes = dynamic_fixed64_packed_bytes }, dynamicFixed64PackedDecode),
@@ -2185,6 +2235,7 @@ pub fn main() !void {
         try runTimed(io, "generated sfixed32 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_sfixed_packed_bytes.len, GeneratedSFixedPackedEncodeIntoCtx{ .buffer = generated_sfixed_packed_buffer, .message = &generated_sfixed_packed }, generatedSFixedPackedEncodeIntoReuse),
         try runTimed(io, "generated sfixed32 packed borrowed slices encode", iters.packed_binary, generated_sfixed_packed_bytes.len, GeneratedSFixedPackedSlicesCtx{ .message = &generated_sfixed_packed }, generatedSFixedPackedBorrowedSlices),
         try runTimed(io, "generated sfixed32 packed decode", iters.packed_binary, generated_sfixed_packed_bytes.len, GeneratedSFixedPackedDecodeCtx{ .allocator = allocator, .bytes = generated_sfixed_packed_bytes }, generatedSFixedPackedDecode),
+        try runTimed(io, "generated sfixed32 packed fast known-schema decode reuse", iters.packed_binary, generated_sfixed_packed_bytes.len, GeneratedSFixedPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_sfixed_packed_bytes, .message = &generated_sfixed_packed_decode_reuse }, generatedSFixedPackedKnownDecodeReuse),
         try runTimed(io, "generated sfixed32 packed borrowed view decode", iters.packed_binary, generated_sfixed_packed_bytes.len, SFixedPackedBorrowedViewCtx{ .bytes = generated_sfixed_packed_bytes }, sfixedPackedBorrowedViewDecode),
         try runTimed(io, "dynamic sfixed32 packed encode", iters.packed_binary, dynamic_sfixed_packed_bytes.len, DynamicSFixedPackedEncodeCtx{ .message = &dynamic_sfixed_packed, .file = &file }, dynamicSFixedPackedEncode),
         try runTimed(io, "dynamic sfixed32 packed decode", iters.packed_binary, dynamic_sfixed_packed_bytes.len, DynamicSFixedPackedDecodeCtx{ .allocator = allocator, .descriptor = sfixed_packed_desc, .file = &file, .bytes = dynamic_sfixed_packed_bytes }, dynamicSFixedPackedDecode),
@@ -2193,6 +2244,7 @@ pub fn main() !void {
         try runTimed(io, "generated sfixed64 packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_sfixed64_packed_bytes.len, GeneratedSFixed64PackedEncodeIntoCtx{ .buffer = generated_sfixed64_packed_buffer, .message = &generated_sfixed64_packed }, generatedSFixed64PackedEncodeIntoReuse),
         try runTimed(io, "generated sfixed64 packed borrowed slices encode", iters.packed_binary, generated_sfixed64_packed_bytes.len, GeneratedSFixed64PackedSlicesCtx{ .message = &generated_sfixed64_packed }, generatedSFixed64PackedBorrowedSlices),
         try runTimed(io, "generated sfixed64 packed decode", iters.packed_binary, generated_sfixed64_packed_bytes.len, GeneratedSFixed64PackedDecodeCtx{ .allocator = allocator, .bytes = generated_sfixed64_packed_bytes }, generatedSFixed64PackedDecode),
+        try runTimed(io, "generated sfixed64 packed fast known-schema decode reuse", iters.packed_binary, generated_sfixed64_packed_bytes.len, GeneratedSFixed64PackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_sfixed64_packed_bytes, .message = &generated_sfixed64_packed_decode_reuse }, generatedSFixed64PackedKnownDecodeReuse),
         try runTimed(io, "generated sfixed64 packed borrowed view decode", iters.packed_binary, generated_sfixed64_packed_bytes.len, SFixed64PackedBorrowedViewCtx{ .bytes = generated_sfixed64_packed_bytes }, sfixed64PackedBorrowedViewDecode),
         try runTimed(io, "dynamic sfixed64 packed encode", iters.packed_binary, dynamic_sfixed64_packed_bytes.len, DynamicSFixed64PackedEncodeCtx{ .message = &dynamic_sfixed64_packed, .file = &file }, dynamicSFixed64PackedEncode),
         try runTimed(io, "dynamic sfixed64 packed decode", iters.packed_binary, dynamic_sfixed64_packed_bytes.len, DynamicSFixed64PackedDecodeCtx{ .allocator = allocator, .descriptor = sfixed64_packed_desc, .file = &file, .bytes = dynamic_sfixed64_packed_bytes }, dynamicSFixed64PackedDecode),
@@ -2201,6 +2253,7 @@ pub fn main() !void {
         try runTimed(io, "generated float packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedEncodeIntoCtx{ .buffer = generated_float_packed_buffer, .message = &generated_float_packed }, generatedFloatPackedEncodeIntoReuse),
         try runTimed(io, "generated float packed borrowed slices encode", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedSlicesCtx{ .message = &generated_float_packed }, generatedFloatPackedBorrowedSlices),
         try runTimed(io, "generated float packed decode", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedDecodeCtx{ .allocator = allocator, .bytes = generated_float_packed_bytes }, generatedFloatPackedDecode),
+        try runTimed(io, "generated float packed fast known-schema decode reuse", iters.packed_binary, generated_float_packed_bytes.len, GeneratedFloatPackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_float_packed_bytes, .message = &generated_float_packed_decode_reuse }, generatedFloatPackedKnownDecodeReuse),
         try runTimed(io, "generated float packed borrowed view decode", iters.packed_binary, generated_float_packed_bytes.len, FloatPackedBorrowedViewCtx{ .bytes = generated_float_packed_bytes }, floatPackedBorrowedViewDecode),
         try runTimed(io, "dynamic float packed encode", iters.packed_binary, dynamic_float_packed_bytes.len, DynamicFloatPackedEncodeCtx{ .message = &dynamic_float_packed, .file = &file }, dynamicFloatPackedEncode),
         try runTimed(io, "dynamic float packed decode", iters.packed_binary, dynamic_float_packed_bytes.len, DynamicFloatPackedDecodeCtx{ .allocator = allocator, .descriptor = float_packed_desc, .file = &file, .bytes = dynamic_float_packed_bytes }, dynamicFloatPackedDecode),
@@ -2209,6 +2262,7 @@ pub fn main() !void {
         try runTimed(io, "generated double packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedEncodeIntoCtx{ .buffer = generated_double_packed_buffer, .message = &generated_double_packed }, generatedDoublePackedEncodeIntoReuse),
         try runTimed(io, "generated double packed borrowed slices encode", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedSlicesCtx{ .message = &generated_double_packed }, generatedDoublePackedBorrowedSlices),
         try runTimed(io, "generated double packed decode", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedDecodeCtx{ .allocator = allocator, .bytes = generated_double_packed_bytes }, generatedDoublePackedDecode),
+        try runTimed(io, "generated double packed fast known-schema decode reuse", iters.packed_binary, generated_double_packed_bytes.len, GeneratedDoublePackedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_double_packed_bytes, .message = &generated_double_packed_decode_reuse }, generatedDoublePackedKnownDecodeReuse),
         try runTimed(io, "generated double packed borrowed view decode", iters.packed_binary, generated_double_packed_bytes.len, DoublePackedBorrowedViewCtx{ .bytes = generated_double_packed_bytes }, doublePackedBorrowedViewDecode),
         try runTimed(io, "dynamic double packed encode", iters.packed_binary, dynamic_double_packed_bytes.len, DynamicDoublePackedEncodeCtx{ .message = &dynamic_double_packed, .file = &file }, dynamicDoublePackedEncode),
         try runTimed(io, "dynamic double packed decode", iters.packed_binary, dynamic_double_packed_bytes.len, DynamicDoublePackedDecodeCtx{ .allocator = allocator, .descriptor = double_packed_desc, .file = &file, .bytes = dynamic_double_packed_bytes }, dynamicDoublePackedDecode),

@@ -6727,7 +6727,20 @@ fn messageCanDecodeKnownReuse(file: *const schema.FileDescriptor, message: *cons
 
 fn knownReuseRepeatedScalarSupported(scalar: schema.ScalarType) bool {
     return switch (scalar) {
-        .bool, .uint64, .uint32, .int32, .int64, .sint32, .sint64 => true,
+        .bool,
+        .uint64,
+        .uint32,
+        .int32,
+        .int64,
+        .sint32,
+        .sint64,
+        .fixed32,
+        .fixed64,
+        .sfixed32,
+        .sfixed64,
+        .float,
+        .double,
+        => true,
         else => false,
     };
 }
@@ -6870,7 +6883,7 @@ fn writeKnownReuseRepeatedScalarCases(file: *const schema.FileDescriptor, field:
     try writer.writeAll("},\n");
 
     try indent(writer, depth);
-    try writer.print("{d} => {{\n", .{rawTagValue(field.number, .varint)});
+    try writer.print("{d} => {{\n", .{rawTagValue(field.number, scalar.wireType())});
     try indent(writer, depth + 1);
     try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
     try writer.writeAll("[");
@@ -6937,6 +6950,54 @@ fn writeKnownReuseRepeatedScalarPayload(field: *const schema.FieldDescriptor, sc
         try writer.writeAll("}\n");
         return;
     }
+
+    if (fixedWidthPackedScalarSizeForCodegen(scalar)) |width| {
+        try indent(writer, depth);
+        try writer.print("if ({s}.len % {d} != 0) return error.InvalidWireType;\n", .{ payload_expr, width });
+        try indent(writer, depth);
+        try writer.print("const value_count = {s}.len / {d};\n", .{ payload_expr, width });
+        try indent(writer, depth);
+        try writer.writeAll("if (");
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll(" + value_count > ");
+        try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+        try writer.writeAll(".len) return error.InvalidWireType;\n");
+        try indent(writer, depth);
+        try writer.writeAll("{\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const out = ");
+        try writeQuotedIdentWithSuffix(field.name, "_buffer", writer);
+        try writer.writeAll("[");
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll("..][0..value_count];\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (comptime @import(\"builtin\").target.cpu.arch.endian() == .little) {\n");
+        try indent(writer, depth + 2);
+        try writer.print("@memcpy(std.mem.sliceAsBytes(out), {s});\n", .{payload_expr});
+        try indent(writer, depth + 1);
+        try writer.writeAll("} else {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("var payload_index: usize = 0;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("for (out) |*value| {\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("value.* = ");
+        try writeKnownReuseFixedWidthScalarDecodeExpr(scalar, payload_expr, "payload_index", width, writer);
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 3);
+        try writer.print("payload_index += {d};\n", .{width});
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+        try indent(writer, depth);
+        try writeQuotedIdentWithSuffix(field.name, "_len", writer);
+        try writer.writeAll(" += value_count;\n");
+        return;
+    }
+
     try indent(writer, depth);
     try writer.writeAll("var payload_index: usize = 0;\n");
     try indent(writer, depth);
@@ -6964,6 +7025,26 @@ fn writeKnownReuseRepeatedScalarDecodeExpr(scalar: schema.ScalarType, payload_ex
         .sint32 => try writer.print("pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &payload_index))))", .{payload_expr}),
         .sint64 => try writer.print("pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
         else => try writer.writeAll("@compileError(\"unsupported known reuse scalar\")"),
+    }
+}
+
+fn fixedWidthPackedScalarSizeForCodegen(scalar: schema.ScalarType) ?usize {
+    return switch (scalar) {
+        .fixed32, .sfixed32, .float => 4,
+        .fixed64, .sfixed64, .double => 8,
+        else => null,
+    };
+}
+
+fn writeKnownReuseFixedWidthScalarDecodeExpr(scalar: schema.ScalarType, payload_expr: []const u8, index_expr: []const u8, width: usize, writer: *std.Io.Writer) Error!void {
+    switch (scalar) {
+        .fixed32 => try writer.print("std.mem.readInt(u32, {s}[{s}..][0..{d}], .little)", .{ payload_expr, index_expr, width }),
+        .fixed64 => try writer.print("std.mem.readInt(u64, {s}[{s}..][0..{d}], .little)", .{ payload_expr, index_expr, width }),
+        .sfixed32 => try writer.print("std.mem.readInt(i32, {s}[{s}..][0..{d}], .little)", .{ payload_expr, index_expr, width }),
+        .sfixed64 => try writer.print("std.mem.readInt(i64, {s}[{s}..][0..{d}], .little)", .{ payload_expr, index_expr, width }),
+        .float => try writer.print("@bitCast(std.mem.readInt(u32, {s}[{s}..][0..{d}], .little))", .{ payload_expr, index_expr, width }),
+        .double => try writer.print("@bitCast(std.mem.readInt(u64, {s}[{s}..][0..{d}], .little))", .{ payload_expr, index_expr, width }),
+        else => try writer.writeAll("@compileError(\"unsupported fixed-width known reuse scalar\")"),
     }
 }
 
@@ -14118,6 +14199,8 @@ test "codegen emits known-schema decode reuse for packed-only scalar and enum me
         \\  repeated int32 ids = 2;
         \\  repeated sint32 deltas = 3;
         \\  repeated Kind kinds = 4;
+        \\  repeated fixed32 words = 5;
+        \\  repeated double ratios = 6;
         \\}
     );
     defer file.deinit();
@@ -14132,9 +14215,17 @@ test "codegen emits known-schema decode reuse for packed-only scalar and enum me
     try std.testing.expect(std.mem.indexOf(u8, content, "deltas_buffer[deltas_len] = pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const kinds_buffer = @constCast(self.kinds);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "kinds_buffer[kinds_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const words_buffer = @constCast(self.words);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (payload.len % 4 != 0) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "@memcpy(std.mem.sliceAsBytes(out), payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const ratios_buffer = @constCast(self.ratios);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (payload.len % 8 != 0) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "value.* = @bitCast(std.mem.readInt(u64, payload[payload_index..][0..8], .little));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (ids_len != ids_buffer.len) return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (deltas_len != deltas_buffer.len) return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (kinds_len != kinds_buffer.len) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (words_len != words_buffer.len) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (ratios_len != ratios_buffer.len) return error.InvalidWireType;") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
