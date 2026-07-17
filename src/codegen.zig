@@ -3794,7 +3794,7 @@ fn writeFastDirectScalarPayload(prefix: []const u8, field_name: []const u8, scal
         .uint32, .uint64 => try writeFastDirectVarintFieldPayload(prefix, field_name, "", "", writer),
         .sint32 => try writeFastDirectVarintFieldPayload(prefix, field_name, "pbz.wire.zigZagEncode32(", ")", writer),
         .sint64 => try writeFastDirectVarintFieldPayload(prefix, field_name, "pbz.wire.zigZagEncode64(", ")", writer),
-        .bool => try writeFastDirectVarintFieldPayload(prefix, field_name, "@as(u64, if (", ") 1 else 0)", writer),
+        .bool => try writeFastDirectBoolFieldPayload(prefix, field_name, writer),
         .string, .bytes => try writer.writeAll("@compileError(\"unsupported direct payload\")"),
     }
 }
@@ -3815,6 +3815,13 @@ fn writeFastDirectVarintFieldPayload(prefix: []const u8, field_name: []const u8,
     if (field_name.len != 0) try writeQuotedIdent(field_name, writer);
     try writer.writeAll(after);
     try writer.writeAll(");");
+}
+
+fn writeFastDirectBoolFieldPayload(prefix: []const u8, field_name: []const u8, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("buffer[index] = if (");
+    try writer.writeAll(prefix);
+    if (field_name.len != 0) try writeQuotedIdent(field_name, writer);
+    try writer.writeAll(") 1 else 0; index += 1;");
 }
 
 fn writeFastDirectPackedScalarPayload(value_expr: []const u8, scalar: schema.ScalarType, writer: *std.Io.Writer) Error!void {
@@ -14314,6 +14321,8 @@ test "codegen emits typed scalar fields and encode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.id)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.active) { buffer[index] = 24; index += 1; buffer[index] = if (self.active) 1 else 0; index += 1; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "writeVarintToSlice(buffer, &index, @as(u64, if (self.active) 1 else 0))") == null);
 }
 
 test "codegen emits repeated scalar slice types" {

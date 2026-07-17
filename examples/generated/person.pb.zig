@@ -2045,7 +2045,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
-            if (self.active) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, if (self.active) 1 else 0)); }
+            if (self.active) { buffer[index] = 8; index += 1; buffer[index] = if (self.active) 1 else 0; index += 1; }
             if (self.count != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.count); }
             if (self.total != 0) { buffer[index] = 24; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.total); }
             if (self.delta != 0) { buffer[index] = 32; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32(self.delta)); }
@@ -2083,7 +2083,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
-            if (self.active) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, if (self.active) 1 else 0)); }
+            if (self.active) { buffer[index] = 8; index += 1; buffer[index] = if (self.active) 1 else 0; index += 1; }
             if (self.count != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.count); }
             if (self.total != 0) { buffer[index] = 24; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.total); }
             if (self.delta != 0) { buffer[index] = 32; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32(self.delta)); }
