@@ -717,12 +717,12 @@ pub const Writer = struct {
 
     pub fn writeBool(self: *Writer, number: FieldNumber, value: bool) !void {
         try self.writeTag(number, .varint);
-        try self.writeVarint(if (value) 1 else 0);
+        try self.appendByte(if (value) 1 else 0);
     }
 
     pub fn writeBoolAssumeCapacity(self: *Writer, number: FieldNumber, value: bool) void {
         self.writeTagAssumeCapacity(number, .varint);
-        self.writeVarintAssumeCapacity(if (value) 1 else 0);
+        self.appendByteAssumeCapacity(if (value) 1 else 0);
     }
 
     pub fn writeFixed32(self: *Writer, number: FieldNumber, value: u32) !void {
@@ -1469,6 +1469,20 @@ test "wire tag writers preserve single and multi-byte tags" {
     var buffered = Writer.initBuffer(std.testing.allocator, &buffer);
     buffered.writeTagAssumeCapacity(15, .fixed32);
     buffered.writeTagAssumeCapacity(16, .varint);
+    try std.testing.expectEqualSlices(u8, writer.slice(), buffered.slice());
+}
+
+test "wire bool writers use canonical one-byte values" {
+    var writer = Writer.init(std.testing.allocator);
+    defer writer.deinit();
+    try writer.writeBool(1, true);
+    try writer.writeBool(2, false);
+    try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x01, 0x10, 0x00 }, writer.slice());
+
+    var buffer: [4]u8 = undefined;
+    var buffered = Writer.initBuffer(std.testing.allocator, &buffer);
+    buffered.writeBoolAssumeCapacity(1, true);
+    buffered.writeBoolAssumeCapacity(2, false);
     try std.testing.expectEqualSlices(u8, writer.slice(), buffered.slice());
 }
 
