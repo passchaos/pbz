@@ -1024,6 +1024,17 @@ pub inline fn readRawLittleAt(comptime T: type, input: []const u8, index_ptr: *u
     return std.mem.readInt(T, input[start..][0..@sizeOf(T)], .little);
 }
 
+pub inline fn readBoolAt(input: []const u8, index_ptr: *usize) Error!bool {
+    const start = index_ptr.*;
+    if (start >= input.len) return error.TruncatedInput;
+    const first = input[start];
+    if (first < 0x80) {
+        index_ptr.* = start + 1;
+        return first != 0;
+    }
+    return (try readVarintAt(input, index_ptr)) != 0;
+}
+
 pub inline fn readUInt32At(input: []const u8, index_ptr: *usize) Error!u32 {
     const start = index_ptr.*;
     var index = start;
