@@ -8727,7 +8727,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const payload = try r.readBytes();
                         var payload_index: usize = 0;
                         while (payload_index < payload.len) {
-                            values_buffer[values_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))));
+                            values_buffer[values_len] = try pbz.wire.readInt32At(payload, &payload_index);
                             values_len += 1;
                         }
                     },
@@ -19929,7 +19929,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const payload = try r.readBytes();
                         var payload_index: usize = 0;
                         while (payload_index < payload.len) {
-                            values_buffer[values_len] = pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index))));
+                            values_buffer[values_len] = try pbz.wire.readSInt32At(payload, &payload_index);
                             values_len += 1;
                         }
                     },

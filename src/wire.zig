@@ -285,7 +285,7 @@ pub const PackedInt32Iterator = struct {
 
     pub inline fn next(self: *PackedInt32Iterator) Error!?i32 {
         const value = (try nextPackedVarint32Hot(self)) orelse return null;
-        return @truncate(@as(i64, @bitCast(value)));
+        return @bitCast(value);
     }
 };
 
@@ -321,7 +321,7 @@ pub const PackedSInt32Iterator = struct {
 
     pub inline fn next(self: *PackedSInt32Iterator) Error!?i32 {
         const value = (try nextPackedVarint32Hot(self)) orelse return null;
-        return zigZagDecode32(@as(u32, @truncate(value)));
+        return zigZagDecode32(value);
     }
 };
 
@@ -387,7 +387,7 @@ inline fn nextPackedVarint(iterator: anytype) Error!?u64 {
     }
 }
 
-inline fn nextPackedVarint32Hot(iterator: anytype) Error!?u64 {
+inline fn nextPackedVarint32Hot(iterator: anytype) Error!?u32 {
     while (true) {
         if (iterator.index < iterator.payload.len) {
             @branchHint(.likely);
@@ -422,7 +422,7 @@ inline fn nextPackedVarint32Hot(iterator: anytype) Error!?u64 {
             }
 
             iterator.index = start;
-            return try readVarintAt(payload, &iterator.index);
+            return @truncate(try readVarintAt(payload, &iterator.index));
         }
 
         // A zero field number is the sentinel used by callers that construct an
@@ -1016,6 +1016,76 @@ pub inline fn readVarintAt(input: []const u8, index_ptr: *usize) Error!u64 {
     return error.MalformedVarint;
 }
 
+pub inline fn readInt32At(input: []const u8, index_ptr: *usize) Error!i32 {
+    const start = index_ptr.*;
+    var index = start;
+
+    // Packed int32 streams in generated code commonly contain small positive
+    // values.  Decode the one- and two-byte cases directly while delegating
+    // wider encodings to the generic reader so negative int32 values, truncated
+    // payloads, malformed ten-byte varints, and protobuf's 64-bit-to-32-bit
+    // truncation behavior stay exactly aligned with Reader.readInt32.
+    if (index >= input.len) return error.TruncatedInput;
+    const first = input[index];
+    index += 1;
+    var raw: u32 = first & 0x7f;
+    if (first < 0x80) {
+        index_ptr.* = index;
+        return @intCast(raw);
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const second = input[index];
+    index += 1;
+    raw |= @as(u32, second & 0x7f) << 7;
+    if (second < 0x80) {
+        index_ptr.* = index;
+        return @intCast(raw);
+    }
+
+    index_ptr.* = start;
+    const value = try readVarintAt(input, index_ptr);
+    return @truncate(@as(i64, @bitCast(value)));
+}
+
+pub inline fn readSInt32At(input: []const u8, index_ptr: *usize) Error!i32 {
+    const start = index_ptr.*;
+    var index = start;
+
+    // Packed sint32 streams in generated code overwhelmingly contain small
+    // deltas, which zig-zag encode to one or two bytes.  Keep those cases in
+    // the caller's loop body while falling back to readVarintAt for wider or
+    // malformed values so truncation, overflow, and index-advance semantics
+    // remain identical to the generic varint reader.
+    if (index >= input.len) return error.TruncatedInput;
+    const first = input[index];
+    index += 1;
+    var raw: u32 = first & 0x7f;
+    if (first < 0x80) {
+        index_ptr.* = index;
+        return zigZagDecode32(raw);
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const second = input[index];
+    index += 1;
+    raw |= @as(u32, second & 0x7f) << 7;
+    if (second < 0x80) {
+        index_ptr.* = index;
+        return zigZagDecode32(raw);
+    }
+
+    index_ptr.* = start;
+    const value = try readVarintAt(input, index_ptr);
+    return zigZagDecode32(@as(u32, @truncate(value)));
+}
+
 pub inline fn appendPackedInt32(allocator: std.mem.Allocator, list: *std.ArrayList(i32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
     const required = if (list.capacity != 0 and list.capacity - list.items.len < payload.len) try countPackedVarints(payload) else payload.len;
     try list.ensureUnusedCapacity(allocator, required);
@@ -1249,6 +1319,65 @@ test "wire varint writer covers all encoded lengths" {
         writeVarintToSlice(&buffer, &direct_index, case.value);
         try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_index]);
     }
+}
+
+test "wire int32 hot varint readers preserve generic semantics" {
+    const IntCase = struct {
+        bytes: []const u8,
+        value: i32,
+    };
+    const int_cases = [_]IntCase{
+        .{ .bytes = &.{0x00}, .value = 0 },
+        .{ .bytes = &.{0x7f}, .value = 127 },
+        .{ .bytes = &.{ 0x80, 0x01 }, .value = 128 },
+        .{ .bytes = &.{ 0xff, 0x7f }, .value = 16383 },
+        .{ .bytes = &.{ 0x80, 0x80, 0x01 }, .value = 16384 },
+        // int32 stores negative values in the full 64-bit varint form; the hot
+        // reader must still fall back and truncate exactly like Reader.readInt32.
+        .{ .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01 }, .value = -1 },
+    };
+
+    for (int_cases) |case| {
+        var index: usize = 0;
+        try std.testing.expectEqual(case.value, try readInt32At(case.bytes, &index));
+        try std.testing.expectEqual(case.bytes.len, index);
+    }
+
+    const SIntCase = struct {
+        bytes: []const u8,
+        value: i32,
+    };
+    const sint_cases = [_]SIntCase{
+        .{ .bytes = &.{0x00}, .value = 0 },
+        .{ .bytes = &.{0x01}, .value = -1 },
+        .{ .bytes = &.{ 0x81, 0x01 }, .value = -65 },
+        .{ .bytes = &.{ 0x80, 0x80, 0x01 }, .value = 8192 },
+        // Protobuf's 32-bit varint readers accept wider varints and truncate
+        // to the field width before zig-zag decoding, matching Reader.readSInt32.
+        .{ .bytes = &.{ 0x82, 0x80, 0x80, 0x80, 0x10 }, .value = 1 },
+    };
+
+    for (sint_cases) |case| {
+        var index: usize = 0;
+        try std.testing.expectEqual(case.value, try readSInt32At(case.bytes, &index));
+        try std.testing.expectEqual(case.bytes.len, index);
+    }
+
+    var int_truncated_one_byte_index: usize = 0;
+    try std.testing.expectError(error.TruncatedInput, readInt32At(&.{0x80}, &int_truncated_one_byte_index));
+    try std.testing.expectEqual(@as(usize, 1), int_truncated_one_byte_index);
+
+    var int_truncated_fallback_index: usize = 0;
+    try std.testing.expectError(error.TruncatedInput, readInt32At(&.{ 0x80, 0x80 }, &int_truncated_fallback_index));
+    try std.testing.expectEqual(@as(usize, 2), int_truncated_fallback_index);
+
+    var truncated_one_byte_index: usize = 0;
+    try std.testing.expectError(error.TruncatedInput, readSInt32At(&.{0x80}, &truncated_one_byte_index));
+    try std.testing.expectEqual(@as(usize, 1), truncated_one_byte_index);
+
+    var truncated_fallback_index: usize = 0;
+    try std.testing.expectError(error.TruncatedInput, readSInt32At(&.{ 0x80, 0x80 }, &truncated_fallback_index));
+    try std.testing.expectEqual(@as(usize, 2), truncated_fallback_index);
 }
 
 test "wire exposes borrowed packed fixed32 view" {

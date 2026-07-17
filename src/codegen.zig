@@ -7042,9 +7042,9 @@ fn writeKnownReuseRepeatedScalarDecodeExpr(scalar: schema.ScalarType, payload_ex
     switch (scalar) {
         .uint64 => try writer.print("try pbz.wire.readVarintAt({s}, &payload_index)", .{payload_expr}),
         .uint32 => try writer.print("@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &payload_index)))", .{payload_expr}),
-        .int32 => try writer.print("@truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt({s}, &payload_index))))", .{payload_expr}),
+        .int32 => try writer.print("try pbz.wire.readInt32At({s}, &payload_index)", .{payload_expr}),
         .int64 => try writer.print("@bitCast(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
-        .sint32 => try writer.print("pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt({s}, &payload_index))))", .{payload_expr}),
+        .sint32 => try writer.print("try pbz.wire.readSInt32At({s}, &payload_index)", .{payload_expr}),
         .sint64 => try writer.print("pbz.wire.zigZagDecode64(try pbz.wire.readVarintAt({s}, &payload_index))", .{payload_expr}),
         else => try writer.writeAll("@compileError(\"unsupported known reuse scalar\")"),
     }
@@ -14357,8 +14357,8 @@ test "codegen emits known-schema decode reuse for packed-only scalar and enum me
     try std.testing.expect(std.mem.indexOf(u8, content, "/// The caller must pre-size those buffers for the decoded element counts.") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const ids_buffer = @constCast(self.ids);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const deltas_buffer = @constCast(self.deltas);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "ids_buffer[ids_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "deltas_buffer[deltas_len] = pbz.wire.zigZagDecode32(@as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "ids_buffer[ids_len] = try pbz.wire.readInt32At(payload, &payload_index)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "deltas_buffer[deltas_len] = try pbz.wire.readSInt32At(payload, &payload_index)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const kinds_buffer = @constCast(self.kinds);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "kinds_buffer[kinds_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const words_buffer = @constCast(self.words);") != null);
