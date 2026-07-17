@@ -2056,7 +2056,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.signed_big_fixed != 0) { buffer[index] = 73; index += 1; pbz.wire.writeRawLittleToSlice(i64, buffer, &index, self.signed_big_fixed); }
             if (self.ratio != 0) { buffer[index] = 85; index += 1; pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(self.ratio)); }
             if (self.score != 0) { buffer[index] = 89; index += 1; pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(self.score)); }
-            if (self.kind != 0) { buffer[index] = 96; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+            if (self.kind != 0) { buffer[index] = 96; index += 1; if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
             if (self.flags.len != 0) {
                 const packed_len = self.flags.len * 1;
                 buffer[index] = 106; index += 1;
@@ -2094,7 +2094,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.signed_big_fixed != 0) { buffer[index] = 73; index += 1; pbz.wire.writeRawLittleToSlice(i64, buffer, &index, self.signed_big_fixed); }
             if (self.ratio != 0) { buffer[index] = 85; index += 1; pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(self.ratio)); }
             if (self.score != 0) { buffer[index] = 89; index += 1; pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(self.score)); }
-            if (self.kind != 0) { buffer[index] = 96; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+            if (self.kind != 0) { buffer[index] = 96; index += 1; if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
             if (self.flags.len != 0) {
                 const packed_len = self.flags.len * 1;
                 buffer[index] = 106; index += 1;

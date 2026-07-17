@@ -3424,7 +3424,13 @@ fn writeFastDirectEnumEncode(file: *const schema.FileDescriptor, field: *const s
     }
     try writer.writeAll("{ ");
     try writeFastDirectTag(field.number, .{ .enumeration = "" }, writer);
-    try writer.writeAll(" pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.");
+    try writer.writeAll(" if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" > 0 and self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" < 0x80) { buffer[index] = @intCast(self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll("); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(")))); }\n");
 }
@@ -14352,6 +14358,7 @@ test "codegen encodes enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "kind: i32 = 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "roles: []const i32 = &.{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeInt32(1, self.kind)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(2, .length_delimited);") != null);
 }
 
