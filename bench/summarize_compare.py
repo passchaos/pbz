@@ -22,6 +22,10 @@ from pathlib import Path
 
 LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/iter, )?(?P<ns>[0-9.]+) ns/op")
 
+# Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
+# benchmark-matrix drift instead of silently weakening the comparison evidence.
+EXPECTED_WORKLOAD_COUNT = 54
+
 
 @dataclass(frozen=True)
 class Workload:
@@ -809,6 +813,23 @@ WORKLOADS: tuple[Workload, ...] = (
 )
 
 
+def validate_workloads() -> None:
+    assert len(WORKLOADS) == EXPECTED_WORKLOAD_COUNT, (len(WORKLOADS), EXPECTED_WORKLOAD_COUNT)
+
+    names = [workload.name for workload in WORKLOADS]
+    duplicate_names = sorted({name for name in names if names.count(name) > 1})
+    assert not duplicate_names, duplicate_names
+
+    for workload in WORKLOADS:
+        assert workload.pbz, workload.name
+        assert len(set(workload.pbz)) == len(workload.pbz), workload.name
+        assert workload.baselines, workload.name
+        for impl, candidates in workload.baselines.items():
+            assert impl, workload.name
+            assert candidates, (workload.name, impl)
+            assert len(set(candidates)) == len(candidates), (workload.name, impl)
+
+
 def parse_results(text: str) -> dict[str, float]:
     results: dict[str, float] = {}
     for line in text.splitlines():
@@ -884,6 +905,8 @@ def summarize(results: dict[str, float]) -> tuple[str, bool]:
 
 
 def self_test() -> None:
+    validate_workloads()
+
     sample = """
     generated binary encodeIntoAssumeCapacity buffer reuse: best of 3 x 10 iters, 47 bytes/iter, 40.00 ns/op, 1 ops/s, 1 MiB/s
     generated binary decode: best of 3 x 10 iters, 47 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
