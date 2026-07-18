@@ -1023,7 +1023,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         defer allocator.free(block);
                         var nested = try Node.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(allocator);
-                        children_list.append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;
+                        {
+                            var owned_nested = try nested.cloneOwned(allocator);
+                            errdefer owned_nested.deinit(allocator);
+                            try children_list.append(allocator, owned_nested);
+                        }
                         continue;
                     }
                     if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }

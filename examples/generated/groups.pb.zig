@@ -1200,7 +1200,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         defer allocator.free(block);
                         var nested = try Item.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(allocator);
-                        item_list.append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;
+                        {
+                            var owned_nested = try nested.cloneOwned(allocator);
+                            errdefer owned_nested.deinit(allocator);
+                            try item_list.append(allocator, owned_nested);
+                        }
                         continue;
                     }
                     if (@This().textBlockField(line, "picked_box") or @This().textBlockField(line, "pickedBox")) {

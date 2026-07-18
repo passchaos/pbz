@@ -24920,7 +24920,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     defer allocator.free(block);
                     var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                     defer nested.deinit(allocator);
-                    history_list.append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;
+                    {
+                        var owned_nested = try nested.cloneOwned(allocator);
+                        errdefer owned_nested.deinit(allocator);
+                        try history_list.append(allocator, owned_nested);
+                    }
                     continue;
                 }
                 if (@This().textBlockField(line, "audits")) {

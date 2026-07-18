@@ -1355,8 +1355,17 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
     try writer.writeAll("defer nested.deinit(allocator);\n");
     if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
         try indent(writer, depth);
+        try writer.writeAll("{\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var owned_nested = try nested.cloneOwned(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer owned_nested.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(".append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;\n");
+        try writer.writeAll(".append(allocator, owned_nested);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
         return;
     }
     if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
@@ -14364,6 +14373,7 @@ test "codegen emits basic TextFormat formatters" {
         \\  repeated string tags = 3;
         \\  Kind kind = 4;
         \\  Child child = 5;
+        \\  repeated Child children = 12;
         \\  map<string, Child> kids = 6;
         \\  map<string, int32> counts = 7;
         \\  double ratio = 8;
@@ -14446,6 +14456,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var owned_nested = try nested.cloneOwned(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer owned_nested.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try children_list.append(allocator, owned_nested);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.child = try nested.cloneOwned(allocator); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
