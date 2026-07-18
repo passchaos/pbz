@@ -582,9 +582,9 @@ pub const demo = struct {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
@@ -630,9 +630,9 @@ pub const demo = struct {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
@@ -2124,7 +2124,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try pbz.wire.appendPackedUInt64(allocator, &ids_list, payload);
                     },
                     112 => try ids_list.append(allocator, try r.readUInt64()),
-                    else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                 }
             }
             self.flags = if (flags_list.items.len != 0 and flags_list.items.len == flags_list.capacity) flags_list.toOwnedSliceAssert() else try flags_list.toOwnedSlice(allocator);
@@ -2187,7 +2187,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try pbz.wire.appendPackedUInt64(allocator, &ids_list, payload);
                     },
                     112 => try ids_list.append(allocator, try r.readUInt64()),
-                    else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                 }
             }
             self.flags = if (flags_list.items.len != 0 and flags_list.items.len == flags_list.capacity) flags_list.toOwnedSliceAssert() else try flags_list.toOwnedSlice(allocator);
@@ -3591,7 +3591,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     18 => { self.payload = try r.readBytes(); },
                     26 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try tags_list.append(allocator, value); },
                     34 => try chunks_list.append(allocator, try r.readBytes()),
-                    else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                 }
             }
             self.tags = if (tags_list.items.len != 0 and tags_list.items.len == tags_list.capacity) tags_list.toOwnedSliceAssert() else try tags_list.toOwnedSlice(allocator);
@@ -3626,7 +3626,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     18 => { self.payload = try r.readBytes(); },
                     26 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try tags_list.append(allocator, value); },
                     34 => try chunks_list.append(allocator, try r.readBytes()),
-                    else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                 }
             }
             self.tags = if (tags_list.items.len != 0 and tags_list.items.len == tags_list.capacity) tags_list.toOwnedSliceAssert() else try tags_list.toOwnedSlice(allocator);
@@ -4666,7 +4666,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 switch (raw_tag) {
                     10 => { self.payload = try r.readBytes(); },
                     18 => try chunks_list.append(allocator, try r.readBytes()),
-                    else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                 }
             }
             self.chunks = if (chunks_list.items.len != 0 and chunks_list.items.len == chunks_list.capacity) chunks_list.toOwnedSliceAssert() else try chunks_list.toOwnedSlice(allocator);
@@ -4693,7 +4693,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 switch (raw_tag) {
                     10 => { self.payload = try r.readBytes(); },
                     18 => try chunks_list.append(allocator, try r.readBytes()),
-                    else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                 }
             }
             self.chunks = if (chunks_list.items.len != 0 and chunks_list.items.len == chunks_list.capacity) chunks_list.toOwnedSliceAssert() else try chunks_list.toOwnedSlice(allocator);
@@ -5958,7 +5958,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     6 => self.pick = .{ .token = try r.readBytes() },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.pick = .{ .nested = try Child.decodeFromReader(allocator, &payload_reader) }; },
                     8 => self.pick = .{ .code = try r.readInt64() },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -5992,7 +5992,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     6 => self.pick = .{ .token = try r.readBytes() },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.pick = .{ .nested = try Child.decodeFromReader(allocator, &payload_reader) }; },
                     8 => self.pick = .{ .code = try r.readInt64() },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -7076,7 +7076,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     switch (raw_tag) {
                         8 => { self.id = try r.readInt32(); },
                         18 => { self.label = try r.readBytes(); if (!pbz.validateUtf8(self.label)) return error.InvalidUtf8; },
-                        else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                        else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -7099,7 +7099,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     switch (raw_tag) {
                         8 => { self.id = try r.readInt32(); },
                         18 => { self.label = try r.readBytes(); if (!pbz.validateUtf8(self.label)) return error.InvalidUtf8; },
-                        else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                        else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -8088,7 +8088,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readInt32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -8117,7 +8117,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readInt32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -9117,7 +9117,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readFixed32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -9146,7 +9146,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readFixed32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -10149,7 +10149,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readFixed64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -10178,7 +10178,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readFixed64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -11181,7 +11181,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSFixed32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -11210,7 +11210,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSFixed32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -12213,7 +12213,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSFixed64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -12242,7 +12242,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSFixed64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -13245,7 +13245,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readFloat());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -13274,7 +13274,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readFloat());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -14277,7 +14277,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readDouble());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -14306,7 +14306,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readDouble());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -15326,7 +15326,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readUInt64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -15355,7 +15355,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readUInt64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -16364,7 +16364,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readUInt32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -16393,7 +16393,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readUInt32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -17402,7 +17402,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readInt64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -17431,7 +17431,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readInt64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -18440,7 +18440,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSInt32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -18469,7 +18469,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSInt32());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -19478,7 +19478,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSInt64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -19507,7 +19507,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readSInt64());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -20495,7 +20495,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readBool());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -20524,7 +20524,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             try values_list.append(allocator, try r.readBool());
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -21528,7 +21528,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             { const value = try r.readInt32(); try values_list.append(allocator, value); }
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -21557,7 +21557,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             { const value = try r.readInt32(); try values_list.append(allocator, value); }
                         }
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
@@ -22653,9 +22653,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(1, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -22684,9 +22684,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(1, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -24005,12 +24005,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
                     6 => self.subject = .{ .organization_id = try r.readBytes() },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
             self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
@@ -24058,12 +24058,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(4, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
                     6 => self.subject = .{ .organization_id = try r.readBytes() },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
-                    else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                    else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
             self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
@@ -25218,7 +25218,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     switch (raw_tag) {
                         10 => { self.actor = try r.readBytes(); if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; },
                         16 => { self.at_unix = try r.readInt64(); },
-                        else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                        else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -25241,7 +25241,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     switch (raw_tag) {
                         10 => { self.actor = try r.readBytes(); if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; },
                         16 => { self.at_unix = try r.readInt64(); },
-                        else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                        else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);

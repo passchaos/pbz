@@ -6353,7 +6353,7 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("switch (tag.number) {\n");
     for (message.fields.items) |*field| try writeDecodeField(ctx, field, writer, depth + 3);
     try indent(writer, depth + 3);
-    try writer.writeAll("else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },\n");
+    try writer.writeAll("else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),\n");
     try indent(writer, depth + 2);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
@@ -6404,7 +6404,7 @@ fn writeDecodeFastRawTag(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);\n");
-    try writeRawTagDecodeLoop(ctx, message, writer, depth + 1);
+    try writeRawTagDecodeLoop(ctx, message, writer, depth + 1, true);
     for (message.fields.items) |*field| try writeRepeatedAssignForDecode(field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);\n");
@@ -6414,7 +6414,7 @@ fn writeDecodeFastRawTag(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n");
 }
 
-fn writeRawTagDecodeLoop(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeRawTagDecodeLoop(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize, r_is_pointer: bool) Error!void {
     try indent(writer, depth);
     try writer.writeAll("while (!r.eof()) {\n");
     try indent(writer, depth + 1);
@@ -6427,7 +6427,9 @@ fn writeRawTagDecodeLoop(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("switch (raw_tag) {\n");
     for (message.fields.items) |*field| try writeRawTagDecodeFieldCases(ctx, field, writer, depth + 2);
     try indent(writer, depth + 2);
-    try writer.writeAll("else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },\n");
+    try writer.writeAll("else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, ");
+    try writer.writeAll(if (r_is_pointer) "r" else "&r");
+    try writer.writeAll(", raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -6619,7 +6621,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     if (messageCanFastRawTagDecode(ctx.file, message)) {
-        try writeRawTagDecodeLoop(ctx, message, writer, depth + 1);
+        try writeRawTagDecodeLoop(ctx, message, writer, depth + 1, false);
     } else {
         try indent(writer, depth + 1);
         try writer.writeAll("while (try r.nextTag()) |tag| {\n");
@@ -6627,7 +6629,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
         try writer.writeAll("switch (tag.number) {\n");
         for (message.fields.items) |*field| try writeDecodeField(ctx, field, writer, depth + 3);
         try indent(writer, depth + 3);
-        try writer.writeAll("else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },\n");
+        try writer.writeAll("else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),\n");
         try indent(writer, depth + 2);
         try writer.writeAll("}\n");
         try indent(writer, depth + 1);
@@ -7270,7 +7272,7 @@ fn writeDecodeEnumField(file: *const schema.FileDescriptor, field: *const schema
     } else if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll("{ const value = try r.readInt32(); if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else { self.");
+        try writer.writeAll(")) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(" = value;");
         try writeSetPresence(file, field, writer);
@@ -7435,9 +7437,9 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
         try writer.writeAll("while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();");
         try writer.writeAll(" if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(");
+        try writer.writeAll(")) { try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, ");
         try writer.print("{d}", .{field.number});
-        try writer.writeAll(", .varint); try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }");
+        try writer.writeAll(", payload[value_start..value_end]); continue; }");
         try writer.writeAll(" try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
         try writer.writeAll(".append(allocator, value); }\n");
@@ -7449,7 +7451,7 @@ fn writeDecodePackedEnumField(file: *const schema.FileDescriptor, field: *const 
     if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll(" if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else { try ");
+        try writer.writeAll(")) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
         try writer.writeAll(".append(allocator, value); } }\n");
     } else {
@@ -7499,9 +7501,7 @@ fn writeDecodeMapField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(");
-    try writer.print("{d}", .{field.number});
-    try writer.writeAll(", payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().");
+    try writer.writeAll("if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().");
     try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
     try writer.writeAll("(allocator, &self.");
     try writeQuotedIdent(field.name, writer);
@@ -7601,7 +7601,7 @@ fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const 
     if (field.kind == .enumeration and enumIsClosed(file, field.kind.enumeration)) {
         try writer.writeAll(" if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, field.kind.enumeration, writer);
-        try writer.writeAll(")) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else {");
+        try writer.writeAll(")) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else {");
     } else {
         try writeEnumClosedCheck(file, field, "value", writer);
     }
@@ -14214,7 +14214,7 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedInt32(allocator, &ids_list, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedFixed64(allocator, &big_values_list, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.writeTag(2, .varint); try unknown_writer.appendSlice(payload[value_start..value_end]);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, 2, payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try ids_list.append(allocator, try r.readInt32())") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -14677,7 +14677,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pbz.wire.clearRawFields(allocator, &self._unknown_fields);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields) |raw| try w.appendSlice(raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.writeRawFieldsDeterministic(allocator, self._unknown_fields, w);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.writeRawFieldsDeterministicAssumeCapacity(allocator, self._unknown_fields, w);") != null);
@@ -15620,11 +15620,11 @@ test "codegen validates closed enum values in wire decode" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else { self.single = value; self.has_single = true; } }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1})) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeTag(2, .varint);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try unknown_writer.appendSlice(payload[value_start..value_end]); const raw = try allocator.dupe(u8, unknown_writer.slice());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else { try many_list.append(allocator, value); } }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else { self.pick = .{ .choice = value }; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { self.single = value; self.has_single = true; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1})) { try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, 2, payload[value_start..value_end]); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, 2, payload[value_start..value_end]);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { try many_list.append(allocator, value); } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const value = try r.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else { self.pick = .{ .choice = value }; } }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn enumKnown(value: i32, comptime numbers: []const i32) bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.single = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_enum = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };") != null);
@@ -15645,6 +15645,6 @@ test "codegen validates closed enum map values in wire decode" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "var skip_entry = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { skip_entry = true; } else { entry.value = value; } }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(1, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_keyed(allocator, &self.keyed, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_keyed(allocator, &self.keyed, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_keyed(allocator, &self.keyed, entry);") != null);
 }

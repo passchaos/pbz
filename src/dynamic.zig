@@ -802,7 +802,7 @@ pub const DynamicMessage = struct {
                 continue;
             }
 
-            const start = reader.position() - wire.encodedVarintSize(try tag.encode());
+            const start = reader.lastTagStart();
             const field = self.descriptor.findFieldByNumber(tag.number) orelse registryExtension(registry, self.descriptor, tag.number) orelse {
                 try reader.skipValue(tag);
                 try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
@@ -2953,6 +2953,13 @@ test "dynamic unknown field API preserves queries and clears raw fields" {
     try std.testing.expectEqual(@as(usize, 3), message.unknownCount());
     try std.testing.expect(message.hasUnknownFieldNumber(102));
     try std.testing.expectEqual(@as(usize, 1), message.unknownFieldCountByNumber(102));
+
+    const noncanonical_raw = [_]u8{ 0xa0, 0x86, 0x00, 0x01 };
+    var exact = DynamicMessage.init(allocator, desc);
+    defer exact.deinit();
+    try exact.decode(&file, &noncanonical_raw);
+    try std.testing.expectEqual(@as(usize, 1), exact.unknownCount());
+    try std.testing.expectEqualSlices(u8, &noncanonical_raw, exact.unknownFields()[0].data);
 
     var invalid_raw = wire.Writer.init(allocator);
     defer invalid_raw.deinit();

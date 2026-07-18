@@ -537,11 +537,11 @@ pub const demo = struct {
                                         else => try entry_reader.skipValue(entry_tag),
                                     }
                                 }
-                                if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
+                                if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                             },
                             4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.selected = .{ .chosen = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader) }; },
                             5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
-                            else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                            else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                         }
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
@@ -587,11 +587,11 @@ pub const demo = struct {
                                         else => try entry_reader.skipValue(entry_tag),
                                     }
                                 }
-                                if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(3, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); } else try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
+                                if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                             },
                             4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.selected = .{ .chosen = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader) }; },
                             5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
-                            else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                            else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                         }
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);

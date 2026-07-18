@@ -249,7 +249,7 @@ pub const demo = struct {
                         switch (raw_tag) {
                             8 => { self.id = try r.readInt32(); },
                             18 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; },
-                            else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                            else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                         }
                     }
                     self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
@@ -272,7 +272,7 @@ pub const demo = struct {
                         switch (raw_tag) {
                             8 => { self.id = try r.readInt32(); },
                             18 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; },
-                            else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                            else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, raw_tag_start, try pbz.wire.Tag.decode(raw_tag)),
                         }
                     }
                     self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);

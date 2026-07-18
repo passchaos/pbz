@@ -186,6 +186,33 @@ pub fn appendOwnedRawField(allocator: std.mem.Allocator, list: *std.ArrayList([]
     try list.append(allocator, raw);
 }
 
+pub fn appendConsumedRawField(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), reader: anytype, raw_start: usize) (std.mem.Allocator.Error || Error)!void {
+    const raw_end = reader.position();
+    if (raw_start > raw_end or raw_end > reader.input.len) return error.InvalidWireType;
+
+    // Raw unknown fields must preserve the exact source bytes, including
+    // non-canonical-but-accepted tag or length varints. Callers therefore pass
+    // the position captured before tag decoding instead of recomputing a tag
+    // length from the canonical numeric value.
+    const raw = try allocator.dupe(u8, reader.input[raw_start..raw_end]);
+    try appendOwnedRawField(allocator, list, raw);
+}
+
+pub fn appendSkippedRawField(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), reader: *Reader, raw_start: usize, tag: Tag) (std.mem.Allocator.Error || Error)!void {
+    try reader.skipValue(tag);
+    try appendConsumedRawField(allocator, list, reader, raw_start);
+}
+
+pub fn appendRawVarintPayload(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), number: FieldNumber, payload: []const u8) (std.mem.Allocator.Error || Error)!void {
+    const raw_tag = try (Tag{ .number = number, .wire_type = .varint }).encode();
+    const tag_len = encodedVarintSize(raw_tag);
+    const raw = try allocator.alloc(u8, tag_len + payload.len);
+    const written = writeVarintToBuffer(raw[0..tag_len], raw_tag);
+    std.debug.assert(written == tag_len);
+    @memcpy(raw[tag_len..], payload);
+    try appendOwnedRawField(allocator, list, raw);
+}
+
 pub fn validateRawField(raw: []const u8) Error!void {
     var reader = Reader.init(raw);
     const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
@@ -1040,6 +1067,11 @@ pub const Writer = struct {
 pub const Reader = struct {
     input: []const u8,
     index: usize = 0,
+    /// Start offset of the most recent successfully-started tag read. This is
+    /// intentionally tracked separately from `position()` so unknown-field
+    /// preservation can copy the exact original tag bytes rather than a
+    /// canonicalized re-encoding of the numeric tag.
+    last_tag_start: usize = 0,
     recursion_depth: u32 = 0,
     recursion_limit: u32 = 100,
 
@@ -1057,6 +1089,10 @@ pub const Reader = struct {
 
     pub fn position(self: *const Reader) usize {
         return self.index;
+    }
+
+    pub fn lastTagStart(self: *const Reader) usize {
+        return self.last_tag_start;
     }
 
     pub fn nested(self: *const Reader, input: []const u8) Error!Reader {
@@ -1092,6 +1128,7 @@ pub const Reader = struct {
     pub fn nextTag(self: *Reader) Error!?Tag {
         if (self.eof()) return null;
         const tag_start = self.index;
+        self.last_tag_start = tag_start;
         const raw = try self.readVarint();
         if (self.index - tag_start > 5) return error.MalformedVarint;
         return try Tag.decode(raw);
@@ -1763,6 +1800,40 @@ test "wire appends cloned raw fields in batches" {
     try std.testing.expectError(error.InvalidWireType, appendRawFieldsClone(allocator, &fields, &.{&.{0x0f}}));
     try std.testing.expectEqual(before_invalid.ptr, fields.ptr);
     try std.testing.expectEqual(@as(usize, 3), fields.len);
+}
+
+test "wire appends consumed raw fields with exact source bytes" {
+    const allocator = std.testing.allocator;
+
+    var list: std.ArrayList([]const u8) = .empty;
+    defer deinitRawFieldList(allocator, &list);
+
+    // Field 15/varint is canonically one tag byte (0x78), but this non-canonical
+    // two-byte tag is still within the five-byte protobuf tag limit. Unknown
+    // preservation must copy the original bytes, not a re-encoded canonical tag.
+    const noncanonical_tag = [_]u8{ 0xf8, 0x00, 0x01 };
+    var reader = Reader.init(&noncanonical_tag);
+    const tag = (try reader.nextTag()).?;
+    try std.testing.expectEqual(@as(FieldNumber, 15), tag.number);
+    try std.testing.expectEqual(@as(usize, 0), reader.lastTagStart());
+    try reader.skipValue(tag);
+    try appendConsumedRawField(allocator, &list, &reader, reader.lastTagStart());
+    try std.testing.expectEqualSlices(u8, &noncanonical_tag, list.items[0]);
+
+    var skipped_reader = Reader.init(&.{ 0xa2, 0x06, 0x03, 'z', 'i', 'g' });
+    const skipped = (try skipped_reader.nextTag()).?;
+    try appendSkippedRawField(allocator, &list, &skipped_reader, skipped_reader.lastTagStart(), skipped);
+    try std.testing.expectEqualSlices(u8, &.{ 0xa2, 0x06, 0x03, 'z', 'i', 'g' }, list.items[1]);
+}
+
+test "wire appends canonical raw varint payloads" {
+    const allocator = std.testing.allocator;
+
+    var list: std.ArrayList([]const u8) = .empty;
+    defer deinitRawFieldList(allocator, &list);
+
+    try appendRawVarintPayload(allocator, &list, 16, &.{ 0x81, 0x01 });
+    try std.testing.expectEqualSlices(u8, &.{ 0x80, 0x01, 0x81, 0x01 }, list.items[0]);
 }
 
 test "wire clones and clears raw field slices" {

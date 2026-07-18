@@ -58,6 +58,18 @@ pub fn main() !void {
     std.debug.assert(decoded.id == 7);
     std.debug.assert(std.mem.eql(u8, decoded.name, "Zig"));
 
+    // Unknown fields preserve the exact source bytes. This deliberately uses a
+    // non-canonical three-byte encoding for field 100's tag; callers that store
+    // raw unknowns need the original byte sequence, not a normalized tag.
+    const noncanonical_unknown = [_]u8{ 0xa0, 0x86, 0x00, 0x01 };
+    var unknown_decoded = try person_pb.demo.Person.decode(allocator, &noncanonical_unknown);
+    defer unknown_decoded.deinit(allocator);
+    std.debug.assert(unknown_decoded.unknownFieldCount() == 1);
+    std.debug.assert(std.mem.eql(u8, unknown_decoded.unknownFields()[0], &noncanonical_unknown));
+    const unknown_roundtrip = try unknown_decoded.encode(allocator);
+    defer allocator.free(unknown_roundtrip);
+    std.debug.assert(std.mem.eql(u8, unknown_roundtrip, &noncanonical_unknown));
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,

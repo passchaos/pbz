@@ -252,7 +252,7 @@ pub const demo = struct {
                     switch (tag.number) {
                         1 => { const payload = try r.readBytes(); if (self.has_child and self.child.len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.child.len + payload.len); @memcpy(merged[0..self.child.len], self.child); @memcpy(merged[self.child.len..], payload); self.child = merged; } else if (!self.has_child or self.child.len == 0) { self.child = payload; } self.has_child = true; },
                         2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested); },
-                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                        else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
                 }
                 self.children = if (children_list.items.len != 0 and children_list.items.len == children_list.capacity) children_list.toOwnedSliceAssert() else try children_list.toOwnedSlice(allocator);
@@ -278,7 +278,7 @@ pub const demo = struct {
                     switch (tag.number) {
                         1 => { const payload = try r.readBytes(); if (self.has_child and self.child.len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.child.len + payload.len); @memcpy(merged[0..self.child.len], self.child); @memcpy(merged[self.child.len..], payload); self.child = merged; } else if (!self.has_child or self.child.len == 0) { self.child = payload; } self.has_child = true; },
                         2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested); },
-                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
+                        else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
                 }
                 self.children = if (children_list.items.len != 0 and children_list.items.len == children_list.capacity) children_list.toOwnedSliceAssert() else try children_list.toOwnedSlice(allocator);
