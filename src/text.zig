@@ -931,8 +931,14 @@ const TextParser = struct {
         defer self.allocator.free(encoded);
         const type_field = message.descriptor.findField("type_url") orelse return error.TypeMismatch;
         const value_field = message.descriptor.findField("value") orelse return error.TypeMismatch;
-        try message.add(type_field, .{ .string = try self.allocator.dupe(u8, type_url) });
-        try message.add(value_field, .{ .bytes = try self.allocator.dupe(u8, encoded) });
+        try self.addOwnedValue(message, type_field, .{ .string = try self.allocator.dupe(u8, type_url) });
+        try self.addOwnedValue(message, value_field, .{ .bytes = try self.allocator.dupe(u8, encoded) });
+    }
+
+    fn addOwnedValue(self: *TextParser, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, value: dynamic.Value) std.mem.Allocator.Error!void {
+        var owned = value;
+        errdefer dynamic.deinitValue(&owned, self.allocator);
+        try message.add(field, owned);
     }
 
     fn skipReservedFieldValue(self: *TextParser) anyerror!void {
@@ -2492,7 +2498,10 @@ test "text format parses and formats expanded Any fields" {
     defer allocator.free(rendered);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "[type.googleapis.com/demo.Payload]") != null);
 
-    var whitespace = try parseAlloc(allocator, &file, holder_desc,
+    var whitespace = try parseAlloc(
+        allocator,
+        &file,
+        holder_desc,
         "any { [ type.goog # c\nleapis.com/demo.Pay\tload ] { id: 7 } }",
     );
     defer whitespace.deinit();
