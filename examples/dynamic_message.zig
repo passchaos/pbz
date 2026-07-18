@@ -49,4 +49,25 @@ pub fn main() !void {
     defer decoded.deinit();
     try decoded.decode(&file, encoded);
     std.debug.assert(decoded.has(event_desc.findField("id").?));
+
+    var with_unknown = pbz.Writer.init(allocator);
+    defer with_unknown.deinit();
+    try with_unknown.appendSlice(encoded);
+    try with_unknown.writeUInt32(100, 1);
+    try with_unknown.writeString(101, "diagnostic");
+    try with_unknown.writeUInt32(100, 2);
+
+    var decoded_with_unknown = pbz.DynamicMessage.init(allocator, event_desc);
+    defer decoded_with_unknown.deinit();
+    try decoded_with_unknown.decode(&file, with_unknown.slice());
+
+    // Dynamic messages already store parsed unknown-field numbers, so callers
+    // that repeatedly inspect telemetry/diagnostic extensions can build compact
+    // query sidecars without re-decoding raw tags.
+    const unknown_numbers = try decoded_with_unknown.unknownFieldNumbersAlloc(allocator);
+    defer allocator.free(unknown_numbers);
+    std.debug.assert(pbz.wire.rawFieldNumberCount(unknown_numbers, 100) == 2);
+    const unknown_runs = try decoded_with_unknown.unknownFieldNumberRunsAlloc(allocator);
+    defer allocator.free(unknown_runs);
+    std.debug.assert(pbz.wire.rawFieldNumberRunCount(unknown_runs, 100) == 2);
 }

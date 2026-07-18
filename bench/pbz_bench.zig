@@ -1746,6 +1746,18 @@ fn dynamicUnknownCountByNumber(ctx: DynamicUnknownQueryCtx) !void {
     std.mem.doNotOptimizeAway(count);
 }
 
+const DynamicUnknownNumberQueryCtx = struct { numbers: []const pbz.FieldNumber, number: pbz.FieldNumber };
+fn dynamicUnknownNumberCountByNumber(ctx: DynamicUnknownNumberQueryCtx) !void {
+    const count = pbz.wire.rawFieldNumberCount(ctx.numbers, ctx.number);
+    std.mem.doNotOptimizeAway(count);
+}
+
+const DynamicUnknownRunQueryCtx = struct { runs: []const pbz.wire.RawFieldNumberRun, number: pbz.FieldNumber };
+fn dynamicUnknownNumberRunCountByNumber(ctx: DynamicUnknownRunQueryCtx) !void {
+    const count = pbz.wire.rawFieldNumberRunCount(ctx.runs, ctx.number);
+    std.mem.doNotOptimizeAway(count);
+}
+
 const GeneratedJsonStringifyCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
 fn generatedJsonStringify(ctx: GeneratedJsonStringifyCtx) !void {
     const json = try ctx.person.jsonStringifyAlloc(ctx.allocator);
@@ -2031,6 +2043,10 @@ pub fn main() !void {
     var dynamic_unknown_person = pbz.DynamicMessage.init(allocator, desc);
     defer dynamic_unknown_person.deinit();
     try dynamic_unknown_person.decode(&file, generated_unknown_bytes);
+    const dynamic_unknown_numbers = try dynamic_unknown_person.unknownFieldNumbersAlloc(allocator);
+    defer allocator.free(dynamic_unknown_numbers);
+    const dynamic_unknown_number_runs = try dynamic_unknown_person.unknownFieldNumberRunsAlloc(allocator);
+    defer allocator.free(dynamic_unknown_number_runs);
     const generated_scalar_mix_bytes = try generated_scalar_mix.encode(allocator);
     defer allocator.free(generated_scalar_mix_bytes);
     var reusable_scalar_mix_writer = pbz.Writer.init(allocator);
@@ -2279,6 +2295,8 @@ pub fn main() !void {
         try runTimed(io, "dynamic binary decode", iters.dynamic_binary, dynamic_bytes.len, DynamicDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = dynamic_bytes }, dynamicDecode),
         try runTimed(io, "dynamic unknown fields decode", iters.large_map, generated_unknown_bytes.len, DynamicUnknownDecodeCtx{ .allocator = allocator, .descriptor = desc, .file = &file, .bytes = generated_unknown_bytes }, dynamicUnknownDecode),
         try runTimed(io, "dynamic unknown fields count by number", iters.generated_binary, generated_unknown_bytes.len, DynamicUnknownQueryCtx{ .message = &dynamic_unknown_person, .number = UnknownFieldStressFirstNumber }, dynamicUnknownCountByNumber),
+        try runTimed(io, "dynamic unknown field number sidecar count", iters.generated_binary, generated_unknown_bytes.len, DynamicUnknownNumberQueryCtx{ .numbers = dynamic_unknown_numbers, .number = UnknownFieldStressFirstNumber }, dynamicUnknownNumberCountByNumber),
+        try runTimed(io, "dynamic unknown field number run sidecar count", iters.generated_binary, generated_unknown_bytes.len, DynamicUnknownRunQueryCtx{ .runs = dynamic_unknown_number_runs, .number = UnknownFieldStressFirstNumber }, dynamicUnknownNumberRunCountByNumber),
         try runTimed(io, "generated packed encode", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeCtx{ .allocator = allocator, .message = &generated_packed }, generatedPackedEncode),
         try runTimed(io, "generated packed writeToAssumeCapacity reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedWriteToCtx{ .writer = &reusable_packed_writer, .message = &generated_packed }, generatedPackedWriteToReuse),
         try runTimed(io, "generated packed encodeIntoAssumeCapacity buffer reuse", iters.packed_binary, generated_packed_bytes.len, GeneratedPackedEncodeIntoCtx{ .buffer = generated_packed_buffer, .message = &generated_packed }, generatedPackedEncodeIntoReuse),

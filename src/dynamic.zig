@@ -223,7 +223,24 @@ pub const DynamicMessage = struct {
     }
 
     pub fn hasUnknownFieldNumber(self: *const DynamicMessage, number: wire.FieldNumber) bool {
-        return self.unknownFieldCountByNumber(number) != 0;
+        for (self.unknown_fields.items) |field| {
+            if (field.number == number) return true;
+        }
+        return false;
+    }
+
+    pub fn unknownFieldNumbersAlloc(self: *const DynamicMessage, allocator: std.mem.Allocator) std.mem.Allocator.Error![]wire.FieldNumber {
+        if (self.unknown_fields.items.len == 0) return &.{};
+        const numbers = try allocator.alloc(wire.FieldNumber, self.unknown_fields.items.len);
+        for (self.unknown_fields.items, numbers) |field, *number| number.* = field.number;
+        return numbers;
+    }
+
+    pub fn unknownFieldNumberRunsAlloc(self: *const DynamicMessage, allocator: std.mem.Allocator) std.mem.Allocator.Error![]wire.RawFieldNumberRun {
+        if (self.unknown_fields.items.len == 0) return &.{};
+        const numbers = try self.unknownFieldNumbersAlloc(allocator);
+        defer allocator.free(numbers);
+        return try wire.rawFieldNumberRunsFromNumbersInPlaceAlloc(allocator, numbers);
     }
 
     pub fn unknownByNumber(self: *const DynamicMessage, number: wire.FieldNumber) []const UnknownField {
@@ -2982,6 +2999,14 @@ test "dynamic unknown field API preserves queries and clears raw fields" {
     try std.testing.expect(!message.hasUnknownFieldNumber(102));
     try std.testing.expectEqual(@as(usize, 1), message.unknownFieldCountByNumber(100));
     try std.testing.expectEqual(@as(usize, 1), message.unknownFieldCountByNumber(101));
+    const unknown_numbers = try message.unknownFieldNumbersAlloc(allocator);
+    defer allocator.free(unknown_numbers);
+    try std.testing.expectEqualSlices(wire.FieldNumber, &.{ 100, 101 }, unknown_numbers);
+    const unknown_runs = try message.unknownFieldNumberRunsAlloc(allocator);
+    defer allocator.free(unknown_runs);
+    try std.testing.expectEqual(@as(usize, 2), unknown_runs.len);
+    try std.testing.expectEqual(wire.RawFieldNumberRun{ .number = 100, .count = 1 }, unknown_runs[0]);
+    try std.testing.expectEqual(wire.RawFieldNumberRun{ .number = 101, .count = 1 }, unknown_runs[1]);
     const unknown_100 = message.unknownByNumber(100);
     try std.testing.expectEqual(@as(usize, 1), unknown_100.len);
     try std.testing.expectEqual(wire.WireType.length_delimited, unknown_100[0].wire_type);
@@ -4864,6 +4889,18 @@ test "dynamic unknownByNumberAlloc returns non-contiguous unknown fields" {
     try std.testing.expectEqual(@as(usize, 2), fields.len);
     try std.testing.expectEqual(@as(wire.FieldNumber, 100), fields[0].number);
     try std.testing.expectEqual(@as(wire.FieldNumber, 100), fields[1].number);
+
+    const numbers = try msg.unknownFieldNumbersAlloc(allocator);
+    defer allocator.free(numbers);
+    try std.testing.expectEqualSlices(wire.FieldNumber, &.{ 100, 101, 100 }, numbers);
+
+    const runs = try msg.unknownFieldNumberRunsAlloc(allocator);
+    defer allocator.free(runs);
+    try std.testing.expectEqual(@as(usize, 2), runs.len);
+    try std.testing.expectEqual(wire.RawFieldNumberRun{ .number = 100, .count = 2 }, runs[0]);
+    try std.testing.expectEqual(wire.RawFieldNumberRun{ .number = 101, .count = 1 }, runs[1]);
+    try std.testing.expectEqual(@as(usize, 2), wire.rawFieldNumberRunCount(runs, 100));
+    try std.testing.expectEqual(@as(usize, 0), wire.rawFieldNumberRunCount(runs, 102));
 }
 
 test "dynamic deterministic encoding preserves same-number unknown ordering" {

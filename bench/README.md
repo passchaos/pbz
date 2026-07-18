@@ -20,9 +20,9 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log
 ```
 
 Use `--fail-on-loss` when a CI-style non-zero exit is desired for any parsed
-row where the fastest pbz generated path is still slower than the fastest
+row where the fastest relevant public pbz path is still slower than the fastest
 baseline path for the same workload.
-The summary compares the fastest relevant pbz generated path against Rust
+The summary compares the fastest relevant public pbz path against Rust
 `prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf rows when present.
 See [`COVERAGE.md`](COVERAGE.md) for the current feature/performance audit
 checklist and the remaining non-goal/open-audit items.
@@ -31,8 +31,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
 - generated/dynamic unknown-field stress decode and count-by-number query,
-  including optional generated raw-field-number and compact run sidecars for
-  repeated queries
+  including optional generated and dynamic raw-field-number / compact run
+  sidecars for repeated queries
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode, including generated
@@ -62,6 +62,10 @@ number queries over those raw fields can build either a parallel field-number
 sidecar with `pbz.wire.rawFieldNumbersAlloc` /
 `pbz.wire.rawFieldNumberCount` or a compact sorted run sidecar with
 `pbz.wire.rawFieldNumberRunsAlloc` / `pbz.wire.rawFieldNumberRunCount`.
+Dynamic messages expose the same sidecar shape directly from their already
+decoded `UnknownField.number` metadata via `unknownFieldNumbersAlloc` and
+`unknownFieldNumberRunsAlloc`, avoiding raw tag re-decode for reflection-heavy
+callers.
 `bench/summarize_compare.py` includes the C++ `UnknownFieldSet`
 count-by-number row in the fail-on-loss matrix when comparing against the
 compact run sidecar. The C++ unknown-field decode row remains manual context:

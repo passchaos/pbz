@@ -149,6 +149,31 @@ pub const RawFieldNumberRun = struct {
     count: usize,
 };
 
+/// Builds a compact sorted run sidecar from decoded raw-field numbers.
+///
+/// The input slice is copied before sorting, so callers can pass stable
+/// sidecars or application-owned field-number arrays without changing their
+/// order.  Number `0` is reserved as the sentinel used by
+/// `rawFieldNumbersAlloc` for empty raw fields and is omitted from the result.
+pub fn rawFieldNumberRunsFromNumbersAlloc(allocator: std.mem.Allocator, numbers: []const FieldNumber) std.mem.Allocator.Error![]RawFieldNumberRun {
+    if (numbers.len == 0) return &.{};
+
+    const scratch = try allocator.dupe(FieldNumber, numbers);
+    defer allocator.free(scratch);
+    return try rawFieldNumberRunsFromNumbersInPlaceAlloc(allocator, scratch);
+}
+
+/// Same as `rawFieldNumberRunsFromNumbersAlloc`, but reorders `numbers` in
+/// place.  This is the preferred path when the caller already has a temporary
+/// decoded-number buffer and wants to avoid a second allocation/copy while
+/// building the compact run sidecar.
+pub fn rawFieldNumberRunsFromNumbersInPlaceAlloc(allocator: std.mem.Allocator, numbers: []FieldNumber) std.mem.Allocator.Error![]RawFieldNumberRun {
+    if (numbers.len == 0) return &.{};
+
+    std.mem.sort(FieldNumber, numbers, {}, std.sort.asc(FieldNumber));
+    return try rawFieldNumberRunsFromSortedNumbersAlloc(allocator, numbers);
+}
+
 /// Compact sidecar for repeated raw-unknown count queries.
 ///
 /// Unlike `rawFieldNumbersAlloc`, this coalesces duplicate field numbers after
@@ -161,8 +186,10 @@ pub fn rawFieldNumberRunsAlloc(allocator: std.mem.Allocator, fields: []const []c
 
     const numbers = try rawFieldNumbersAlloc(allocator, fields);
     defer allocator.free(numbers);
-    std.mem.sort(FieldNumber, numbers, {}, std.sort.asc(FieldNumber));
+    return try rawFieldNumberRunsFromNumbersInPlaceAlloc(allocator, numbers);
+}
 
+fn rawFieldNumberRunsFromSortedNumbersAlloc(allocator: std.mem.Allocator, numbers: []const FieldNumber) std.mem.Allocator.Error![]RawFieldNumberRun {
     var run_count: usize = 0;
     var index: usize = 0;
     while (index < numbers.len) {
@@ -1965,6 +1992,15 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectEqual(RawFieldNumberRun{ .number = 31, .count = 1 }, raw_number_runs[2]);
     try std.testing.expectEqual(@as(usize, 2), rawFieldNumberRunCount(raw_number_runs, 16));
     try std.testing.expectEqual(@as(usize, 0), rawFieldNumberRunCount(raw_number_runs, 17));
+
+    const sidecar_numbers = [_]FieldNumber{ 31, 0, 16, 16, 15 };
+    const sidecar_runs = try rawFieldNumberRunsFromNumbersAlloc(std.testing.allocator, &sidecar_numbers);
+    defer std.testing.allocator.free(sidecar_runs);
+    try std.testing.expectEqualSlices(FieldNumber, &.{ 31, 0, 16, 16, 15 }, &sidecar_numbers);
+    try std.testing.expectEqual(@as(usize, 3), sidecar_runs.len);
+    try std.testing.expectEqual(RawFieldNumberRun{ .number = 15, .count = 1 }, sidecar_runs[0]);
+    try std.testing.expectEqual(RawFieldNumberRun{ .number = 16, .count = 2 }, sidecar_runs[1]);
+    try std.testing.expectEqual(RawFieldNumberRun{ .number = 31, .count = 1 }, sidecar_runs[2]);
     try std.testing.expect(rawFieldHasNumberAssumeValid(&raw_fields, 16));
     try std.testing.expect(!rawFieldHasNumberAssumeValid(&raw_fields, 17));
     const matched = try rawFieldsByNumberAlloc(std.testing.allocator, &raw_fields, 16);

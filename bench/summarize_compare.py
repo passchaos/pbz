@@ -6,7 +6,7 @@ Usage:
   python3 bench/summarize_compare.py /tmp/pbz-compare.log
 
 The script parses the ``ns/op`` lines emitted by ``bench/run_compare.sh`` and
-compares the fastest relevant pbz generated path against each available
+compares the fastest relevant public pbz path against each available
 cross-language implementation for the same workload. It is intentionally a
 summary/audit tool: by default it exits successfully even when pbz loses a row or
 when a baseline is missing; use ``--fail-on-loss`` for CI-style gating.
@@ -71,6 +71,8 @@ WORKLOADS: tuple[Workload, ...] = (
             "generated unknown field number sidecar count",
             "generated unknown field number run sidecar count",
             "dynamic unknown fields count by number",
+            "dynamic unknown field number sidecar count",
+            "dynamic unknown field number run sidecar count",
         ),
         {
             "c++ protobuf": ("c++ protobuf unknown fields count by number",),
@@ -911,6 +913,7 @@ def self_test() -> None:
     generated binary encodeIntoAssumeCapacity buffer reuse: best of 3 x 10 iters, 47 bytes/iter, 40.00 ns/op, 1 ops/s, 1 MiB/s
     generated binary decode: best of 3 x 10 iters, 47 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
     generated unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 5.00 ns/op, 1 ops/s, 1 MiB/s
+    dynamic unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 6.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf unknown fields count by number: best of 3 x 10 iters, 4016 bytes/iter, 100.00 ns/op, 1 ops/s, 1 MiB/s
     generated textbytes borrowed slices encode: best of 3 x 10 iters, 134 bytes/iter, 20.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf textbytes encode reuse: best of 3 x 10 iters, 134 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
@@ -922,6 +925,7 @@ def self_test() -> None:
     assert "binary encode" in output
     assert "unknown fields count by number" in output
     assert "generated unknown field number run sidecar count" in output
+    assert "dynamic unknown field number run sidecar count" not in output
     assert "c++ protobuf unknown fields count by number" in output
     assert "textbytes encode" in output
     assert "generated textbytes borrowed slices encode" in output
@@ -930,6 +934,15 @@ def self_test() -> None:
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output
     assert has_loss
+
+    dynamic_unknown_sample = """
+    dynamic unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 4.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf unknown fields count by number: best of 3 x 10 iters, 4016 bytes/iter, 100.00 ns/op, 1 ops/s, 1 MiB/s
+    """
+    dynamic_output, dynamic_has_loss = summarize(parse_results(dynamic_unknown_sample))
+    assert "dynamic unknown field number run sidecar count" in dynamic_output
+    assert "unknown fields count by number" in dynamic_output
+    assert dynamic_has_loss
 
 
 def main(argv: list[str]) -> int:

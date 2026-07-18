@@ -14,7 +14,7 @@ functionality and measured hot-path performance.
   nested messages, oneof, proto3 optional presence, proto2 groups/extensions,
   imports, enums, JSON, TextFormat, descriptors, services, and selected well
   known types.
-- The fastest relevant pbz generated path should beat Rust `prost`, Rust
+- The fastest relevant public pbz path should beat Rust `prost`, Rust
   `quick-protobuf`, C++ protobuf, and Go protobuf for every parsed comparison row
   in `bench/summarize_compare.py`.
 - Performance wins should come from public generated or runtime APIs rather than
@@ -95,9 +95,9 @@ The matrix includes:
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
 
 The local `zig build bench` output also includes generated/dynamic
-unknown-field stress decode and count-by-number query rows, plus generated
-raw-field-number and compact run sidecar count rows for callers that repeatedly
-query preserved raw unknown fields by number. `bench/run_compare.sh` now emits
+unknown-field stress decode and count-by-number query rows, plus generated and
+dynamic raw-field-number / compact run sidecar count rows for callers that
+repeatedly query preserved unknown fields by number. `bench/run_compare.sh` now emits
 C++ `UnknownFieldSet` stress decode/count rows; the count-by-number row is in
 the fail-on-loss matrix against pbz's compact run sidecar, while the decode row
 remains manual context because C++ exposes parsed unknown fields and pbz
@@ -132,6 +132,9 @@ APIs:
 - `pbz.wire.rawFieldNumberRunsAlloc(fields)` plus
   `pbz.wire.rawFieldNumberRunCount(runs, number)` for compact, sorted run
   sidecars when repeated unknown fields contain many duplicate numbers
+- `DynamicMessage.unknownFieldNumbersAlloc(allocator)` and
+  `DynamicMessage.unknownFieldNumberRunsAlloc(allocator)` for the same repeated
+  by-number query pattern over dynamic messages without re-decoding raw tags
 
 `examples/generated_performance.zig` demonstrates these APIs outside the
 benchmark harness.
