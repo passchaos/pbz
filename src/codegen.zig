@@ -788,13 +788,11 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeDecode(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
-    if (messageCanDecodeReuseFast(ctx, message)) {
-        try writeDecodeReuse(ctx, message, writer, depth + 1);
+    try writeDecodeReuse(ctx, message, writer, depth + 1);
+    try writer.writeAll("\n");
+    if (messageCanDecodeKnownReuse(ctx.file, message)) {
+        try writeDecodeKnownReuse(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
-        if (messageCanDecodeKnownReuse(ctx.file, message)) {
-            try writeDecodeKnownReuse(ctx, message, writer, depth + 1);
-            try writer.writeAll("\n");
-        }
     }
     try writeDecodeInitialized(writer, depth + 1);
     try writer.writeAll("\n");
@@ -5474,20 +5472,6 @@ fn rawFieldTag(number: u29, kind: schema.FieldKind) u64 {
 
 fn rawTagValue(number: u29, wire_type: wire.WireType) u64 {
     return (@as(u64, number) << 3) | @intFromEnum(wire_type);
-}
-
-fn messageCanDecodeReuseFast(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        switch (field.kind) {
-            .scalar => {},
-            .enumeration => {},
-            .map => {},
-            .message, .group => |name| {
-                if (!codegenCanReferenceMessageWithContext(ctx, name) and field.cardinality != .repeated and field.oneof_name == null) {}
-            },
-        }
-    }
-    return true;
 }
 
 fn messageCanDecodeKnownReuse(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
