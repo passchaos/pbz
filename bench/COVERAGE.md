@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-iterator-inline.log` summarized by
-`/tmp/pbz-summary-after-iterator-inline.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-with-cpp-unknown.log` summarized by
+`/tmp/pbz-summary-with-cpp-unknown.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-iterator-inline.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-with-cpp-unknown.log --fail-on-loss
 ```
 
 ended with:
@@ -93,11 +93,11 @@ The matrix includes:
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
 
 The local `zig build bench` output also includes generated/dynamic
-unknown-field stress decode and count-by-number query rows. Those rows are kept
-as pbz regression signals, but they are deliberately outside
-`bench/summarize_compare.py`'s cross-language fail-on-loss matrix until the
-C++/Go/Rust baselines normalize their unknown-field API semantics against pbz's
-exact raw-field slice preservation.
+unknown-field stress decode and count-by-number query rows. `bench/run_compare.sh`
+now emits C++ `UnknownFieldSet` stress decode/count rows for manual context.
+Those rows are deliberately outside `bench/summarize_compare.py`'s
+cross-language fail-on-loss matrix because C++ exposes parsed unknown fields,
+while pbz preserves exact raw-field byte slices.
 
 ## Generated performance APIs now used by the matrix
 
@@ -179,11 +179,10 @@ claiming broad superiority beyond the covered workloads:
   workloads such as remaining well-known-type edge cases may deserve separate
   rows.
 - The local pbz benchmark includes unknown-field stress decode and
-  count-by-number rows. They are useful regression signals, but they are not
-  part of the cross-language fail-on-loss matrix yet because the C++ baseline
-  exposes unknowns through `UnknownFieldSet` rather than pbz's exact raw-field
-  slice preservation API. A future audit can add a semantics-matched row if
-  that API difference is normalized.
+  count-by-number rows. `bench/run_compare.sh` also emits C++ `UnknownFieldSet`
+  rows for manual context, but they are not part of the cross-language
+  fail-on-loss matrix because the APIs differ: C++ exposes parsed unknown
+  fields, while pbz preserves exact raw-field slice bytes.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

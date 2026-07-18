@@ -17,6 +17,11 @@ constexpr int kBenchmarkSamples = 3;
 constexpr int kLargeMapEntryCount = 1024;
 constexpr int kLargeMapShuffleMultiplier = 257;
 constexpr int kLargeMapShuffleIncrement = 911;
+constexpr int kUnknownFieldStressCount = 1024;
+constexpr int kUnknownFieldStressFirstNumber = 1000;
+constexpr int kUnknownFieldStressNumberSpan = 16;
+constexpr int kUnknownFieldStressCountPerNumber =
+    kUnknownFieldStressCount / kUnknownFieldStressNumberSpan;
 
 struct BenchResult {
   const char *name;
@@ -57,6 +62,34 @@ BenchResult RunTimed(const char *name, int iterations,
                               end - start));
   }
   return BenchResult{name, iterations, kBenchmarkSamples, best, bytes_per_iter};
+}
+
+void AppendVarint(std::string *out, uint64_t value) {
+  while (value >= 0x80) {
+    out->push_back(static_cast<char>((value & 0x7f) | 0x80));
+    value >>= 7;
+  }
+  out->push_back(static_cast<char>(value));
+}
+
+std::string MakeUnknownFieldPayload(const std::string &base) {
+  std::string out = base;
+  for (int i = 0; i < kUnknownFieldStressCount; ++i) {
+    const int number =
+        kUnknownFieldStressFirstNumber + (i % kUnknownFieldStressNumberSpan);
+    AppendVarint(&out, (static_cast<uint64_t>(number) << 3) | 0);
+    AppendVarint(&out, static_cast<uint64_t>(i + 1));
+  }
+  return out;
+}
+
+int UnknownFieldCountByNumber(const google::protobuf::UnknownFieldSet &fields,
+                              int number) {
+  int count = 0;
+  for (int i = 0; i < fields.field_count(); ++i) {
+    if (fields.field(i).number() == number) ++count;
+  }
+  return count;
 }
 
 demo::Packed MakePacked() {
@@ -305,6 +338,14 @@ int main() {
   const demo::Complex complex = MakeComplex();
   std::string bytes;
   person.SerializeToString(&bytes);
+  const std::string unknown_bytes = MakeUnknownFieldPayload(bytes);
+  demo::Person unknown_person;
+  if (!unknown_person.ParseFromString(unknown_bytes))
+    std::abort();
+  if (unknown_person.GetReflection()
+          ->GetUnknownFields(unknown_person)
+          .field_count() != kUnknownFieldStressCount)
+    std::abort();
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok())
     std::abort();
@@ -378,6 +419,7 @@ int main() {
 
   std::cout << "c++ protobuf benchmark baseline\n";
   std::cout << "payload size: " << bytes.size() << "\n";
+  std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
@@ -483,6 +525,30 @@ int main() {
         asm volatile("" : : "g"(&reused_decoded) : "memory");
       });
   decode_reuse.Print();
+
+  auto unknown_decode = RunTimed(
+      "c++ protobuf unknown fields decode", 1000, unknown_bytes.size(), [&]() {
+        demo::Person decoded;
+        if (!decoded.ParseFromString(unknown_bytes))
+          std::abort();
+        if (decoded.GetReflection()->GetUnknownFields(decoded).field_count() !=
+            kUnknownFieldStressCount)
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  unknown_decode.Print();
+
+  auto unknown_count_by_number = RunTimed(
+      "c++ protobuf unknown fields count by number", kIterations,
+      unknown_bytes.size(), [&]() {
+        const int count = UnknownFieldCountByNumber(
+            unknown_person.GetReflection()->GetUnknownFields(unknown_person),
+            kUnknownFieldStressFirstNumber);
+        if (count != kUnknownFieldStressCountPerNumber)
+          std::abort();
+        asm volatile("" : : "g"(count) : "memory");
+      });
+  unknown_count_by_number.Print();
 
   auto scalarmix_encode =
       RunTimed("c++ protobuf scalarmix encode", kIterations,

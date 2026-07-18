@@ -53,10 +53,11 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - JSON stringify/parse
 - TextFormat format/parse
 
-The unknown-field stress rows are local pbz regression signals rather than
-cross-language fail-on-loss rows. C++ protobuf exposes unknowns through
-`UnknownFieldSet`, while pbz preserves exact raw-field byte slices, so a fair
-comparison needs an explicit semantics normalization layer first.
+The unknown-field stress rows are pbz regression signals. `run_compare.sh` also
+emits C++ `UnknownFieldSet` decode and count-by-number rows for manual
+context, but these rows deliberately remain outside the cross-language
+fail-on-loss matrix: C++ exposes parsed unknown fields, while pbz preserves
+exact raw-field byte slices.
 
 The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and
@@ -96,8 +97,9 @@ Cross-language baselines:
   the same schema. It requires `protoc`, a C++ compiler, protobuf headers, and
   libprotobuf. It measures both `SerializeToString` and caller-provided buffer
   `SerializeToArray` reuse paths, deterministic `CodedOutputStream` encoding,
-  protobuf util JSON stringify/parse, protobuf TextFormat format/parse, plus decode into fresh and reused message
-  objects. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
+  protobuf util JSON stringify/parse, protobuf TextFormat format/parse,
+  UnknownFieldSet stress decode/count rows, plus decode into fresh and reused
+  message objects. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
   ignored `bench/cpp_protobuf/generated/` directory before compiling.
 - `bench/go_protobuf`: Go `google.golang.org/protobuf` generated-code binary
   encode/decode, deterministic `MarshalOptions`, plus `protojson`
