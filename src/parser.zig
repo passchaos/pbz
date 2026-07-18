@@ -177,6 +177,42 @@ pub const Parser = struct {
         return self.file;
     }
 
+    fn appendMessageDescriptor(self: *Parser, list: *std.ArrayList(schema.MessageDescriptor), value: schema.MessageDescriptor) Error!void {
+        var owned = value;
+        errdefer owned.deinit(self.allocator);
+        try list.append(self.allocator, owned);
+    }
+
+    fn appendEnumDescriptor(self: *Parser, list: *std.ArrayList(schema.EnumDescriptor), value: schema.EnumDescriptor) Error!void {
+        var owned = value;
+        errdefer owned.deinit(self.allocator);
+        try list.append(self.allocator, owned);
+    }
+
+    fn appendServiceDescriptor(self: *Parser, list: *std.ArrayList(schema.ServiceDescriptor), value: schema.ServiceDescriptor) Error!void {
+        var owned = value;
+        errdefer owned.deinit(self.allocator);
+        try list.append(self.allocator, owned);
+    }
+
+    fn appendMethodDescriptor(self: *Parser, list: *std.ArrayList(schema.MethodDescriptor), value: schema.MethodDescriptor) Error!void {
+        var owned = value;
+        errdefer owned.deinit(self.allocator);
+        try list.append(self.allocator, owned);
+    }
+
+    fn appendFieldDescriptor(self: *Parser, list: *std.ArrayList(schema.FieldDescriptor), value: schema.FieldDescriptor) Error!void {
+        var owned = value;
+        errdefer owned.deinit(self.allocator);
+        try list.append(self.allocator, owned);
+    }
+
+    fn appendFieldOption(self: *Parser, list: *schema.OptionList, value: schema.FieldOption) Error!void {
+        const owned = value;
+        errdefer if (owned.name_owned) self.allocator.free(owned.name);
+        try list.append(self.allocator, owned);
+    }
+
     fn parseFile(self: *Parser) Error!void {
         while (self.current.tag != .eof) {
             const decl_start = self.current.start;
@@ -211,15 +247,15 @@ pub const Parser = struct {
                 try self.addSourceLocation(&.{8}, option_start, self.previousEnd());
             } else if (self.matchIdent("message")) {
                 const index: i32 = @intCast(self.file.messages.items.len);
-                try self.file.messages.append(self.allocator, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start, self.file.package));
+                try self.appendMessageDescriptor(&self.file.messages, try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start, self.file.package));
             } else if (self.matchIdent("enum")) {
                 const index: i32 = @intCast(self.file.enums.items.len);
-                try self.file.enums.append(self.allocator, try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start));
+                try self.appendEnumDescriptor(&self.file.enums, try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start));
             } else if (self.matchIdent("extend")) {
                 try self.parseExtend(&self.file.extensions, "", null, &.{7});
             } else if (self.matchIdent("service")) {
                 const index: i32 = @intCast(self.file.services.items.len);
-                try self.file.services.append(self.allocator, try self.parseServiceAfterKeyword(&.{ 6, index }, decl_start));
+                try self.appendServiceDescriptor(&self.file.services, try self.parseServiceAfterKeyword(&.{ 6, index }, decl_start));
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
             } else {
@@ -491,7 +527,7 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
-                try message.options.append(self.allocator, option);
+                try self.appendFieldOption(&message.options, option);
                 try self.applyMessageOption(&message, option);
                 const path = try self.childFieldPath(source_path, 7);
                 defer self.allocator.free(path);
@@ -501,13 +537,13 @@ pub const Parser = struct {
                 const path = try self.childPath(source_path, 3, index);
                 defer self.allocator.free(path);
                 const nested_start = self.previous_end;
-                try message.messages.append(self.allocator, try self.parseMessageAfterKeyword(path, nested_start, message_scope));
+                try self.appendMessageDescriptor(&message.messages, try self.parseMessageAfterKeyword(path, nested_start, message_scope));
             } else if (self.matchIdent("enum")) {
                 const index: i32 = @intCast(message.enums.items.len);
                 const path = try self.childPath(source_path, 4, index);
                 defer self.allocator.free(path);
                 const enum_start = self.previous_end;
-                try message.enums.append(self.allocator, try self.parseEnumAfterKeyword(path, enum_start));
+                try self.appendEnumDescriptor(&message.enums, try self.parseEnumAfterKeyword(path, enum_start));
             } else if (self.matchIdent("oneof")) {
                 const oneof_start = self.previous_end;
                 const index: i32 = @intCast(message.oneofs.items.len);
@@ -534,7 +570,7 @@ pub const Parser = struct {
             } else {
                 const field_start = self.current.start;
                 const index: i32 = @intCast(message.fields.items.len);
-                try message.fields.append(self.allocator, try self.parseField(null, &message, source_path));
+                try self.appendFieldDescriptor(&message.fields, try self.parseField(null, &message, source_path));
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, field_start, self.previousEnd());
@@ -555,7 +591,7 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
-                try enumeration.options.append(self.allocator, option);
+                try self.appendFieldOption(&enumeration.options, option);
                 try self.applyFeatureOption(&enumeration.features, option);
                 const path = try self.childFieldPath(source_path, 3);
                 defer self.allocator.free(path);
@@ -609,7 +645,7 @@ pub const Parser = struct {
             if (self.matchIdent("option")) {
                 const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
-                try service.options.append(self.allocator, option);
+                try self.appendFieldOption(&service.options, option);
                 try self.applyFeatureOption(&service.features, option);
                 const path = try self.childFieldPath(source_path, 3);
                 defer self.allocator.free(path);
@@ -619,7 +655,7 @@ pub const Parser = struct {
                 const index: i32 = @intCast(service.methods.items.len);
                 const path = try self.childPath(source_path, 2, index);
                 defer self.allocator.free(path);
-                try service.methods.append(self.allocator, try self.parseRpcAfterKeyword(path));
+                try self.appendMethodDescriptor(&service.methods, try self.parseRpcAfterKeyword(path));
                 try self.addSourceLocation(path, method_start, self.previousEnd());
             } else if (self.consumeSymbol(';')) {
                 // Empty declaration.
@@ -647,7 +683,7 @@ pub const Parser = struct {
                 if (self.matchIdent("option")) {
                     const option_start = self.previous_end;
                     const option = try self.parseOptionAssignmentStatement();
-                    try method.options.append(self.allocator, option);
+                    try self.appendFieldOption(&method.options, option);
                     try self.applyFeatureOption(&method.features, option);
                     const path = try self.childFieldPath(method_path, 4);
                     defer self.allocator.free(path);
@@ -669,7 +705,7 @@ pub const Parser = struct {
                 const option_start = self.previous_end;
                 const option = try self.parseOptionAssignmentStatement();
                 const oneof = &message.oneofs.items[message.oneofs.items.len - 1];
-                try oneof.options.append(self.allocator, option);
+                try self.appendFieldOption(&oneof.options, option);
                 try self.applyFeatureOption(&oneof.features, option);
                 const oneof_index: i32 = @intCast(message.oneofs.items.len - 1);
                 const oneof_path = try self.childPath(message_path, 8, oneof_index);
@@ -682,7 +718,7 @@ pub const Parser = struct {
             } else {
                 const field_start = self.current.start;
                 const index: i32 = @intCast(message.fields.items.len);
-                try message.fields.append(self.allocator, try self.parseField(oneof_name, message, message_path));
+                try self.appendFieldDescriptor(&message.fields, try self.parseField(oneof_name, message, message_path));
                 const path = try self.childPath(message_path, 2, index);
                 defer self.allocator.free(path);
                 try self.addSourceLocation(path, field_start, self.previousEnd());
@@ -827,7 +863,7 @@ pub const Parser = struct {
             if (self.consumeSymbol(';')) continue;
             const nested_field_start = self.current.start;
             const nested_field_index: i32 = @intCast(nested.fields.items.len);
-            try nested.fields.append(self.allocator, try self.parseField(null, &nested, group_message_path));
+            try self.appendFieldDescriptor(&nested.fields, try self.parseField(null, &nested, group_message_path));
             if (group_message_path) |path_base| {
                 const nested_field_path = try self.childPath(path_base, 2, nested_field_index);
                 defer self.allocator.free(nested_field_path);
@@ -944,7 +980,7 @@ pub const Parser = struct {
         if (isFeatureOption(option.name)) {
             if (self.file.syntax != .editions) return error.InvalidSyntax;
             try applyFeatureOptionValue(&self.file.features, option);
-            try self.file.options.append(self.allocator, option);
+            try self.appendFieldOption(&self.file.options, option);
         } else {
             try self.file.addOption(option);
         }
@@ -995,7 +1031,7 @@ pub const Parser = struct {
     fn parseOptionList(self: *Parser, options: *schema.OptionList, end_symbol: u8) Error!void {
         while (!self.consumeSymbol(end_symbol)) {
             if (self.current.tag == .eof) return error.UnexpectedEof;
-            try options.append(self.allocator, try self.parseOptionAssignment(end_symbol));
+            try self.appendFieldOption(options, try self.parseOptionAssignment(end_symbol));
             if (self.consumeSymbol(',')) continue;
             try self.expectSymbol(end_symbol);
             break;
