@@ -1378,7 +1378,7 @@ pub const Struct = struct {
             var value = try field.value.cloneOwned(allocator);
             var owns_value = true;
             errdefer if (owns_value) value.deinit(allocator);
-            fields.append(allocator, .{ .key = key, .value = value }) catch |err| return err;
+            try fields.append(allocator, .{ .key = key, .value = value });
             owns_key = false;
             owns_value = false;
         }
@@ -1731,7 +1731,7 @@ fn structFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value)
         var value = try valueFromJsonValue(allocator, entry.value_ptr.*);
         var owns_value = true;
         errdefer if (owns_value) value.deinit(allocator);
-        fields.append(allocator, .{ .key = key, .value = value }) catch |err| return err;
+        try fields.append(allocator, .{ .key = key, .value = value });
         owns_key = false;
         owns_value = false;
     }
