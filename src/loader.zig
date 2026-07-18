@@ -340,7 +340,10 @@ fn loadDirOne(
     defer _ = loading.remove(path);
 
     const io = std.Io.Threaded.global_single_threaded.io();
-    const source = root_dir.readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024)) catch return error.FileNotFound;
+    const source = root_dir.readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024)) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.FileNotFound,
+    };
     var source_owned = false;
     errdefer if (!source_owned) allocator.free(source);
 
@@ -385,6 +388,33 @@ test "filesystem loader recursively loads imports" {
     try std.testing.expectEqual(@as(usize, 2), loaded.files.items.len);
     try std.testing.expect(loaded.registry.findMessage(".fs.common.User", null) != null);
     try std.testing.expect(loaded.registry.findMessage(".fs.app.Request", null) != null);
+}
+
+fn exerciseDirLoadCleanup(allocator: std.mem.Allocator, root_dir: std.Io.Dir) !void {
+    var loaded = try loadDir(allocator, root_dir, "app.proto");
+    defer loaded.deinit();
+    try std.testing.expectEqual(@as(usize, 2), loaded.files.items.len);
+    try std.testing.expect(loaded.registry.findMessage(".fs.common.User", null) != null);
+    try std.testing.expect(loaded.registry.findMessage(".fs.app.Request", null) != null);
+}
+
+test "filesystem loader cleans up allocation failures" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    try tmp.dir.writeFile(io, .{ .sub_path = "common.proto", .data =
+        \\syntax = "proto3";
+        \\package fs.common;
+        \\message User { string name = 1; }
+    });
+    try tmp.dir.writeFile(io, .{ .sub_path = "app.proto", .data =
+        \\syntax = "proto3";
+        \\package fs.app;
+        \\import "common.proto";
+        \\message Request { fs.common.User user = 1; }
+    });
+    try std.testing.checkAllAllocationFailures(allocator, exerciseDirLoadCleanup, .{tmp.dir});
 }
 
 test "filesystem loader allows missing weak imports" {
