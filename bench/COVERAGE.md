@@ -165,7 +165,7 @@ benchmark harness.
   conformance-test-runner-compatible subprocess executable, descriptor-set
   smoke test, reproducible fetch/build path for the upstream runner, and a
   passing upstream conformance run. The latest accepted upstream run is recorded
-  in `/tmp/pbz-upstream-conformance-fixed.log`: Binary/JSON reported `2808
+  in `/tmp/pbz-upstream-conformance-after-textbytes-slices.log`: Binary/JSON reported `2808
   successes, 0 skipped, 0 expected failures, 0 unexpected failures`, and
   TextFormat reported `445 successes, 0 skipped, 0 expected failures, 0
   unexpected failures`.
