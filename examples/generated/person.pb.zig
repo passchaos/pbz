@@ -1148,16 +1148,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -2912,16 +2920,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -4149,16 +4165,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -5193,16 +5217,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -6595,16 +6627,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -7635,16 +7675,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -8688,16 +8736,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -9739,16 +9795,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -10782,16 +10846,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -11825,16 +11897,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -12868,16 +12948,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -13911,16 +13999,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -14954,16 +15050,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -16003,16 +16107,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -17052,16 +17164,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -18101,16 +18221,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -19150,16 +19278,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -20199,16 +20335,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -21226,16 +21370,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -22281,16 +22433,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -23393,16 +23553,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -24900,16 +25068,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
@@ -25978,16 +26154,24 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                 'x', 'X' => {
                     const start = i;
                     var end = i;
-                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+                    var decoded: u8 = 0;
+                    while (end < value.len and end < start + 2) : (end += 1) {
+                        const digit = @This().textHexDigit(value[end]) orelse break;
+                        decoded = decoded * 16 + digit;
+                    }
                     if (end == start) return error.InvalidEscape;
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+                    try out.append(allocator, decoded);
                     i = end;
                 },
                 '0'...'7' => {
                     const start = i - 1;
                     var end = i;
-                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+                    var decoded: u16 = esc - '0';
+                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+                        decoded = decoded * 8 + (value[end] - '0');
+                    }
+                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+                    try out.append(allocator, @intCast(decoded));
                     i = end;
                 },
                 else => |unknown| try out.append(allocator, unknown),
