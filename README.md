@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py --fail-on-loss /tmp/pbz-compare.log
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-after-any-wkt-stringify.log`,
-summarized in `/tmp/pbz-summary-after-any-wkt-stringify.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-duration-json.log`,
+summarized in `/tmp/pbz-summary-after-duration-json.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
@@ -92,26 +92,28 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |
 |---|---:|---:|---:|---:|---:|
-| binary encode | 21.67 | 109.56 (5.06x) | 50.20 (2.32x) | 116.79 (5.39x) | 830.65 (38.33x) |
-| binary decode | 93.67 | 260.02 (2.78x) | 232.09 (2.48x) | 223.40 (2.38x) | 909.29 (9.71x) |
-| unknown count by number | 3.57 | — | — | 152.44 (42.70x) | — |
-| scalarmix encode | 20.30 | 116.63 (5.75x) | 48.69 (2.40x) | 31.08 (1.53x) | 249.37 (12.28x) |
-| scalarmix decode | 34.33 | 168.71 (4.91x) | 181.31 (5.28x) | 89.21 (2.60x) | 301.36 (8.78x) |
-| textbytes encode | 11.53 | 86.06 (7.46x) | 38.74 (3.36x) | 119.91 (10.40x) | 144.53 (12.54x) |
-| complex decode | 168.82 | 388.61 (2.30x) | 341.67 (2.02x) | 397.78 (2.36x) | 1466.29 (8.69x) |
-| complex JSON parse | 2480.38 | — | — | 12088.50 (4.87x) | 7783.60 (3.14x) |
-| Any WKT JSON stringify | 117.36 | — | — | 1928.21 (16.43x) | 981.00 (8.36x) |
-| Any WKT JSON parse | 518.11 | — | — | 3059.56 (5.91x) | 1587.18 (3.06x) |
-| TextFormat parse | 737.78 | — | — | 5013.89 (6.80x) | 6502.22 (8.81x) |
-| packed int32 decode | 764.17 | 1899.61 (2.49x) | 3241.59 (4.24x) | 1451.65 (1.90x) | 3303.27 (4.32x) |
-| packed bool encode | 2.06 | 1383.42 (671.56x) | 524.17 (254.45x) | 15.91 (7.72x) | 2262.03 (1098.07x) |
-| packed bool decode | 271.65 | 1535.04 (5.65x) | 2639.67 (9.72x) | 810.69 (2.98x) | 1831.69 (6.74x) |
-| largebytes decode | 88.93 | 5497.04 (61.81x) | 3074.97 (34.58x) | 2819.39 (31.70x) | 22696.05 (255.21x) |
-| large map decode | 25900.63 | 90792.68 (3.51x) | 89913.29 (3.47x) | 91360.30 (3.53x) | 268425.39 (10.36x) |
-| shuffled large map deterministic binary encode | 28110.22 | — | — | 89795.60 (3.19x) | 381417.77 (13.57x) |
+| binary encode | 17.58 | 120.60 (6.86x) | 51.40 (2.92x) | 111.50 (6.34x) | 844.17 (48.02x) |
+| binary decode | 86.41 | 254.76 (2.95x) | 233.91 (2.71x) | 225.71 (2.61x) | 871.21 (10.08x) |
+| unknown count by number | 3.58 | — | — | 154.29 (43.10x) | — |
+| scalarmix encode | 19.02 | 98.72 (5.19x) | 49.23 (2.59x) | 28.82 (1.52x) | 198.68 (10.45x) |
+| scalarmix decode | 34.58 | 139.58 (4.04x) | 169.79 (4.91x) | 84.82 (2.45x) | 287.13 (8.30x) |
+| textbytes encode | 9.53 | 80.41 (8.44x) | 33.60 (3.53x) | 118.85 (12.47x) | 156.13 (16.38x) |
+| complex decode | 181.93 | 397.22 (2.18x) | 339.21 (1.86x) | 396.51 (2.18x) | 1358.77 (7.47x) |
+| complex JSON parse | 2377.29 | — | — | 11922.70 (5.02x) | 7326.31 (3.08x) |
+| Any WKT JSON stringify | 125.18 | — | — | 1903.93 (15.21x) | 1011.40 (8.08x) |
+| Any WKT JSON parse | 513.21 | — | — | 3058.86 (5.96x) | 1447.62 (2.82x) |
+| Duration JSON stringify | 58.12 | — | — | 959.98 (16.52x) | 337.82 (5.81x) |
+| Duration JSON parse | 7.58 | — | — | 1439.67 (189.93x) | 365.21 (48.18x) |
+| TextFormat parse | 700.64 | — | — | 5015.41 (7.16x) | 6180.15 (8.82x) |
+| packed int32 decode | 766.02 | 1892.48 (2.47x) | 3231.89 (4.22x) | 938.76 (1.23x) | 3131.14 (4.09x) |
+| packed bool encode | 2.01 | 1322.77 (658.09x) | 531.89 (264.62x) | 15.91 (7.91x) | 2229.14 (1109.02x) |
+| packed bool decode | 263.43 | 1534.87 (5.83x) | 2582.60 (9.80x) | 804.83 (3.06x) | 1724.09 (6.54x) |
+| largebytes decode | 92.95 | 5507.81 (59.26x) | 2996.07 (32.23x) | 2815.33 (30.29x) | 22451.07 (241.54x) |
+| large map decode | 25759.24 | 92174.88 (3.58x) | 93010.40 (3.61x) | 94191.80 (3.66x) | 272671.11 (10.59x) |
+| shuffled large map deterministic binary encode | 28458.44 | — | — | 103674.00 (3.64x) | 381681.18 (13.41x) |
 
 The matrix covers binary encode/decode, unknown-field count-by-number, deterministic
-encode, JSON, Any/WKT JSON, TextFormat, packed scalars, large bytes, maps,
+encode, JSON, Any/WKT JSON, direct WKT JSON, TextFormat, packed scalars, large bytes, maps,
 oneof/optional workloads, and complex nested messages. Benchmark results are hardware-sensitive; compare full same-machine
 runs rather than individual copied rows.
 

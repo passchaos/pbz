@@ -381,6 +381,11 @@ int main() {
   std::string any_wkt_json;
   if (!google::protobuf::util::MessageToJsonString(any_wkt, &any_wkt_json).ok())
     std::abort();
+  std::string duration_json;
+  if (!google::protobuf::util::MessageToJsonString(any_wkt_duration,
+                                                   &duration_json)
+           .ok())
+    std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -434,6 +439,7 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "duration json payload size: " << duration_json.size() << "\n";
   std::cout << "any WKT json payload size: " << any_wkt_json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
@@ -1000,6 +1006,30 @@ int main() {
         asm volatile("" : : "g"(&decoded) : "memory");
       });
   any_wkt_json_parse.Print();
+
+  auto duration_json_stringify = RunTimed(
+      "c++ protobuf Duration JSON stringify", kIterations,
+      duration_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(any_wkt_duration,
+                                                         &out)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  duration_json_stringify.Print();
+
+  auto duration_json_parse = RunTimed(
+      "c++ protobuf Duration JSON parse", kIterations, duration_json.size(),
+      [&]() {
+        google::protobuf::Duration decoded;
+        if (!google::protobuf::util::JsonStringToMessage(duration_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  duration_json_parse.Print();
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {

@@ -343,6 +343,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	duration := &durationpb.Duration{Seconds: 1, Nanos: 500_000_000}
+	durationJSONBytes, err := protojson.Marshal(duration)
+	if err != nil {
+		panic(err)
+	}
 	packed := makePacked()
 	packedBytes, err := proto.Marshal(packed)
 	if err != nil {
@@ -427,6 +432,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
+	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
@@ -675,6 +681,21 @@ func main() {
 	runTimed("go protobuf Any WKT JSON parse", iterations, len(anyWKTJSONBytes), func() {
 		var decoded anypb.Any
 		if err := jsonUnmarshalOptions.Unmarshal(anyWKTJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Duration JSON stringify", iterations, len(durationJSONBytes), func() {
+		out, err := protojson.Marshal(duration)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Duration JSON parse", iterations, len(durationJSONBytes), func() {
+		var decoded durationpb.Duration
+		if err := jsonUnmarshalOptions.Unmarshal(durationJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
