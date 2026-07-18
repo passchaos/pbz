@@ -1124,11 +1124,13 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth + 1);
     try writer.writeAll("defer if (needs_normalized_text) allocator.free(normalized_text);\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("const text_has_comments = std.mem.indexOfScalar(u8, normalized_text, '#') != null;\n");
+    try indent(writer, depth + 1);
     try writer.writeAll("var lines = std.mem.splitScalar(u8, normalized_text, '\\n');\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_line| {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("const line = @This().textCleanLine(raw_line);\n");
+    try writer.writeAll("const line = @This().textCleanLine(raw_line, text_has_comments);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (line.len == 0) continue;\n");
     for (message.fields.items) |*field| {
@@ -1145,7 +1147,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth + 2);
     try writer.writeAll("if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }\n");
+    try writer.writeAll("if (try @This().textUnknownGroup(allocator, line, &lines, text_has_comments)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (options.ignore_unknown_fields) continue;\n");
     try indent(writer, depth + 2);
@@ -1298,7 +1300,7 @@ fn writeTextParseMessageExtensionField(ctx: *const CodegenContext, field: *const
     try writeExtensionTextBlockCondition(file, field, "line", writer);
     try writer.writeAll(") {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const block = try @This().textBlock(allocator, &lines);\n");
+    try writer.writeAll("const block = try @This().textBlock(allocator, &lines, text_has_comments);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer allocator.free(block);\n");
     try indent(writer, depth + 1);
@@ -1391,7 +1393,7 @@ fn writeTextParseMessageField(ctx: *const CodegenContext, field: *const schema.F
 
 fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("const block = try @This().textBlock(allocator, &lines);\n");
+    try writer.writeAll("const block = try @This().textBlock(allocator, &lines, text_has_comments);\n");
     try indent(writer, depth);
     try writer.writeAll("defer allocator.free(block);\n");
     try indent(writer, depth);
@@ -1527,7 +1529,7 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_entry_line| {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("const entry_line = @This().textCleanLine(raw_entry_line);\n");
+    try writer.writeAll("const entry_line = @This().textCleanLine(raw_entry_line, text_has_comments);\n");
     try indent(writer, depth + 2);
     try writer.writeAll("if (entry_line.len == 0) continue;\n");
     try indent(writer, depth + 2);
@@ -1540,7 +1542,7 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try indent(writer, depth + 2);
         try writer.writeAll("if (@This().textBlockField(entry_line, \"value\")) {\n");
         try indent(writer, depth + 3);
-        try writer.writeAll("const block = try @This().textBlock(allocator, &lines);\n");
+        try writer.writeAll("const block = try @This().textBlock(allocator, &lines, text_has_comments);\n");
         try indent(writer, depth + 3);
         try writer.writeAll("defer allocator.free(block);\n");
         try indent(writer, depth + 3);
@@ -9796,8 +9798,9 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return i == 0 or text[i - 1] == '\n';
         \\}
         \\
-        \\fn textCleanLine(raw_line: []const u8) []const u8 {
+        \\fn textCleanLine(raw_line: []const u8, text_has_comments: bool) []const u8 {
         \\    var end = raw_line.len;
+        \\    if (!text_has_comments) return @This().textTrimLine(raw_line);
         \\    var quote: ?u8 = null;
         \\    var escaped = false;
         \\    for (raw_line, 0..) |c, i| {
@@ -9820,7 +9823,11 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\            break;
         \\        }
         \\    }
-        \\    var line = std.mem.trim(u8, raw_line[0..end], " \t\r");
+        \\    return @This().textTrimLine(raw_line[0..end]);
+        \\}
+        \\
+        \\fn textTrimLine(raw_line: []const u8) []const u8 {
+        \\    var line = std.mem.trim(u8, raw_line, " \t\r");
         \\    while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
         \\        line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
         \\    }
@@ -9963,7 +9970,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try raw.toOwnedSlice();
         \\}
         \\
-        \\fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8 {
+        \\fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype, text_has_comments: bool) !?[]const u8 {
         \\    var end: usize = 0;
         \\    while (end < line.len and std.ascii.isDigit(line[end])) : (end += 1) {}
         \\    if (end == 0) return null;
@@ -9974,7 +9981,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    defer raw.deinit();
         \\    try raw.writeTag(number, .start_group);
         \\    while (lines.next()) |raw_line| {
-        \\        const child = @This().textCleanLine(raw_line);
+        \\        const child = @This().textCleanLine(raw_line, text_has_comments);
         \\        if (child.len == 0) continue;
         \\        if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
         \\            try raw.writeTag(number, .end_group);
@@ -9985,7 +9992,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\            try raw.appendSlice(field_raw);
         \\            continue;
         \\        }
-        \\        if (try @This().textUnknownGroup(allocator, child, lines)) |group_raw| {
+        \\        if (try @This().textUnknownGroup(allocator, child, lines, text_has_comments)) |group_raw| {
         \\            defer allocator.free(group_raw);
         \\            try raw.appendSlice(group_raw);
         \\            continue;
@@ -10034,12 +10041,12 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    }
         \\}
         \\
-        \\fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
+        \\fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bool) ![]u8 {
         \\    var out: std.Io.Writer.Allocating = .init(allocator);
         \\    errdefer out.deinit();
         \\    var depth: usize = 1;
         \\    while (lines.next()) |raw_line| {
-        \\        const line = @This().textCleanLine(raw_line);
+        \\        const line = @This().textCleanLine(raw_line, text_has_comments);
         \\        if (line.len == 0) continue;
         \\        if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
         \\            depth -= 1;
@@ -13264,7 +13271,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var lines = std.mem.splitScalar(u8, normalized_text, '\\n');") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try @This().textUnknownGroup(allocator, line, &lines, text_has_comments)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields) |raw| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteUnknownRaw(raw, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void") != null);
@@ -13274,12 +13281,12 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\\{o:0>3}\", .{c});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"{d} {{\\n\", .{tag.number});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype, text_has_comments: bool) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeTag(number, .start_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeTag(number, .end_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeBytes(number, bytes);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try raw.writeUInt64(number, try std.fmt.parseInt(u64, value, 0));") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const line = @This().textCleanLine(raw_line, text_has_comments);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(line, \"id\")) |raw_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.ratio = try @This().textFloat(f64, raw_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; })") != null);
@@ -13298,7 +13305,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == '{' or c == '<')") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else if (c == '}' or c == '>')") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlockField(line: []const u8, comptime name: []const u8) bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8) []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textCleanLine(raw_line: []const u8, text_has_comments: bool) []const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!text_has_comments) return @This().textTrimLine(raw_line);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "line[line.len - 1] == ';' or line[line.len - 1] == ','") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textInt(comptime T: type, value: []const u8) !T") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFloat(comptime T: type, value: []const u8) !T") != null);
@@ -13313,14 +13321,14 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var quote: ?u8 = null;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines, text_has_comments);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try children_list.append(allocator, nested);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bool) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \">\")") != null);
 
     const source = try allocator.dupeZ(u8, content);

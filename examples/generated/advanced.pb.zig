@@ -1134,8 +1134,9 @@ fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
     return i == 0 or text[i - 1] == '\n';
 }
 
-fn textCleanLine(raw_line: []const u8) []const u8 {
+fn textCleanLine(raw_line: []const u8, text_has_comments: bool) []const u8 {
     var end = raw_line.len;
+    if (!text_has_comments) return @This().textTrimLine(raw_line);
     var quote: ?u8 = null;
     var escaped = false;
     for (raw_line, 0..) |c, i| {
@@ -1158,7 +1159,11 @@ fn textCleanLine(raw_line: []const u8) []const u8 {
             break;
         }
     }
-    var line = std.mem.trim(u8, raw_line[0..end], " \t\r");
+    return @This().textTrimLine(raw_line[0..end]);
+}
+
+fn textTrimLine(raw_line: []const u8) []const u8 {
+    var line = std.mem.trim(u8, raw_line, " \t\r");
     while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
         line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
     }
@@ -1301,7 +1306,7 @@ fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8
     return try raw.toOwnedSlice();
 }
 
-fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8 {
+fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype, text_has_comments: bool) !?[]const u8 {
     var end: usize = 0;
     while (end < line.len and std.ascii.isDigit(line[end])) : (end += 1) {}
     if (end == 0) return null;
@@ -1312,7 +1317,7 @@ fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anyty
     defer raw.deinit();
     try raw.writeTag(number, .start_group);
     while (lines.next()) |raw_line| {
-        const child = @This().textCleanLine(raw_line);
+        const child = @This().textCleanLine(raw_line, text_has_comments);
         if (child.len == 0) continue;
         if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
             try raw.writeTag(number, .end_group);
@@ -1323,7 +1328,7 @@ fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anyty
             try raw.appendSlice(field_raw);
             continue;
         }
-        if (try @This().textUnknownGroup(allocator, child, lines)) |group_raw| {
+        if (try @This().textUnknownGroup(allocator, child, lines, text_has_comments)) |group_raw| {
             defer allocator.free(group_raw);
             try raw.appendSlice(group_raw);
             continue;
@@ -1372,12 +1377,12 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
     }
 }
 
-fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
+fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bool) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     var depth: usize = 1;
     while (lines.next()) |raw_line| {
-        const line = @This().textCleanLine(raw_line);
+        const line = @This().textCleanLine(raw_line, text_has_comments);
         if (line.len == 0) continue;
         if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
             depth -= 1;
@@ -1490,9 +1495,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
                 const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
                 defer if (needs_normalized_text) allocator.free(normalized_text);
+                const text_has_comments = std.mem.indexOfScalar(u8, normalized_text, '#') != null;
                 var lines = std.mem.splitScalar(u8, normalized_text, '\n');
                 while (lines.next()) |raw_line| {
-                    const line = @This().textCleanLine(raw_line);
+                    const line = @This().textCleanLine(raw_line, text_has_comments);
                     if (line.len == 0) continue;
                     if (@This().textFieldValue(line, "id")) |raw_value| {
                         self.id = try @This().textInt(i32, raw_value);
@@ -1503,7 +1509,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         continue;
                     }
                     if (@This().textBlockField(line, "audit")) {
-                        const block = try @This().textBlock(allocator, &lines);
+                        const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
                         var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         if (self.audit) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.audit = nested; }
@@ -1513,12 +1519,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry = auditsEntry{};
                         errdefer entry.value.deinit(allocator);
                         while (lines.next()) |raw_entry_line| {
-                            const entry_line = @This().textCleanLine(raw_entry_line);
+                            const entry_line = @This().textCleanLine(raw_entry_line, text_has_comments);
                             if (entry_line.len == 0) continue;
                             if (std.mem.eql(u8, entry_line, "}") or std.mem.eql(u8, entry_line, ">")) break;
                             if (@This().textFieldValue(entry_line, "key")) |raw_key| { entry.key = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }; continue; }
                             if (@This().textBlockField(entry_line, "value")) {
-                                const block = try @This().textBlock(allocator, &lines);
+                                const block = try @This().textBlock(allocator, &lines, text_has_comments);
                                 defer allocator.free(block);
                                 var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                                 {
@@ -1536,7 +1542,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textFieldValue(line, "user_name") orelse @This().textFieldValue(line, "userName")) |raw_value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
                     if (@This().textFieldValue(line, "organization_id") orelse @This().textFieldValue(line, "organizationId")) |raw_value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) }; continue; }
                     if (@This().textBlockField(line, "audit_subject") or @This().textBlockField(line, "auditSubject")) {
-                        const block = try @This().textBlock(allocator, &lines);
+                        const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
                         var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         {
@@ -1547,7 +1553,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         continue;
                     }
                     if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
-                    if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
+                    if (try @This().textUnknownGroup(allocator, line, &lines, text_has_comments)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
@@ -2188,8 +2194,9 @@ fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
     return i == 0 or text[i - 1] == '\n';
 }
 
-fn textCleanLine(raw_line: []const u8) []const u8 {
+fn textCleanLine(raw_line: []const u8, text_has_comments: bool) []const u8 {
     var end = raw_line.len;
+    if (!text_has_comments) return @This().textTrimLine(raw_line);
     var quote: ?u8 = null;
     var escaped = false;
     for (raw_line, 0..) |c, i| {
@@ -2212,7 +2219,11 @@ fn textCleanLine(raw_line: []const u8) []const u8 {
             break;
         }
     }
-    var line = std.mem.trim(u8, raw_line[0..end], " \t\r");
+    return @This().textTrimLine(raw_line[0..end]);
+}
+
+fn textTrimLine(raw_line: []const u8) []const u8 {
+    var line = std.mem.trim(u8, raw_line, " \t\r");
     while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
         line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
     }
@@ -2355,7 +2366,7 @@ fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8
     return try raw.toOwnedSlice();
 }
 
-fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype) !?[]const u8 {
+fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anytype, text_has_comments: bool) !?[]const u8 {
     var end: usize = 0;
     while (end < line.len and std.ascii.isDigit(line[end])) : (end += 1) {}
     if (end == 0) return null;
@@ -2366,7 +2377,7 @@ fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anyty
     defer raw.deinit();
     try raw.writeTag(number, .start_group);
     while (lines.next()) |raw_line| {
-        const child = @This().textCleanLine(raw_line);
+        const child = @This().textCleanLine(raw_line, text_has_comments);
         if (child.len == 0) continue;
         if (std.mem.eql(u8, child, "}") or std.mem.eql(u8, child, ">")) {
             try raw.writeTag(number, .end_group);
@@ -2377,7 +2388,7 @@ fn textUnknownGroup(allocator: std.mem.Allocator, line: []const u8, lines: anyty
             try raw.appendSlice(field_raw);
             continue;
         }
-        if (try @This().textUnknownGroup(allocator, child, lines)) |group_raw| {
+        if (try @This().textUnknownGroup(allocator, child, lines, text_has_comments)) |group_raw| {
             defer allocator.free(group_raw);
             try raw.appendSlice(group_raw);
             continue;
@@ -2426,12 +2437,12 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
     }
 }
 
-fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8 {
+fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bool) ![]u8 {
     var out: std.Io.Writer.Allocating = .init(allocator);
     errdefer out.deinit();
     var depth: usize = 1;
     while (lines.next()) |raw_line| {
-        const line = @This().textCleanLine(raw_line);
+        const line = @This().textCleanLine(raw_line, text_has_comments);
         if (line.len == 0) continue;
         if (std.mem.eql(u8, line, "}") or std.mem.eql(u8, line, ">")) {
             depth -= 1;
@@ -2515,9 +2526,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
                     const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
                     defer if (needs_normalized_text) allocator.free(normalized_text);
+                    const text_has_comments = std.mem.indexOfScalar(u8, normalized_text, '#') != null;
                     var lines = std.mem.splitScalar(u8, normalized_text, '\n');
                     while (lines.next()) |raw_line| {
-                        const line = @This().textCleanLine(raw_line);
+                        const line = @This().textCleanLine(raw_line, text_has_comments);
                         if (line.len == 0) continue;
                         if (@This().textFieldValue(line, "actor")) |raw_value| {
                             self.actor = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };
@@ -2528,7 +2540,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             continue;
                         }
                         if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
-                        if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
+                        if (try @This().textUnknownGroup(allocator, line, &lines, text_has_comments)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
