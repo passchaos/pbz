@@ -41,7 +41,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
   borrowed slices/views for copy-free payload paths
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
-- `google.protobuf.Any` with an embedded well-known-type JSON value parse
+- `google.protobuf.Any` with an embedded well-known-type JSON value
+  stringify/parse
 - large `map<string, int32>` encode/decode
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
 - packed repeated integer encode/decode

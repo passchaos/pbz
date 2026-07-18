@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 55
+EXPECTED_WORKLOAD_COUNT = 56
 
 
 @dataclass(frozen=True)
@@ -333,6 +333,14 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf Any WKT JSON parse",),
             "go protobuf": ("go protobuf Any WKT JSON parse",),
+        },
+    ),
+    Workload(
+        "Any WKT JSON stringify",
+        ("pbz Any WKT JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf Any WKT JSON stringify",),
+            "go protobuf": ("go protobuf Any WKT JSON stringify",),
         },
     ),
     Workload(
@@ -925,6 +933,9 @@ def self_test() -> None:
     c++ protobuf unknown fields count by number: best of 3 x 10 iters, 4016 bytes/iter, 100.00 ns/op, 1 ops/s, 1 MiB/s
     generated textbytes borrowed slices encode: best of 3 x 10 iters, 134 bytes/iter, 20.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf textbytes encode reuse: best of 3 x 10 iters, 134 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Any WKT JSON stringify: best of 3 x 10 iters, 73 bytes/iter, 60.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Any WKT JSON stringify: best of 3 x 10 iters, 73 bytes/iter, 300.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Any WKT JSON stringify: best of 3 x 10 iters, 73 bytes/iter, 350.00 ns/op, 1 ops/s, 1 MiB/s
     pbz Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 80.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 400.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 500.00 ns/op, 1 ops/s, 1 MiB/s
@@ -942,6 +953,10 @@ def self_test() -> None:
     assert "generated textbytes borrowed slices encode" in output
     assert "quick-protobuf textbytes encode reuse" in output
     assert "Any WKT JSON parse" in output
+    assert "Any WKT JSON stringify" in output
+    assert "pbz Any WKT JSON stringify" in output
+    assert "c++ protobuf Any WKT JSON stringify" in output
+    assert "go protobuf Any WKT JSON stringify" in output
     assert "pbz Any WKT JSON parse" in output
     assert "c++ protobuf Any WKT JSON parse" in output
     assert "go protobuf Any WKT JSON parse" in output

@@ -9,14 +9,13 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
-	_ "google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 const benchmarkSamples = 3
 const largeMapEntryCount = 1024
 const largeMapShuffleMultiplier = 257
 const largeMapShuffleIncrement = 911
-const anyWKTJSON = `{"@type":"type.googleapis.com/google.protobuf.Duration","value":"1.500s"}`
 
 type benchResult struct {
 	name         string
@@ -336,6 +335,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	anyWKT, err := anypb.New(&durationpb.Duration{Seconds: 1, Nanos: 500_000_000})
+	if err != nil {
+		panic(err)
+	}
+	anyWKTJSONBytes, err := protojson.Marshal(anyWKT)
+	if err != nil {
+		panic(err)
+	}
 	packed := makePacked()
 	packedBytes, err := proto.Marshal(packed)
 	if err != nil {
@@ -420,7 +427,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
-	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSON))
+	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
@@ -657,9 +664,17 @@ func main() {
 		}
 	}).print()
 
-	runTimed("go protobuf Any WKT JSON parse", iterations, len(anyWKTJSON), func() {
+	runTimed("go protobuf Any WKT JSON stringify", iterations, len(anyWKTJSONBytes), func() {
+		out, err := protojson.Marshal(anyWKT)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Any WKT JSON parse", iterations, len(anyWKTJSONBytes), func() {
 		var decoded anypb.Any
-		if err := jsonUnmarshalOptions.Unmarshal([]byte(anyWKTJSON), &decoded); err != nil {
+		if err := jsonUnmarshalOptions.Unmarshal(anyWKTJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

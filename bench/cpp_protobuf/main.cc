@@ -6,6 +6,7 @@
 #include <string>
 
 #include <google/protobuf/any.pb.h>
+#include <google/protobuf/duration.pb.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/struct.pb.h>
@@ -372,6 +373,14 @@ int main() {
   std::string complex_text;
   if (!google::protobuf::TextFormat::PrintToString(complex, &complex_text))
     std::abort();
+  google::protobuf::Duration any_wkt_duration;
+  any_wkt_duration.set_seconds(1);
+  any_wkt_duration.set_nanos(500000000);
+  google::protobuf::Any any_wkt;
+  any_wkt.PackFrom(any_wkt_duration);
+  std::string any_wkt_json;
+  if (!google::protobuf::util::MessageToJsonString(any_wkt, &any_wkt_json).ok())
+    std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -425,8 +434,7 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
-  std::cout << "any WKT json payload size: " << std::string(kAnyWktJson).size()
-            << "\n";
+  std::cout << "any WKT json payload size: " << any_wkt_json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
@@ -971,6 +979,16 @@ int main() {
         asm volatile("" : : "g"(&reused_json_decoded) : "memory");
       });
   json_parse_reuse.Print();
+
+  auto any_wkt_json_stringify = RunTimed(
+      "c++ protobuf Any WKT JSON stringify", kIterations,
+      any_wkt_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(any_wkt, &out).ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  any_wkt_json_stringify.Print();
 
   auto any_wkt_json_parse = RunTimed(
       "c++ protobuf Any WKT JSON parse", kIterations,

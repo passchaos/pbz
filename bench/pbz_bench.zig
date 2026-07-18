@@ -1789,6 +1789,13 @@ fn dynamicJsonParse(ctx: DynamicJsonParseCtx) !void {
     msg.deinit();
 }
 
+const AnyWktJsonStringifyCtx = struct { allocator: std.mem.Allocator, any: *const pbz.Any };
+fn anyWktJsonStringify(ctx: AnyWktJsonStringifyCtx) !void {
+    const json = try ctx.any.jsonStringifyAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(json.ptr);
+    ctx.allocator.free(json);
+}
+
 const AnyWktJsonParseCtx = struct { allocator: std.mem.Allocator, json: []const u8 };
 fn anyWktJsonParse(ctx: AnyWktJsonParseCtx) !void {
     var any = try pbz.Any.jsonParse(ctx.allocator, ctx.json);
@@ -2240,6 +2247,11 @@ pub fn main() !void {
     defer allocator.free(generated_json);
     const dynamic_json = try pbz.stringifyJsonAlloc(allocator, &file, &dynamic_person, .{});
     defer allocator.free(dynamic_json);
+    var any_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Duration", pbz.Duration{ .seconds = 1, .nanos = 500_000_000 });
+    defer any_wkt.deinit(allocator);
+    const any_wkt_json = try any_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_wkt_json, AnyWktJson));
     const generated_text = try generated_person.formatTextAlloc(allocator);
     defer allocator.free(generated_text);
     const dynamic_text = try pbz.formatTextAlloc(allocator, &file, &dynamic_person, .{});
@@ -2247,7 +2259,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, AnyWktJson.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, any_wkt_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2433,7 +2445,8 @@ pub fn main() !void {
         try runTimed(io, "generated JSON parse", iters.json, generated_json.len, GeneratedJsonParseCtx{ .allocator = allocator, .json = generated_json }, generatedJsonParse),
         try runTimed(io, "dynamic JSON stringify", iters.json, dynamic_json.len, DynamicJsonStringifyCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicJsonStringify),
         try runTimed(io, "dynamic JSON parse", iters.json, dynamic_json.len, DynamicJsonParseCtx{ .allocator = allocator, .file = &file, .descriptor = desc, .json = dynamic_json }, dynamicJsonParse),
-        try runTimed(io, "pbz Any WKT JSON parse", iters.json, AnyWktJson.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = AnyWktJson }, anyWktJsonParse),
+        try runTimed(io, "pbz Any WKT JSON stringify", iters.json, any_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any WKT JSON parse", iters.json, any_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_wkt_json }, anyWktJsonParse),
         try runTimed(io, "generated TextFormat format", iters.text, generated_text.len, GeneratedTextFormatCtx{ .allocator = allocator, .person = &generated_person }, generatedTextFormat),
         try runTimed(io, "generated TextFormat parse", iters.text, generated_text.len, GeneratedTextParseCtx{ .allocator = allocator, .text = generated_text }, generatedTextParse),
         try runTimed(io, "dynamic TextFormat format", iters.text, dynamic_text.len, DynamicTextFormatCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicTextFormat),
