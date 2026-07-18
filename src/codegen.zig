@@ -4303,30 +4303,10 @@ fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescrip
         }
     }
     for (message.oneofs.items) |oneof| {
-        var wrote_switch = false;
-        for (message.fields.items) |*field| {
-            if (field.oneof_name) |name| {
-                if (std.mem.eql(u8, name, oneof.name) and typedOneofMessageFieldWithContext(ctx, field) != null) {
-                    if (!wrote_switch) {
-                        try indent(writer, depth + 1);
-                        try writer.writeAll("switch (self.");
-                        try writeQuotedIdent(oneof.name, writer);
-                        try writer.writeAll(") {\n");
-                        wrote_switch = true;
-                    }
-                    try indent(writer, depth + 2);
-                    try writer.writeAll(".");
-                    try writeQuotedIdent(field.name, writer);
-                    try writer.writeAll(" => |*value| value.deinit(allocator),\n");
-                }
-            }
-        }
-        if (wrote_switch) {
-            try indent(writer, depth + 2);
-            try writer.writeAll("else => {},\n");
-            try indent(writer, depth + 1);
-            try writer.writeAll("}\n");
-        }
+        if (!oneofHasTypedMessageWithContext(ctx, message, oneof.name)) continue;
+        try indent(writer, depth + 1);
+        try writeOneofDeinitCall(oneof.name, writer);
+        try writer.writeAll("\n");
     }
     try indent(writer, depth + 1);
     try writer.writeAll("pbz.wire.freeRawFields(allocator, self._unknown_fields);\n");

@@ -5595,10 +5595,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
             if (self.child) |*value| value.deinit(allocator);
-            switch (self.pick) {
-                .nested => |*value| value.deinit(allocator),
-                else => {},
-            }
+            self._pbzDeinitOneof_pick(allocator);
             pbz.wire.freeRawFields(allocator, self._unknown_fields);
             if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
             self.* = undefined;
@@ -23660,10 +23657,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self.history) |value| { var mutable = value; mutable.deinit(allocator); }
             allocator.free(self.history);
             @This().deinitMap_audits(allocator, &self.audits);
-            switch (self.subject) {
-                .audit_subject => |*value| value.deinit(allocator),
-                else => {},
-            }
+            self._pbzDeinitOneof_subject(allocator);
             pbz.wire.freeRawFields(allocator, self._unknown_fields);
             if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
             self.* = undefined;

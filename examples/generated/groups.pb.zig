@@ -116,10 +116,7 @@ pub const demo = struct {
                 if (self.box) |*value| value.deinit(allocator);
                 for (self.item) |value| { var mutable = value; mutable.deinit(allocator); }
                 allocator.free(self.item);
-                switch (self.picked) {
-                    .picked_box => |*value| value.deinit(allocator),
-                    else => {},
-                }
+                self._pbzDeinitOneof_picked(allocator);
                 pbz.wire.freeRawFields(allocator, self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                 self.* = undefined;

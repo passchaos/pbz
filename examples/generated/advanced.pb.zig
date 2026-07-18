@@ -232,10 +232,7 @@ pub const demo = struct {
             pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
                 if (self.audit) |*value| value.deinit(allocator);
                 @This().deinitMap_audits(allocator, &self.audits);
-                switch (self.subject) {
-                    .audit_subject => |*value| value.deinit(allocator),
-                    else => {},
-                }
+                self._pbzDeinitOneof_subject(allocator);
                 pbz.wire.freeRawFields(allocator, self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                 self.* = undefined;
