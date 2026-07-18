@@ -427,7 +427,7 @@ pub fn decodeGeneratedCodeInfo(allocator: std.mem.Allocator, bytes: []const u8) 
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            1 => try generated.annotations.append(allocator, try decodeGeneratedCodeInfoAnnotation(allocator, try reader.readBytes())),
+            1 => try appendGeneratedCodeInfoAnnotation(allocator, &generated.annotations, try decodeGeneratedCodeInfoAnnotation(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -1495,6 +1495,24 @@ fn appendOneofDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(sche
     try list.append(allocator, owned);
 }
 
+fn appendExtensionRange(allocator: std.mem.Allocator, list: *std.ArrayList(schema.ExtensionRange), value: schema.ExtensionRange) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendSourceCodeInfoLocation(allocator: std.mem.Allocator, list: *std.ArrayList(schema.SourceCodeInfo.Location), value: schema.SourceCodeInfo.Location) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendGeneratedCodeInfoAnnotation(allocator: std.mem.Allocator, list: *std.ArrayList(schema.GeneratedCodeInfo.Annotation), value: schema.GeneratedCodeInfo.Annotation) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
 fn appendFieldOption(allocator: std.mem.Allocator, list: *schema.OptionList, value: schema.FieldOption) std.mem.Allocator.Error!void {
     const owned = value;
     errdefer if (owned.name_owned) allocator.free(owned.name);
@@ -1528,7 +1546,12 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             6 => try appendServiceDescriptor(allocator, &file.services, try decodeServiceDescriptor(allocator, try reader.readBytes())),
             7 => try appendFieldDescriptor(allocator, &file.extensions, try decodeFieldDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
             8 => saw_file_features = try decodeFileOptions(allocator, &file, try reader.readBytes()) or saw_file_features,
-            9 => file.source_code_info = try decodeSourceCodeInfo(allocator, try reader.readBytes()),
+            9 => {
+                var source_code_info = try decodeSourceCodeInfo(allocator, try reader.readBytes());
+                errdefer source_code_info.deinit(allocator);
+                file.source_code_info.deinit(allocator);
+                file.source_code_info = source_code_info;
+            },
             12 => {
                 const syntax = try reader.readBytes();
                 if (std.mem.eql(u8, syntax, "proto2")) {
@@ -2277,7 +2300,7 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Arr
             },
             3 => try appendMessageDescriptor(allocator, &message.messages, try decodeMessageDescriptor(allocator, owned_strings, try reader.readBytes())),
             4 => try appendEnumDescriptor(allocator, &message.enums, try decodeEnumDescriptor(allocator, try reader.readBytes())),
-            5 => try message.extension_ranges.append(allocator, try decodeExtensionRange(allocator, try reader.readBytes())),
+            5 => try appendExtensionRange(allocator, &message.extension_ranges, try decodeExtensionRange(allocator, try reader.readBytes())),
             6 => try appendFieldDescriptor(allocator, &message.extensions, try decodeFieldDescriptor(allocator, owned_strings, try reader.readBytes())),
             7 => try decodeMessageOptions(allocator, &message, try reader.readBytes()),
             8 => try appendOneofDescriptor(allocator, &message.oneofs, try decodeOneofDescriptor(allocator, try reader.readBytes())),
@@ -3063,7 +3086,7 @@ fn decodeSourceCodeInfo(allocator: std.mem.Allocator, bytes: []const u8) Error!s
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
-            1 => try source.locations.append(allocator, try decodeSourceCodeInfoLocation(allocator, try reader.readBytes())),
+            1 => try appendSourceCodeInfoLocation(allocator, &source.locations, try decodeSourceCodeInfoLocation(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
