@@ -206,11 +206,11 @@ pub const demo = struct {
                 }
 
                 pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-                    return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
+                    return pbz.wire.rawFieldCountByNumberAssumeValid(self._unknown_fields, number);
                 }
 
                 pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
-                    return (try self.unknownFieldCountByNumber(number)) != 0;
+                    return pbz.wire.rawFieldHasNumberAssumeValid(self._unknown_fields, number);
                 }
 
                 pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {

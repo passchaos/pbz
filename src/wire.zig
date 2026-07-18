@@ -123,6 +123,79 @@ pub fn rawFieldCountByNumber(fields: []const []const u8, number: FieldNumber) Er
     return count;
 }
 
+/// Counts already-validated raw unknown fields without re-running full tag
+/// validation for every entry. Use this only for storage populated by Reader
+/// decode or appendRawFieldClone(); arbitrary caller bytes should use
+/// rawFieldCountByNumber instead.
+pub inline fn rawFieldCountByNumberAssumeValid(fields: []const []const u8, number: FieldNumber) usize {
+    const matcher = RawFieldNumberMatcher.init(number);
+    var count: usize = 0;
+    for (fields) |raw| {
+        if (matcher.matches(raw)) count += 1;
+    }
+    return count;
+}
+
+/// Fast membership check for already-validated raw unknown fields.
+pub inline fn rawFieldHasNumberAssumeValid(fields: []const []const u8, number: FieldNumber) bool {
+    const matcher = RawFieldNumberMatcher.init(number);
+    for (fields) |raw| {
+        if (matcher.matches(raw)) return true;
+    }
+    return false;
+}
+
+const RawFieldNumberMatcher = struct {
+    number: FieldNumber,
+    low_start: u8,
+    canonical_tag: [5]u8,
+    canonical_tag_len: usize,
+
+    inline fn init(number: FieldNumber) RawFieldNumberMatcher {
+        var canonical_tag: [5]u8 = undefined;
+        const tag_base = @as(u64, number) << 3;
+        const canonical_tag_len = writeVarintToBuffer(&canonical_tag, tag_base);
+        return .{
+            .number = number,
+            .low_start = @intCast(tag_base & 0x7f),
+            .canonical_tag = canonical_tag,
+            .canonical_tag_len = canonical_tag_len,
+        };
+    }
+
+    inline fn matches(self: RawFieldNumberMatcher, raw: []const u8) bool {
+        if (raw.len == 0 or self.number == 0) return false;
+        if (!self.firstByteMayMatch(raw[0])) return false;
+        if (self.startsWithCanonicalNumberTag(raw)) return true;
+        // Generated messages and extension helpers only store raw fields that
+        // were accepted by a Reader or by appendUnknownRaw() validation. The
+        // fallback is therefore only for valid but non-canonical tag varints;
+        // malformed data would indicate that the private unknown-field
+        // invariant was broken.
+        return (rawFieldNumber(raw) catch unreachable) == self.number;
+    }
+
+    inline fn firstByteMayMatch(self: RawFieldNumberMatcher, first: u8) bool {
+        const low = first & 0x7f;
+        if (low < self.low_start or low > self.low_start + 5) return false;
+        // Tags for fields 1..15 are one-byte when canonical, but a preserved
+        // unknown field may carry a non-canonical multi-byte tag whose first
+        // byte has the continuation bit set. Tags for field 16 and above must
+        // have the continuation bit set even in canonical form.
+        return self.number < 16 or first >= 0x80;
+    }
+
+    inline fn startsWithCanonicalNumberTag(self: RawFieldNumberMatcher, raw: []const u8) bool {
+        if (raw.len < self.canonical_tag_len) return false;
+        if (self.canonical_tag_len == 1) return raw[0] < 0x80;
+        // The wire type occupies only the low three bits of a protobuf tag.
+        // Once the first byte's low seven bits have been range-checked, all
+        // following canonical varint bytes must exactly match the
+        // field-number-only tag.
+        return raw[0] >= 0x80 and std.mem.eql(u8, raw[1..self.canonical_tag_len], self.canonical_tag[1..self.canonical_tag_len]);
+    }
+};
+
 pub fn rawFieldsByNumberAlloc(allocator: std.mem.Allocator, fields: []const []const u8, number: FieldNumber) (std.mem.Allocator.Error || Error)![]const []const u8 {
     const count = try rawFieldCountByNumber(fields, number);
     if (count == 0) return &.{};
@@ -1716,12 +1789,20 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectError(error.InvalidWireType, rawFieldNumber(&.{0x0f}));
     try std.testing.expectError(error.MalformedVarint, rawFieldNumber(&.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 }));
 
-    const raw_fields = [_][]const u8{ writer.slice()[0..1], &.{}, writer.slice()[1..] };
+    const noncanonical_field_16 = [_]u8{ 0x80, 0x81, 0x00, 0x01 };
+    try std.testing.expectEqual(@as(FieldNumber, 16), try rawFieldNumber(&noncanonical_field_16));
+
+    const raw_fields = [_][]const u8{ writer.slice()[0..1], &.{}, writer.slice()[1..], &noncanonical_field_16 };
     try std.testing.expectEqual(@as(usize, 1), try rawFieldCountByNumber(&raw_fields, 15));
+    try std.testing.expectEqual(@as(usize, 1), rawFieldCountByNumberAssumeValid(&raw_fields, 15));
+    try std.testing.expectEqual(@as(usize, 2), rawFieldCountByNumberAssumeValid(&raw_fields, 16));
+    try std.testing.expect(rawFieldHasNumberAssumeValid(&raw_fields, 16));
+    try std.testing.expect(!rawFieldHasNumberAssumeValid(&raw_fields, 17));
     const matched = try rawFieldsByNumberAlloc(std.testing.allocator, &raw_fields, 16);
     defer std.testing.allocator.free(matched);
-    try std.testing.expectEqual(@as(usize, 1), matched.len);
+    try std.testing.expectEqual(@as(usize, 2), matched.len);
     try std.testing.expectEqualSlices(u8, writer.slice()[1..], matched[0]);
+    try std.testing.expectEqualSlices(u8, &noncanonical_field_16, matched[1]);
 }
 
 test "wire clears raw fields by number without reallocating on miss" {

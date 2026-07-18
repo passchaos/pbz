@@ -3343,14 +3343,14 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);\n");
+    try writer.writeAll("return pbz.wire.rawFieldCountByNumberAssumeValid(self._unknown_fields, number);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return (try self.unknownFieldCountByNumber(number)) != 0;\n");
+    try writer.writeAll("return pbz.wire.rawFieldHasNumberAssumeValid(self._unknown_fields, number);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -13585,9 +13585,9 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCount(self: @This()) usize") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFields(self: @This()) []const []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return pbz.wire.rawFieldCountByNumberAssumeValid(self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.unknownFieldCountByNumber(number)) != 0;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return pbz.wire.rawFieldHasNumberAssumeValid(self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void") != null);
