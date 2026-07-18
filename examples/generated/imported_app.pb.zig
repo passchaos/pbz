@@ -850,7 +850,7 @@ pub const demo = struct {
                             continue;
                         }
                         if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) {
-                            { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator);self.selected = .{ .chosen = nested }; }
+                            { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator); self.selected = .{ .chosen = nested }; }
                             continue;
                         }
                         if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) {

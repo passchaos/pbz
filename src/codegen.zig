@@ -7689,7 +7689,7 @@ fn writeOneofDecodeAssign(file: *const schema.FileDescriptor, field: *const sche
     try writer.writeAll(reader_method);
     try writer.writeAll("(); ");
     try writeOneofDeinitCall(oneof_name, writer);
-    try writer.writeAll("self.");
+    try writer.writeAll(" self.");
     try writeQuotedIdent(oneof_name, writer);
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
@@ -7717,7 +7717,7 @@ fn writeOneofMessageDecodeAssign(ctx: *const CodegenContext, field: *const schem
     try writeMessagePayloadRead(file, field, "r", writer);
     try writer.writeAll("; ");
     try writeOneofDeinitCall(oneof_name, writer);
-    try writer.writeAll("self.");
+    try writer.writeAll(" self.");
     try writeQuotedIdent(oneof_name, writer);
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
@@ -7736,7 +7736,7 @@ fn writeOneofEnumDecodeAssign(file: *const schema.FileDescriptor, field: *const 
     }
     try writer.writeAll(" ");
     try writeOneofDeinitCall(oneof_name, writer);
-    try writer.writeAll("self.");
+    try writer.writeAll(" self.");
     try writeQuotedIdent(oneof_name, writer);
     try writer.writeAll(" = .{ .");
     try writeQuotedIdent(field.name, writer);
@@ -10685,7 +10685,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
                 try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
                 try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); ");
                 try writeOneofDeinitCall(oneof.name, writer);
-                try writer.writeAll("self.");
+                try writer.writeAll(" self.");
                 try writeQuotedIdent(oneof.name, writer);
                 try writer.writeAll(" = .{ .");
                 try writeQuotedIdent(field.name, writer);
@@ -10700,7 +10700,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
                 try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
                 try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer nested.deinit(arena_allocator); const payload = try nested.encode(arena_allocator); ");
                 try writeOneofDeinitCall(oneof.name, writer);
-                try writer.writeAll("self.");
+                try writer.writeAll(" self.");
                 try writeQuotedIdent(oneof.name, writer);
                 try writer.writeAll(" = .{ .");
                 try writeQuotedIdent(field.name, writer);
@@ -10713,7 +10713,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
             }
         } else {
             try writeOneofDeinitCall(oneof.name, writer);
-            try writer.writeAll("self.");
+            try writer.writeAll(" self.");
             try writeQuotedIdent(oneof.name, writer);
             try writer.writeAll(" = .{ .");
             try writeQuotedIdent(field.name, writer);

@@ -628,7 +628,7 @@ pub const demo = struct {
                         2 => { const value = try r.readInt32(); self.kind = value; },
                         3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
                         4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
-                        5 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .organization_id = value }; },
+                        5 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
                         6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; },
                         7 => {
                             var entry = auditsEntry{};
@@ -675,7 +675,7 @@ pub const demo = struct {
                         2 => { const value = try r.readInt32(); self.kind = value; },
                         3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
                         4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
-                        5 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .organization_id = value }; },
+                        5 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
                         6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; },
                         7 => {
                             var entry = auditsEntry{};
@@ -946,7 +946,7 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
-                        { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .audit_subject = nested }; }
+                        { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; }
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;

@@ -384,7 +384,7 @@ pub const demo = struct {
                         2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; } },
                         4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try item_list.append(allocator, nested); },
                         6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; },
-                        7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator);self.picked = .{ .note = value }; },
+                        7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = value }; },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
                 }
@@ -420,7 +420,7 @@ pub const demo = struct {
                         2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; } },
                         4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try item_list.append(allocator, nested); },
                         6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; },
-                        7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator);self.picked = .{ .note = value }; },
+                        7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = value }; },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
                 }
@@ -640,7 +640,7 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "picked_box") or std.mem.eql(u8, key, "pickedBox")) {
-                        { var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator);self.picked = .{ .picked_box = nested }; }
+                        { var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) {

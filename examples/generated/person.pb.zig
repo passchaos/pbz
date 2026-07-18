@@ -5988,14 +5988,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
-                    1 => { const value = try r.readInt32(); self._pbzDeinitOneof__count(allocator);self._count = .{ .count = value }; },
+                    1 => { const value = try r.readInt32(); self._pbzDeinitOneof__count(allocator); self._count = .{ .count = value }; },
                     2 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof__note(allocator); self._note = .{ .note = value }; },
-                    3 => { const value = try r.readBytes(); self._pbzDeinitOneof__raw(allocator);self._raw = .{ .raw = value }; },
+                    3 => { const value = try r.readBytes(); self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = value }; },
                     4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = value }; },
-                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_pick(allocator);self.pick = .{ .token = value }; },
+                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = value }; },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = nested }; },
-                    8 => { const value = try r.readInt64(); self._pbzDeinitOneof_pick(allocator);self.pick = .{ .code = value }; },
+                    8 => { const value = try r.readInt64(); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = value }; },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
             }
@@ -6022,14 +6022,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
-                    1 => { const value = try r.readInt32(); self._pbzDeinitOneof__count(allocator);self._count = .{ .count = value }; },
+                    1 => { const value = try r.readInt32(); self._pbzDeinitOneof__count(allocator); self._count = .{ .count = value }; },
                     2 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof__note(allocator); self._note = .{ .note = value }; },
-                    3 => { const value = try r.readBytes(); self._pbzDeinitOneof__raw(allocator);self._raw = .{ .raw = value }; },
+                    3 => { const value = try r.readBytes(); self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = value }; },
                     4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = value }; },
-                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_pick(allocator);self.pick = .{ .token = value }; },
+                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = value }; },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = nested }; },
-                    8 => { const value = try r.readInt64(); self._pbzDeinitOneof_pick(allocator);self.pick = .{ .code = value }; },
+                    8 => { const value = try r.readInt64(); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = value }; },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
             }
@@ -6249,7 +6249,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (std.mem.eql(u8, key, "nested") or std.mem.eql(u8, key, "nested")) {
-                    { var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator);self.pick = .{ .nested = nested }; }
+                    { var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = nested }; }
                     continue;
                 }
                 if (std.mem.eql(u8, key, "code") or std.mem.eql(u8, key, "code")) {
@@ -24084,7 +24084,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try @This().putMapEntry_audits(allocator, &self.audits, entry);
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
-                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .organization_id = value }; },
+                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
@@ -24136,7 +24136,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try @This().putMapEntry_audits(allocator, &self.audits, entry);
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
-                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .organization_id = value }; },
+                    6 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
                     7 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
@@ -24410,7 +24410,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
-                    { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .audit_subject = nested }; }
+                    { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; }
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
