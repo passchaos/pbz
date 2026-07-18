@@ -399,10 +399,8 @@ pub const FieldMask = struct {
             if (tag.number == 1) {
                 try wire.Reader.expectWireType(tag, .length_delimited);
                 const path = try allocator.dupe(u8, try reader.readBytes());
-                paths.append(allocator, path) catch |err| {
-                    allocator.free(path);
-                    return err;
-                };
+                errdefer allocator.free(path);
+                try paths.append(allocator, path);
             } else try reader.skipValue(tag);
         }
         return try paths.toOwnedSlice(allocator);
@@ -452,9 +450,7 @@ pub const FieldMask = struct {
             const path = try lowerCamelToSnake(allocator, part);
             errdefer allocator.free(path);
             try validateFieldMaskPath(path);
-            paths.append(allocator, path) catch |err| {
-                return err;
-            };
+            try paths.append(allocator, path);
         }
         return try paths.toOwnedSlice(allocator);
     }
@@ -472,10 +468,8 @@ fn cloneStringList(allocator: std.mem.Allocator, values: []const []const u8) ![]
     }
     for (values) |value| {
         const owned = try allocator.dupe(u8, value);
-        list.append(allocator, owned) catch |err| {
-            allocator.free(owned);
-            return err;
-        };
+        errdefer allocator.free(owned);
+        try list.append(allocator, owned);
     }
     return try list.toOwnedSlice(allocator);
 }
@@ -1437,10 +1431,8 @@ pub const ListValue = struct {
                 1 => {
                     try wire.Reader.expectWireType(tag, .length_delimited);
                     var value = try Value.decode(allocator, try reader.readBytes());
-                    values.append(allocator, value) catch |err| {
-                        value.deinit(allocator);
-                        return err;
-                    };
+                    errdefer value.deinit(allocator);
+                    try values.append(allocator, value);
                 },
                 else => try reader.skipValue(tag),
             }
@@ -1465,10 +1457,8 @@ pub const ListValue = struct {
         }
         for (self.values) |value| {
             var owned = try value.cloneOwned(allocator);
-            values.append(allocator, owned) catch |err| {
-                owned.deinit(allocator);
-                return err;
-            };
+            errdefer owned.deinit(allocator);
+            try values.append(allocator, owned);
         }
         return .{ .values = try values.toOwnedSlice(allocator) };
     }
@@ -1693,6 +1683,10 @@ fn decodeStructField(allocator: std.mem.Allocator, bytes: []const u8) anyerror!S
 }
 
 fn appendOrReplaceStructField(allocator: std.mem.Allocator, fields: *std.ArrayList(Struct.Field), field: Struct.Field) !void {
+    errdefer {
+        var owned = field;
+        deinitStructField(&owned, allocator);
+    }
     for (fields.items) |*existing| {
         if (std.mem.eql(u8, existing.key, field.key)) {
             deinitStructField(existing, allocator);
@@ -1700,11 +1694,7 @@ fn appendOrReplaceStructField(allocator: std.mem.Allocator, fields: *std.ArrayLi
             return;
         }
     }
-    fields.append(allocator, field) catch |err| {
-        var owned = field;
-        deinitStructField(&owned, allocator);
-        return err;
-    };
+    try fields.append(allocator, field);
 }
 
 fn deinitStructField(field: *Struct.Field, allocator: std.mem.Allocator) void {
@@ -1750,10 +1740,8 @@ fn listValueFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Val
     }
     for (array.items) |item| {
         var value = try valueFromJsonValue(allocator, item);
-        values.append(allocator, value) catch |err| {
-            value.deinit(allocator);
-            return err;
-        };
+        errdefer value.deinit(allocator);
+        try values.append(allocator, value);
     }
     return .{ .values = try values.toOwnedSlice(allocator) };
 }
