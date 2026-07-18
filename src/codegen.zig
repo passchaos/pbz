@@ -2747,12 +2747,16 @@ fn writeFastDirectRawFieldPayload(prefix: []const u8, field_name: []const u8, zi
 }
 
 fn writeFastDirectVarintFieldPayload(prefix: []const u8, field_name: []const u8, before: []const u8, after: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("pbz.wire.writeVarintToSlice(buffer, &index, ");
+    // Direct generated encoders already own the output buffer and index.  Keep
+    // the overwhelmingly common one-byte scalar-varint case explicit here, and
+    // fall back to the shared writer only once the value needs continuation
+    // bytes.  The generic writer remains canonical for all multi-byte values.
+    try writer.writeAll("{ const raw_value: u64 = ");
     try writer.writeAll(before);
     try writer.writeAll(prefix);
     if (field_name.len != 0) try writeQuotedIdent(field_name, writer);
     try writer.writeAll(after);
-    try writer.writeAll(");");
+    try writer.writeAll("; if (raw_value < 0x80) { buffer[index] = @intCast(raw_value); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, raw_value); }");
 }
 
 fn writeFastDirectBoolFieldPayload(prefix: []const u8, field_name: []const u8, writer: *std.Io.Writer) Error!void {
