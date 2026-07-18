@@ -241,6 +241,12 @@ pub fn build(b: *std.Build) void {
         "bench/summarize_compare.py",
         "--self-test",
     });
+    const run_conformance_smoke = b.addSystemCommand(&.{
+        "python3",
+        "tools/smoke_conformance.py",
+    });
+    const conformance_smoke_step = b.step("conformance-smoke", "Run lightweight pbz-conformance smoke test");
+    conformance_smoke_step.dependOn(&run_conformance_smoke.step);
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_tests.step);

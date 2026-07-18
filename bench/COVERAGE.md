@@ -57,6 +57,7 @@ The same audit pass also kept these functional coverage gates green:
 ```sh
 zig build test
 zig build examples
+zig build conformance-smoke
 python3 bench/summarize_compare.py --self-test
 git diff --check
 ```
