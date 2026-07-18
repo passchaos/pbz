@@ -889,6 +889,8 @@ def self_test() -> None:
     generated binary decode: best of 3 x 10 iters, 47 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
     generated unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 5.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf unknown fields count by number: best of 3 x 10 iters, 4016 bytes/iter, 100.00 ns/op, 1 ops/s, 1 MiB/s
+    generated textbytes borrowed slices encode: best of 3 x 10 iters, 134 bytes/iter, 20.00 ns/op, 1 ops/s, 1 MiB/s
+    quick-protobuf textbytes encode reuse: best of 3 x 10 iters, 134 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary encode reuse: best of 3 x 10 iters, 47 bytes/iter, 50.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary decode: best of 3 x 10 iters, 47 bytes/iter, 150.00 ns/op, 1 ops/s, 1 MiB/s
     """
@@ -898,6 +900,9 @@ def self_test() -> None:
     assert "unknown fields count by number" in output
     assert "generated unknown field number run sidecar count" in output
     assert "c++ protobuf unknown fields count by number" in output
+    assert "textbytes encode" in output
+    assert "generated textbytes borrowed slices encode" in output
+    assert "quick-protobuf textbytes encode reuse" in output
     assert "WIN" in output
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output
