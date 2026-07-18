@@ -142,6 +142,45 @@ pub fn rawFieldsByNumberAlloc(allocator: std.mem.Allocator, fields: []const []co
     return matched;
 }
 
+pub fn validateRawField(raw: []const u8) Error!void {
+    var reader = Reader.init(raw);
+    const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
+    try reader.skipValue(tag);
+    if (!reader.eof()) return error.InvalidWireType;
+}
+
+pub fn appendRawFieldClone(allocator: std.mem.Allocator, fields: *[]const []const u8, raw: []const u8) (std.mem.Allocator.Error || Error)!void {
+    try appendRawFieldsClone(allocator, fields, &.{raw});
+}
+
+pub fn appendRawFieldsClone(allocator: std.mem.Allocator, fields: *[]const []const u8, raws: []const []const u8) (std.mem.Allocator.Error || Error)!void {
+    if (raws.len == 0) return;
+    // Validate the full batch before cloning or replacing the slice header.  A
+    // failed append must leave the caller's existing unknown-field ownership
+    // unchanged so generated mergeFrom keeps the same all-or-error contract as
+    // repeatedly calling appendUnknownRaw.
+    for (raws) |raw| try validateRawField(raw);
+    try appendRawFieldsCloneUnchecked(allocator, fields, raws);
+}
+
+fn appendRawFieldsCloneUnchecked(allocator: std.mem.Allocator, fields: *[]const []const u8, raws: []const []const u8) std.mem.Allocator.Error!void {
+    const old = fields.*;
+    const next = try allocator.alloc([]const u8, old.len + raws.len);
+    var cloned_count: usize = 0;
+    errdefer {
+        for (next[old.len..][0..cloned_count]) |owned| allocator.free(owned);
+        allocator.free(next);
+    }
+    if (old.len != 0) @memcpy(next[0..old.len], old);
+    for (raws, 0..) |raw, i| {
+        next[old.len + i] = try allocator.dupe(u8, raw);
+        cloned_count += 1;
+    }
+
+    fields.* = next;
+    if (old.len != 0) allocator.free(old);
+}
+
 pub fn clearRawFieldsByNumber(allocator: std.mem.Allocator, fields: *[]const []const u8, number: FieldNumber) (std.mem.Allocator.Error || Error)!void {
     var keep_count: usize = 0;
     var remove_count: usize = 0;
@@ -1604,6 +1643,37 @@ test "wire clears raw fields by number without reallocating on miss" {
     try std.testing.expectError(error.InvalidWireType, clearRawFieldsByNumber(allocator, &invalid_fields, 15));
     try std.testing.expectEqual(before_invalid.ptr, invalid_fields.ptr);
     try std.testing.expectEqual(@as(usize, 1), invalid_fields.len);
+}
+
+test "wire appends cloned raw fields in batches" {
+    const allocator = std.testing.allocator;
+    var first = Writer.init(allocator);
+    defer first.deinit();
+    try first.writeUInt32(15, 1);
+
+    var second = Writer.init(allocator);
+    defer second.deinit();
+    try second.writeString(16, "zig");
+
+    var fields: []const []const u8 = &.{};
+    defer {
+        for (fields) |raw| allocator.free(raw);
+        if (fields.len != 0) allocator.free(fields);
+    }
+
+    try appendRawFieldClone(allocator, &fields, first.slice());
+    try std.testing.expectEqual(@as(usize, 1), fields.len);
+    try std.testing.expectEqualSlices(u8, first.slice(), fields[0]);
+
+    try appendRawFieldsClone(allocator, &fields, &.{ second.slice(), first.slice() });
+    try std.testing.expectEqual(@as(usize, 3), fields.len);
+    try std.testing.expectEqualSlices(u8, second.slice(), fields[1]);
+    try std.testing.expectEqualSlices(u8, first.slice(), fields[2]);
+
+    const before_invalid = fields;
+    try std.testing.expectError(error.InvalidWireType, appendRawFieldsClone(allocator, &fields, &.{&.{0x0f}}));
+    try std.testing.expectEqual(before_invalid.ptr, fields.ptr);
+    try std.testing.expectEqual(@as(usize, 3), fields.len);
 }
 
 test "wire bool writers use canonical one-byte values" {

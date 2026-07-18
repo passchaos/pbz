@@ -4507,31 +4507,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var r = pbz.Reader.init(raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const tag = (try r.nextTag()) orelse return error.InvalidWireType;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try r.skipValue(tag);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const old = self._unknown_fields;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const next = try allocator.alloc([]const u8, old.len + 1);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer allocator.free(next);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (old.len != 0) @memcpy(next[0..old.len], old);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const owned = try allocator.dupe(u8, raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("errdefer allocator.free(owned);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("next[old.len] = owned;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = next;\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
+    try writer.writeAll("try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -5177,7 +5153,7 @@ fn writeMergeFrom(ctx: *const CodegenContext, message: *const schema.MessageDesc
     }
     for (message.oneofs.items) |oneof| try writeMergeOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);\n");
+    try writer.writeAll("try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -14798,10 +14774,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const tag = (try r.nextTag()) orelse return error.InvalidWireType;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try r.skipValue(tag);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (!r.eof()) return error.InvalidWireType;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const owned = try allocator.dupe(u8, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields) |raw| try w.appendSlice(raw);") != null);
@@ -15158,7 +15131,7 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (other.pick)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| self.pick = .{ .picked = try value.cloneOwned(allocator) }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |value| { try w.writeTag(4, .start_group); try value.writeTo(w); try w.writeTag(4, .end_group); }") != null);

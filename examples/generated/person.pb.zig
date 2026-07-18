@@ -230,19 +230,7 @@ pub const demo = struct {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -293,7 +281,7 @@ pub const demo = struct {
                 var other_it = other.counts.iterator();
                 while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -1826,19 +1814,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -1891,7 +1867,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.ids = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -3483,19 +3459,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -3594,7 +3558,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.chunks = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -4676,19 +4640,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -4746,7 +4698,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.chunks = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -5901,19 +5853,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -5952,7 +5892,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .none => {},
                 .raw => |value| self._raw = .{ .raw = value },
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -7229,19 +7169,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-                try r.skipValue(tag);
-                if (!r.eof()) return error.InvalidWireType;
-                const old = self._unknown_fields;
-                const next = try allocator.alloc([]const u8, old.len + 1);
-                errdefer allocator.free(next);
-                if (old.len != 0) @memcpy(next[0..old.len], old);
-                const owned = try allocator.dupe(u8, raw);
-                errdefer allocator.free(owned);
-                next[old.len] = owned;
-                self._unknown_fields = next;
-                if (old.len != 0) allocator.free(old);
+                try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
             }
 
             pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -7276,7 +7204,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 if (other.id != 0) self.id = other.id;
                 if (other.label.len != 0) self.label = other.label;
-                for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+                try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
 
             pub fn encodedSize(self: @This()) usize {
@@ -8254,19 +8182,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -8295,7 +8211,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -9353,19 +9269,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -9406,7 +9310,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -10454,19 +10358,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -10499,7 +10391,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -11547,19 +11439,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -11592,7 +11472,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -12640,19 +12520,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -12685,7 +12553,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -13733,19 +13601,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -13778,7 +13634,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -14826,19 +14682,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -14871,7 +14715,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -15919,19 +15763,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -15960,7 +15792,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -17018,19 +16850,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -17059,7 +16879,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -18117,19 +17937,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -18158,7 +17966,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -19216,19 +19024,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -19257,7 +19053,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -20315,19 +20111,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -20356,7 +20140,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -21414,19 +21198,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -21455,7 +21227,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -22491,19 +22263,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -22528,7 +22288,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.values = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -23628,19 +23388,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -23661,7 +23409,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 var other_it = other.counts.iterator();
                 while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -24939,19 +24687,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-            var r = pbz.Reader.init(raw);
-            const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-            try r.skipValue(tag);
-            if (!r.eof()) return error.InvalidWireType;
-            const old = self._unknown_fields;
-            const next = try allocator.alloc([]const u8, old.len + 1);
-            errdefer allocator.free(next);
-            if (old.len != 0) @memcpy(next[0..old.len], old);
-            const owned = try allocator.dupe(u8, raw);
-            errdefer allocator.free(owned);
-            next[old.len] = owned;
-            self._unknown_fields = next;
-            if (old.len != 0) allocator.free(old);
+            try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -24990,7 +24726,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .organization_id => |value| self.subject = .{ .organization_id = value },
                 .audit_subject => |value| self.subject = .{ .audit_subject = try value.cloneOwned(allocator) },
             }
-            for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+            try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
@@ -26402,19 +26138,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse return error.InvalidWireType;
-                try r.skipValue(tag);
-                if (!r.eof()) return error.InvalidWireType;
-                const old = self._unknown_fields;
-                const next = try allocator.alloc([]const u8, old.len + 1);
-                errdefer allocator.free(next);
-                if (old.len != 0) @memcpy(next[0..old.len], old);
-                const owned = try allocator.dupe(u8, raw);
-                errdefer allocator.free(owned);
-                next[old.len] = owned;
-                self._unknown_fields = next;
-                if (old.len != 0) allocator.free(old);
+                try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);
             }
 
             pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
@@ -26449,7 +26173,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 if (other.actor.len != 0) self.actor = other.actor;
                 if (other.at_unix != 0) self.at_unix = other.at_unix;
-                for (other._unknown_fields) |raw| try self.appendUnknownRaw(allocator, raw);
+                try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
 
             pub fn encodedSize(self: @This()) usize {
