@@ -224,6 +224,7 @@ fn cloneFieldKindForCodegen(allocator: std.mem.Allocator, kind: schema.FieldKind
     return switch (kind) {
         .map => |map_type| blk: {
             const value = try allocator.create(schema.FieldKind);
+            errdefer allocator.destroy(value);
             value.* = try cloneFieldKindForCodegen(allocator, map_type.value.*);
             break :blk .{ .map = .{ .key = map_type.key, .value = value } };
         },
