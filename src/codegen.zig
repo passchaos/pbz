@@ -867,24 +867,25 @@ fn writeOneofDeinitHelpers(ctx: *const CodegenContext, message: *const schema.Me
         if (!has_typed_message) {
             try indent(writer, depth + 1);
             try writer.writeAll("_ = allocator;\n");
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("switch (self.");
-        try writeQuotedIdent(oneof.name, writer);
-        try writer.writeAll(") {\n");
-        for (message.fields.items) |*field| {
-            const field_oneof = field.oneof_name orelse continue;
-            if (!std.mem.eql(u8, field_oneof, oneof.name)) continue;
-            if (typedOneofMessageFieldWithContext(ctx, field) == null) continue;
+        } else {
+            try indent(writer, depth + 1);
+            try writer.writeAll("switch (self.");
+            try writeQuotedIdent(oneof.name, writer);
+            try writer.writeAll(") {\n");
+            for (message.fields.items) |*field| {
+                const field_oneof = field.oneof_name orelse continue;
+                if (!std.mem.eql(u8, field_oneof, oneof.name)) continue;
+                if (typedOneofMessageFieldWithContext(ctx, field) == null) continue;
+                try indent(writer, depth + 2);
+                try writer.writeAll(".");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" => |*value| value.deinit(allocator),\n");
+            }
             try indent(writer, depth + 2);
-            try writer.writeAll(".");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" => |*value| value.deinit(allocator),\n");
+            try writer.writeAll("else => {},\n");
+            try indent(writer, depth + 1);
+            try writer.writeAll("}\n");
         }
-        try indent(writer, depth + 2);
-        try writer.writeAll("else => {},\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("}\n");
         try indent(writer, depth + 1);
         try writer.writeAll("self.");
         try writeQuotedIdent(oneof.name, writer);

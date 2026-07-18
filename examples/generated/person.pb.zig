@@ -5681,25 +5681,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         fn _pbzDeinitOneof__count(self: *@This(), allocator: std.mem.Allocator) void {
             _ = allocator;
-            switch (self._count) {
-                else => {},
-            }
             self._count = .none;
         }
 
         fn _pbzDeinitOneof__note(self: *@This(), allocator: std.mem.Allocator) void {
             _ = allocator;
-            switch (self._note) {
-                else => {},
-            }
             self._note = .none;
         }
 
         fn _pbzDeinitOneof__raw(self: *@This(), allocator: std.mem.Allocator) void {
             _ = allocator;
-            switch (self._raw) {
-                else => {},
-            }
             self._raw = .none;
         }
 
