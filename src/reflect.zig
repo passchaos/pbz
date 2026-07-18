@@ -69,7 +69,10 @@ pub const Reflection = struct {
     pub fn set(self: Reflection, message_value: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, value: dynamic.Value) Error!void {
         var owned = value;
         errdefer dynamic.deinitValue(&owned, self.allocator);
-        self.clear(message_value, field);
+        // DynamicMessage.add already replaces singular values and map entries.
+        // Avoid clearing those fields first: if allocation fails while adding
+        // the replacement, callers should not lose the previous value.
+        if (field.cardinality == .repeated and field.kind != .map) self.clear(message_value, field);
         try message_value.add(field, owned);
     }
 
