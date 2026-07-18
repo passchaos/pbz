@@ -1985,6 +1985,10 @@ test "empty wire and json helper" {
 pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, uint64, int32, uint32, bool, string, bytes }) type {
     return struct {
         value: T,
+        // String/bytes wrappers may either borrow from an input wire buffer
+        // (`decode`) or own heap storage (`decodeOwned`, JSON parse, clone).
+        // Scalars never allocate and leave this false.
+        owns_value: bool = false,
 
         const Self = @This();
 
@@ -2067,7 +2071,7 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
 
         pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             switch (scalar) {
-                .string, .bytes => if (self.value.len != 0) allocator.free(self.value),
+                .string, .bytes => if (self.owns_value and self.value.len != 0) allocator.free(self.value),
                 else => {},
             }
             self.* = undefined;
@@ -2075,7 +2079,7 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
 
         pub fn cloneOwned(self: Self, allocator: std.mem.Allocator) !Self {
             return switch (scalar) {
-                .string, .bytes => .{ .value = try allocator.dupe(u8, self.value) },
+                .string, .bytes => .{ .value = try allocator.dupe(u8, self.value), .owns_value = true },
                 else => self,
             };
         }
@@ -2117,7 +2121,7 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
             var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
             defer parsed.deinit();
             if (parsed.value == .null) return .{ .value = defaultWrapperValue(T) };
-            return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, parsed.value) };
+            return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, parsed.value), .owns_value = wrapperValueUsesAllocator(scalar) };
         }
 
         pub fn jsonParseOwned(allocator: std.mem.Allocator, text: []const u8) !Self {
@@ -2144,6 +2148,10 @@ fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptim
             else => error.TypeMismatch,
         },
     };
+}
+
+fn wrapperValueUsesAllocator(comptime scalar: anytype) bool {
+    return scalar == .string or scalar == .bytes;
 }
 
 fn parseWrapperInt(comptime T: type, value: std.json.Value) !T {
@@ -2222,7 +2230,12 @@ test "wrapper wire and json helpers" {
     const str_value = StringValue{ .value = "zig" };
     const str_bytes = try str_value.encode(allocator);
     defer allocator.free(str_bytes);
-    try std.testing.expectEqualSlices(u8, "zig", (try StringValue.decode(str_bytes)).value);
+    var decoded_str = try StringValue.decode(str_bytes);
+    try std.testing.expectEqualSlices(u8, "zig", decoded_str.value);
+    try std.testing.expect(!decoded_str.owns_value);
+    // Borrowed wire decodes must be safe to deinit; ownership-aware wrappers
+    // only free values created by clone/owned/JSON helpers.
+    decoded_str.deinit(allocator);
     const str_json = try str_value.jsonStringifyAlloc(allocator);
     defer allocator.free(str_json);
     try std.testing.expectEqualSlices(u8, "\"zig\"", str_json);
@@ -2265,13 +2278,15 @@ test "wrapper json parse helpers" {
     const neg_inf_json = try (DoubleValue{ .value = -std.math.inf(f64) }).jsonStringifyAlloc(allocator);
     defer allocator.free(neg_inf_json);
     try std.testing.expectEqualSlices(u8, "\"-Infinity\"", neg_inf_json);
-    const parsed_string = try StringValue.jsonParse(allocator, "\"zig\"");
-    defer allocator.free(parsed_string.value);
+    var parsed_string = try StringValue.jsonParse(allocator, "\"zig\"");
+    defer parsed_string.deinit(allocator);
+    try std.testing.expect(parsed_string.owns_value);
     try std.testing.expectEqualSlices(u8, "zig", parsed_string.value);
     const null_string = try StringValue.jsonParse(allocator, "null");
     try std.testing.expectEqualSlices(u8, "", null_string.value);
-    const bytes = try BytesValue.jsonParse(allocator, "\"aGk=\"");
-    defer allocator.free(bytes.value);
+    var bytes = try BytesValue.jsonParse(allocator, "\"aGk=\"");
+    defer bytes.deinit(allocator);
+    try std.testing.expect(bytes.owns_value);
     try std.testing.expectEqualSlices(u8, "hi", bytes.value);
     const null_bytes = try BytesValue.jsonParse(allocator, "null");
     try std.testing.expectEqualSlices(u8, "", null_bytes.value);
@@ -2283,6 +2298,7 @@ test "wrapper owned helpers" {
     const borrowed_string = StringValue{ .value = "zig" };
     var cloned_string = try borrowed_string.cloneOwned(allocator);
     defer cloned_string.deinit(allocator);
+    try std.testing.expect(cloned_string.owns_value);
     try std.testing.expect(cloned_string.value.ptr != borrowed_string.value.ptr);
     try std.testing.expectEqualSlices(u8, "zig", cloned_string.value);
 
@@ -2290,11 +2306,13 @@ test "wrapper owned helpers" {
     defer allocator.free(string_bytes);
     var decoded_string = try StringValue.decodeOwned(allocator, string_bytes);
     defer decoded_string.deinit(allocator);
+    try std.testing.expect(decoded_string.owns_value);
     try std.testing.expectEqualSlices(u8, "zig", decoded_string.value);
     try std.testing.expect(decoded_string.value.ptr != string_bytes.ptr);
 
     var parsed_bytes = try BytesValue.jsonParseOwned(allocator, "\"aGk=\"");
     defer parsed_bytes.deinit(allocator);
+    try std.testing.expect(parsed_bytes.owns_value);
     try std.testing.expectEqualSlices(u8, "hi", parsed_bytes.value);
 
     const scalar = Int32Value{ .value = 7 };
