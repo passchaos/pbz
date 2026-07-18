@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 64
+EXPECTED_WORKLOAD_COUNT = 66
 
 
 @dataclass(frozen=True)
@@ -405,6 +405,22 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf StringValue JSON parse",),
             "go protobuf": ("go protobuf StringValue JSON parse",),
+        },
+    ),
+    Workload(
+        "BytesValue JSON stringify",
+        ("pbz BytesValue JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf BytesValue JSON stringify",),
+            "go protobuf": ("go protobuf BytesValue JSON stringify",),
+        },
+    ),
+    Workload(
+        "BytesValue JSON parse",
+        ("pbz BytesValue JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf BytesValue JSON parse",),
+            "go protobuf": ("go protobuf BytesValue JSON parse",),
         },
     ),
     Workload(
@@ -1027,6 +1043,12 @@ def self_test() -> None:
     pbz StringValue JSON parse: best of 3 x 10 iters, 7 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf StringValue JSON parse: best of 3 x 10 iters, 7 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf StringValue JSON parse: best of 3 x 10 iters, 7 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz BytesValue JSON stringify: best of 3 x 10 iters, 6 bytes/iter, 35.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf BytesValue JSON stringify: best of 3 x 10 iters, 6 bytes/iter, 230.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf BytesValue JSON stringify: best of 3 x 10 iters, 6 bytes/iter, 250.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz BytesValue JSON parse: best of 3 x 10 iters, 6 bytes/iter, 70.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf BytesValue JSON parse: best of 3 x 10 iters, 6 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf BytesValue JSON parse: best of 3 x 10 iters, 6 bytes/iter, 280.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary encode reuse: best of 3 x 10 iters, 47 bytes/iter, 50.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary decode: best of 3 x 10 iters, 47 bytes/iter, 150.00 ns/op, 1 ops/s, 1 MiB/s
     """
@@ -1080,6 +1102,14 @@ def self_test() -> None:
     assert "pbz StringValue JSON parse" in output
     assert "c++ protobuf StringValue JSON parse" in output
     assert "go protobuf StringValue JSON parse" in output
+    assert "BytesValue JSON stringify" in output
+    assert "pbz BytesValue JSON stringify" in output
+    assert "c++ protobuf BytesValue JSON stringify" in output
+    assert "go protobuf BytesValue JSON stringify" in output
+    assert "BytesValue JSON parse" in output
+    assert "pbz BytesValue JSON parse" in output
+    assert "c++ protobuf BytesValue JSON parse" in output
+    assert "go protobuf BytesValue JSON parse" in output
     assert "WIN" in output
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output

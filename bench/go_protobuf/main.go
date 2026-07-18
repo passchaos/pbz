@@ -366,6 +366,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	bytesValue := wrapperspb.Bytes([]byte("hi"))
+	bytesValueJSONBytes, err := protojson.Marshal(bytesValue)
+	if err != nil {
+		panic(err)
+	}
 	packed := makePacked()
 	packedBytes, err := proto.Marshal(packed)
 	if err != nil {
@@ -454,6 +459,7 @@ func main() {
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
 	fmt.Printf("string value json payload size: %d\n", len(stringValueJSONBytes))
+	fmt.Printf("bytes value json payload size: %d\n", len(bytesValueJSONBytes))
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
@@ -762,6 +768,21 @@ func main() {
 	runTimed("go protobuf StringValue JSON parse", iterations, len(stringValueJSONBytes), func() {
 		var decoded wrapperspb.StringValue
 		if err := jsonUnmarshalOptions.Unmarshal(stringValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf BytesValue JSON stringify", iterations, len(bytesValueJSONBytes), func() {
+		out, err := protojson.Marshal(bytesValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf BytesValue JSON parse", iterations, len(bytesValueJSONBytes), func() {
+		var decoded wrapperspb.BytesValue
+		if err := jsonUnmarshalOptions.Unmarshal(bytesValueJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

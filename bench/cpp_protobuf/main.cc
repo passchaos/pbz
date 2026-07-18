@@ -411,6 +411,13 @@ int main() {
                                                    &string_value_json)
            .ok())
     std::abort();
+  google::protobuf::BytesValue bytes_value;
+  bytes_value.set_value("hi");
+  std::string bytes_value_json;
+  if (!google::protobuf::util::MessageToJsonString(bytes_value,
+                                                   &bytes_value_json)
+           .ok())
+    std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -470,6 +477,8 @@ int main() {
   std::cout << "field mask json payload size: " << field_mask_json.size()
             << "\n";
   std::cout << "string value json payload size: " << string_value_json.size()
+            << "\n";
+  std::cout << "bytes value json payload size: " << bytes_value_json.size()
             << "\n";
   std::cout << "any WKT json payload size: " << any_wkt_json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
@@ -1129,6 +1138,29 @@ int main() {
         asm volatile("" : : "g"(&decoded) : "memory");
       });
   string_value_json_parse.Print();
+
+  auto bytes_value_json_stringify = RunTimed(
+      "c++ protobuf BytesValue JSON stringify", kIterations,
+      bytes_value_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(bytes_value, &out)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  bytes_value_json_stringify.Print();
+
+  auto bytes_value_json_parse = RunTimed(
+      "c++ protobuf BytesValue JSON parse", kIterations,
+      bytes_value_json.size(), [&]() {
+        google::protobuf::BytesValue decoded;
+        if (!google::protobuf::util::JsonStringToMessage(bytes_value_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  bytes_value_json_parse.Print();
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {
