@@ -15,6 +15,7 @@ const BenchmarkSamples: usize = 3;
 const AnyWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Duration","value":"1.500s"}
 ;
+const TimestampJson = "\"2020-01-01T00:00:00.123Z\"";
 const DurationJson = "\"1.500s\"";
 const FieldMaskJson = "\"fooBar,nested.value\"";
 const LargeBytesPayloadLen: usize = 64 * 1024;
@@ -1833,6 +1834,19 @@ fn fieldMaskJsonParse(ctx: FieldMaskJsonParseCtx) !void {
     ctx.allocator.free(paths);
 }
 
+const TimestampJsonStringifyCtx = struct { allocator: std.mem.Allocator, timestamp: pbz.Timestamp };
+fn timestampJsonStringify(ctx: TimestampJsonStringifyCtx) !void {
+    const json = try ctx.timestamp.jsonStringifyAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(json.ptr);
+    ctx.allocator.free(json);
+}
+
+const TimestampJsonParseCtx = struct { json: []const u8 };
+fn timestampJsonParse(ctx: TimestampJsonParseCtx) !void {
+    const timestamp = try pbz.Timestamp.jsonParse(ctx.json);
+    std.mem.doNotOptimizeAway(timestamp);
+}
+
 const GeneratedTextFormatCtx = struct { allocator: std.mem.Allocator, person: *const person_pb.demo.Person };
 fn generatedTextFormat(ctx: GeneratedTextFormatCtx) !void {
     const text = try ctx.person.formatTextAlloc(ctx.allocator);
@@ -2291,6 +2305,10 @@ pub fn main() !void {
     const field_mask_json = try field_mask_value.jsonStringifyAlloc(allocator);
     defer allocator.free(field_mask_json);
     std.debug.assert(std.mem.eql(u8, field_mask_json, FieldMaskJson));
+    const timestamp_value = pbz.Timestamp{ .seconds = 1_577_836_800, .nanos = 123_000_000 };
+    const timestamp_json = try timestamp_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(timestamp_json);
+    std.debug.assert(std.mem.eql(u8, timestamp_json, TimestampJson));
     const generated_text = try generated_person.formatTextAlloc(allocator);
     defer allocator.free(generated_text);
     const dynamic_text = try pbz.formatTextAlloc(allocator, &file, &dynamic_person, .{});
@@ -2298,7 +2316,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} duration_json={d} field_mask_json={d} any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, duration_json.len, field_mask_json.len, any_wkt_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, any_wkt_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2490,6 +2508,8 @@ pub fn main() !void {
         try runTimed(io, "pbz Duration JSON parse", iters.json, duration_json.len, DurationJsonParseCtx{ .json = duration_json }, durationJsonParse),
         try runTimed(io, "pbz FieldMask JSON stringify", iters.json, field_mask_json.len, FieldMaskJsonStringifyCtx{ .allocator = allocator, .mask = &field_mask_value }, fieldMaskJsonStringify),
         try runTimed(io, "pbz FieldMask JSON parse", iters.json, field_mask_json.len, FieldMaskJsonParseCtx{ .allocator = allocator, .json = field_mask_json }, fieldMaskJsonParse),
+        try runTimed(io, "pbz Timestamp JSON stringify", iters.json, timestamp_json.len, TimestampJsonStringifyCtx{ .allocator = allocator, .timestamp = timestamp_value }, timestampJsonStringify),
+        try runTimed(io, "pbz Timestamp JSON parse", iters.json, timestamp_json.len, TimestampJsonParseCtx{ .json = timestamp_json }, timestampJsonParse),
         try runTimed(io, "generated TextFormat format", iters.text, generated_text.len, GeneratedTextFormatCtx{ .allocator = allocator, .person = &generated_person }, generatedTextFormat),
         try runTimed(io, "generated TextFormat parse", iters.text, generated_text.len, GeneratedTextParseCtx{ .allocator = allocator, .text = generated_text }, generatedTextParse),
         try runTimed(io, "dynamic TextFormat format", iters.text, dynamic_text.len, DynamicTextFormatCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicTextFormat),

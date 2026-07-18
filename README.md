@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py --fail-on-loss /tmp/pbz-compare.log
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-after-fieldmask-json.log`,
-summarized in `/tmp/pbz-summary-after-fieldmask-json.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-timestamp-json.log`,
+summarized in `/tmp/pbz-summary-after-timestamp-json.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
@@ -100,12 +100,14 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 | textbytes encode | 9.52 | 76.72 (8.06x) | 35.27 (3.70x) | 117.14 (12.30x) | 145.32 (15.26x) |
 | complex decode | 171.28 | 389.72 (2.28x) | 344.99 (2.01x) | 388.18 (2.27x) | 1491.23 (8.71x) |
 | complex JSON parse | 2376.87 | — | — | 12109.30 (5.09x) | 7941.96 (3.34x) |
-| Any WKT JSON stringify | 117.49 | — | — | 1874.01 (15.95x) | 1057.90 (9.00x) |
-| Any WKT JSON parse | 524.28 | — | — | 2984.01 (5.69x) | 1791.33 (3.42x) |
-| Duration JSON stringify | 59.44 | — | — | 987.88 (16.62x) | 366.62 (6.17x) |
-| Duration JSON parse | 8.30 | — | — | 1464.06 (176.39x) | 401.51 (48.37x) |
-| FieldMask JSON stringify | 81.77 | — | — | 892.23 (10.91x) | 657.11 (8.04x) |
-| FieldMask JSON parse | 146.52 | — | — | 1684.35 (11.50x) | 872.51 (5.95x) |
+| Any WKT JSON stringify | 150.44 | — | — | 1873.00 (12.45x) | 927.82 (6.17x) |
+| Any WKT JSON parse | 515.32 | — | — | 3077.79 (5.97x) | 1473.04 (2.86x) |
+| Duration JSON stringify | 57.76 | — | — | 988.73 (17.12x) | 342.23 (5.93x) |
+| Duration JSON parse | 7.94 | — | — | 1446.16 (182.14x) | 395.46 (49.81x) |
+| FieldMask JSON stringify | 115.00 | — | — | 897.74 (7.81x) | 625.32 (5.44x) |
+| FieldMask JSON parse | 146.37 | — | — | 1644.52 (11.24x) | 879.02 (6.01x) |
+| Timestamp JSON stringify | 95.73 | — | — | 1143.18 (11.94x) | 444.54 (4.64x) |
+| Timestamp JSON parse | 41.49 | — | — | 1502.84 (36.22x) | 439.46 (10.59x) |
 | TextFormat parse | 708.25 | — | — | 5007.02 (7.07x) | 6805.18 (9.61x) |
 | packed int32 decode | 688.02 | 1909.70 (2.78x) | 3209.00 (4.66x) | 949.39 (1.38x) | 3520.50 (5.12x) |
 | packed bool encode | 2.01 | 1350.61 (671.95x) | 518.88 (258.15x) | 16.26 (8.09x) | 2221.06 (1105.00x) |

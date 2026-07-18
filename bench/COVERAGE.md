@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-fieldmask-json.log` summarized by
-`/tmp/pbz-summary-after-fieldmask-json.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-after-timestamp-json.log` summarized by
+`/tmp/pbz-summary-after-timestamp-json.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-fieldmask-json.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-after-timestamp-json.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 60 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 62 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -88,6 +88,7 @@ The matrix includes:
 - `google.protobuf.Any` containing a well-known-type JSON value stringify/parse
 - direct `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
+- direct `google.protobuf.Timestamp` JSON stringify/parse
 - complex TextFormat format/parse
 - simple JSON stringify/parse
 - simple TextFormat format/parse

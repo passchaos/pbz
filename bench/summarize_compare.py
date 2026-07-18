@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 60
+EXPECTED_WORKLOAD_COUNT = 62
 
 
 @dataclass(frozen=True)
@@ -373,6 +373,22 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf FieldMask JSON parse",),
             "go protobuf": ("go protobuf FieldMask JSON parse",),
+        },
+    ),
+    Workload(
+        "Timestamp JSON stringify",
+        ("pbz Timestamp JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf Timestamp JSON stringify",),
+            "go protobuf": ("go protobuf Timestamp JSON stringify",),
+        },
+    ),
+    Workload(
+        "Timestamp JSON parse",
+        ("pbz Timestamp JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf Timestamp JSON parse",),
+            "go protobuf": ("go protobuf Timestamp JSON parse",),
         },
     ),
     Workload(
@@ -983,6 +999,12 @@ def self_test() -> None:
     pbz FieldMask JSON parse: best of 3 x 10 iters, 21 bytes/iter, 45.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf FieldMask JSON parse: best of 3 x 10 iters, 21 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf FieldMask JSON parse: best of 3 x 10 iters, 21 bytes/iter, 280.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Timestamp JSON stringify: best of 3 x 10 iters, 28 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Timestamp JSON stringify: best of 3 x 10 iters, 28 bytes/iter, 250.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Timestamp JSON stringify: best of 3 x 10 iters, 28 bytes/iter, 300.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 65.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 320.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary encode reuse: best of 3 x 10 iters, 47 bytes/iter, 50.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary decode: best of 3 x 10 iters, 47 bytes/iter, 150.00 ns/op, 1 ops/s, 1 MiB/s
     """
@@ -1020,6 +1042,14 @@ def self_test() -> None:
     assert "pbz FieldMask JSON parse" in output
     assert "c++ protobuf FieldMask JSON parse" in output
     assert "go protobuf FieldMask JSON parse" in output
+    assert "Timestamp JSON stringify" in output
+    assert "pbz Timestamp JSON stringify" in output
+    assert "c++ protobuf Timestamp JSON stringify" in output
+    assert "go protobuf Timestamp JSON stringify" in output
+    assert "Timestamp JSON parse" in output
+    assert "pbz Timestamp JSON parse" in output
+    assert "c++ protobuf Timestamp JSON parse" in output
+    assert "go protobuf Timestamp JSON parse" in output
     assert "WIN" in output
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output

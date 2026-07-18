@@ -11,6 +11,7 @@
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/struct.pb.h>
+#include <google/protobuf/timestamp.pb.h>
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -395,6 +396,13 @@ int main() {
                                                    &field_mask_json)
            .ok())
     std::abort();
+  google::protobuf::Timestamp timestamp;
+  timestamp.set_seconds(1577836800);
+  timestamp.set_nanos(123000000);
+  std::string timestamp_json;
+  if (!google::protobuf::util::MessageToJsonString(timestamp, &timestamp_json)
+           .ok())
+    std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -448,6 +456,8 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "timestamp json payload size: " << timestamp_json.size()
+            << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
             << "\n";
@@ -1064,6 +1074,28 @@ int main() {
         asm volatile("" : : "g"(&decoded) : "memory");
       });
   field_mask_json_parse.Print();
+
+  auto timestamp_json_stringify = RunTimed(
+      "c++ protobuf Timestamp JSON stringify", kIterations,
+      timestamp_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(timestamp, &out).ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  timestamp_json_stringify.Print();
+
+  auto timestamp_json_parse = RunTimed(
+      "c++ protobuf Timestamp JSON parse", kIterations, timestamp_json.size(),
+      [&]() {
+        google::protobuf::Timestamp decoded;
+        if (!google::protobuf::util::JsonStringToMessage(timestamp_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  timestamp_json_parse.Print();
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {
