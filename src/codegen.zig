@@ -9851,11 +9851,10 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
-        \\    const trimmed = std.mem.trim(u8, value, " \t\r\n");
-        \\    if (trimmed.len >= 2) {
-        \\        const quote = trimmed[0];
-        \\        if ((quote == '"' or quote == '\'') and trimmed[trimmed.len - 1] == quote) {
-        \\            const body = trimmed[1 .. trimmed.len - 1];
+        \\    if (value.len >= 2) {
+        \\        const quote = value[0];
+        \\        if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
+        \\            const body = value[1 .. value.len - 1];
         \\            const escaped_or_closed = if (quote == '"') std.mem.indexOfAny(u8, body, "\\\"") else std.mem.indexOfAny(u8, body, "\\'");
         \\            if (escaped_or_closed == null) return try allocator.dupe(u8, body);
         \\        }
@@ -13322,7 +13321,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.ascii.eqlIgnoreCase(body, \"nan\")) return std.math.nan(T);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (negative) -parsed else parsed;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const trimmed = std.mem.trim(u8, value, \" \\t\\r\\n\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (value.len >= 2)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (escaped_or_closed == null) return try allocator.dupe(u8, body);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "decoded = decoded * 16 + digit;") != null);
