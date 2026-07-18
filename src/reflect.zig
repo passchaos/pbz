@@ -145,15 +145,21 @@ pub const Reflection = struct {
     }
 
     pub fn setString(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: []const u8) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
         const owned = try self.allocator.dupe(u8, value);
-        errdefer self.allocator.free(owned);
-        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .string = owned });
+        var owns_owned = true;
+        errdefer if (owns_owned) self.allocator.free(owned);
+        owns_owned = false;
+        try self.set(message_value, field, .{ .string = owned });
     }
 
     pub fn addString(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: []const u8) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
         const owned = try self.allocator.dupe(u8, value);
-        errdefer self.allocator.free(owned);
-        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .string = owned });
+        var owns_owned = true;
+        errdefer if (owns_owned) self.allocator.free(owned);
+        owns_owned = false;
+        try self.add(message_value, field, .{ .string = owned });
     }
 
     pub fn getString(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]const u8 {
@@ -166,9 +172,12 @@ pub const Reflection = struct {
     }
 
     pub fn setBytes(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: []const u8) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
         const owned = try self.allocator.dupe(u8, value);
-        errdefer self.allocator.free(owned);
-        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .bytes = owned });
+        var owns_owned = true;
+        errdefer if (owns_owned) self.allocator.free(owned);
+        owns_owned = false;
+        try self.set(message_value, field, .{ .bytes = owned });
     }
 
     pub fn getBytes(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]const u8 {
@@ -194,17 +203,21 @@ pub const Reflection = struct {
     }
 
     pub fn putMapEntryOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: dynamic.Value, value: dynamic.Value) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
         const entry = try self.allocator.create(dynamic.MapEntry);
-        errdefer self.allocator.destroy(entry);
+        var owns_entry = true;
+        errdefer if (owns_entry) self.allocator.destroy(entry);
         entry.* = .{ .key = key, .value = value };
-        errdefer entry.deinit(self.allocator);
-        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .map_entry = entry });
+        errdefer if (owns_entry) entry.deinit(self.allocator);
+        owns_entry = false;
+        try self.add(message_value, field, .{ .map_entry = entry });
     }
 
     pub fn putStringInt32MapEntry(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: []const u8, value: i32) Error!void {
         const owned_key = try self.allocator.dupe(u8, key);
-        errdefer self.allocator.free(owned_key);
-        try self.putMapEntryOwned(message_value, name, .{ .string = owned_key }, .{ .int32 = value });
+        var key_value = dynamic.Value{ .string = owned_key };
+        errdefer dynamic.deinitValue(&key_value, self.allocator);
+        try self.putMapEntryOwned(message_value, name, key_value, .{ .int32 = value });
     }
 };
 
