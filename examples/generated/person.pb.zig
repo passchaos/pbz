@@ -1399,7 +1399,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (@This().textFieldValue(line, "scores")) |raw_value| {
-                    scores_list.append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
+                    try scores_list.append(allocator, try @This().textInt(i32, raw_value));
                     continue;
                 }
                 if (@This().textBlockField(line, "counts")) {
@@ -3206,11 +3206,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (@This().textFieldValue(line, "flags")) |raw_value| {
-                    flags_list.append(allocator, try @This().textBool(raw_value)) catch |err| return err;
+                    try flags_list.append(allocator, try @This().textBool(raw_value));
                     continue;
                 }
                 if (@This().textFieldValue(line, "ids")) |raw_value| {
-                    ids_list.append(allocator, try @This().textInt(u64, raw_value)) catch |err| return err;
+                    try ids_list.append(allocator, try @This().textInt(u64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -4394,11 +4394,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (@This().textFieldValue(line, "tags")) |raw_value| {
-                    tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }) catch |err| return err;
+                    try tags_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; });
                     continue;
                 }
                 if (@This().textFieldValue(line, "chunks")) |raw_value| {
-                    chunks_list.append(allocator, try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value)) catch |err| return err;
+                    try chunks_list.append(allocator, try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -5430,7 +5430,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (@This().textFieldValue(line, "chunks")) |raw_value| {
-                    chunks_list.append(allocator, try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value)) catch |err| return err;
+                    try chunks_list.append(allocator, try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -8920,7 +8920,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(i32, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -9971,7 +9971,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(u32, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(u32, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -11014,7 +11014,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(u64, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(u64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -12057,7 +12057,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(i32, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -13100,7 +13100,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(i64, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(i64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -14143,7 +14143,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textFloat(f32, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textFloat(f32, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -15186,7 +15186,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textFloat(f64, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textFloat(f64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -16235,7 +16235,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(u64, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(u64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -17284,7 +17284,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(u32, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(u32, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -18333,7 +18333,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(i64, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(i64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -19382,7 +19382,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(i32, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(i32, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -20431,7 +20431,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textInt(i64, raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textInt(i64, raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -21458,7 +21458,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
-                    values_list.append(allocator, try @This().textBool(raw_value)) catch |err| return err;
+                    try values_list.append(allocator, try @This().textBool(raw_value));
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -22513,7 +22513,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (line.len == 0) continue;
                 if (@This().textFieldValue(line, "values")) |raw_value| {
                     const parsed_enum = @This().textEnum(raw_value, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };
-                    values_list.append(allocator, parsed_enum) catch |err| return err;
+                    try values_list.append(allocator, parsed_enum);
                     continue;
                 }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }

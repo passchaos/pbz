@@ -856,7 +856,6 @@ fn writeOneofTypeName(name: []const u8, writer: *std.Io.Writer) Error!void {
     try writeQuotedIdentWithSuffix(name, "Oneof", writer);
 }
 
-
 fn writeOneofDeinitHelpers(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     for (message.oneofs.items) |oneof| {
         const has_typed_message = oneofHasTypedMessageWithContext(ctx, message, oneof.name);
@@ -1345,13 +1344,15 @@ fn writeTextParseField(ctx: *const CodegenContext, field: *const schema.FieldDes
             try writeTextParseEnumExpr(file, field.kind.enumeration, "raw_value", writer);
             try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };\n");
             try indent(writer, depth + 1);
+            try writer.writeAll("try ");
             try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-            try writer.writeAll(".append(allocator, parsed_enum) catch |err| return err;\n");
+            try writer.writeAll(".append(allocator, parsed_enum);\n");
         } else {
+            try writer.writeAll("try ");
             try writeQuotedIdentWithSuffix(field.name, "_list", writer);
             try writer.writeAll(".append(allocator, ");
             try writeTextParseValueExpr(file, field, field.kind, "raw_value", writer);
-            try writer.writeAll(") catch |err| return err;\n");
+            try writer.writeAll(");\n");
         }
     } else {
         try indent(writer, depth + 1);
@@ -1449,8 +1450,9 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
     try writer.writeAll("const payload = try nested.encode(owned_allocator);\n");
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
+        try writer.writeAll("try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(".append(allocator, payload) catch |err| return err;\n");
+        try writer.writeAll(".append(allocator, payload);\n");
     } else {
         if (field.oneof_name) |oneof_name| {
             try indent(writer, depth);
