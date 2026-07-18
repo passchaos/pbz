@@ -652,7 +652,7 @@ pub const Parser = struct {
                     const path = try self.childFieldPath(method_path, 4);
                     defer self.allocator.free(path);
                     try self.addSourceLocation(path, option_start, self.previousEnd());
-                } else if (self.consumeSymbol(';')) {} else return error.UnexpectedToken;
+                } else if (!self.consumeSymbol(';')) return error.UnexpectedToken;
             }
             _ = self.consumeSymbol(';');
         } else try self.expectSymbol(';');
@@ -1301,9 +1301,11 @@ pub const Parser = struct {
                 }
                 return error.InvalidDefault;
             },
-            .message => |name| switch (value) {
-                .identifier, .string => return if (self.messageNameLooksImported(name, context)) {} else error.InvalidDefault,
-                else => return error.InvalidDefault,
+            .message => |name| {
+                switch (value) {
+                    .identifier, .string => if (!self.messageNameLooksImported(name, context)) return error.InvalidDefault,
+                    else => return error.InvalidDefault,
+                }
             },
             .group => return error.InvalidDefault,
             .map => return error.InvalidDefault,

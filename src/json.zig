@@ -815,7 +815,9 @@ fn writeValue(
         else switch (value) {
             .message => |message| {
                 const message_file = messageDescriptorFile(file, registry, message.descriptor);
-                if (try writeKnownMessage(message_file, registry, name, message, options, writer)) {} else try writeMessage(message_file, registry, message, options, writer);
+                if (!try writeKnownMessage(message_file, registry, name, message, options, writer)) {
+                    try writeMessage(message_file, registry, message, options, writer);
+                }
             },
             else => return error.TypeMismatch,
         },
