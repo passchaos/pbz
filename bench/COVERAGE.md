@@ -93,11 +93,13 @@ The matrix includes:
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
 
 The local `zig build bench` output also includes generated/dynamic
-unknown-field stress decode and count-by-number query rows. `bench/run_compare.sh`
-now emits C++ `UnknownFieldSet` stress decode/count rows for manual context.
-Those rows are deliberately outside `bench/summarize_compare.py`'s
-cross-language fail-on-loss matrix because C++ exposes parsed unknown fields,
-while pbz preserves exact raw-field byte slices.
+unknown-field stress decode and count-by-number query rows, plus a generated
+raw-field-number sidecar count row for callers that repeatedly query preserved
+raw unknown fields by number. `bench/run_compare.sh` now emits C++
+`UnknownFieldSet` stress decode/count rows for manual context. Those rows are
+deliberately outside `bench/summarize_compare.py`'s cross-language fail-on-loss
+matrix because C++ exposes parsed unknown fields, while pbz preserves exact
+raw-field byte slices.
 
 ## Generated performance APIs now used by the matrix
 
@@ -122,6 +124,9 @@ APIs:
 - `valuesPackedBoolSlices(header, values)` for borrowed packed bool output
 - `valuesPackedIterator(bytes)` for zero-allocation varint scans across every
   packed or unpacked occurrence of the repeated field
+- `pbz.wire.rawFieldNumbersAlloc(fields)` plus
+  `pbz.wire.rawFieldNumberCount(numbers, number)` for repeated by-number
+  queries over exact raw unknown-field storage without re-decoding every tag
 
 `examples/generated_performance.zig` demonstrates these APIs outside the
 benchmark harness.

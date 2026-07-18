@@ -123,6 +123,27 @@ pub fn rawFieldCountByNumber(fields: []const []const u8, number: FieldNumber) Er
     return count;
 }
 
+/// Decoded field numbers parallel to raw unknown-field byte slices.
+///
+/// Generated messages preserve exact raw bytes for lossless unknown-field
+/// round-tripping.  Callers that repeatedly query by field number can keep this
+/// compact sidecar instead of re-decoding the tag varint on every query.
+pub fn rawFieldNumbersAlloc(allocator: std.mem.Allocator, fields: []const []const u8) (std.mem.Allocator.Error || Error)![]FieldNumber {
+    if (fields.len == 0) return &.{};
+    const numbers = try allocator.alloc(FieldNumber, fields.len);
+    errdefer allocator.free(numbers);
+    for (fields, numbers) |raw, *number| number.* = if (raw.len == 0) 0 else try rawFieldNumber(raw);
+    return numbers;
+}
+
+pub fn rawFieldNumberCount(numbers: []const FieldNumber, number: FieldNumber) usize {
+    var count: usize = 0;
+    for (numbers) |candidate| {
+        if (candidate == number) count += 1;
+    }
+    return count;
+}
+
 /// Counts already-validated raw unknown fields without re-running full tag
 /// validation for every entry. Use this only for storage populated by Reader
 /// decode or appendRawFieldClone(); arbitrary caller bytes should use
@@ -1834,6 +1855,11 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectEqual(@as(usize, 1), rawFieldCountByNumberAssumeValid(&raw_fields, 31));
     const noncanonical_only = [_][]const u8{&noncanonical_field_31};
     try std.testing.expectEqual(@as(usize, 0), rawFieldCountByNumberAssumeValid(&noncanonical_only, 15));
+    const raw_numbers = try rawFieldNumbersAlloc(std.testing.allocator, &raw_fields);
+    defer std.testing.allocator.free(raw_numbers);
+    try std.testing.expectEqualSlices(FieldNumber, &.{ 15, 0, 16, 16, 31 }, raw_numbers);
+    try std.testing.expectEqual(@as(usize, 2), rawFieldNumberCount(raw_numbers, 16));
+    try std.testing.expectEqual(@as(usize, 0), rawFieldNumberCount(raw_numbers, 17));
     try std.testing.expect(rawFieldHasNumberAssumeValid(&raw_fields, 16));
     try std.testing.expect(!rawFieldHasNumberAssumeValid(&raw_fields, 17));
     const matched = try rawFieldsByNumberAlloc(std.testing.allocator, &raw_fields, 16);
