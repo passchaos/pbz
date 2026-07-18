@@ -12647,13 +12647,13 @@ test "codegen emits protoc response from request file_to_generate" {
     var request = plugin.CodeGeneratorRequest.init(allocator);
     defer request.deinit();
     try request.files_to_generate.append(allocator, "app.proto");
-    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.common;
         \\message User { optional int32 id = 1; }
     ));
     request.proto_files.items[0].name = "common.proto";
-    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.app;
         \\import "common.proto";
@@ -12700,7 +12700,7 @@ test "codegen emits protoc response from request file_to_generate" {
     var missing_request = plugin.CodeGeneratorRequest.init(allocator);
     defer missing_request.deinit();
     try missing_request.files_to_generate.append(allocator, "missing.proto");
-    try missing_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message A {}"));
+    try missing_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message A {}"));
     missing_request.proto_files.items[0].name = "a.proto";
 
     const missing_response = try generatePluginResponseFromRequest(allocator, &missing_request);
@@ -12718,7 +12718,7 @@ test "codegen emits protoc response from request file_to_generate" {
     var unresolved_request = plugin.CodeGeneratorRequest.init(allocator);
     defer unresolved_request.deinit();
     try unresolved_request.files_to_generate.append(allocator, "bad.proto");
-    try unresolved_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try unresolved_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Bad { optional MissingType field = 1; }
     ));
@@ -12742,13 +12742,13 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     defer request.deinit();
     request.parameter = "paths=source_relative,include_imports=true";
     try request.files_to_generate.append(allocator, "app.proto");
-    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.common;
         \\message User { optional int32 id = 1; }
     ));
     request.proto_files.items[0].name = "common.proto";
-    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.app;
         \\import "common.proto";
@@ -12775,7 +12775,7 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     defer no_info_request.deinit();
     no_info_request.parameter = "generated_info=false";
     try no_info_request.files_to_generate.append(allocator, "app.proto");
-    try no_info_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
+    try no_info_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
     no_info_request.proto_files.items[0].name = "app.proto";
     const no_info_response = try generatePluginResponseFromRequest(allocator, &no_info_request);
     defer allocator.free(no_info_response);
@@ -12807,7 +12807,7 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     defer import_name_request.deinit();
     import_name_request.parameter = "pbz_import=custom_runtime";
     try import_name_request.files_to_generate.append(allocator, "app.proto");
-    try import_name_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
+    try import_name_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
     import_name_request.proto_files.items[0].name = "app.proto";
     const import_name_response = try generatePluginResponseFromRequest(allocator, &import_name_request);
     defer allocator.free(import_name_response);
@@ -12833,13 +12833,13 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     defer output_name_request.deinit();
     output_name_request.parameter = "output_suffix=.pbz.zig";
     try output_name_request.files_to_generate.append(allocator, "app.proto");
-    try output_name_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try output_name_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.common;
         \\message User {}
     ));
     output_name_request.proto_files.items[0].name = "common.proto";
-    try output_name_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try output_name_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\package demo.app;
         \\import "common.proto";
@@ -12873,7 +12873,7 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     defer keep_ext_request.deinit();
     keep_ext_request.parameter = "strip_proto_ext=false";
     try keep_ext_request.files_to_generate.append(allocator, "app.proto");
-    try keep_ext_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
+    try keep_ext_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App {}"));
     keep_ext_request.proto_files.items[0].name = "app.proto";
     const keep_ext_response = try generatePluginResponseFromRequest(allocator, &keep_ext_request);
     defer allocator.free(keep_ext_response);
@@ -12899,7 +12899,7 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     defer no_helpers_request.deinit();
     no_helpers_request.parameter = "json=false,text_format=false";
     try no_helpers_request.files_to_generate.append(allocator, "app.proto");
-    try no_helpers_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App { optional int32 id = 1; }"));
+    try no_helpers_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App { optional int32 id = 1; }"));
     no_helpers_request.proto_files.items[0].name = "app.proto";
     const no_helpers_response = try generatePluginResponseFromRequest(allocator, &no_helpers_request);
     defer allocator.free(no_helpers_response);
@@ -12927,7 +12927,7 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
     var invalid_request = plugin.CodeGeneratorRequest.init(allocator);
     defer invalid_request.deinit();
     invalid_request.parameter = "unknown_option=true";
-    try invalid_request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message A {}"));
+    try invalid_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message A {}"));
     invalid_request.proto_files.items[0].name = "a.proto";
     const invalid_response = try generatePluginResponseFromRequest(allocator, &invalid_request);
     defer allocator.free(invalid_response);
@@ -12977,7 +12977,7 @@ test "codegen runs plugin requests to writers" {
     var request = plugin.CodeGeneratorRequest.init(allocator);
     defer request.deinit();
     try request.files_to_generate.append(allocator, "app.proto");
-    try request.proto_files.append(allocator, try @import("parser.zig").Parser.parse(allocator,
+    try request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto2";
         \\message App { optional int32 id = 1; }
     ));
