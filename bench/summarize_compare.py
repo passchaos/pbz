@@ -64,6 +64,55 @@ def json_workload_pair(label: str) -> tuple[Workload, Workload]:
     )
 
 
+def json_sample_pair(
+    label: str,
+    bytes_per_iter: int,
+    stringify_ns: tuple[float, float, float],
+    parse_ns: tuple[float, float, float],
+) -> tuple[str, ...]:
+    """Return self-test benchmark lines for a direct JSON workload pair."""
+
+    pbz_stringify, cpp_stringify, go_stringify = stringify_ns
+    pbz_parse, cpp_parse, go_parse = parse_ns
+    return (
+        benchmark_line(f"pbz {label} JSON stringify", bytes_per_iter, pbz_stringify),
+        benchmark_line(f"c++ protobuf {label} JSON stringify", bytes_per_iter, cpp_stringify),
+        benchmark_line(f"go protobuf {label} JSON stringify", bytes_per_iter, go_stringify),
+        benchmark_line(f"pbz {label} JSON parse", bytes_per_iter, pbz_parse),
+        benchmark_line(f"c++ protobuf {label} JSON parse", bytes_per_iter, cpp_parse),
+        benchmark_line(f"go protobuf {label} JSON parse", bytes_per_iter, go_parse),
+    )
+
+
+def benchmark_line(name: str, bytes_per_iter: int, ns: float) -> str:
+    return f"{name}: best of 3 x 10 iters, {bytes_per_iter} bytes/iter, {ns:.2f} ns/op, 1 ops/s, 1 MiB/s"
+
+
+# Self-test WKT rows intentionally mirror the production naming convention used
+# by json_workload_pair().  Adding a future direct WKT JSON workload should only
+# require one extra tuple here plus the production workload declaration.
+JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[float, float, float]], ...] = (
+    ("Any WKT", 73, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
+    ("Any Struct WKT", 121, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
+    ("Duration", 8, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
+    ("FieldMask", 21, (40.0, 230.0, 270.0), (45.0, 240.0, 280.0)),
+    ("Timestamp", 28, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
+    ("Empty", 2, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
+    ("Struct", 58, (90.0, 900.0, 800.0), (120.0, 1000.0, 900.0)),
+    ("Value", 58, (90.0, 900.0, 800.0), (120.0, 1000.0, 900.0)),
+    ("ListValue", 40, (80.0, 850.0, 760.0), (110.0, 950.0, 850.0)),
+    ("DoubleValue", 4, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("FloatValue", 3, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("Int64Value", 18, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("UInt64Value", 18, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("Int32Value", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("UInt32Value", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("BoolValue", 4, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("StringValue", 7, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("BytesValue", 6, (35.0, 230.0, 250.0), (70.0, 240.0, 280.0)),
+)
+
+
 WORKLOADS: tuple[Workload, ...] = (
     Workload(
         "binary encode",
@@ -957,125 +1006,24 @@ def summarize(results: dict[str, float]) -> tuple[str, bool]:
 def self_test() -> None:
     validate_workloads()
 
-    sample = """
-    generated binary encodeIntoAssumeCapacity buffer reuse: best of 3 x 10 iters, 47 bytes/iter, 40.00 ns/op, 1 ops/s, 1 MiB/s
-    generated binary decode: best of 3 x 10 iters, 47 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
-    generated unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 5.00 ns/op, 1 ops/s, 1 MiB/s
-    dynamic unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 6.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf unknown fields count by number: best of 3 x 10 iters, 4016 bytes/iter, 100.00 ns/op, 1 ops/s, 1 MiB/s
-    generated textbytes borrowed slices encode: best of 3 x 10 iters, 134 bytes/iter, 20.00 ns/op, 1 ops/s, 1 MiB/s
-    quick-protobuf textbytes encode reuse: best of 3 x 10 iters, 134 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Any WKT JSON stringify: best of 3 x 10 iters, 73 bytes/iter, 60.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Any WKT JSON stringify: best of 3 x 10 iters, 73 bytes/iter, 300.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Any WKT JSON stringify: best of 3 x 10 iters, 73 bytes/iter, 350.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 80.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 400.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 500.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Any Struct WKT JSON stringify: best of 3 x 10 iters, 121 bytes/iter, 120.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Any Struct WKT JSON stringify: best of 3 x 10 iters, 121 bytes/iter, 1000.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Any Struct WKT JSON stringify: best of 3 x 10 iters, 121 bytes/iter, 900.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Any Struct WKT JSON parse: best of 3 x 10 iters, 121 bytes/iter, 180.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Any Struct WKT JSON parse: best of 3 x 10 iters, 121 bytes/iter, 1200.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Any Struct WKT JSON parse: best of 3 x 10 iters, 121 bytes/iter, 1100.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Duration JSON stringify: best of 3 x 10 iters, 8 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Duration JSON stringify: best of 3 x 10 iters, 8 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Duration JSON stringify: best of 3 x 10 iters, 8 bytes/iter, 250.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Duration JSON parse: best of 3 x 10 iters, 8 bytes/iter, 35.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Duration JSON parse: best of 3 x 10 iters, 8 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Duration JSON parse: best of 3 x 10 iters, 8 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz FieldMask JSON stringify: best of 3 x 10 iters, 21 bytes/iter, 40.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf FieldMask JSON stringify: best of 3 x 10 iters, 21 bytes/iter, 230.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf FieldMask JSON stringify: best of 3 x 10 iters, 21 bytes/iter, 270.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz FieldMask JSON parse: best of 3 x 10 iters, 21 bytes/iter, 45.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf FieldMask JSON parse: best of 3 x 10 iters, 21 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf FieldMask JSON parse: best of 3 x 10 iters, 21 bytes/iter, 280.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Timestamp JSON stringify: best of 3 x 10 iters, 28 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Timestamp JSON stringify: best of 3 x 10 iters, 28 bytes/iter, 250.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Timestamp JSON stringify: best of 3 x 10 iters, 28 bytes/iter, 300.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 65.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 320.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Empty JSON stringify: best of 3 x 10 iters, 2 bytes/iter, 20.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Empty JSON stringify: best of 3 x 10 iters, 2 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Empty JSON stringify: best of 3 x 10 iters, 2 bytes/iter, 180.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Empty JSON parse: best of 3 x 10 iters, 2 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Empty JSON parse: best of 3 x 10 iters, 2 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Empty JSON parse: best of 3 x 10 iters, 2 bytes/iter, 190.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Struct JSON stringify: best of 3 x 10 iters, 58 bytes/iter, 90.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Struct JSON stringify: best of 3 x 10 iters, 58 bytes/iter, 900.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Struct JSON stringify: best of 3 x 10 iters, 58 bytes/iter, 800.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Struct JSON parse: best of 3 x 10 iters, 58 bytes/iter, 120.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Struct JSON parse: best of 3 x 10 iters, 58 bytes/iter, 1000.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Struct JSON parse: best of 3 x 10 iters, 58 bytes/iter, 900.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Value JSON stringify: best of 3 x 10 iters, 58 bytes/iter, 90.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Value JSON stringify: best of 3 x 10 iters, 58 bytes/iter, 900.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Value JSON stringify: best of 3 x 10 iters, 58 bytes/iter, 800.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Value JSON parse: best of 3 x 10 iters, 58 bytes/iter, 120.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Value JSON parse: best of 3 x 10 iters, 58 bytes/iter, 1000.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Value JSON parse: best of 3 x 10 iters, 58 bytes/iter, 900.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz ListValue JSON stringify: best of 3 x 10 iters, 40 bytes/iter, 80.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf ListValue JSON stringify: best of 3 x 10 iters, 40 bytes/iter, 850.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf ListValue JSON stringify: best of 3 x 10 iters, 40 bytes/iter, 760.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz ListValue JSON parse: best of 3 x 10 iters, 40 bytes/iter, 110.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf ListValue JSON parse: best of 3 x 10 iters, 40 bytes/iter, 950.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf ListValue JSON parse: best of 3 x 10 iters, 40 bytes/iter, 850.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz DoubleValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf DoubleValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf DoubleValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz DoubleValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf DoubleValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf DoubleValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz FloatValue JSON stringify: best of 3 x 10 iters, 3 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf FloatValue JSON stringify: best of 3 x 10 iters, 3 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf FloatValue JSON stringify: best of 3 x 10 iters, 3 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz FloatValue JSON parse: best of 3 x 10 iters, 3 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf FloatValue JSON parse: best of 3 x 10 iters, 3 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf FloatValue JSON parse: best of 3 x 10 iters, 3 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Int64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Int64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Int64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Int64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Int64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Int64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz UInt64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf UInt64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf UInt64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz UInt64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf UInt64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf UInt64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Int32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Int32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Int32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz Int32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf Int32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf Int32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz UInt32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf UInt32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf UInt32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz UInt32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf UInt32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf UInt32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz BoolValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf BoolValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf BoolValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz BoolValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf BoolValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf BoolValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz StringValue JSON stringify: best of 3 x 10 iters, 7 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf StringValue JSON stringify: best of 3 x 10 iters, 7 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf StringValue JSON stringify: best of 3 x 10 iters, 7 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz StringValue JSON parse: best of 3 x 10 iters, 7 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf StringValue JSON parse: best of 3 x 10 iters, 7 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf StringValue JSON parse: best of 3 x 10 iters, 7 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz BytesValue JSON stringify: best of 3 x 10 iters, 6 bytes/iter, 35.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf BytesValue JSON stringify: best of 3 x 10 iters, 6 bytes/iter, 230.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf BytesValue JSON stringify: best of 3 x 10 iters, 6 bytes/iter, 250.00 ns/op, 1 ops/s, 1 MiB/s
-    pbz BytesValue JSON parse: best of 3 x 10 iters, 6 bytes/iter, 70.00 ns/op, 1 ops/s, 1 MiB/s
-    c++ protobuf BytesValue JSON parse: best of 3 x 10 iters, 6 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
-    go protobuf BytesValue JSON parse: best of 3 x 10 iters, 6 bytes/iter, 280.00 ns/op, 1 ops/s, 1 MiB/s
-    quick-protobuf binary encode reuse: best of 3 x 10 iters, 47 bytes/iter, 50.00 ns/op, 1 ops/s, 1 MiB/s
-    quick-protobuf binary decode: best of 3 x 10 iters, 47 bytes/iter, 150.00 ns/op, 1 ops/s, 1 MiB/s
-    """
+    sample_lines = [
+        benchmark_line("generated binary encodeIntoAssumeCapacity buffer reuse", 47, 40.0),
+        benchmark_line("generated binary decode", 47, 200.0),
+        benchmark_line("generated unknown field number run sidecar count", 4016, 5.0),
+        benchmark_line("dynamic unknown field number run sidecar count", 4016, 6.0),
+        benchmark_line("c++ protobuf unknown fields count by number", 4016, 100.0),
+        benchmark_line("generated textbytes borrowed slices encode", 134, 20.0),
+        benchmark_line("quick-protobuf textbytes encode reuse", 134, 30.0),
+    ]
+    for label, bytes_per_iter, stringify_ns, parse_ns in JSON_SELF_TEST_SPECS:
+        sample_lines.extend(json_sample_pair(label, bytes_per_iter, stringify_ns, parse_ns))
+    sample_lines.extend(
+        (
+            benchmark_line("quick-protobuf binary encode reuse", 47, 50.0),
+            benchmark_line("quick-protobuf binary decode", 47, 150.0),
+        )
+    )
+    sample = "\n".join(sample_lines)
     results = parse_results(sample)
     output, has_loss = summarize(results)
     assert "binary encode" in output
@@ -1086,69 +1034,15 @@ def self_test() -> None:
     assert "textbytes encode" in output
     assert "generated textbytes borrowed slices encode" in output
     assert "quick-protobuf textbytes encode reuse" in output
-    assert "Any WKT JSON parse" in output
-    assert "Any WKT JSON stringify" in output
-    assert "pbz Any WKT JSON stringify" in output
-    assert "c++ protobuf Any WKT JSON stringify" in output
-    assert "go protobuf Any WKT JSON stringify" in output
-    assert "pbz Any WKT JSON parse" in output
-    assert "c++ protobuf Any WKT JSON parse" in output
-    assert "go protobuf Any WKT JSON parse" in output
-    assert "Any Struct WKT JSON stringify" in output
-    assert "pbz Any Struct WKT JSON stringify" in output
-    assert "c++ protobuf Any Struct WKT JSON stringify" in output
-    assert "go protobuf Any Struct WKT JSON stringify" in output
-    assert "Any Struct WKT JSON parse" in output
-    assert "pbz Any Struct WKT JSON parse" in output
-    assert "c++ protobuf Any Struct WKT JSON parse" in output
-    assert "go protobuf Any Struct WKT JSON parse" in output
-    assert "Duration JSON stringify" in output
-    assert "pbz Duration JSON stringify" in output
-    assert "c++ protobuf Duration JSON stringify" in output
-    assert "go protobuf Duration JSON stringify" in output
-    assert "Duration JSON parse" in output
-    assert "pbz Duration JSON parse" in output
-    assert "c++ protobuf Duration JSON parse" in output
-    assert "go protobuf Duration JSON parse" in output
-    assert "FieldMask JSON stringify" in output
-    assert "pbz FieldMask JSON stringify" in output
-    assert "c++ protobuf FieldMask JSON stringify" in output
-    assert "go protobuf FieldMask JSON stringify" in output
-    assert "FieldMask JSON parse" in output
-    assert "pbz FieldMask JSON parse" in output
-    assert "c++ protobuf FieldMask JSON parse" in output
-    assert "go protobuf FieldMask JSON parse" in output
-    assert "Timestamp JSON stringify" in output
-    assert "pbz Timestamp JSON stringify" in output
-    assert "c++ protobuf Timestamp JSON stringify" in output
-    assert "go protobuf Timestamp JSON stringify" in output
-    assert "Timestamp JSON parse" in output
-    assert "pbz Timestamp JSON parse" in output
-    assert "c++ protobuf Timestamp JSON parse" in output
-    assert "go protobuf Timestamp JSON parse" in output
-    for wkt in (
-        "Empty",
-        "Struct",
-        "Value",
-        "ListValue",
-        "DoubleValue",
-        "FloatValue",
-        "Int64Value",
-        "UInt64Value",
-        "Int32Value",
-        "UInt32Value",
-        "BoolValue",
-        "StringValue",
-        "BytesValue",
-    ):
-        assert f"{wkt} JSON stringify" in output
-        assert f"pbz {wkt} JSON stringify" in output
-        assert f"c++ protobuf {wkt} JSON stringify" in output
-        assert f"go protobuf {wkt} JSON stringify" in output
-        assert f"{wkt} JSON parse" in output
-        assert f"pbz {wkt} JSON parse" in output
-        assert f"c++ protobuf {wkt} JSON parse" in output
-        assert f"go protobuf {wkt} JSON parse" in output
+    for label, _bytes_per_iter, _stringify_ns, _parse_ns in JSON_SELF_TEST_SPECS:
+        assert f"{label} JSON stringify" in output
+        assert f"pbz {label} JSON stringify" in output
+        assert f"c++ protobuf {label} JSON stringify" in output
+        assert f"go protobuf {label} JSON stringify" in output
+        assert f"{label} JSON parse" in output
+        assert f"pbz {label} JSON parse" in output
+        assert f"c++ protobuf {label} JSON parse" in output
+        assert f"go protobuf {label} JSON parse" in output
     assert "WIN" in output
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output
