@@ -115,6 +115,33 @@ test "memory loader recursively loads imports into registry" {
     try std.testing.expect(loaded.registry.findMessage("demo.app.Request", null) != null);
 }
 
+fn exerciseMemoryLoadCleanup(allocator: std.mem.Allocator, tree: *const MemorySourceTree) !void {
+    var loaded = try loadMemory(allocator, tree, "app.proto");
+    defer loaded.deinit();
+    try std.testing.expectEqual(@as(usize, 2), loaded.files.items.len);
+    try std.testing.expect(loaded.registry.findMessage(".demo.common.User", null) != null);
+    try std.testing.expect(loaded.registry.findMessage("demo.app.Request", null) != null);
+}
+
+test "memory loader cleans up allocation failures" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("common.proto",
+        \\syntax = "proto3";
+        \\package demo.common;
+        \\message User { string name = 1; }
+    );
+    try tree.add("app.proto",
+        \\syntax = "proto3";
+        \\package demo.app;
+        \\import "common.proto";
+        \\message Request { demo.common.User user = 1; }
+    );
+
+    try std.testing.checkAllAllocationFailures(allocator, exerciseMemoryLoadCleanup, .{&tree});
+}
+
 test "memory loader rejects missing imports and cycles" {
     const allocator = std.testing.allocator;
     var missing = MemorySourceTree.init(allocator);
