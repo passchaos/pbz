@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py --fail-on-loss /tmp/pbz-compare.log
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-after-direct-varint.log`,
-summarized in `/tmp/pbz-summary-after-direct-varint.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-scalar-varint-helper-rerun.log`,
+summarized in `/tmp/pbz-summary-after-scalar-varint-helper-rerun.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
@@ -92,20 +92,20 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |
 |---|---:|---:|---:|---:|---:|
-| binary encode | 15.62 | 128.45 (8.22x) | 67.30 (4.31x) | 134.01 (8.58x) | 807.74 (51.71x) |
-| binary decode | 93.49 | 304.65 (3.26x) | 315.20 (3.37x) | 279.61 (2.99x) | 902.21 (9.65x) |
-| scalarmix encode | 28.21 | 114.16 (4.05x) | 67.63 (2.40x) | 31.02 (1.10x) | 244.03 (8.65x) |
-| scalarmix decode | 33.83 | 163.57 (4.84x) | 213.48 (6.31x) | 85.52 (2.53x) | 300.82 (8.89x) |
-| textbytes encode | 23.06 | 91.81 (3.98x) | 43.77 (1.90x) | 117.98 (5.12x) | 141.89 (6.15x) |
-| complex decode | 170.30 | 391.87 (2.30x) | 340.14 (2.00x) | 391.62 (2.30x) | 1401.28 (8.23x) |
-| complex JSON parse | 2382.97 | — | — | 12018.80 (5.04x) | 7544.85 (3.17x) |
-| TextFormat parse | 709.03 | — | — | 5150.44 (7.26x) | 6581.44 (9.28x) |
-| packed int32 decode | 696.42 | 1902.91 (2.73x) | 4239.93 (6.09x) | 1055.48 (1.52x) | 3685.98 (5.29x) |
-| packed bool encode | 2.01 | 1350.06 (671.67x) | 552.32 (274.79x) | 22.67 (11.28x) | 2223.51 (1106.22x) |
-| packed bool decode | 264.50 | 1533.77 (5.80x) | 3860.54 (14.60x) | 814.22 (3.08x) | 2243.73 (8.48x) |
-| largebytes decode | 89.37 | 5498.25 (61.52x) | 3045.65 (34.08x) | 2952.10 (33.03x) | 23116.08 (258.66x) |
-| large map decode | 25488.74 | 92388.71 (3.62x) | 128266.66 (5.03x) | 97416.80 (3.82x) | 266308.06 (10.45x) |
-| shuffled large map deterministic binary encode | 27758.67 | — | — | 91593.60 (3.30x) | 381732.62 (13.75x) |
+| binary encode | 18.73 | 126.98 (6.78x) | 65.64 (3.50x) | 100.98 (5.39x) | 825.91 (44.10x) |
+| binary decode | 86.60 | 301.09 (3.48x) | 302.01 (3.49x) | 223.38 (2.58x) | 854.70 (9.87x) |
+| scalarmix encode | 18.49 | 115.51 (6.25x) | 49.03 (2.65x) | 30.57 (1.65x) | 211.39 (11.43x) |
+| scalarmix decode | 43.57 | 143.14 (3.29x) | 176.28 (4.05x) | 88.28 (2.03x) | 278.45 (6.39x) |
+| textbytes encode | 22.44 | 80.15 (3.57x) | 33.60 (1.50x) | 118.23 (5.27x) | 149.02 (6.64x) |
+| complex decode | 175.21 | 394.45 (2.25x) | 337.24 (1.92x) | 393.27 (2.24x) | 1317.81 (7.52x) |
+| complex JSON parse | 2387.60 | — | — | 11966.70 (5.01x) | 8092.28 (3.39x) |
+| TextFormat parse | 702.10 | — | — | 5040.62 (7.18x) | 6428.89 (9.16x) |
+| packed int32 decode | 764.46 | 1906.93 (2.49x) | 3359.54 (4.39x) | 983.45 (1.29x) | 3017.24 (3.95x) |
+| packed bool encode | 2.01 | 1361.61 (677.42x) | 527.40 (262.39x) | 15.96 (7.94x) | 2227.42 (1108.17x) |
+| packed bool decode | 266.43 | 1527.41 (5.73x) | 2544.23 (9.55x) | 838.45 (3.15x) | 2088.96 (7.84x) |
+| largebytes decode | 88.77 | 5594.61 (63.02x) | 3084.84 (34.75x) | 2760.69 (31.10x) | 22813.58 (257.00x) |
+| large map decode | 25634.28 | 91055.87 (3.55x) | 90466.41 (3.53x) | 91920.80 (3.59x) | 267314.39 (10.43x) |
+| shuffled large map deterministic binary encode | 27808.13 | — | — | 93337.30 (3.36x) | 373424.04 (13.43x) |
 
 The matrix covers binary encode/decode, deterministic encode, JSON, TextFormat,
 packed scalars, large bytes, maps, oneof/optional workloads, and complex nested
