@@ -886,161 +886,151 @@ fn anyTypeNameIs(type_name: []const u8, comptime expected: []const u8) bool {
     return std.mem.eql(u8, normalizedAnyTypeName(type_name), expected);
 }
 
-fn isAnyWellKnownType(type_name: []const u8) bool {
+const AnyWellKnownKind = enum {
+    timestamp,
+    duration,
+    field_mask,
+    any,
+    empty,
+    @"struct",
+    value,
+    list_value,
+    double_value,
+    float_value,
+    int64_value,
+    uint64_value,
+    int32_value,
+    uint32_value,
+    bool_value,
+    string_value,
+    bytes_value,
+};
+
+fn anyWellKnownKind(type_name: []const u8) ?AnyWellKnownKind {
+    const normalized = normalizedAnyTypeName(type_name);
     inline for (.{
-        "google.protobuf.Timestamp",
-        "google.protobuf.Duration",
-        "google.protobuf.FieldMask",
-        "google.protobuf.Any",
-        "google.protobuf.Empty",
-        "google.protobuf.Struct",
-        "google.protobuf.Value",
-        "google.protobuf.ListValue",
-        "google.protobuf.DoubleValue",
-        "google.protobuf.FloatValue",
-        "google.protobuf.Int64Value",
-        "google.protobuf.UInt64Value",
-        "google.protobuf.Int32Value",
-        "google.protobuf.UInt32Value",
-        "google.protobuf.BoolValue",
-        "google.protobuf.StringValue",
-        "google.protobuf.BytesValue",
-    }) |known| {
-        if (anyTypeNameIs(type_name, known)) return true;
+        .{ "google.protobuf.Timestamp", AnyWellKnownKind.timestamp },
+        .{ "google.protobuf.Duration", AnyWellKnownKind.duration },
+        .{ "google.protobuf.FieldMask", AnyWellKnownKind.field_mask },
+        .{ "google.protobuf.Any", AnyWellKnownKind.any },
+        .{ "google.protobuf.Empty", AnyWellKnownKind.empty },
+        .{ "google.protobuf.Struct", AnyWellKnownKind.@"struct" },
+        .{ "google.protobuf.Value", AnyWellKnownKind.value },
+        .{ "google.protobuf.ListValue", AnyWellKnownKind.list_value },
+        .{ "google.protobuf.DoubleValue", AnyWellKnownKind.double_value },
+        .{ "google.protobuf.FloatValue", AnyWellKnownKind.float_value },
+        .{ "google.protobuf.Int64Value", AnyWellKnownKind.int64_value },
+        .{ "google.protobuf.UInt64Value", AnyWellKnownKind.uint64_value },
+        .{ "google.protobuf.Int32Value", AnyWellKnownKind.int32_value },
+        .{ "google.protobuf.UInt32Value", AnyWellKnownKind.uint32_value },
+        .{ "google.protobuf.BoolValue", AnyWellKnownKind.bool_value },
+        .{ "google.protobuf.StringValue", AnyWellKnownKind.string_value },
+        .{ "google.protobuf.BytesValue", AnyWellKnownKind.bytes_value },
+    }) |entry| {
+        if (std.mem.eql(u8, normalized, entry[0])) return entry[1];
     }
-    return false;
+    return null;
+}
+
+fn isAnyWellKnownType(type_name: []const u8) bool {
+    return anyWellKnownKind(type_name) != null;
 }
 
 fn writeAnyWellKnownJsonValue(allocator: std.mem.Allocator, type_name: []const u8, value: []const u8, writer: *std.Io.Writer) anyerror!bool {
-    if (anyTypeNameIs(type_name, "google.protobuf.Timestamp")) {
-        try (try Timestamp.decode(value)).jsonStringify(writer);
-        return true;
+    const kind = anyWellKnownKind(type_name) orelse return false;
+    switch (kind) {
+        .timestamp => try (try Timestamp.decode(value)).jsonStringify(writer),
+        .duration => try (try Duration.decode(value)).jsonStringify(writer),
+        .field_mask => {
+            var mask = try FieldMask.decodeOwned(allocator, value);
+            defer mask.deinit(allocator);
+            try mask.jsonStringify(writer);
+        },
+        .any => {
+            var nested = try Any.decode(allocator, value);
+            defer nested.deinit(allocator);
+            try nested.jsonStringifyWithAllocator(allocator, writer);
+        },
+        .empty => {
+            _ = try Empty.decode(value);
+            try Empty.jsonStringify(writer);
+        },
+        .@"struct" => {
+            var object = try Struct.decode(allocator, value);
+            defer object.deinit(allocator);
+            try object.jsonStringify(writer);
+        },
+        .value => {
+            var parsed = try Value.decode(allocator, value);
+            defer parsed.deinit(allocator);
+            try parsed.jsonStringify(writer);
+        },
+        .list_value => {
+            var list = try ListValue.decode(allocator, value);
+            defer list.deinit(allocator);
+            try list.jsonStringify(writer);
+        },
+        .double_value => try (try DoubleValue.decode(value)).jsonStringify(writer),
+        .float_value => try (try FloatValue.decode(value)).jsonStringify(writer),
+        .int64_value => try (try Int64Value.decode(value)).jsonStringify(writer),
+        .uint64_value => try (try UInt64Value.decode(value)).jsonStringify(writer),
+        .int32_value => try (try Int32Value.decode(value)).jsonStringify(writer),
+        .uint32_value => try (try UInt32Value.decode(value)).jsonStringify(writer),
+        .bool_value => try (try BoolValue.decode(value)).jsonStringify(writer),
+        .string_value => try (try StringValue.decode(value)).jsonStringify(writer),
+        .bytes_value => try (try BytesValue.decode(value)).jsonStringify(writer),
     }
-    if (anyTypeNameIs(type_name, "google.protobuf.Duration")) {
-        try (try Duration.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.FieldMask")) {
-        var mask = try FieldMask.decodeOwned(allocator, value);
-        defer mask.deinit(allocator);
-        try mask.jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Any")) {
-        var nested = try Any.decode(allocator, value);
-        defer nested.deinit(allocator);
-        try nested.jsonStringifyWithAllocator(allocator, writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Empty")) {
-        _ = try Empty.decode(value);
-        try Empty.jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Struct")) {
-        var object = try Struct.decode(allocator, value);
-        defer object.deinit(allocator);
-        try object.jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Value")) {
-        var parsed = try Value.decode(allocator, value);
-        defer parsed.deinit(allocator);
-        try parsed.jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.ListValue")) {
-        var list = try ListValue.decode(allocator, value);
-        defer list.deinit(allocator);
-        try list.jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.DoubleValue")) {
-        try (try DoubleValue.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.FloatValue")) {
-        try (try FloatValue.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Int64Value")) {
-        try (try Int64Value.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.UInt64Value")) {
-        try (try UInt64Value.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Int32Value")) {
-        try (try Int32Value.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.UInt32Value")) {
-        try (try UInt32Value.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.BoolValue")) {
-        try (try BoolValue.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.StringValue")) {
-        try (try StringValue.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.BytesValue")) {
-        try (try BytesValue.decode(value)).jsonStringify(writer);
-        return true;
-    }
-    return false;
+    return true;
 }
 
 fn anyWellKnownJsonValueToBytes(allocator: std.mem.Allocator, type_name: []const u8, value: std.json.Value) anyerror!?[]u8 {
-    if (!isAnyWellKnownType(type_name)) return null;
+    const kind = anyWellKnownKind(type_name) orelse return null;
     // `value` is already the parsed JSON subtree from the surrounding Any.
     // Convert it directly to the target WKT wire payload instead of
     // stringify-then-reparse; this avoids extra allocation/copy work on a hot
     // reflection path and keeps ownership localized to the concrete WKT value.
-    if (anyTypeNameIs(type_name, "google.protobuf.Timestamp")) return try timestampJsonValueToBytes(allocator, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.Duration")) return try durationJsonValueToBytes(allocator, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.FieldMask")) {
-        var mask = try fieldMaskFromJsonValue(allocator, value);
-        defer mask.deinit(allocator);
-        return try mask.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Any")) {
-        var nested = try anyFromJsonValue(allocator, value);
-        defer nested.deinit(allocator);
-        return try nested.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Empty")) {
-        _ = try emptyFromJsonValue(value);
-        return try Empty.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Struct")) {
-        var object = try structFromJsonValue(allocator, value);
-        defer object.deinit(allocator);
-        return try object.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.Value")) {
-        var parsed = try valueFromJsonValue(allocator, value);
-        defer parsed.deinit(allocator);
-        return try parsed.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.ListValue")) {
-        var list = try listValueFromJsonValue(allocator, value);
-        defer list.deinit(allocator);
-        return try list.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.DoubleValue")) return try wrapperJsonValueToBytes(allocator, DoubleValue, f64, .double, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.FloatValue")) return try wrapperJsonValueToBytes(allocator, FloatValue, f32, .float, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.Int64Value")) return try wrapperJsonValueToBytes(allocator, Int64Value, i64, .int64, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.UInt64Value")) return try wrapperJsonValueToBytes(allocator, UInt64Value, u64, .uint64, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.Int32Value")) return try wrapperJsonValueToBytes(allocator, Int32Value, i32, .int32, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.UInt32Value")) return try wrapperJsonValueToBytes(allocator, UInt32Value, u32, .uint32, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.BoolValue")) return try wrapperJsonValueToBytes(allocator, BoolValue, bool, .bool, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.StringValue")) return try wrapperJsonValueToBytes(allocator, StringValue, []const u8, .string, value);
-    if (anyTypeNameIs(type_name, "google.protobuf.BytesValue")) return try wrapperJsonValueToBytes(allocator, BytesValue, []const u8, .bytes, value);
-    return null;
+    return switch (kind) {
+        .timestamp => try timestampJsonValueToBytes(allocator, value),
+        .duration => try durationJsonValueToBytes(allocator, value),
+        .field_mask => blk: {
+            var mask = try fieldMaskFromJsonValue(allocator, value);
+            defer mask.deinit(allocator);
+            break :blk try mask.encode(allocator);
+        },
+        .any => blk: {
+            var nested = try anyFromJsonValue(allocator, value);
+            defer nested.deinit(allocator);
+            break :blk try nested.encode(allocator);
+        },
+        .empty => blk: {
+            _ = try emptyFromJsonValue(value);
+            break :blk try Empty.encode(allocator);
+        },
+        .@"struct" => blk: {
+            var object = try structFromJsonValue(allocator, value);
+            defer object.deinit(allocator);
+            break :blk try object.encode(allocator);
+        },
+        .value => blk: {
+            var parsed = try valueFromJsonValue(allocator, value);
+            defer parsed.deinit(allocator);
+            break :blk try parsed.encode(allocator);
+        },
+        .list_value => blk: {
+            var list = try listValueFromJsonValue(allocator, value);
+            defer list.deinit(allocator);
+            break :blk try list.encode(allocator);
+        },
+        .double_value => try wrapperJsonValueToBytes(allocator, DoubleValue, f64, .double, value),
+        .float_value => try wrapperJsonValueToBytes(allocator, FloatValue, f32, .float, value),
+        .int64_value => try wrapperJsonValueToBytes(allocator, Int64Value, i64, .int64, value),
+        .uint64_value => try wrapperJsonValueToBytes(allocator, UInt64Value, u64, .uint64, value),
+        .int32_value => try wrapperJsonValueToBytes(allocator, Int32Value, i32, .int32, value),
+        .uint32_value => try wrapperJsonValueToBytes(allocator, UInt32Value, u32, .uint32, value),
+        .bool_value => try wrapperJsonValueToBytes(allocator, BoolValue, bool, .bool, value),
+        .string_value => try wrapperJsonValueToBytes(allocator, StringValue, []const u8, .string, value),
+        .bytes_value => try wrapperJsonValueToBytes(allocator, BytesValue, []const u8, .bytes, value),
+    };
 }
 
 fn timestampJsonValueToBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]u8 {
