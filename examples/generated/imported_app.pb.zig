@@ -791,11 +791,11 @@ pub const demo = struct {
                         const key = entry.key_ptr.*;
                         const value = entry.value_ptr.*;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "primary") or std.mem.eql(u8, key, "primary")) {
+                            if (std.mem.eql(u8, key, "primary")) {
                                 if (self.primary) |*old_value| old_value.deinit(allocator); self.primary = null;
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
+                            if (std.mem.eql(u8, key, "history")) {
                                 const old = self.history; self.history = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                                 continue;
                             }
@@ -803,18 +803,18 @@ pub const demo = struct {
                                 @This().deinitMap_by_name(allocator, &self.by_name);
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) { self._pbzDeinitOneof_selected(allocator); continue; }
-                            if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) { self._pbzDeinitOneof_selected(allocator); continue; }
+                            if (std.mem.eql(u8, key, "chosen")) { self._pbzDeinitOneof_selected(allocator); continue; }
+                            if (std.mem.eql(u8, key, "fallback")) { self._pbzDeinitOneof_selected(allocator); continue; }
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "primary") or std.mem.eql(u8, key, "primary")) {
+                        if (std.mem.eql(u8, key, "primary")) {
                             var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             errdefer nested.deinit(allocator);
                             if (self.primary) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.primary = nested; }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
+                        if (std.mem.eql(u8, key, "history")) {
                             const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                             var list: std.ArrayList(pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile) = .empty;
                             errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
@@ -842,11 +842,11 @@ pub const demo = struct {
                             for (list.items) |list_entry| self.by_name.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) {
+                        if (std.mem.eql(u8, key, "chosen")) {
                             { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator); self.selected = .{ .chosen = nested }; }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) {
+                        if (std.mem.eql(u8, key, "fallback")) {
                             self._pbzDeinitOneof_selected(allocator); self.selected = .{ .fallback = try @This().jsonString(value) };
                             continue;
                         }

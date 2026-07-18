@@ -591,36 +591,36 @@ pub const demo = struct {
                     const key = entry.key_ptr.*;
                     const value = entry.value_ptr.*;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                        if (std.mem.eql(u8, key, "id")) {
                             self.id = 0;
                             self.has_id = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "box") or std.mem.eql(u8, key, "box")) {
+                        if (std.mem.eql(u8, key, "box")) {
                             if (self.box) |*old_value| old_value.deinit(allocator); self.box = null;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "item") or std.mem.eql(u8, key, "item")) {
+                        if (std.mem.eql(u8, key, "item")) {
                             const old = self.item; self.item = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "picked_box") or std.mem.eql(u8, key, "pickedBox")) { self._pbzDeinitOneof_picked(allocator); continue; }
-                        if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) { self._pbzDeinitOneof_picked(allocator); continue; }
+                        if (std.mem.eql(u8, key, "note")) { self._pbzDeinitOneof_picked(allocator); continue; }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                    if (std.mem.eql(u8, key, "id")) {
                         self.id = try @This().jsonInt(i32, value);
                         self.has_id = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "box") or std.mem.eql(u8, key, "box")) {
+                    if (std.mem.eql(u8, key, "box")) {
                         var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         errdefer nested.deinit(allocator);
                         if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "item") or std.mem.eql(u8, key, "item")) {
+                    if (std.mem.eql(u8, key, "item")) {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(Item) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
@@ -636,7 +636,7 @@ pub const demo = struct {
                         { var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) {
+                    if (std.mem.eql(u8, key, "note")) {
                         self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = try @This().jsonString(value) };
                         continue;
                     }
@@ -1640,7 +1640,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const key = entry.key_ptr.*;
                         const value = entry.value_ptr.*;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "label") or std.mem.eql(u8, key, "label")) {
+                            if (std.mem.eql(u8, key, "label")) {
                                 self.label = "";
                                 self.has_label = false;
                                 continue;
@@ -1648,7 +1648,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "label") or std.mem.eql(u8, key, "label")) {
+                        if (std.mem.eql(u8, key, "label")) {
                             self.label = try @This().jsonString(value);
                             self.has_label = true;
                             continue;
@@ -2580,7 +2580,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const key = entry.key_ptr.*;
                         const value = entry.value_ptr.*;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "rank") or std.mem.eql(u8, key, "rank")) {
+                            if (std.mem.eql(u8, key, "rank")) {
                                 self.rank = 0;
                                 self.has_rank = false;
                                 continue;
@@ -2588,7 +2588,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "rank") or std.mem.eql(u8, key, "rank")) {
+                        if (std.mem.eql(u8, key, "rank")) {
                             self.rank = try @This().jsonInt(i32, value);
                             self.has_rank = true;
                             continue;

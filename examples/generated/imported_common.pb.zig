@@ -412,22 +412,22 @@ pub const demo = struct {
                         const key = entry.key_ptr.*;
                         const value = entry.value_ptr.*;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                            if (std.mem.eql(u8, key, "id")) {
                                 self.id = 0;
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
+                            if (std.mem.eql(u8, key, "name")) {
                                 self.name = "";
                                 continue;
                             }
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                        if (std.mem.eql(u8, key, "id")) {
                             self.id = try @This().jsonInt(i32, value);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
+                        if (std.mem.eql(u8, key, "name")) {
                             self.name = try @This().jsonString(value);
                             continue;
                         }

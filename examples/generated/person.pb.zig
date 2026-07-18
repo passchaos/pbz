@@ -797,34 +797,34 @@ pub const demo = struct {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                    if (std.mem.eql(u8, key, "id")) {
                         self.id = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
+                    if (std.mem.eql(u8, key, "name")) {
                         self.name = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "scores") or std.mem.eql(u8, key, "scores")) {
+                    if (std.mem.eql(u8, key, "scores")) {
                         const old = self.scores; self.scores = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "counts") or std.mem.eql(u8, key, "counts")) {
+                    if (std.mem.eql(u8, key, "counts")) {
                         @This().deinitMap_counts(allocator, &self.counts);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                if (std.mem.eql(u8, key, "id")) {
                     self.id = try @This().jsonInt(i32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
+                if (std.mem.eql(u8, key, "name")) {
                     self.name = try @This().jsonString(value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "scores") or std.mem.eql(u8, key, "scores")) {
+                if (std.mem.eql(u8, key, "scores")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
@@ -832,7 +832,7 @@ pub const demo = struct {
                     self.scores = blk: { const old = self.scores; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "counts") or std.mem.eql(u8, key, "counts")) {
+                if (std.mem.eql(u8, key, "counts")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                     var list: std.ArrayList(countsEntry) = .empty;
                     defer list.deinit(allocator);
@@ -2502,19 +2502,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "active") or std.mem.eql(u8, key, "active")) {
+                    if (std.mem.eql(u8, key, "active")) {
                         self.active = false;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "count") or std.mem.eql(u8, key, "count")) {
+                    if (std.mem.eql(u8, key, "count")) {
                         self.count = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "total") or std.mem.eql(u8, key, "total")) {
+                    if (std.mem.eql(u8, key, "total")) {
                         self.total = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "delta") or std.mem.eql(u8, key, "delta")) {
+                    if (std.mem.eql(u8, key, "delta")) {
                         self.delta = 0;
                         continue;
                     }
@@ -2522,11 +2522,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         self.big_delta = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "checksum") or std.mem.eql(u8, key, "checksum")) {
+                    if (std.mem.eql(u8, key, "checksum")) {
                         self.checksum = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "token") or std.mem.eql(u8, key, "token")) {
+                    if (std.mem.eql(u8, key, "token")) {
                         self.token = 0;
                         continue;
                     }
@@ -2538,42 +2538,42 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         self.signed_big_fixed = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "ratio") or std.mem.eql(u8, key, "ratio")) {
+                    if (std.mem.eql(u8, key, "ratio")) {
                         self.ratio = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "score") or std.mem.eql(u8, key, "score")) {
+                    if (std.mem.eql(u8, key, "score")) {
                         self.score = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "kind") or std.mem.eql(u8, key, "kind")) {
+                    if (std.mem.eql(u8, key, "kind")) {
                         self.kind = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "flags") or std.mem.eql(u8, key, "flags")) {
+                    if (std.mem.eql(u8, key, "flags")) {
                         const old = self.flags; self.flags = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "ids") or std.mem.eql(u8, key, "ids")) {
+                    if (std.mem.eql(u8, key, "ids")) {
                         const old = self.ids; self.ids = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "active") or std.mem.eql(u8, key, "active")) {
+                if (std.mem.eql(u8, key, "active")) {
                     self.active = try @This().jsonBool(value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "count") or std.mem.eql(u8, key, "count")) {
+                if (std.mem.eql(u8, key, "count")) {
                     self.count = try @This().jsonInt(u32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "total") or std.mem.eql(u8, key, "total")) {
+                if (std.mem.eql(u8, key, "total")) {
                     self.total = try @This().jsonInt(u64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "delta") or std.mem.eql(u8, key, "delta")) {
+                if (std.mem.eql(u8, key, "delta")) {
                     self.delta = try @This().jsonInt(i32, value);
                     continue;
                 }
@@ -2581,11 +2581,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.big_delta = try @This().jsonInt(i64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "checksum") or std.mem.eql(u8, key, "checksum")) {
+                if (std.mem.eql(u8, key, "checksum")) {
                     self.checksum = try @This().jsonInt(u32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "token") or std.mem.eql(u8, key, "token")) {
+                if (std.mem.eql(u8, key, "token")) {
                     self.token = try @This().jsonInt(u64, value);
                     continue;
                 }
@@ -2597,19 +2597,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.signed_big_fixed = try @This().jsonInt(i64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "ratio") or std.mem.eql(u8, key, "ratio")) {
+                if (std.mem.eql(u8, key, "ratio")) {
                     self.ratio = try @This().jsonFloat(f32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "score") or std.mem.eql(u8, key, "score")) {
+                if (std.mem.eql(u8, key, "score")) {
                     self.score = try @This().jsonFloat(f64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "kind") or std.mem.eql(u8, key, "kind")) {
+                if (std.mem.eql(u8, key, "kind")) {
                     self.kind = @This().jsonEnum(value, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "flags") or std.mem.eql(u8, key, "flags")) {
+                if (std.mem.eql(u8, key, "flags")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(bool) = .empty;
                     errdefer list.deinit(allocator);
@@ -2617,7 +2617,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.flags = blk: { const old = self.flags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "ids") or std.mem.eql(u8, key, "ids")) {
+                if (std.mem.eql(u8, key, "ids")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
@@ -3835,34 +3835,34 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "title") or std.mem.eql(u8, key, "title")) {
+                    if (std.mem.eql(u8, key, "title")) {
                         self.title = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "payload") or std.mem.eql(u8, key, "payload")) {
+                    if (std.mem.eql(u8, key, "payload")) {
                         self.payload = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "tags") or std.mem.eql(u8, key, "tags")) {
+                    if (std.mem.eql(u8, key, "tags")) {
                         const old = self.tags; self.tags = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "chunks") or std.mem.eql(u8, key, "chunks")) {
+                    if (std.mem.eql(u8, key, "chunks")) {
                         const old = self.chunks; self.chunks = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "title") or std.mem.eql(u8, key, "title")) {
+                if (std.mem.eql(u8, key, "title")) {
                     self.title = try @This().jsonString(value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "payload") or std.mem.eql(u8, key, "payload")) {
+                if (std.mem.eql(u8, key, "payload")) {
                     self.payload = try @This().jsonBytes(arena_allocator, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "tags") or std.mem.eql(u8, key, "tags")) {
+                if (std.mem.eql(u8, key, "tags")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
@@ -3870,7 +3870,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.tags = blk: { const old = self.tags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "chunks") or std.mem.eql(u8, key, "chunks")) {
+                if (std.mem.eql(u8, key, "chunks")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
@@ -4915,22 +4915,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "payload") or std.mem.eql(u8, key, "payload")) {
+                    if (std.mem.eql(u8, key, "payload")) {
                         self.payload = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "chunks") or std.mem.eql(u8, key, "chunks")) {
+                    if (std.mem.eql(u8, key, "chunks")) {
                         const old = self.chunks; self.chunks = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "payload") or std.mem.eql(u8, key, "payload")) {
+                if (std.mem.eql(u8, key, "payload")) {
                     self.payload = try @This().jsonBytes(arena_allocator, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "chunks") or std.mem.eql(u8, key, "chunks")) {
+                if (std.mem.eql(u8, key, "chunks")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
@@ -6308,51 +6308,51 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "child") or std.mem.eql(u8, key, "child")) {
+                    if (std.mem.eql(u8, key, "child")) {
                         if (self.child) |*old_value| old_value.deinit(allocator); self.child = null;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) { self._pbzDeinitOneof_pick(allocator); continue; }
-                    if (std.mem.eql(u8, key, "token") or std.mem.eql(u8, key, "token")) { self._pbzDeinitOneof_pick(allocator); continue; }
-                    if (std.mem.eql(u8, key, "nested") or std.mem.eql(u8, key, "nested")) { self._pbzDeinitOneof_pick(allocator); continue; }
-                    if (std.mem.eql(u8, key, "code") or std.mem.eql(u8, key, "code")) { self._pbzDeinitOneof_pick(allocator); continue; }
-                    if (std.mem.eql(u8, key, "count") or std.mem.eql(u8, key, "count")) { self._pbzDeinitOneof__count(allocator); continue; }
-                    if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) { self._pbzDeinitOneof__note(allocator); continue; }
-                    if (std.mem.eql(u8, key, "raw") or std.mem.eql(u8, key, "raw")) { self._pbzDeinitOneof__raw(allocator); continue; }
+                    if (std.mem.eql(u8, key, "name")) { self._pbzDeinitOneof_pick(allocator); continue; }
+                    if (std.mem.eql(u8, key, "token")) { self._pbzDeinitOneof_pick(allocator); continue; }
+                    if (std.mem.eql(u8, key, "nested")) { self._pbzDeinitOneof_pick(allocator); continue; }
+                    if (std.mem.eql(u8, key, "code")) { self._pbzDeinitOneof_pick(allocator); continue; }
+                    if (std.mem.eql(u8, key, "count")) { self._pbzDeinitOneof__count(allocator); continue; }
+                    if (std.mem.eql(u8, key, "note")) { self._pbzDeinitOneof__note(allocator); continue; }
+                    if (std.mem.eql(u8, key, "raw")) { self._pbzDeinitOneof__raw(allocator); continue; }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "child") or std.mem.eql(u8, key, "child")) {
+                if (std.mem.eql(u8, key, "child")) {
                     var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                     errdefer nested.deinit(allocator);
                     if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "name") or std.mem.eql(u8, key, "name")) {
+                if (std.mem.eql(u8, key, "name")) {
                     self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = try @This().jsonString(value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "token") or std.mem.eql(u8, key, "token")) {
+                if (std.mem.eql(u8, key, "token")) {
                     self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = try @This().jsonBytes(arena_allocator, value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "nested") or std.mem.eql(u8, key, "nested")) {
+                if (std.mem.eql(u8, key, "nested")) {
                     { var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = nested }; }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "code") or std.mem.eql(u8, key, "code")) {
+                if (std.mem.eql(u8, key, "code")) {
                     self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = try @This().jsonInt(i64, value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "count") or std.mem.eql(u8, key, "count")) {
+                if (std.mem.eql(u8, key, "count")) {
                     self._pbzDeinitOneof__count(allocator); self._count = .{ .count = try @This().jsonInt(i32, value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) {
+                if (std.mem.eql(u8, key, "note")) {
                     self._pbzDeinitOneof__note(allocator); self._note = .{ .note = try @This().jsonString(value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "raw") or std.mem.eql(u8, key, "raw")) {
+                if (std.mem.eql(u8, key, "raw")) {
                     self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = try @This().jsonBytes(arena_allocator, value) };
                     continue;
                 }
@@ -7393,22 +7393,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const key = entry.key_ptr.*;
                     const value = entry.value_ptr.*;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                        if (std.mem.eql(u8, key, "id")) {
                             self.id = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "label") or std.mem.eql(u8, key, "label")) {
+                        if (std.mem.eql(u8, key, "label")) {
                             self.label = "";
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                    if (std.mem.eql(u8, key, "id")) {
                         self.id = try @This().jsonInt(i32, value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "label") or std.mem.eql(u8, key, "label")) {
+                    if (std.mem.eql(u8, key, "label")) {
                         self.label = try @This().jsonString(value);
                         continue;
                     }
@@ -8466,14 +8466,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
@@ -9533,14 +9533,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u32) = .empty;
                     errdefer list.deinit(allocator);
@@ -10592,14 +10592,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
@@ -11651,14 +11651,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
@@ -12710,14 +12710,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i64) = .empty;
                     errdefer list.deinit(allocator);
@@ -13769,14 +13769,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(f32) = .empty;
                     errdefer list.deinit(allocator);
@@ -14828,14 +14828,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(f64) = .empty;
                     errdefer list.deinit(allocator);
@@ -15893,14 +15893,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u64) = .empty;
                     errdefer list.deinit(allocator);
@@ -16958,14 +16958,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(u32) = .empty;
                     errdefer list.deinit(allocator);
@@ -18023,14 +18023,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i64) = .empty;
                     errdefer list.deinit(allocator);
@@ -19088,14 +19088,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
@@ -20153,14 +20153,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i64) = .empty;
                     errdefer list.deinit(allocator);
@@ -21196,14 +21196,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(bool) = .empty;
                     errdefer list.deinit(allocator);
@@ -22264,14 +22264,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values") or std.mem.eql(u8, key, "values")) {
+                if (std.mem.eql(u8, key, "values")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(i32) = .empty;
                     errdefer list.deinit(allocator);
@@ -23390,14 +23390,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "counts") or std.mem.eql(u8, key, "counts")) {
+                    if (std.mem.eql(u8, key, "counts")) {
                         @This().deinitMap_counts(allocator, &self.counts);
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "counts") or std.mem.eql(u8, key, "counts")) {
+                if (std.mem.eql(u8, key, "counts")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                     var list: std.ArrayList(countsEntry) = .empty;
                     defer list.deinit(allocator);
@@ -24861,19 +24861,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                    if (std.mem.eql(u8, key, "id")) {
                         self.id = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audit") or std.mem.eql(u8, key, "audit")) {
+                    if (std.mem.eql(u8, key, "audit")) {
                         if (self.audit) |*old_value| old_value.deinit(allocator); self.audit = null;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
+                    if (std.mem.eql(u8, key, "history")) {
                         const old = self.history; self.history = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audits") or std.mem.eql(u8, key, "audits")) {
+                    if (std.mem.eql(u8, key, "audits")) {
                         @This().deinitMap_audits(allocator, &self.audits);
                         continue;
                     }
@@ -24883,17 +24883,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                if (std.mem.eql(u8, key, "id")) {
                     self.id = try @This().jsonInt(i32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "audit") or std.mem.eql(u8, key, "audit")) {
+                if (std.mem.eql(u8, key, "audit")) {
                     var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                     errdefer nested.deinit(allocator);
                     if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "history") or std.mem.eql(u8, key, "history")) {
+                if (std.mem.eql(u8, key, "history")) {
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                     var list: std.ArrayList(Audit) = .empty;
                     errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
@@ -24905,7 +24905,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     { const old = self.history; self.history = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "audits") or std.mem.eql(u8, key, "audits")) {
+                if (std.mem.eql(u8, key, "audits")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                     var list: std.ArrayList(auditsEntry) = .empty;
                     defer list.deinit(allocator);
@@ -26008,7 +26008,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const key = entry.key_ptr.*;
                     const value = entry.value_ptr.*;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "actor") or std.mem.eql(u8, key, "actor")) {
+                        if (std.mem.eql(u8, key, "actor")) {
                             self.actor = "";
                             continue;
                         }
@@ -26019,7 +26019,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "actor") or std.mem.eql(u8, key, "actor")) {
+                    if (std.mem.eql(u8, key, "actor")) {
                         self.actor = try @This().jsonString(value);
                         continue;
                     }

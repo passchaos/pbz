@@ -878,19 +878,19 @@ pub const demo = struct {
                     const key = entry.key_ptr.*;
                     const value = entry.value_ptr.*;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                        if (std.mem.eql(u8, key, "id")) {
                             self.id = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "kind") or std.mem.eql(u8, key, "kind")) {
+                        if (std.mem.eql(u8, key, "kind")) {
                             self.kind = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "audit") or std.mem.eql(u8, key, "audit")) {
+                        if (std.mem.eql(u8, key, "audit")) {
                             if (self.audit) |*old_value| old_value.deinit(allocator); self.audit = null;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "audits") or std.mem.eql(u8, key, "audits")) {
+                        if (std.mem.eql(u8, key, "audits")) {
                             @This().deinitMap_audits(allocator, &self.audits);
                             continue;
                         }
@@ -900,21 +900,21 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "id") or std.mem.eql(u8, key, "id")) {
+                    if (std.mem.eql(u8, key, "id")) {
                         self.id = try @This().jsonInt(i32, value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "kind") or std.mem.eql(u8, key, "kind")) {
+                    if (std.mem.eql(u8, key, "kind")) {
                         self.kind = @This().jsonEnum(value, &.{"KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audit") or std.mem.eql(u8, key, "audit")) {
+                    if (std.mem.eql(u8, key, "audit")) {
                         var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         errdefer nested.deinit(allocator);
                         if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audits") or std.mem.eql(u8, key, "audits")) {
+                    if (std.mem.eql(u8, key, "audits")) {
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         var list: std.ArrayList(auditsEntry) = .empty;
                         defer list.deinit(allocator);
@@ -2003,7 +2003,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const key = entry.key_ptr.*;
                         const value = entry.value_ptr.*;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "actor") or std.mem.eql(u8, key, "actor")) {
+                            if (std.mem.eql(u8, key, "actor")) {
                                 self.actor = "";
                                 continue;
                             }
@@ -2014,7 +2014,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "actor") or std.mem.eql(u8, key, "actor")) {
+                        if (std.mem.eql(u8, key, "actor")) {
                             self.actor = try @This().jsonString(value);
                             continue;
                         }

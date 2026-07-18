@@ -9476,10 +9476,12 @@ fn writeJsonKeyCondition(field: *const schema.FieldDescriptor, writer: *std.Io.W
     try writeZigStringLiteral(field.name, writer);
     try writer.writeAll(")");
     if (field.json_name) |json_name| {
-        try writer.writeAll(" or std.mem.eql(u8, key, ");
-        try writeZigStringLiteral(json_name, writer);
-        try writer.writeAll(")");
-    } else {
+        if (!std.mem.eql(u8, json_name, field.name)) {
+            try writer.writeAll(" or std.mem.eql(u8, key, ");
+            try writeZigStringLiteral(json_name, writer);
+            try writer.writeAll(")");
+        }
+    } else if (std.mem.indexOfScalar(u8, field.name, '_') != null) {
         try writer.writeAll(" or std.mem.eql(u8, key, ");
         try writeZigLowerCamelStringLiteral(field.name, writer);
         try writer.writeAll(")");
@@ -13834,6 +13836,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (value == .null)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.id = try @This().jsonInt(i32, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"id\") or std.mem.eql(u8, key, \"id\")") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"display_name\") or std.mem.eql(u8, key, \"shownName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.raw = try @This().jsonBytes(arena_allocator, value);") != null);

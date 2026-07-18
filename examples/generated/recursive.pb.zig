@@ -436,26 +436,26 @@ pub const demo = struct {
                     const key = entry.key_ptr.*;
                     const value = entry.value_ptr.*;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "child") or std.mem.eql(u8, key, "child")) {
+                        if (std.mem.eql(u8, key, "child")) {
                             self.child = "";
                             self.has_child = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "children") or std.mem.eql(u8, key, "children")) {
+                        if (std.mem.eql(u8, key, "children")) {
                             const old = self.children; self.children = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "child") or std.mem.eql(u8, key, "child")) {
+                    if (std.mem.eql(u8, key, "child")) {
                         var nested = try Node.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(arena_allocator);
                         self.child = try nested.encode(arena_allocator);
                         self.has_child = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "children") or std.mem.eql(u8, key, "children")) {
+                    if (std.mem.eql(u8, key, "children")) {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(Node) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
