@@ -1852,7 +1852,11 @@ pub const Parser = struct {
 
 fn copyExtensionRangeOptions(allocator: std.mem.Allocator, source: *const schema.ExtensionRange, target: *schema.ExtensionRange) Error!void {
     for (source.options.items) |option| {
-        try target.options.append(allocator, try cloneFieldOption(allocator, option));
+        const cloned = try cloneFieldOption(allocator, option);
+        var owns_cloned = true;
+        errdefer if (owns_cloned and cloned.name_owned) allocator.free(cloned.name);
+        try target.options.append(allocator, cloned);
+        owns_cloned = false;
     }
     try target.declarations.appendSlice(allocator, source.declarations.items);
     target.verification = source.verification;
