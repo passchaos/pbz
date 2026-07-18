@@ -5993,14 +5993,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            switch (self.pick) {
-                .nested => |*value| value.deinit(allocator),
-                else => {},
-            }
-            self.pick = .none;
-            self._count = .none;
-            self._note = .none;
-            self._raw = .none;
+            self._pbzDeinitOneof_pick(allocator);
+            self._pbzDeinitOneof__count(allocator);
+            self._pbzDeinitOneof__note(allocator);
+            self._pbzDeinitOneof__raw(allocator);
             if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
             if (self.child) |*value| value.deinit(allocator);
             self.child = null;
@@ -24088,11 +24084,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
             self.audits.clearRetainingCapacity();
-            switch (self.subject) {
-                .audit_subject => |*value| value.deinit(allocator),
-                else => {},
-            }
-            self.subject = .none;
+            self._pbzDeinitOneof_subject(allocator);
             if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
             self.id = 0;
             if (self.audit) |*value| value.deinit(allocator);

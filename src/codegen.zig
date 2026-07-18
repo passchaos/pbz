@@ -5541,7 +5541,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try indent(writer, depth + 1);
     try writer.writeAll("pbz.wire.clearRawFields(allocator, &self._unknown_fields);\n");
     for (message.fields.items) |*field| try writeDecodeReuseClearMap(ctx, field, writer, depth + 1);
-    for (message.oneofs.items) |oneof| try writeDecodeReuseClearOneof(ctx, message, oneof, writer, depth + 1);
+    for (message.oneofs.items) |oneof| try writeDecodeReuseClearOneof(oneof, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
     for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx, field, writer, depth + 1);
@@ -5975,39 +5975,10 @@ fn writeDecodeReuseClearMap(ctx: *const CodegenContext, field: *const schema.Fie
     try writer.writeAll(".clearRetainingCapacity();\n");
 }
 
-fn writeDecodeReuseClearOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    var has_typed_message = false;
-    for (message.fields.items) |*field| {
-        const name = field.oneof_name orelse continue;
-        if (!std.mem.eql(u8, name, oneof.name)) continue;
-        if (typedOneofMessageFieldWithContext(ctx, field) != null) {
-            has_typed_message = true;
-            break;
-        }
-    }
-    if (has_typed_message) {
-        try indent(writer, depth);
-        try writer.writeAll("switch (self.");
-        try writeQuotedIdent(oneof.name, writer);
-        try writer.writeAll(") {\n");
-        for (message.fields.items) |*field| {
-            const name = field.oneof_name orelse continue;
-            if (!std.mem.eql(u8, name, oneof.name)) continue;
-            if (typedOneofMessageFieldWithContext(ctx, field) == null) continue;
-            try indent(writer, depth + 1);
-            try writer.writeAll(".");
-            try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" => |*value| value.deinit(allocator),\n");
-        }
-        try indent(writer, depth + 1);
-        try writer.writeAll("else => {},\n");
-        try indent(writer, depth);
-        try writer.writeAll("}\n");
-    }
+fn writeDecodeReuseClearOneof(oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("self.");
-    try writeQuotedIdent(oneof.name, writer);
-    try writer.writeAll(" = .none;\n");
+    try writeOneofDeinitCall(oneof.name, writer);
+    try writer.writeAll("\n");
 }
 
 fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {

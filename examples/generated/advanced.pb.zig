@@ -652,11 +652,7 @@ pub const demo = struct {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
                 self.audits.clearRetainingCapacity();
-                switch (self.subject) {
-                    .audit_subject => |*value| value.deinit(allocator),
-                    else => {},
-                }
-                self.subject = .none;
+                self._pbzDeinitOneof_subject(allocator);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
                 self.id = 0;
                 self.kind = 0;
