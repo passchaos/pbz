@@ -1981,7 +1981,7 @@ pub fn main() !void {
     defer allocator.free(generated_unknown_bytes);
     var generated_unknown_person = try person_pb.demo.Person.decode(allocator, generated_unknown_bytes);
     defer generated_unknown_person.deinit(allocator);
-    const generated_unknown_numbers = try pbz.wire.rawFieldNumbersAlloc(allocator, generated_unknown_person.unknownFields());
+    const generated_unknown_numbers = try generated_unknown_person.unknownFieldNumbersAlloc(allocator);
     defer allocator.free(generated_unknown_numbers);
     var dynamic_unknown_person = pbz.DynamicMessage.init(allocator, desc);
     defer dynamic_unknown_person.deinit();
