@@ -9895,16 +9895,24 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\                'x', 'X' => {
         \\                    const start = i;
         \\                    var end = i;
-        \\                    while (end < value.len and end < start + 2 and @This().textHexDigit(value[end]) != null) : (end += 1) {}
+        \\                    var decoded: u8 = 0;
+        \\                    while (end < value.len and end < start + 2) : (end += 1) {
+        \\                        const digit = @This().textHexDigit(value[end]) orelse break;
+        \\                        decoded = decoded * 16 + digit;
+        \\                    }
         \\                    if (end == start) return error.InvalidEscape;
-        \\                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 16));
+        \\                    try out.append(allocator, decoded);
         \\                    i = end;
         \\                },
         \\                '0'...'7' => {
         \\                    const start = i - 1;
         \\                    var end = i;
-        \\                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {}
-        \\                    try out.append(allocator, try std.fmt.parseInt(u8, value[start..end], 8));
+        \\                    var decoded: u16 = esc - '0';
+        \\                    while (end < value.len and end < start + 3 and value[end] >= '0' and value[end] <= '7') : (end += 1) {
+        \\                        decoded = decoded * 8 + (value[end] - '0');
+        \\                    }
+        \\                    if (decoded > std.math.maxInt(u8)) return error.Overflow;
+        \\                    try out.append(allocator, @intCast(decoded));
         \\                    i = end;
         \\                },
         \\                else => |unknown| try out.append(allocator, unknown),
@@ -13305,8 +13313,8 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (negative) -parsed else parsed;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, value[start..end], 16)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(u8, value[start..end], 8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "decoded = decoded * 16 + digit;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "decoded = decoded * 8 + (value[end] - '0');") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textHexDigit(c: u8) ?u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var quote: ?u8 = null;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
