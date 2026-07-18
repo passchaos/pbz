@@ -24325,7 +24325,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                     var map_it = object_value.iterator();
                     while (map_it.next()) |map_entry| {
-                        try @This().appendOrReplaceMapEntry_audits(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } });
+                        var parsed_value = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        errdefer parsed_value.deinit(allocator);
+                        try @This().appendOrReplaceMapEntry_audits(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = parsed_value });
                     }
                     @This().deinitMap_audits(allocator, &self.audits);
                     try self.audits.ensureUnusedCapacity(allocator, list.items.len);

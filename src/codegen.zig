@@ -10515,6 +10515,18 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try writer.writeAll("(allocator, &list, .{ .key = ");
         try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
         try writer.writeAll(", .value = parsed_value });\n");
+    } else if (typedMapMessageValueWithContext(ctx, field)) |type_name| {
+        try writer.writeAll("var parsed_value = try ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("errdefer parsed_value.deinit(allocator);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("try @This().");
+        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
+        try writer.writeAll("(allocator, &list, .{ .key = ");
+        try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
+        try writer.writeAll(", .value = parsed_value });\n");
     } else {
         try writer.writeAll("try @This().");
         try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
@@ -13376,7 +13388,9 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |nested| try nested.validateRequiredRecursive(allocator),") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.Profile.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try imports.common_proto.demo.common.User.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var parsed_value = try imports.common_proto.demo.common.User.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer parsed_value.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".{ .key = map_entry.key_ptr.*, .value = parsed_value }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = blk: { var nested = try imports.common_proto.demo.common.User.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.user) |nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
@@ -14682,7 +14696,9 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_value = @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_flags(allocator, &list, .{ .key = try @This().jsonMapKeyBool(map_entry.key_ptr.*), .value = parsed_value });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_kids(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var parsed_value = try Child.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer parsed_value.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_kids(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = parsed_value });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.kids.ensureUnusedCapacity(allocator, list.items.len);") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

@@ -831,7 +831,9 @@ pub const demo = struct {
                             errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                             var map_it = object_value.iterator();
                             while (map_it.next()) |map_entry| {
-                                try @This().appendOrReplaceMapEntry_by_name(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = blk: { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } });
+                                var parsed_value = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                                errdefer parsed_value.deinit(allocator);
+                                try @This().appendOrReplaceMapEntry_by_name(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = parsed_value });
                             }
                             @This().deinitMap_by_name(allocator, &self.by_name);
                             try self.by_name.ensureUnusedCapacity(allocator, list.items.len);
