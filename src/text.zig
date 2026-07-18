@@ -898,11 +898,7 @@ const TextParser = struct {
                     try self.parseRepeatedList(file, message, field.?);
                     self.consumeSeparator();
                 } else {
-                    var value = try self.parseValue(file, message.descriptor, field.?, field.?.kind);
-                    message.add(field.?, value) catch |err| {
-                        dynamic.deinitValue(&value, self.allocator);
-                        return err;
-                    };
+                    try self.addOwnedValue(message, field.?, try self.parseValue(file, message.descriptor, field.?, field.?.kind));
                     self.consumeSeparator();
                 }
             } else if (self.peek() == '{' or self.peek() == '<') {
@@ -1005,11 +1001,7 @@ const TextParser = struct {
         self.skipSpace();
         if (self.consume(']')) return;
         while (true) {
-            var value = try self.parseValue(file, message.descriptor, field, field.kind);
-            message.add(field, value) catch |err| {
-                dynamic.deinitValue(&value, self.allocator);
-                return err;
-            };
+            try self.addOwnedValue(message, field, try self.parseValue(file, message.descriptor, field, field.kind));
             self.skipSpace();
             if (self.consume(']')) return;
             try self.expect(',');
@@ -1183,11 +1175,7 @@ const TextParser = struct {
 
     fn parseAggregateField(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, close: u8) anyerror!void {
         if (field.kind == .map) {
-            var value = try self.parseMapEntry(file, message.descriptor, field, field.kind.map, close);
-            message.add(field, value) catch |err| {
-                dynamic.deinitValue(&value, self.allocator);
-                return err;
-            };
+            try self.addOwnedValue(message, field, try self.parseMapEntry(file, message.descriptor, field, field.kind.map, close));
             self.consumeSeparator();
         } else {
             const nested_desc = switch (field.kind) {
@@ -1239,11 +1227,7 @@ const TextParser = struct {
         }
 
         const value = if (field.kind == .group) dynamic.Value{ .group = nested } else dynamic.Value{ .message = nested };
-        message.add(field, value) catch |err| {
-            nested.deinit();
-            self.allocator.destroy(nested);
-            return err;
-        };
+        try self.addOwnedValue(message, field, value);
     }
 
     fn shouldMergeAggregateField(field: *const schema.FieldDescriptor) bool {
