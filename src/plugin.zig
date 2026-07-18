@@ -42,12 +42,18 @@ pub const CodeGeneratorRequest = struct {
                 1 => try request.files_to_generate.append(allocator, try reader.readBytes()),
                 2 => request.parameter = try reader.readBytes(),
                 3 => request.compiler_version = try decodeVersion(try reader.readBytes()),
-                15 => try request.proto_files.append(allocator, try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
-                17 => try request.source_file_descriptors.append(allocator, try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
+                15 => try appendFileDescriptor(allocator, &request.proto_files, try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
+                17 => try appendFileDescriptor(allocator, &request.source_file_descriptors, try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
                 else => try reader.skipValue(tag),
             }
         }
         return request;
+    }
+
+    fn appendFileDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.FileDescriptor), value: schema.FileDescriptor) std.mem.Allocator.Error!void {
+        var owned = value;
+        errdefer owned.deinit();
+        try list.append(allocator, owned);
     }
 
     fn decodeVersion(bytes: []const u8) wire.Error!Version {
