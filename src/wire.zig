@@ -114,6 +114,44 @@ pub inline fn rawFieldNumber(raw_field: []const u8) Error!FieldNumber {
     return (try Tag.decode(raw_tag)).number;
 }
 
+pub fn clearRawFieldsByNumber(allocator: std.mem.Allocator, fields: *[]const []const u8, number: FieldNumber) (std.mem.Allocator.Error || Error)!void {
+    var keep_count: usize = 0;
+    var remove_count: usize = 0;
+    for (fields.*) |raw| {
+        if (raw.len == 0) {
+            remove_count += 1;
+            continue;
+        }
+        if ((try rawFieldNumber(raw)) == number) remove_count += 1 else keep_count += 1;
+    }
+    if (remove_count == 0) return;
+
+    const old = fields.*;
+    var kept: [][]const u8 = &.{};
+    if (keep_count != 0) kept = try allocator.alloc([]const u8, keep_count);
+    errdefer if (keep_count != 0) allocator.free(kept);
+
+    var kept_index: usize = 0;
+    for (old) |raw| {
+        if (raw.len == 0) {
+            allocator.free(raw);
+            continue;
+        }
+        // The first pass already validated every non-empty raw field. Avoid a
+        // second fallible exit after ownership transfer has begun; generated
+        // messages do not expose mutable aliases to raw field bytes here.
+        if ((rawFieldNumber(raw) catch unreachable) == number) {
+            allocator.free(raw);
+            continue;
+        }
+        kept[kept_index] = raw;
+        kept_index += 1;
+    }
+    std.debug.assert(kept_index == keep_count);
+    if (old.len != 0) allocator.free(old);
+    fields.* = kept;
+}
+
 pub fn writePackedFixedWidthPayload(comptime T: type, w: *Writer, values: []const T) std.mem.Allocator.Error!void {
     if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
         @compileError("writePackedFixedWidthPayload requires u32, i32, f32, u64, i64, or f64");
@@ -1484,6 +1522,53 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectEqual(@as(FieldNumber, 16), try rawFieldNumber(writer.slice()[1..]));
     try std.testing.expectError(error.InvalidWireType, rawFieldNumber(&.{0x0f}));
     try std.testing.expectError(error.MalformedVarint, rawFieldNumber(&.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 }));
+}
+
+test "wire clears raw fields by number without reallocating on miss" {
+    const allocator = std.testing.allocator;
+    var first = Writer.init(allocator);
+    defer first.deinit();
+    try first.writeUInt32(15, 1);
+
+    var second = Writer.init(allocator);
+    defer second.deinit();
+    try second.writeString(16, "zig");
+
+    var third = Writer.init(allocator);
+    defer third.deinit();
+    try third.writeBool(15, false);
+
+    const storage = try allocator.alloc([]const u8, 3);
+    @memset(storage, &.{});
+    var fields: []const []const u8 = storage;
+    defer {
+        for (fields) |raw| if (raw.len != 0) allocator.free(raw);
+        if (fields.len != 0) allocator.free(fields);
+    }
+    storage[0] = try allocator.dupe(u8, first.slice());
+    storage[1] = try allocator.dupe(u8, second.slice());
+    storage[2] = try allocator.dupe(u8, third.slice());
+
+    const before_miss = fields;
+    try clearRawFieldsByNumber(allocator, &fields, 99);
+    try std.testing.expectEqual(before_miss.ptr, fields.ptr);
+    try std.testing.expectEqual(@as(usize, 3), fields.len);
+
+    try clearRawFieldsByNumber(allocator, &fields, 15);
+    try std.testing.expectEqual(@as(usize, 1), fields.len);
+    try std.testing.expectEqual(@as(FieldNumber, 16), try rawFieldNumber(fields[0]));
+
+    const invalid_storage = try allocator.alloc([]const u8, 1);
+    invalid_storage[0] = try allocator.dupe(u8, &.{0x0f});
+    var invalid_fields: []const []const u8 = invalid_storage;
+    defer {
+        for (invalid_fields) |raw| allocator.free(raw);
+        if (invalid_fields.len != 0) allocator.free(invalid_fields);
+    }
+    const before_invalid = invalid_fields;
+    try std.testing.expectError(error.InvalidWireType, clearRawFieldsByNumber(allocator, &invalid_fields, 15));
+    try std.testing.expectEqual(before_invalid.ptr, invalid_fields.ptr);
+    try std.testing.expectEqual(@as(usize, 1), invalid_fields.len);
 }
 
 test "wire bool writers use canonical one-byte values" {

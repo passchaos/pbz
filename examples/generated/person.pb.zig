@@ -255,16 +255,7 @@ pub const demo = struct {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -1869,16 +1860,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -3544,16 +3526,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -4755,16 +4728,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -5998,16 +5962,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -7344,16 +7299,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-                var kept: std.ArrayList([]const u8) = .empty;
-                errdefer kept.deinit(allocator);
-                for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                    if (tag.number == number) { allocator.free(raw); continue; }
-                    try kept.append(allocator, raw);
-                }
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = try kept.toOwnedSlice(allocator);
+                try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
             }
 
             pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -8387,16 +8333,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -9504,16 +9441,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -10623,16 +10551,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -11734,16 +11653,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -12845,16 +12755,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -13956,16 +13857,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -15067,16 +14959,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -16178,16 +16061,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -17295,16 +17169,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -18412,16 +18277,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -19529,16 +19385,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -20646,16 +20493,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -21763,16 +21601,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -22858,16 +22687,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -24013,16 +23833,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -25342,16 +25153,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-            var kept: std.ArrayList([]const u8) = .empty;
-            errdefer kept.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                if (tag.number == number) { allocator.free(raw); continue; }
-                try kept.append(allocator, raw);
-            }
-            if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-            self._unknown_fields = try kept.toOwnedSlice(allocator);
+            try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
         }
 
         pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -26823,16 +26625,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-                var kept: std.ArrayList([]const u8) = .empty;
-                errdefer kept.deinit(allocator);
-                for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                    if (tag.number == number) { allocator.free(raw); continue; }
-                    try kept.append(allocator, raw);
-                }
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = try kept.toOwnedSlice(allocator);
+                try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
             }
 
             pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {

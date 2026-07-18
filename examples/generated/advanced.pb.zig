@@ -288,10 +288,7 @@ pub const demo = struct {
             pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
                 var count: usize = 0;
                 for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    if (try r.nextTag()) |tag| {
-                        if (tag.number == number) count += 1;
-                    }
+                    if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
                 }
                 return count;
             }
@@ -304,10 +301,7 @@ pub const demo = struct {
                 var list: std.ArrayList([]const u8) = .empty;
                 errdefer list.deinit(allocator);
                 for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    if (try r.nextTag()) |tag| {
-                        if (tag.number == number) try list.append(allocator, raw);
-                    }
+                    if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
                 }
                 return try list.toOwnedSlice(allocator);
             }
@@ -329,16 +323,7 @@ pub const demo = struct {
             }
 
             pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-                var kept: std.ArrayList([]const u8) = .empty;
-                errdefer kept.deinit(allocator);
-                for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                    if (tag.number == number) { allocator.free(raw); continue; }
-                    try kept.append(allocator, raw);
-                }
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = try kept.toOwnedSlice(allocator);
+                try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
             }
 
             pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -452,7 +437,7 @@ pub const demo = struct {
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                if (self.kind != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+                if (self.kind != 0) { buffer[index] = 16; index += 1; if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
                 if (self.audit) |value| { const payload_len = value.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
                 { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
@@ -476,7 +461,7 @@ pub const demo = struct {
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                if (self.kind != 0) { buffer[index] = 16; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
+                if (self.kind != 0) { buffer[index] = 16; index += 1; if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
                 if (self.audit) |value| { const payload_len = value.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
                 { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
@@ -513,11 +498,13 @@ pub const demo = struct {
                     else => {},
                 }
                 if (self.audits.count() != 0) {
-                    var stack_entries: [32]auditsEntry = undefined;
+                    const insertion_sort_limit: usize = 32;
+                    const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(auditsEntry), 1));
+                    var stack_entries: [stack_entry_count]auditsEntry = undefined;
                     const use_stack_entries = self.audits.count() <= stack_entries.len;
                     const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                     defer if (!use_stack_entries) allocator.free(entries);
-                    if (use_stack_entries) {
+                    if (entries.len <= insertion_sort_limit) {
                         var sort_i: usize = 1;
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
@@ -526,7 +513,16 @@ pub const demo = struct {
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
+                        const entries_already_sorted = sorted: {
+                            var check_i: usize = 1;
+                            while (check_i < entries.len) : (check_i += 1) {
+                                if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                            }
+                            break :sorted true;
+                        };
+                        if (!entries_already_sorted) {
+                            std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
+                        }
                     }
                     for (entries) |entry| {
                         if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -576,11 +572,13 @@ pub const demo = struct {
                     else => {},
                 }
                 if (self.audits.count() != 0) {
-                    var stack_entries: [32]auditsEntry = undefined;
+                    const insertion_sort_limit: usize = 32;
+                    const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(auditsEntry), 1));
+                    var stack_entries: [stack_entry_count]auditsEntry = undefined;
                     const use_stack_entries = self.audits.count() <= stack_entries.len;
                     const entries = if (use_stack_entries) blk: { var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.audits.count()]; } else blk: { const owned = try allocator.alloc(auditsEntry, self.audits.count()); var map_it = self.audits.iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
                     defer if (!use_stack_entries) allocator.free(entries);
-                    if (use_stack_entries) {
+                    if (entries.len <= insertion_sort_limit) {
                         var sort_i: usize = 1;
                         while (sort_i < entries.len) : (sort_i += 1) {
                             const item = entries[sort_i];
@@ -589,7 +587,16 @@ pub const demo = struct {
                             entries[sort_j] = item;
                         }
                     } else {
-                        std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
+                        const entries_already_sorted = sorted: {
+                            var check_i: usize = 1;
+                            while (check_i < entries.len) : (check_i += 1) {
+                                if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
+                            }
+                            break :sorted true;
+                        };
+                        if (!entries_already_sorted) {
+                            std.mem.sort(auditsEntry, entries, {}, struct { fn lessThan(_: void, a: auditsEntry, b: auditsEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
+                        }
                     }
                     for (entries) |entry| {
                         if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
@@ -692,6 +699,55 @@ pub const demo = struct {
                 }
                 self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
                 return self;
+            }
+
+            pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                for (self._unknown_fields) |raw| allocator.free(raw);
+                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
+                self._unknown_fields = &.{};
+                { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
+                self.audits.clearRetainingCapacity();
+                switch (self.subject) {
+                    .audit_subject => |*value| value.deinit(allocator),
+                    else => {},
+                }
+                self.subject = .none;
+                if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                self.id = 0;
+                self.kind = 0;
+                if (self.audit) |*value| value.deinit(allocator);
+                self.audit = null;
+                errdefer self.deinit(allocator);
+                var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
+                errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+                var r = pbz.Reader.init(bytes);
+                while (try r.nextTag()) |tag| {
+                    switch (tag.number) {
+                        1 => { self.id = try r.readInt32(); },
+                        2 => { const value = try r.readInt32(); self.kind = value; },
+                        3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
+                        4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
+                        5 => self.subject = .{ .organization_id = try r.readBytes() },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
+                        7 => {
+                            var entry = auditsEntry{};
+                            errdefer entry.value.deinit(allocator);
+                            const payload = try r.readBytes();
+                            var entry_reader = try r.nested(payload);
+                            const skip_entry = false;
+                            while (try entry_reader.nextTag()) |entry_tag| {
+                                switch (entry_tag.number) {
+                                    1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
+                                    2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
+                                    else => try entry_reader.skipValue(entry_tag),
+                                }
+                            }
+                            if (skip_entry) { var unknown_writer = pbz.Writer.init(allocator); defer unknown_writer.deinit(); try unknown_writer.writeBytes(7, payload); const raw = try allocator.dupe(u8, unknown_writer.slice()); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                        },
+                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                    }
+                }
+                self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -1095,6 +1151,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -1448,8 +1545,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 errdefer for (audits_list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-                defer allocator.free(normalized_text);
+                const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+                const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+                defer if (needs_normalized_text) allocator.free(normalized_text);
                 var lines = std.mem.splitScalar(u8, normalized_text, '\n');
                 while (lines.next()) |raw_line| {
                     const line = @This().textCleanLine(raw_line);
@@ -1618,10 +1716,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
                     var count: usize = 0;
                     for (self._unknown_fields) |raw| {
-                        var r = pbz.Reader.init(raw);
-                        if (try r.nextTag()) |tag| {
-                            if (tag.number == number) count += 1;
-                        }
+                        if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
                     }
                     return count;
                 }
@@ -1634,10 +1729,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var list: std.ArrayList([]const u8) = .empty;
                     errdefer list.deinit(allocator);
                     for (self._unknown_fields) |raw| {
-                        var r = pbz.Reader.init(raw);
-                        if (try r.nextTag()) |tag| {
-                            if (tag.number == number) try list.append(allocator, raw);
-                        }
+                        if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
                     }
                     return try list.toOwnedSlice(allocator);
                 }
@@ -1659,16 +1751,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void {
-                    var kept: std.ArrayList([]const u8) = .empty;
-                    errdefer kept.deinit(allocator);
-                    for (self._unknown_fields) |raw| {
-                        var r = pbz.Reader.init(raw);
-                        const tag = (try r.nextTag()) orelse { allocator.free(raw); continue; };
-                        if (tag.number == number) { allocator.free(raw); continue; }
-                        try kept.append(allocator, raw);
-                    }
-                    if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                    self._unknown_fields = try kept.toOwnedSlice(allocator);
+                    try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);
                 }
 
                 pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
@@ -2187,6 +2270,47 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     return try out.toOwnedSlice(allocator);
 }
 
+fn textNeedsSeparatorNormalization(text: []const u8) bool {
+    var quote: ?u8 = null;
+    var escaped = false;
+    for (text, 0..) |c, index| {
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (quote) |q| {
+            if (c == '\\') {
+                escaped = true;
+            } else if (c == q) {
+                quote = null;
+            }
+            continue;
+        }
+        if (c == '"' or c == '\'') {
+            quote = c;
+        } else if (c == ';' or c == ',') {
+            return true;
+        } else if ((c == '{' or c == '<') and !@This().textSeparatorHasLineAfter(text, index)) {
+            return true;
+        } else if ((c == '}' or c == '>') and !@This().textSeparatorHasLineBefore(text, index)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn textSeparatorHasLineAfter(text: []const u8, index: usize) bool {
+    var i = index + 1;
+    while (i < text.len and (text[i] == ' ' or text[i] == '\t' or text[i] == '\r')) : (i += 1) {}
+    return i >= text.len or text[i] == '\n';
+}
+
+fn textSeparatorHasLineBefore(text: []const u8, index: usize) bool {
+    var i = index;
+    while (i > 0 and (text[i - 1] == ' ' or text[i - 1] == '\t' or text[i - 1] == '\r')) : (i -= 1) {}
+    return i == 0 or text[i - 1] == '\n';
+}
+
 fn textCleanLine(raw_line: []const u8) []const u8 {
     var end = raw_line.len;
     var quote: ?u8 = null;
@@ -2511,8 +2635,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     errdefer self.deinit(allocator);
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                     errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
-                    const normalized_text = try @This().textNormalizeSeparators(allocator, text);
-                    defer allocator.free(normalized_text);
+                    const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
+                    const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
+                    defer if (needs_normalized_text) allocator.free(normalized_text);
                     var lines = std.mem.splitScalar(u8, normalized_text, '\n');
                     while (lines.next()) |raw_line| {
                         const line = @This().textCleanLine(raw_line);
