@@ -501,6 +501,10 @@ int main() {
   google::protobuf::BytesValue bytes_value;
   bytes_value.set_value("hi");
   const std::string bytes_value_json = JsonStringFor(bytes_value);
+  google::protobuf::Any any_bytes_value_wkt;
+  any_bytes_value_wkt.PackFrom(bytes_value);
+  const std::string any_bytes_value_wkt_json =
+      JsonStringFor(any_bytes_value_wkt);
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -570,6 +574,8 @@ int main() {
             << "\n";
   std::cout << "any StringValue WKT json payload size: "
             << any_string_value_wkt_json.size() << "\n";
+  std::cout << "any BytesValue WKT json payload size: "
+            << any_bytes_value_wkt_json.size() << "\n";
   std::cout << "nested Any WKT json payload size: "
             << nested_any_wkt_json.size() << "\n";
   std::cout << "double value json payload size: " << double_value_json.size()
@@ -1143,6 +1149,8 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any StringValue WKT", any_string_value_wkt,
                       any_string_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any BytesValue WKT", any_bytes_value_wkt,
+                      any_bytes_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Nested Any WKT", nested_any_wkt, nested_any_wkt_json,
                       kIterations);
   RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
