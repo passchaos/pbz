@@ -236,7 +236,14 @@ pub fn build(b: *std.Build) void {
     const bench_step = b.step("bench", "Run pbz benchmark baseline");
     bench_step.dependOn(&run_bench.step);
 
+    const run_summary_self_test = b.addSystemCommand(&.{
+        "python3",
+        "bench/summarize_compare.py",
+        "--self-test",
+    });
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(examples_step);
+    test_step.dependOn(&run_summary_self_test.step);
 }

@@ -257,6 +257,7 @@ Important examples:
 zig build test
 zig build examples
 zig build build-codegen-smoke
+python3 bench/summarize_compare.py --self-test
 python3 tools/smoke_conformance.py
 tools/run_conformance.sh
 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
