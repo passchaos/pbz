@@ -41,8 +41,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
   borrowed slices/views for copy-free payload paths
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
-- `google.protobuf.Any` with an embedded well-known-type JSON value
-  stringify/parse
+- `google.protobuf.Any` with embedded well-known-type JSON values, including
+  `Duration` and object-subtree `Struct`, stringify/parse
 - direct `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
 - direct `google.protobuf.Timestamp` JSON stringify/parse

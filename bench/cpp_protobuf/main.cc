@@ -450,6 +450,9 @@ int main() {
   auto *meta = (*struct_value.mutable_fields())["meta"].mutable_struct_value();
   (*meta->mutable_fields())["score"].set_number_value(1.5);
   const std::string struct_json = JsonStringFor(struct_value);
+  google::protobuf::Any any_struct_wkt;
+  any_struct_wkt.PackFrom(struct_value);
+  const std::string any_struct_wkt_json = JsonStringFor(any_struct_wkt);
   google::protobuf::Value value_value;
   value_value.mutable_struct_value()->CopyFrom(struct_value);
   const std::string value_json = JsonStringFor(value_value);
@@ -551,6 +554,8 @@ int main() {
   std::cout << "value json payload size: " << value_json.size() << "\n";
   std::cout << "list value json payload size: " << list_value_json.size()
             << "\n";
+  std::cout << "any Struct WKT json payload size: "
+            << any_struct_wkt_json.size() << "\n";
   std::cout << "double value json payload size: " << double_value_json.size()
             << "\n";
   std::cout << "float value json payload size: " << float_value_json.size()
@@ -1135,6 +1140,29 @@ int main() {
         asm volatile("" : : "g"(&decoded) : "memory");
       });
   any_wkt_json_parse.Print();
+
+  auto any_struct_wkt_json_stringify = RunTimed(
+      "c++ protobuf Any Struct WKT JSON stringify", kIterations,
+      any_struct_wkt_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(any_struct_wkt, &out)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  any_struct_wkt_json_stringify.Print();
+
+  auto any_struct_wkt_json_parse = RunTimed(
+      "c++ protobuf Any Struct WKT JSON parse", kIterations,
+      any_struct_wkt_json.size(), [&]() {
+        google::protobuf::Any decoded;
+        if (!google::protobuf::util::JsonStringToMessage(any_struct_wkt_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  any_struct_wkt_json_parse.Print();
 
   auto duration_json_stringify = RunTimed(
       "c++ protobuf Duration JSON stringify", kIterations,

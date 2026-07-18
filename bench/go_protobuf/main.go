@@ -382,6 +382,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	anyStructWKT, err := anypb.New(structValue)
+	if err != nil {
+		panic(err)
+	}
+	anyStructWKTJSONBytes, err := protojson.Marshal(anyStructWKT)
+	if err != nil {
+		panic(err)
+	}
 	valueValue := structpb.NewStructValue(structValue)
 	valueJSONBytes, err := protojson.Marshal(valueValue)
 	if err != nil {
@@ -536,6 +544,7 @@ func main() {
 	fmt.Printf("struct json payload size: %d\n", len(structJSONBytes))
 	fmt.Printf("value json payload size: %d\n", len(valueJSONBytes))
 	fmt.Printf("list value json payload size: %d\n", len(listValueJSONBytes))
+	fmt.Printf("any Struct WKT json payload size: %d\n", len(anyStructWKTJSONBytes))
 	fmt.Printf("double value json payload size: %d\n", len(doubleValueJSONBytes))
 	fmt.Printf("float value json payload size: %d\n", len(floatValueJSONBytes))
 	fmt.Printf("int64 value json payload size: %d\n", len(int64ValueJSONBytes))
@@ -793,6 +802,21 @@ func main() {
 	runTimed("go protobuf Any WKT JSON parse", iterations, len(anyWKTJSONBytes), func() {
 		var decoded anypb.Any
 		if err := jsonUnmarshalOptions.Unmarshal(anyWKTJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Any Struct WKT JSON stringify", iterations, len(anyStructWKTJSONBytes), func() {
+		out, err := protojson.Marshal(anyStructWKT)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Any Struct WKT JSON parse", iterations, len(anyStructWKTJSONBytes), func() {
+		var decoded anypb.Any
+		if err := jsonUnmarshalOptions.Unmarshal(anyStructWKTJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

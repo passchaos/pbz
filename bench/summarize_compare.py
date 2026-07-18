@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 88
+EXPECTED_WORKLOAD_COUNT = 90
 
 
 @dataclass(frozen=True)
@@ -341,6 +341,22 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf Any WKT JSON stringify",),
             "go protobuf": ("go protobuf Any WKT JSON stringify",),
+        },
+    ),
+    Workload(
+        "Any Struct WKT JSON stringify",
+        ("pbz Any Struct WKT JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf Any Struct WKT JSON stringify",),
+            "go protobuf": ("go protobuf Any Struct WKT JSON stringify",),
+        },
+    ),
+    Workload(
+        "Any Struct WKT JSON parse",
+        ("pbz Any Struct WKT JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf Any Struct WKT JSON parse",),
+            "go protobuf": ("go protobuf Any Struct WKT JSON parse",),
         },
     ),
     Workload(
@@ -1195,6 +1211,12 @@ def self_test() -> None:
     pbz Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 80.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 400.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf Any WKT JSON parse: best of 3 x 10 iters, 92 bytes/iter, 500.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Any Struct WKT JSON stringify: best of 3 x 10 iters, 121 bytes/iter, 120.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Any Struct WKT JSON stringify: best of 3 x 10 iters, 121 bytes/iter, 1000.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Any Struct WKT JSON stringify: best of 3 x 10 iters, 121 bytes/iter, 900.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Any Struct WKT JSON parse: best of 3 x 10 iters, 121 bytes/iter, 180.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Any Struct WKT JSON parse: best of 3 x 10 iters, 121 bytes/iter, 1200.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Any Struct WKT JSON parse: best of 3 x 10 iters, 121 bytes/iter, 1100.00 ns/op, 1 ops/s, 1 MiB/s
     pbz Duration JSON stringify: best of 3 x 10 iters, 8 bytes/iter, 30.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf Duration JSON stringify: best of 3 x 10 iters, 8 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf Duration JSON stringify: best of 3 x 10 iters, 8 bytes/iter, 250.00 ns/op, 1 ops/s, 1 MiB/s
@@ -1312,6 +1334,14 @@ def self_test() -> None:
     assert "pbz Any WKT JSON parse" in output
     assert "c++ protobuf Any WKT JSON parse" in output
     assert "go protobuf Any WKT JSON parse" in output
+    assert "Any Struct WKT JSON stringify" in output
+    assert "pbz Any Struct WKT JSON stringify" in output
+    assert "c++ protobuf Any Struct WKT JSON stringify" in output
+    assert "go protobuf Any Struct WKT JSON stringify" in output
+    assert "Any Struct WKT JSON parse" in output
+    assert "pbz Any Struct WKT JSON parse" in output
+    assert "c++ protobuf Any Struct WKT JSON parse" in output
+    assert "go protobuf Any Struct WKT JSON parse" in output
     assert "Duration JSON stringify" in output
     assert "pbz Duration JSON stringify" in output
     assert "c++ protobuf Duration JSON stringify" in output
