@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py --fail-on-loss /tmp/pbz-compare.log
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-post-unknown-refactor.log`,
-summarized in `/tmp/pbz-summary-post-unknown-refactor.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-iterator-inline.log`,
+summarized in `/tmp/pbz-summary-after-iterator-inline.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
