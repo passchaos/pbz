@@ -253,23 +253,30 @@ fn parseMapField(
     var it = object.iterator();
     while (it.next()) |entry| {
         var key = try parseMapKey(allocator, map_type.key, entry.key_ptr.*);
-        errdefer dynamic.deinitValue(&key, allocator);
+        var owns_key = true;
+        errdefer if (owns_key) dynamic.deinitValue(&key, allocator);
         var map_value = parseValue(allocator, file, registry, message.descriptor, map_type.value.*, entry.value_ptr.*, options) catch |err| {
             if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, map_type.value.*, err)) {
                 dynamic.deinitValue(&key, allocator);
+                owns_key = false;
                 continue;
             }
             return err;
         };
-        errdefer dynamic.deinitValue(&map_value, allocator);
+        var owns_map_value = true;
+        errdefer if (owns_map_value) dynamic.deinitValue(&map_value, allocator);
         const map_entry = try allocator.create(dynamic.MapEntry);
         map_entry.* = .{ .key = key, .value = map_value };
-        message.add(field, .{ .map_entry = map_entry }) catch |err| {
-            map_entry.deinit(allocator);
-            allocator.destroy(map_entry);
-            return err;
-        };
+        owns_key = false;
+        owns_map_value = false;
+        try addOwnedValue(allocator, message, field, .{ .map_entry = map_entry });
     }
+}
+
+fn addOwnedValue(allocator: std.mem.Allocator, message: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, value: dynamic.Value) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer dynamic.deinitValue(&owned, allocator);
+    try message.add(field, owned);
 }
 
 fn shouldIgnoreEnumParseError(options: Options, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, kind: schema.FieldKind, err: anyerror) bool {
@@ -1747,6 +1754,24 @@ test "json stringify rejects invalid utf8 strings" {
     entry.* = .{ .key = .{ .string = try allocator.dupe(u8, &.{0xc0}) }, .value = .{ .int32 = 1 } };
     try bad_key.add(desc.findField("keyed").?, .{ .map_entry = entry });
     try std.testing.expectError(error.InvalidUtf8, stringifyAlloc(allocator, &file, &bad_key, .{}));
+}
+
+fn exerciseJsonMapParseCleanup(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor) !void {
+    var parsed = try parseAlloc(allocator, file, descriptor, "{\"keyed\":{\"a\":\"owned\"}}", .{});
+    defer parsed.deinit();
+
+    const entry = parsed.get("keyed").?.values.items[0].map_entry;
+    try std.testing.expectEqualStrings("a", entry.key.string);
+    try std.testing.expectEqualStrings("owned", entry.value.string);
+}
+
+test "json map parse cleans up allocation failures" {
+    var file = try @import("parser.zig").Parser.parse(std.testing.allocator,
+        \\syntax = "proto3";
+        \\message M { map<string, string> keyed = 1; }
+    );
+    defer file.deinit();
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseJsonMapParseCleanup, .{ &file, file.findMessage("M").? });
 }
 
 test "json parse dynamic message with scalars repeated maps enums and nested messages" {
