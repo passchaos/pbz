@@ -287,3 +287,34 @@ test "plugin request decodes file names descriptors compiler version and source 
     try std.testing.expectEqualStrings("input.proto", request.proto_files.items[0].name);
     try std.testing.expectEqualStrings("source.proto", request.source_file_descriptors.items[0].name);
 }
+
+fn exerciseRequestDecodeCleanup(allocator: std.mem.Allocator) !void {
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.name = "input.proto";
+    file.setSyntax(.proto3);
+    const fd = try descriptor.encodeFileDescriptorProto(allocator, &file, file.name);
+    defer allocator.free(fd);
+
+    var source_file = schema.FileDescriptor.init(allocator);
+    defer source_file.deinit();
+    source_file.name = "source.proto";
+    source_file.setSyntax(.proto2);
+    const source_fd = try descriptor.encodeFileDescriptorProto(allocator, &source_file, source_file.name);
+    defer allocator.free(source_fd);
+
+    var writer = wire.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeString(1, "input.proto");
+    try writer.writeMessage(15, fd);
+    try writer.writeMessage(17, source_fd);
+
+    var request = try CodeGeneratorRequest.decode(allocator, writer.slice());
+    defer request.deinit();
+    try std.testing.expectEqualStrings("input.proto", request.proto_files.items[0].name);
+    try std.testing.expectEqualStrings("source.proto", request.source_file_descriptors.items[0].name);
+}
+
+test "plugin request decode cleans up allocation failures" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseRequestDecodeCleanup, .{});
+}
