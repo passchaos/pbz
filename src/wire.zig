@@ -1824,11 +1824,16 @@ test "wire tag writers preserve single and multi-byte tags" {
 
     const noncanonical_field_16 = [_]u8{ 0x80, 0x81, 0x00, 0x01 };
     try std.testing.expectEqual(@as(FieldNumber, 16), try rawFieldNumber(&noncanonical_field_16));
+    const noncanonical_field_31 = [_]u8{ 0x78 | 0x80, 0x01, 0x00 };
+    try std.testing.expectEqual(@as(FieldNumber, 31), try rawFieldNumber(&noncanonical_field_31));
 
-    const raw_fields = [_][]const u8{ writer.slice()[0..1], &.{}, writer.slice()[1..], &noncanonical_field_16 };
+    const raw_fields = [_][]const u8{ writer.slice()[0..1], &.{}, writer.slice()[1..], &noncanonical_field_16, &noncanonical_field_31 };
     try std.testing.expectEqual(@as(usize, 1), try rawFieldCountByNumber(&raw_fields, 15));
     try std.testing.expectEqual(@as(usize, 1), rawFieldCountByNumberAssumeValid(&raw_fields, 15));
     try std.testing.expectEqual(@as(usize, 2), rawFieldCountByNumberAssumeValid(&raw_fields, 16));
+    try std.testing.expectEqual(@as(usize, 1), rawFieldCountByNumberAssumeValid(&raw_fields, 31));
+    const noncanonical_only = [_][]const u8{&noncanonical_field_31};
+    try std.testing.expectEqual(@as(usize, 0), rawFieldCountByNumberAssumeValid(&noncanonical_only, 15));
     try std.testing.expect(rawFieldHasNumberAssumeValid(&raw_fields, 16));
     try std.testing.expect(!rawFieldHasNumberAssumeValid(&raw_fields, 17));
     const matched = try rawFieldsByNumberAlloc(std.testing.allocator, &raw_fields, 16);
