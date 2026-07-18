@@ -218,11 +218,7 @@ pub const demo = struct {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -230,12 +226,7 @@ pub const demo = struct {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -1823,11 +1814,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -1835,12 +1822,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -3489,11 +3471,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -3501,12 +3479,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -4691,11 +4664,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -4703,12 +4672,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -5925,11 +5889,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -5937,12 +5897,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -7262,11 +7217,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-                var count: usize = 0;
-                for (self._unknown_fields) |raw| {
-                    if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-                }
-                return count;
+                return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
             }
 
             pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -7274,12 +7225,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-                var list: std.ArrayList([]const u8) = .empty;
-                errdefer list.deinit(allocator);
-                for (self._unknown_fields) |raw| {
-                    if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-                }
-                return try list.toOwnedSlice(allocator);
+                return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
             }
 
             pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -8296,11 +8242,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -8308,12 +8250,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -9404,11 +9341,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -9416,12 +9349,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -10514,11 +10442,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -10526,12 +10450,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -11616,11 +11535,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -11628,12 +11543,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -12718,11 +12628,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -12730,12 +12636,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -13820,11 +13721,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -13832,12 +13729,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -14922,11 +14814,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -14934,12 +14822,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -16024,11 +15907,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -16036,12 +15915,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -17132,11 +17006,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -17144,12 +17014,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -18240,11 +18105,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -18252,12 +18113,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -19348,11 +19204,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -19360,12 +19212,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -20456,11 +20303,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -20468,12 +20311,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -21564,11 +21402,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -21576,12 +21410,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -22650,11 +22479,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -22662,12 +22487,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -23796,11 +23616,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -23808,12 +23624,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -25116,11 +24927,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-            var count: usize = 0;
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-            }
-            return count;
+            return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
         }
 
         pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -25128,12 +24935,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-            var list: std.ArrayList([]const u8) = .empty;
-            errdefer list.deinit(allocator);
-            for (self._unknown_fields) |raw| {
-                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-            }
-            return try list.toOwnedSlice(allocator);
+            return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
         }
 
         pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {
@@ -26588,11 +26390,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
-                var count: usize = 0;
-                for (self._unknown_fields) |raw| {
-                    if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
-                }
-                return count;
+                return try pbz.wire.rawFieldCountByNumber(self._unknown_fields, number);
             }
 
             pub fn hasUnknownFieldNumber(self: @This(), number: pbz.FieldNumber) !bool {
@@ -26600,12 +26398,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-                var list: std.ArrayList([]const u8) = .empty;
-                errdefer list.deinit(allocator);
-                for (self._unknown_fields) |raw| {
-                    if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
-                }
-                return try list.toOwnedSlice(allocator);
+                return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
             }
 
             pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {

@@ -114,6 +114,34 @@ pub inline fn rawFieldNumber(raw_field: []const u8) Error!FieldNumber {
     return (try Tag.decode(raw_tag)).number;
 }
 
+pub fn rawFieldCountByNumber(fields: []const []const u8, number: FieldNumber) Error!usize {
+    var count: usize = 0;
+    for (fields) |raw| {
+        if (raw.len == 0) continue;
+        if ((try rawFieldNumber(raw)) == number) count += 1;
+    }
+    return count;
+}
+
+pub fn rawFieldsByNumberAlloc(allocator: std.mem.Allocator, fields: []const []const u8, number: FieldNumber) (std.mem.Allocator.Error || Error)![]const []const u8 {
+    const count = try rawFieldCountByNumber(fields, number);
+    if (count == 0) return &.{};
+
+    const matched = try allocator.alloc([]const u8, count);
+    errdefer allocator.free(matched);
+
+    var index: usize = 0;
+    for (fields) |raw| {
+        if (raw.len == 0) continue;
+        if ((try rawFieldNumber(raw)) == number) {
+            matched[index] = raw;
+            index += 1;
+        }
+    }
+    std.debug.assert(index == count);
+    return matched;
+}
+
 pub fn clearRawFieldsByNumber(allocator: std.mem.Allocator, fields: *[]const []const u8, number: FieldNumber) (std.mem.Allocator.Error || Error)!void {
     var keep_count: usize = 0;
     var remove_count: usize = 0;
@@ -1522,6 +1550,13 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectEqual(@as(FieldNumber, 16), try rawFieldNumber(writer.slice()[1..]));
     try std.testing.expectError(error.InvalidWireType, rawFieldNumber(&.{0x0f}));
     try std.testing.expectError(error.MalformedVarint, rawFieldNumber(&.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 }));
+
+    const raw_fields = [_][]const u8{ writer.slice()[0..1], &.{}, writer.slice()[1..] };
+    try std.testing.expectEqual(@as(usize, 1), try rawFieldCountByNumber(&raw_fields, 15));
+    const matched = try rawFieldsByNumberAlloc(std.testing.allocator, &raw_fields, 16);
+    defer std.testing.allocator.free(matched);
+    try std.testing.expectEqual(@as(usize, 1), matched.len);
+    try std.testing.expectEqualSlices(u8, writer.slice()[1..], matched[0]);
 }
 
 test "wire clears raw fields by number without reallocating on miss" {
