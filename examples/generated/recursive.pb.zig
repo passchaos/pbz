@@ -688,6 +688,10 @@ fn textCleanLine(raw_line: []const u8, text_has_comments: bool) []const u8 {
 }
 
 fn textTrimLine(raw_line: []const u8) []const u8 {
+    if (raw_line.len == 0) return raw_line;
+    const first = raw_line[0];
+    const last = raw_line[raw_line.len - 1];
+    if (first != ' ' and first != '\t' and first != '\r' and last != ' ' and last != '\t' and last != '\r' and last != ';' and last != ',') return raw_line;
     var line = std.mem.trim(u8, raw_line, " \t\r");
     while (line.len != 0 and (line[line.len - 1] == ';' or line[line.len - 1] == ',')) {
         line = std.mem.trim(u8, line[0 .. line.len - 1], " \t\r");
