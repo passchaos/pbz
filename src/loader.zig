@@ -75,7 +75,8 @@ fn loadOne(
 
     const source = tree.get(path) orelse return error.FileNotFound;
     var file = try parser.Parser.parse(allocator, source);
-    errdefer file.deinit();
+    var owns_file = true;
+    errdefer if (owns_file) file.deinit();
     file.name = path;
     for (file.imports.items) |import| {
         loadOne(allocator, tree, import.path, result, loading, loaded) catch |err| switch (err) {
@@ -87,6 +88,7 @@ fn loadOne(
         };
     }
     try result.files.append(allocator, file);
+    owns_file = false;
     try loaded.put(path, {});
 }
 
@@ -316,7 +318,8 @@ fn loadDirOne(
     errdefer if (!source_owned) allocator.free(source);
 
     var file = try parser.Parser.parse(allocator, source);
-    errdefer file.deinit();
+    var owns_file = true;
+    errdefer if (owns_file) file.deinit();
     file.name = path;
     try result.owned_sources.append(allocator, source);
     source_owned = true;
@@ -330,6 +333,7 @@ fn loadDirOne(
         };
     }
     try result.files.append(allocator, file);
+    owns_file = false;
     try loaded.put(path, {});
 }
 
