@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-scalar-varint-helper-rerun.log` summarized by
-`/tmp/pbz-summary-after-scalar-varint-helper-rerun.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-after-unknown-run-sidecar.log` summarized by
+`/tmp/pbz-summary-after-unknown-run-sidecar.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-scalar-varint-helper-rerun.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-after-unknown-run-sidecar.log --fail-on-loss
 ```
 
 ended with:
