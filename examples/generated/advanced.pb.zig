@@ -426,7 +426,7 @@ pub const demo = struct {
 
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
-                if (self.id != 0) { buffer[index] = 8; index += 1; { const raw_value: u64 = @as(u64, @bitCast(@as(i64, self.id))); if (raw_value < 0x80) { buffer[index] = @intCast(raw_value); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, raw_value); } }
+                if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
                 if (self.kind != 0) { buffer[index] = 16; index += 1; if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
                 if (self.audit) |value| { const payload_len = value.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
                 { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
@@ -450,7 +450,7 @@ pub const demo = struct {
 
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
-                if (self.id != 0) { buffer[index] = 8; index += 1; { const raw_value: u64 = @as(u64, @bitCast(@as(i64, self.id))); if (raw_value < 0x80) { buffer[index] = @intCast(raw_value); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, raw_value); } }
+                if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
                 if (self.kind != 0) { buffer[index] = 16; index += 1; if (self.kind > 0 and self.kind < 0x80) { buffer[index] = @intCast(self.kind); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.kind)))); }
                 if (self.audit) |value| { const payload_len = value.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
                 { var map_it = self.audits.iterator(); while (map_it.next()) |map_entry| {
@@ -1779,7 +1779,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
                     if (self.actor.len != 0) { if (!pbz.validateUtf8(self.actor)) return error.InvalidUtf8; buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
-                    if (self.at_unix != 0) { buffer[index] = 16; index += 1; { const raw_value: u64 = @as(u64, @bitCast(self.at_unix)); if (raw_value < 0x80) { buffer[index] = @intCast(raw_value); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, raw_value); } }
+                    if (self.at_unix != 0) { buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(self.at_unix))); }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];
                 }
@@ -1787,7 +1787,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
                     if (self.actor.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
-                    if (self.at_unix != 0) { buffer[index] = 16; index += 1; { const raw_value: u64 = @as(u64, @bitCast(self.at_unix)); if (raw_value < 0x80) { buffer[index] = @intCast(raw_value); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, raw_value); } }
+                    if (self.at_unix != 0) { buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(self.at_unix))); }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];
                 }

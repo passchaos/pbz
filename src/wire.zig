@@ -577,6 +577,28 @@ pub inline fn writeVarintToSlice(buffer: []u8, index: *usize, value: u64) void {
     index.* += writeVarintToBuffer(buffer[index.*..], value);
 }
 
+/// Specialized for generated `encodeIntoAssumeCapacity` scalar fields, where
+/// the caller already owns the output buffer and the branch profile is strongly
+/// biased toward one- or two-byte payloads.  The wider fallback deliberately
+/// delegates back to the canonical varint writer so the optimization remains
+/// small and does not duplicate the full ten-byte encoding ladder in every
+/// generated call site.
+pub inline fn writeDirectScalarVarintToSlice(buffer: []u8, index: *usize, value: u64) void {
+    const start = index.*;
+    if (value < 0x80) {
+        buffer[start] = @intCast(value);
+        index.* = start + 1;
+        return;
+    }
+    if (value < 0x4000) {
+        buffer[start] = @intCast((value & 0x7f) | 0x80);
+        buffer[start + 1] = @intCast(value >> 7);
+        index.* = start + 2;
+        return;
+    }
+    index.* = start + writeVarintToBuffer(buffer[start..], value);
+}
+
 pub inline fn writeNegativeInt64VarintToSlice(buffer: []u8, index: *usize, value: i64) void {
     std.debug.assert(value < 0);
 
@@ -1803,6 +1825,10 @@ test "wire varint writer covers all encoded lengths" {
         var direct_index: usize = 0;
         writeVarintToSlice(&buffer, &direct_index, case.value);
         try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_index]);
+
+        var direct_scalar_index: usize = 0;
+        writeDirectScalarVarintToSlice(&buffer, &direct_scalar_index, case.value);
+        try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_scalar_index]);
     }
 }
 
