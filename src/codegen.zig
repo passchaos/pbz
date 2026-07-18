@@ -14592,7 +14592,6 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.child = try nested.cloneOwned(allocator); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.child = try nested.cloneOwned(allocator); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);
