@@ -118,6 +118,7 @@ WORKLOADS: tuple[Workload, ...] = (
             "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse",
             "generated textbytes encodeIntoAssumeCapacity buffer reuse",
             "generated textbytes trusted UTF-8 encodeIntoAssumeCapacity buffer reuse",
+            "generated textbytes borrowed slices encode",
         ),
         {
             "rust prost": ("prost textbytes encode",),

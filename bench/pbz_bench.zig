@@ -573,6 +573,43 @@ fn generatedTextBytesTrustedUtf8EncodeIntoReuse(ctx: GeneratedTextBytesEncodeInt
     std.mem.doNotOptimizeAway(bytes.ptr);
 }
 
+const GeneratedTextBytesBorrowedSlicesCtx = struct { message: *const person_pb.demo.TextBytes };
+fn generatedTextBytesBorrowedSlices(ctx: GeneratedTextBytesBorrowedSlicesCtx) !void {
+    var header: [10][20]u8 = undefined;
+    const msg = ctx.message;
+    var header_index: usize = 0;
+    var total_len: usize = 0;
+    if (msg.title.len != 0) {
+        const slices = try person_pb.demo.TextBytes.titleStringSlices(&header[header_index], msg.title);
+        header_index += 1;
+        total_len += slices.header.len + slices.payload.len;
+        std.mem.doNotOptimizeAway(slices.header.ptr);
+        std.mem.doNotOptimizeAway(slices.payload.ptr);
+    }
+    if (msg.payload.len != 0) {
+        const slices = try person_pb.demo.TextBytes.payloadBytesSlices(&header[header_index], msg.payload);
+        header_index += 1;
+        total_len += slices.header.len + slices.payload.len;
+        std.mem.doNotOptimizeAway(slices.header.ptr);
+        std.mem.doNotOptimizeAway(slices.payload.ptr);
+    }
+    for (msg.tags) |tag| {
+        const slices = try person_pb.demo.TextBytes.tagsStringSlices(&header[header_index], tag);
+        header_index += 1;
+        total_len += slices.header.len + slices.payload.len;
+        std.mem.doNotOptimizeAway(slices.header.ptr);
+        std.mem.doNotOptimizeAway(slices.payload.ptr);
+    }
+    for (msg.chunks) |chunk| {
+        const slices = try person_pb.demo.TextBytes.chunksBytesSlices(&header[header_index], chunk);
+        header_index += 1;
+        total_len += slices.header.len + slices.payload.len;
+        std.mem.doNotOptimizeAway(slices.header.ptr);
+        std.mem.doNotOptimizeAway(slices.payload.ptr);
+    }
+    std.mem.doNotOptimizeAway(total_len);
+}
+
 const GeneratedTextBytesDecodeCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedTextBytesDecode(ctx: GeneratedTextBytesDecodeCtx) !void {
     var decoded = try person_pb.demo.TextBytes.decode(ctx.allocator, ctx.bytes);
@@ -2210,6 +2247,7 @@ pub fn main() !void {
         try runTimed(io, "generated textbytes trusted UTF-8 writeToAssumeCapacity reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesWriteToCtx{ .writer = &reusable_text_bytes_writer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8WriteToReuse),
         try runTimed(io, "generated textbytes encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeIntoCtx{ .buffer = generated_text_bytes_buffer, .message = &generated_text_bytes }, generatedTextBytesEncodeIntoReuse),
         try runTimed(io, "generated textbytes trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesEncodeIntoCtx{ .buffer = generated_text_bytes_buffer, .message = &generated_text_bytes }, generatedTextBytesTrustedUtf8EncodeIntoReuse),
+        try runTimed(io, "generated textbytes borrowed slices encode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesBorrowedSlicesCtx{ .message = &generated_text_bytes }, generatedTextBytesBorrowedSlices),
         try runTimed(io, "generated textbytes decode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes }, generatedTextBytesDecode),
         try runTimed(io, "generated textbytes decode reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes, .message = &generated_text_bytes_decode_reuse }, generatedTextBytesDecodeReuse),
         try runTimed(io, "generated largebytes encode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesEncodeCtx{ .allocator = allocator, .message = &generated_large_bytes }, generatedLargeBytesEncode),

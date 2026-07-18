@@ -35,7 +35,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
   repeated queries
 - deterministic binary encode
 - scalar mix encode/decode
-- string/bytes and repeated string/bytes encode/decode
+- string/bytes and repeated string/bytes encode/decode, including generated
+  borrowed slices for copy-free output paths
 - large bytes and repeated large bytes encode/decode, including generated
   borrowed slices/views for copy-free payload paths
 - proto3 optional presence plus oneof encode/decode

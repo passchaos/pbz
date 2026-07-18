@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-unknown-run-sidecar.log` summarized by
-`/tmp/pbz-summary-after-unknown-run-sidecar.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-after-textbytes-slices.log` summarized by
+`/tmp/pbz-summary-after-textbytes-slices.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-unknown-run-sidecar.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-after-textbytes-slices.log --fail-on-loss
 ```
 
 ended with:
@@ -79,7 +79,8 @@ The matrix includes:
 - deterministic binary encode
 - unknown-field count-by-number against C++ `UnknownFieldSet` count
 - scalar mix encode/decode
-- string/bytes and repeated string/bytes encode/decode
+- string/bytes and repeated string/bytes encode/decode, including borrowed
+  length-delimited output slices
 - large bytes and repeated large bytes encode/decode
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode
