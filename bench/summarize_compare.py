@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 90
+EXPECTED_WORKLOAD_COUNT = 92
 
 
 @dataclass(frozen=True)
@@ -94,6 +94,7 @@ def benchmark_line(name: str, bytes_per_iter: int, ns: float) -> str:
 JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[float, float, float]], ...] = (
     ("Any WKT", 73, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any Struct WKT", 121, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
+    ("Any Value WKT", 120, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
     ("Duration", 8, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("FieldMask", 21, (40.0, 230.0, 270.0), (45.0, 240.0, 280.0)),
     ("Timestamp", 28, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
@@ -408,6 +409,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     *json_workload_pair("Any WKT"),
     *json_workload_pair("Any Struct WKT"),
+    *json_workload_pair("Any Value WKT"),
     *json_workload_pair("Duration"),
     *json_workload_pair("FieldMask"),
     *json_workload_pair("Timestamp"),

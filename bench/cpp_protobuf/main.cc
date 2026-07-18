@@ -456,6 +456,9 @@ int main() {
   google::protobuf::Value value_value;
   value_value.mutable_struct_value()->CopyFrom(struct_value);
   const std::string value_json = JsonStringFor(value_value);
+  google::protobuf::Any any_value_wkt;
+  any_value_wkt.PackFrom(value_value);
+  const std::string any_value_wkt_json = JsonStringFor(any_value_wkt);
   google::protobuf::ListValue list_value;
   list_value.add_values()->set_null_value(google::protobuf::NULL_VALUE);
   list_value.add_values()->set_string_value("zig");
@@ -556,6 +559,8 @@ int main() {
             << "\n";
   std::cout << "any Struct WKT json payload size: "
             << any_struct_wkt_json.size() << "\n";
+  std::cout << "any Value WKT json payload size: " << any_value_wkt_json.size()
+            << "\n";
   std::cout << "double value json payload size: " << double_value_json.size()
             << "\n";
   std::cout << "float value json payload size: " << float_value_json.size()
@@ -1123,6 +1128,8 @@ int main() {
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Struct WKT", any_struct_wkt,
                       any_struct_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any Value WKT", any_value_wkt, any_value_wkt_json,
+                      kIterations);
   RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
                       kIterations);
   RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
