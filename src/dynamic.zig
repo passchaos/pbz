@@ -1792,40 +1792,8 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
     return switch (value) {
         .string => |bytes| .{ .string = try allocator.dupe(u8, bytes) },
         .bytes => |bytes| .{ .bytes = try allocator.dupe(u8, bytes) },
-        .message => |message| blk: {
-            const cloned = try allocator.create(DynamicMessage);
-            cloned.* = DynamicMessage.init(allocator, message.descriptor);
-            errdefer {
-                cloned.deinit();
-                allocator.destroy(cloned);
-            }
-            for (message.fields.items) |*field| {
-                for (field.values.items) |item| try cloned.add(field.descriptor, try cloneValue(allocator, item));
-            }
-            for (message.unknown_fields.items) |unknown| try cloned.unknown_fields.append(allocator, .{
-                .number = unknown.number,
-                .wire_type = unknown.wire_type,
-                .data = try allocator.dupe(u8, unknown.data),
-            });
-            break :blk .{ .message = cloned };
-        },
-        .group => |message| blk: {
-            const cloned = try allocator.create(DynamicMessage);
-            cloned.* = DynamicMessage.init(allocator, message.descriptor);
-            errdefer {
-                cloned.deinit();
-                allocator.destroy(cloned);
-            }
-            for (message.fields.items) |*field| {
-                for (field.values.items) |item| try cloned.add(field.descriptor, try cloneValue(allocator, item));
-            }
-            for (message.unknown_fields.items) |unknown| try cloned.unknown_fields.append(allocator, .{
-                .number = unknown.number,
-                .wire_type = unknown.wire_type,
-                .data = try allocator.dupe(u8, unknown.data),
-            });
-            break :blk .{ .group = cloned };
-        },
+        .message => |message| .{ .message = try cloneDynamicMessage(allocator, message) },
+        .group => |message| .{ .group = try cloneDynamicMessage(allocator, message) },
         .map_entry => |entry| blk: {
             var cloned_key = try cloneValue(allocator, entry.key);
             errdefer deinitValue(&cloned_key, allocator);
@@ -1838,6 +1806,97 @@ pub fn cloneValue(allocator: std.mem.Allocator, value: Value) std.mem.Allocator.
         },
         else => value,
     };
+}
+
+fn cloneDynamicMessage(allocator: std.mem.Allocator, message: *const DynamicMessage) std.mem.Allocator.Error!*DynamicMessage {
+    const cloned = try allocator.create(DynamicMessage);
+    cloned.* = DynamicMessage.init(allocator, message.descriptor);
+    errdefer {
+        cloned.deinit();
+        allocator.destroy(cloned);
+    }
+
+    // Clone the stored field/value arrays directly instead of routing through
+    // add().  DynamicMessage state is already normalized when it is built, and
+    // direct cloning both preserves the exact stored shape and keeps ownership
+    // transfer explicit for every allocation-failure edge.
+    try cloned.fields.ensureTotalCapacity(allocator, message.fields.items.len);
+    for (message.fields.items) |*field| {
+        cloned.fields.appendAssumeCapacity(.{ .descriptor = field.descriptor });
+        const cloned_field = &cloned.fields.items[cloned.fields.items.len - 1];
+        try cloned_field.values.ensureTotalCapacity(allocator, field.values.items.len);
+        for (field.values.items) |item| {
+            var cloned_item = try cloneValue(allocator, item);
+            var owns_item = true;
+            errdefer if (owns_item) deinitValue(&cloned_item, allocator);
+            cloned_field.values.appendAssumeCapacity(cloned_item);
+            owns_item = false;
+        }
+    }
+
+    try cloned.unknown_fields.ensureTotalCapacity(allocator, message.unknown_fields.items.len);
+    for (message.unknown_fields.items) |unknown| {
+        const data = try allocator.dupe(u8, unknown.data);
+        var owns_data = true;
+        errdefer if (owns_data) allocator.free(data);
+        cloned.unknown_fields.appendAssumeCapacity(.{
+            .number = unknown.number,
+            .wire_type = unknown.wire_type,
+            .data = data,
+        });
+        owns_data = false;
+    }
+
+    return cloned;
+}
+
+fn exerciseCloneValueCleanup(allocator: std.mem.Allocator) !void {
+    const field = schema.FieldDescriptor{
+        .name = "name",
+        .number = 1,
+        .kind = .{ .scalar = .string },
+    };
+    const descriptor = schema.MessageDescriptor{ .name = "Cloneable" };
+
+    const message = try allocator.create(DynamicMessage);
+    message.* = DynamicMessage.init(allocator, &descriptor);
+    defer {
+        message.deinit();
+        allocator.destroy(message);
+    }
+
+    const owned_string = try allocator.dupe(u8, "owned");
+    var owns_string = true;
+    errdefer if (owns_string) allocator.free(owned_string);
+    try message.fields.append(allocator, .{ .descriptor = &field });
+    try message.fields.items[0].values.append(allocator, .{ .string = owned_string });
+    owns_string = false;
+
+    const raw_unknown = try allocator.dupe(u8, &.{ 0x08, 0x01 });
+    var owns_unknown = true;
+    errdefer if (owns_unknown) allocator.free(raw_unknown);
+    try message.unknown_fields.append(allocator, .{
+        .number = 1,
+        .wire_type = .varint,
+        .data = raw_unknown,
+    });
+    owns_unknown = false;
+
+    var cloned_value = try cloneValue(allocator, .{ .message = message });
+    defer deinitValue(&cloned_value, allocator);
+    const cloned = cloned_value.message;
+    try std.testing.expect(cloned != message);
+    try std.testing.expectEqual(@as(usize, 1), cloned.fields.items.len);
+    try std.testing.expectEqual(@as(usize, 1), cloned.fields.items[0].values.items.len);
+    try std.testing.expectEqualStrings("owned", cloned.fields.items[0].values.items[0].string);
+    try std.testing.expect(cloned.fields.items[0].values.items[0].string.ptr != owned_string.ptr);
+    try std.testing.expectEqual(@as(usize, 1), cloned.unknown_fields.items.len);
+    try std.testing.expectEqualSlices(u8, raw_unknown, cloned.unknown_fields.items[0].data);
+    try std.testing.expect(cloned.unknown_fields.items[0].data.ptr != raw_unknown.ptr);
+}
+
+test "dynamic cloneValue cleans up allocation failures" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, exerciseCloneValueCleanup, .{});
 }
 
 fn unknownFieldIndexLessThan(message: *const DynamicMessage, a: usize, b: usize) bool {
