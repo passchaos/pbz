@@ -485,6 +485,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	anyUInt64ValueWKT, err := anypb.New(uint64Value)
+	if err != nil {
+		panic(err)
+	}
+	anyUInt64ValueWKTJSONBytes, err := protojson.Marshal(anyUInt64ValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	int32Value := wrapperspb.Int32(12345)
 	int32ValueJSONBytes, err := protojson.Marshal(int32Value)
 	if err != nil {
@@ -638,6 +646,7 @@ func main() {
 	fmt.Printf("int64 value json payload size: %d\n", len(int64ValueJSONBytes))
 	fmt.Printf("any Int64Value WKT json payload size: %d\n", len(anyInt64ValueWKTJSONBytes))
 	fmt.Printf("uint64 value json payload size: %d\n", len(uint64ValueJSONBytes))
+	fmt.Printf("any UInt64Value WKT json payload size: %d\n", len(anyUInt64ValueWKTJSONBytes))
 	fmt.Printf("int32 value json payload size: %d\n", len(int32ValueJSONBytes))
 	fmt.Printf("uint32 value json payload size: %d\n", len(uint32ValueJSONBytes))
 	fmt.Printf("bool value json payload size: %d\n", len(boolValueJSONBytes))
@@ -901,6 +910,7 @@ func main() {
 	runProtoJSONPair("Int64Value", iterations, int64ValueJSONBytes, int64Value, func() *wrapperspb.Int64Value { return &wrapperspb.Int64Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Int64Value WKT", iterations, anyInt64ValueWKTJSONBytes, anyInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("UInt64Value", iterations, uint64ValueJSONBytes, uint64Value, func() *wrapperspb.UInt64Value { return &wrapperspb.UInt64Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any UInt64Value WKT", iterations, anyUInt64ValueWKTJSONBytes, anyUInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Int32Value", iterations, int32ValueJSONBytes, int32Value, func() *wrapperspb.Int32Value { return &wrapperspb.Int32Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("UInt32Value", iterations, uint32ValueJSONBytes, uint32Value, func() *wrapperspb.UInt32Value { return &wrapperspb.UInt32Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BoolValue", iterations, boolValueJSONBytes, boolValue, func() *wrapperspb.BoolValue { return &wrapperspb.BoolValue{} }, jsonUnmarshalOptions)

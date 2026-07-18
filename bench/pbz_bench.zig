@@ -33,6 +33,9 @@ const AnyValueWktJson =
 const AnyInt64ValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Int64Value","value":"9007199254740993"}
 ;
+const AnyUInt64ValueWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.UInt64Value","value":"9007199254740993"}
+;
 const AnyStringValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.StringValue","value":"hello"}
 ;
@@ -2468,6 +2471,11 @@ pub fn main() !void {
     const uint64_value_json = try uint64_value.jsonStringifyAlloc(allocator);
     defer allocator.free(uint64_value_json);
     std.debug.assert(std.mem.eql(u8, uint64_value_json, UInt64ValueJson));
+    var any_uint64_value_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.UInt64Value", uint64_value);
+    defer any_uint64_value_wkt.deinit(allocator);
+    const any_uint64_value_wkt_json = try any_uint64_value_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_uint64_value_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_uint64_value_wkt_json, AnyUInt64ValueWktJson));
     const int32_value = pbz.Int32Value{ .value = 12345 };
     const int32_value_json = try int32_value.jsonStringifyAlloc(allocator);
     defer allocator.free(int32_value_json);
@@ -2514,7 +2522,7 @@ pub fn main() !void {
     // inventory split into thematic groups so adding future WKT rows does not
     // silently push this diagnostic over the compiler-enforced limit again.
     std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len });
-    std.debug.print("payload sizes WKT wrappers: double_value_json={d} float_value_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} any_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_int64_value_wkt_json={d} any_string_value_wkt_json={d} any_bytes_value_wkt_json={d} nested_any_wkt_json={d} text={d}\n", .{ double_value_json.len, float_value_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, any_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_int64_value_wkt_json.len, any_string_value_wkt_json.len, any_bytes_value_wkt_json.len, nested_any_wkt_json.len, generated_text.len });
+    std.debug.print("payload sizes WKT wrappers: double_value_json={d} float_value_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} any_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_string_value_wkt_json={d} any_bytes_value_wkt_json={d} nested_any_wkt_json={d} text={d}\n", .{ double_value_json.len, float_value_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, any_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_string_value_wkt_json.len, any_bytes_value_wkt_json.len, nested_any_wkt_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2714,6 +2722,8 @@ pub fn main() !void {
         try runTimed(io, "pbz Any Value WKT JSON parse", iters.json, any_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any Int64Value WKT JSON stringify", iters.json, any_int64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_int64_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any Int64Value WKT JSON parse", iters.json, any_int64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_int64_value_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any UInt64Value WKT JSON stringify", iters.json, any_uint64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_uint64_value_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any UInt64Value WKT JSON parse", iters.json, any_uint64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_uint64_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any StringValue WKT JSON stringify", iters.json, any_string_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_string_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any StringValue WKT JSON parse", iters.json, any_string_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_string_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any BytesValue WKT JSON stringify", iters.json, any_bytes_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_bytes_value_wkt }, anyWktJsonStringify),
