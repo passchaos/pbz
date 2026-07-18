@@ -252,7 +252,7 @@ pub const demo = struct {
                     switch (tag.number) {
                         1 => { const payload = try r.readBytes(); if (self.has_child and self.child.len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.child.len + payload.len); @memcpy(merged[0..self.child.len], self.child); @memcpy(merged[self.child.len..], payload); self.child = merged; } else if (!self.has_child or self.child.len == 0) { self.child = payload; } self.has_child = true; },
                         2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested); },
-                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
                     }
                 }
                 self.children = if (children_list.items.len != 0 and children_list.items.len == children_list.capacity) children_list.toOwnedSliceAssert() else try children_list.toOwnedSlice(allocator);
@@ -278,7 +278,7 @@ pub const demo = struct {
                     switch (tag.number) {
                         1 => { const payload = try r.readBytes(); if (self.has_child and self.child.len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.child.len + payload.len); @memcpy(merged[0..self.child.len], self.child); @memcpy(merged[self.child.len..], payload); self.child = merged; } else if (!self.has_child or self.child.len == 0) { self.child = payload; } self.has_child = true; },
                         2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested); },
-                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); },
+                        else => { const start = r.position() - pbz.wire.encodedVarintSize(try tag.encode()); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[start..r.position()]); try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); },
                     }
                 }
                 self.children = if (children_list.items.len != 0 and children_list.items.len == children_list.capacity) children_list.toOwnedSliceAssert() else try children_list.toOwnedSlice(allocator);
@@ -1026,8 +1026,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         children_list.append(allocator, try nested.cloneOwned(allocator)) catch |err| return err;
                         continue;
                     }
-                    if (try @This().textUnknownField(allocator, line)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }
-                    if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); continue; }
+                    if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
+                    if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }

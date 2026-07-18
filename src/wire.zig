@@ -181,6 +181,11 @@ pub fn rawFieldListToOwnedSlice(allocator: std.mem.Allocator, list: *std.ArrayLi
     return try list.toOwnedSlice(allocator);
 }
 
+pub fn appendOwnedRawField(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8), raw: []const u8) std.mem.Allocator.Error!void {
+    errdefer allocator.free(raw);
+    try list.append(allocator, raw);
+}
+
 pub fn validateRawField(raw: []const u8) Error!void {
     var reader = Reader.init(raw);
     const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
@@ -1794,6 +1799,14 @@ test "wire clones and clears raw field slices" {
     var empty_list: std.ArrayList([]const u8) = .empty;
     const empty = try rawFieldListToOwnedSlice(allocator, &empty_list);
     try std.testing.expectEqual(@as(usize, 0), empty.len);
+
+    var appended_list: std.ArrayList([]const u8) = .empty;
+    errdefer deinitRawFieldList(allocator, &appended_list);
+    try appendOwnedRawField(allocator, &appended_list, try allocator.dupe(u8, second.slice()));
+    const appended = try rawFieldListToOwnedSlice(allocator, &appended_list);
+    defer freeRawFields(allocator, appended);
+    try std.testing.expectEqual(@as(usize, 1), appended.len);
+    try std.testing.expectEqualSlices(u8, second.slice(), appended[0]);
 }
 
 test "wire writes deterministic raw fields in generated order" {
