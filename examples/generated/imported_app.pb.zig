@@ -942,19 +942,30 @@ fn enumKnown(value: i32, comptime numbers: []const i32) bool {
 
 fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, line, name)) return null;
-    var rest = line[name.len..];
-    rest = std.mem.trimStart(u8, rest, " \t");
-    if (rest.len == 0 or rest[0] != ':') return null;
-    return std.mem.trim(u8, rest[1..], " \t\r");
+    const rest = line[name.len..];
+    if (rest.len != 0 and rest[0] == ':') {
+        const value = rest[1..];
+        if (value.len == 0) return value;
+        if (value[0] == ' ') {
+            const body = value[1..];
+            if (body.len == 0 or (body[0] != ' ' and body[0] != '\t' and body[0] != '\r' and body[body.len - 1] != ' ' and body[body.len - 1] != '\t' and body[body.len - 1] != '\r')) return body;
+        } else if (value[0] != '\t' and value[0] != '\r' and value[value.len - 1] != ' ' and value[value.len - 1] != '\t' and value[value.len - 1] != '\r') return value;
+    }
+    const trimmed = std.mem.trimStart(u8, rest, " \t");
+    if (trimmed.len == 0 or trimmed[0] != ':') return null;
+    return std.mem.trim(u8, trimmed[1..], " \t\r");
 }
 
 fn textBlockField(line: []const u8, comptime name: []const u8) bool {
     if (!std.mem.startsWith(u8, line, name)) return false;
-    var rest = std.mem.trimStart(u8, line[name.len..], " \t");
-    if (rest.len != 0 and rest[0] == ':') {
-        rest = std.mem.trimStart(u8, rest[1..], " \t");
+    const rest = line[name.len..];
+    if (rest.len == 1 and (rest[0] == '{' or rest[0] == '<')) return true;
+    if (rest.len == 2 and rest[0] == ' ' and (rest[1] == '{' or rest[1] == '<')) return true;
+    var trimmed = std.mem.trimStart(u8, rest, " \t");
+    if (trimmed.len != 0 and trimmed[0] == ':') {
+        trimmed = std.mem.trimStart(u8, trimmed[1..], " \t");
     }
-    return std.mem.eql(u8, rest, "{") or std.mem.eql(u8, rest, "<");
+    return std.mem.eql(u8, trimmed, "{") or std.mem.eql(u8, trimmed, "<");
 }
 
 fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
