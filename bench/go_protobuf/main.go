@@ -361,6 +361,41 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	doubleValue := wrapperspb.Double(3.25)
+	doubleValueJSONBytes, err := protojson.Marshal(doubleValue)
+	if err != nil {
+		panic(err)
+	}
+	floatValue := wrapperspb.Float(1.5)
+	floatValueJSONBytes, err := protojson.Marshal(floatValue)
+	if err != nil {
+		panic(err)
+	}
+	int64Value := wrapperspb.Int64(9_007_199_254_740_993)
+	int64ValueJSONBytes, err := protojson.Marshal(int64Value)
+	if err != nil {
+		panic(err)
+	}
+	uint64Value := wrapperspb.UInt64(9_007_199_254_740_993)
+	uint64ValueJSONBytes, err := protojson.Marshal(uint64Value)
+	if err != nil {
+		panic(err)
+	}
+	int32Value := wrapperspb.Int32(12345)
+	int32ValueJSONBytes, err := protojson.Marshal(int32Value)
+	if err != nil {
+		panic(err)
+	}
+	uint32Value := wrapperspb.UInt32(12345)
+	uint32ValueJSONBytes, err := protojson.Marshal(uint32Value)
+	if err != nil {
+		panic(err)
+	}
+	boolValue := wrapperspb.Bool(true)
+	boolValueJSONBytes, err := protojson.Marshal(boolValue)
+	if err != nil {
+		panic(err)
+	}
 	stringValue := wrapperspb.String("hello")
 	stringValueJSONBytes, err := protojson.Marshal(stringValue)
 	if err != nil {
@@ -458,6 +493,13 @@ func main() {
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
+	fmt.Printf("double value json payload size: %d\n", len(doubleValueJSONBytes))
+	fmt.Printf("float value json payload size: %d\n", len(floatValueJSONBytes))
+	fmt.Printf("int64 value json payload size: %d\n", len(int64ValueJSONBytes))
+	fmt.Printf("uint64 value json payload size: %d\n", len(uint64ValueJSONBytes))
+	fmt.Printf("int32 value json payload size: %d\n", len(int32ValueJSONBytes))
+	fmt.Printf("uint32 value json payload size: %d\n", len(uint32ValueJSONBytes))
+	fmt.Printf("bool value json payload size: %d\n", len(boolValueJSONBytes))
 	fmt.Printf("string value json payload size: %d\n", len(stringValueJSONBytes))
 	fmt.Printf("bytes value json payload size: %d\n", len(bytesValueJSONBytes))
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
@@ -753,6 +795,111 @@ func main() {
 	runTimed("go protobuf Timestamp JSON parse", iterations, len(timestampJSONBytes), func() {
 		var decoded timestamppb.Timestamp
 		if err := jsonUnmarshalOptions.Unmarshal(timestampJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf DoubleValue JSON stringify", iterations, len(doubleValueJSONBytes), func() {
+		out, err := protojson.Marshal(doubleValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf DoubleValue JSON parse", iterations, len(doubleValueJSONBytes), func() {
+		var decoded wrapperspb.DoubleValue
+		if err := jsonUnmarshalOptions.Unmarshal(doubleValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf FloatValue JSON stringify", iterations, len(floatValueJSONBytes), func() {
+		out, err := protojson.Marshal(floatValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf FloatValue JSON parse", iterations, len(floatValueJSONBytes), func() {
+		var decoded wrapperspb.FloatValue
+		if err := jsonUnmarshalOptions.Unmarshal(floatValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Int64Value JSON stringify", iterations, len(int64ValueJSONBytes), func() {
+		out, err := protojson.Marshal(int64Value)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Int64Value JSON parse", iterations, len(int64ValueJSONBytes), func() {
+		var decoded wrapperspb.Int64Value
+		if err := jsonUnmarshalOptions.Unmarshal(int64ValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf UInt64Value JSON stringify", iterations, len(uint64ValueJSONBytes), func() {
+		out, err := protojson.Marshal(uint64Value)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf UInt64Value JSON parse", iterations, len(uint64ValueJSONBytes), func() {
+		var decoded wrapperspb.UInt64Value
+		if err := jsonUnmarshalOptions.Unmarshal(uint64ValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Int32Value JSON stringify", iterations, len(int32ValueJSONBytes), func() {
+		out, err := protojson.Marshal(int32Value)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Int32Value JSON parse", iterations, len(int32ValueJSONBytes), func() {
+		var decoded wrapperspb.Int32Value
+		if err := jsonUnmarshalOptions.Unmarshal(int32ValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf UInt32Value JSON stringify", iterations, len(uint32ValueJSONBytes), func() {
+		out, err := protojson.Marshal(uint32Value)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf UInt32Value JSON parse", iterations, len(uint32ValueJSONBytes), func() {
+		var decoded wrapperspb.UInt32Value
+		if err := jsonUnmarshalOptions.Unmarshal(uint32ValueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf BoolValue JSON stringify", iterations, len(boolValueJSONBytes), func() {
+		out, err := protojson.Marshal(boolValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf BoolValue JSON parse", iterations, len(boolValueJSONBytes), func() {
+		var decoded wrapperspb.BoolValue
+		if err := jsonUnmarshalOptions.Unmarshal(boolValueJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

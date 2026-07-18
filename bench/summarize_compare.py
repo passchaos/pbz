@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 66
+EXPECTED_WORKLOAD_COUNT = 80
 
 
 @dataclass(frozen=True)
@@ -389,6 +389,118 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf Timestamp JSON parse",),
             "go protobuf": ("go protobuf Timestamp JSON parse",),
+        },
+    ),
+    Workload(
+        "DoubleValue JSON stringify",
+        ("pbz DoubleValue JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf DoubleValue JSON stringify",),
+            "go protobuf": ("go protobuf DoubleValue JSON stringify",),
+        },
+    ),
+    Workload(
+        "DoubleValue JSON parse",
+        ("pbz DoubleValue JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf DoubleValue JSON parse",),
+            "go protobuf": ("go protobuf DoubleValue JSON parse",),
+        },
+    ),
+    Workload(
+        "FloatValue JSON stringify",
+        ("pbz FloatValue JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf FloatValue JSON stringify",),
+            "go protobuf": ("go protobuf FloatValue JSON stringify",),
+        },
+    ),
+    Workload(
+        "FloatValue JSON parse",
+        ("pbz FloatValue JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf FloatValue JSON parse",),
+            "go protobuf": ("go protobuf FloatValue JSON parse",),
+        },
+    ),
+    Workload(
+        "Int64Value JSON stringify",
+        ("pbz Int64Value JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf Int64Value JSON stringify",),
+            "go protobuf": ("go protobuf Int64Value JSON stringify",),
+        },
+    ),
+    Workload(
+        "Int64Value JSON parse",
+        ("pbz Int64Value JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf Int64Value JSON parse",),
+            "go protobuf": ("go protobuf Int64Value JSON parse",),
+        },
+    ),
+    Workload(
+        "UInt64Value JSON stringify",
+        ("pbz UInt64Value JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf UInt64Value JSON stringify",),
+            "go protobuf": ("go protobuf UInt64Value JSON stringify",),
+        },
+    ),
+    Workload(
+        "UInt64Value JSON parse",
+        ("pbz UInt64Value JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf UInt64Value JSON parse",),
+            "go protobuf": ("go protobuf UInt64Value JSON parse",),
+        },
+    ),
+    Workload(
+        "Int32Value JSON stringify",
+        ("pbz Int32Value JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf Int32Value JSON stringify",),
+            "go protobuf": ("go protobuf Int32Value JSON stringify",),
+        },
+    ),
+    Workload(
+        "Int32Value JSON parse",
+        ("pbz Int32Value JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf Int32Value JSON parse",),
+            "go protobuf": ("go protobuf Int32Value JSON parse",),
+        },
+    ),
+    Workload(
+        "UInt32Value JSON stringify",
+        ("pbz UInt32Value JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf UInt32Value JSON stringify",),
+            "go protobuf": ("go protobuf UInt32Value JSON stringify",),
+        },
+    ),
+    Workload(
+        "UInt32Value JSON parse",
+        ("pbz UInt32Value JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf UInt32Value JSON parse",),
+            "go protobuf": ("go protobuf UInt32Value JSON parse",),
+        },
+    ),
+    Workload(
+        "BoolValue JSON stringify",
+        ("pbz BoolValue JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf BoolValue JSON stringify",),
+            "go protobuf": ("go protobuf BoolValue JSON stringify",),
+        },
+    ),
+    Workload(
+        "BoolValue JSON parse",
+        ("pbz BoolValue JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf BoolValue JSON parse",),
+            "go protobuf": ("go protobuf BoolValue JSON parse",),
         },
     ),
     Workload(
@@ -1037,6 +1149,48 @@ def self_test() -> None:
     pbz Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 65.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf Timestamp JSON parse: best of 3 x 10 iters, 28 bytes/iter, 320.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz DoubleValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf DoubleValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf DoubleValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz DoubleValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf DoubleValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf DoubleValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz FloatValue JSON stringify: best of 3 x 10 iters, 3 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf FloatValue JSON stringify: best of 3 x 10 iters, 3 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf FloatValue JSON stringify: best of 3 x 10 iters, 3 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz FloatValue JSON parse: best of 3 x 10 iters, 3 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf FloatValue JSON parse: best of 3 x 10 iters, 3 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf FloatValue JSON parse: best of 3 x 10 iters, 3 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Int64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Int64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Int64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Int64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Int64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Int64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz UInt64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf UInt64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf UInt64Value JSON stringify: best of 3 x 10 iters, 18 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz UInt64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf UInt64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf UInt64Value JSON parse: best of 3 x 10 iters, 18 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Int32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Int32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Int32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz Int32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf Int32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf Int32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz UInt32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf UInt32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf UInt32Value JSON stringify: best of 3 x 10 iters, 5 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz UInt32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf UInt32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf UInt32Value JSON parse: best of 3 x 10 iters, 5 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz BoolValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf BoolValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf BoolValue JSON stringify: best of 3 x 10 iters, 4 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
+    pbz BoolValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 55.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf BoolValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 220.00 ns/op, 1 ops/s, 1 MiB/s
+    go protobuf BoolValue JSON parse: best of 3 x 10 iters, 4 bytes/iter, 260.00 ns/op, 1 ops/s, 1 MiB/s
     pbz StringValue JSON stringify: best of 3 x 10 iters, 7 bytes/iter, 25.00 ns/op, 1 ops/s, 1 MiB/s
     c++ protobuf StringValue JSON stringify: best of 3 x 10 iters, 7 bytes/iter, 210.00 ns/op, 1 ops/s, 1 MiB/s
     go protobuf StringValue JSON stringify: best of 3 x 10 iters, 7 bytes/iter, 240.00 ns/op, 1 ops/s, 1 MiB/s
@@ -1094,22 +1248,25 @@ def self_test() -> None:
     assert "pbz Timestamp JSON parse" in output
     assert "c++ protobuf Timestamp JSON parse" in output
     assert "go protobuf Timestamp JSON parse" in output
-    assert "StringValue JSON stringify" in output
-    assert "pbz StringValue JSON stringify" in output
-    assert "c++ protobuf StringValue JSON stringify" in output
-    assert "go protobuf StringValue JSON stringify" in output
-    assert "StringValue JSON parse" in output
-    assert "pbz StringValue JSON parse" in output
-    assert "c++ protobuf StringValue JSON parse" in output
-    assert "go protobuf StringValue JSON parse" in output
-    assert "BytesValue JSON stringify" in output
-    assert "pbz BytesValue JSON stringify" in output
-    assert "c++ protobuf BytesValue JSON stringify" in output
-    assert "go protobuf BytesValue JSON stringify" in output
-    assert "BytesValue JSON parse" in output
-    assert "pbz BytesValue JSON parse" in output
-    assert "c++ protobuf BytesValue JSON parse" in output
-    assert "go protobuf BytesValue JSON parse" in output
+    for wrapper in (
+        "DoubleValue",
+        "FloatValue",
+        "Int64Value",
+        "UInt64Value",
+        "Int32Value",
+        "UInt32Value",
+        "BoolValue",
+        "StringValue",
+        "BytesValue",
+    ):
+        assert f"{wrapper} JSON stringify" in output
+        assert f"pbz {wrapper} JSON stringify" in output
+        assert f"c++ protobuf {wrapper} JSON stringify" in output
+        assert f"go protobuf {wrapper} JSON stringify" in output
+        assert f"{wrapper} JSON parse" in output
+        assert f"pbz {wrapper} JSON parse" in output
+        assert f"c++ protobuf {wrapper} JSON parse" in output
+        assert f"go protobuf {wrapper} JSON parse" in output
     assert "WIN" in output
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output

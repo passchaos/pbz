@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-bytesvalue-json.log` summarized by
-`/tmp/pbz-summary-after-bytesvalue-json.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-after-wrapper-json-isolated.log` summarized by
+`/tmp/pbz-summary-after-wrapper-json-isolated.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-bytesvalue-json.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-after-wrapper-json-isolated.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 66 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 80 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -89,8 +89,9 @@ The matrix includes:
 - direct `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
 - direct `google.protobuf.Timestamp` JSON stringify/parse
-- direct `google.protobuf.StringValue` JSON stringify/parse
-- direct `google.protobuf.BytesValue` JSON stringify/parse
+- direct scalar wrapper JSON stringify/parse for `DoubleValue`, `FloatValue`,
+  `Int64Value`, `UInt64Value`, `Int32Value`, `UInt32Value`, `BoolValue`,
+  `StringValue`, and `BytesValue`
 - complex TextFormat format/parse
 - simple JSON stringify/parse
 - simple TextFormat format/parse

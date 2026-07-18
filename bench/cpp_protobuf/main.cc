@@ -72,6 +72,41 @@ BenchResult RunTimed(const char *name, int iterations,
   return BenchResult{name, iterations, kBenchmarkSamples, best, bytes_per_iter};
 }
 
+template <class Message>
+std::string JsonStringFor(const Message &message) {
+  std::string out;
+  if (!google::protobuf::util::MessageToJsonString(message, &out).ok())
+    std::abort();
+  return out;
+}
+
+template <class Message>
+void RunWktJsonBenchPair(const char *type_name, const Message &message,
+                         const std::string &json, int iterations) {
+  const std::string stringify_name =
+      std::string("c++ protobuf ") + type_name + " JSON stringify";
+  auto stringify = RunTimed(stringify_name.c_str(), iterations, json.size(),
+                            [&]() {
+                              std::string out;
+                              if (!google::protobuf::util::MessageToJsonString(
+                                       message, &out)
+                                       .ok())
+                                std::abort();
+                              asm volatile("" : : "g"(out.data()) : "memory");
+                            });
+  stringify.Print();
+
+  const std::string parse_name =
+      std::string("c++ protobuf ") + type_name + " JSON parse";
+  auto parse = RunTimed(parse_name.c_str(), iterations, json.size(), [&]() {
+    Message decoded;
+    if (!google::protobuf::util::JsonStringToMessage(json, &decoded).ok())
+      std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  parse.Print();
+}
+
 void AppendVarint(std::string *out, uint64_t value) {
   while (value >= 0x80) {
     out->push_back(static_cast<char>((value & 0x7f) | 0x80));
@@ -404,20 +439,33 @@ int main() {
   if (!google::protobuf::util::MessageToJsonString(timestamp, &timestamp_json)
            .ok())
     std::abort();
+  google::protobuf::DoubleValue double_value;
+  double_value.set_value(3.25);
+  const std::string double_value_json = JsonStringFor(double_value);
+  google::protobuf::FloatValue float_value;
+  float_value.set_value(1.5f);
+  const std::string float_value_json = JsonStringFor(float_value);
+  google::protobuf::Int64Value int64_value;
+  int64_value.set_value(9007199254740993LL);
+  const std::string int64_value_json = JsonStringFor(int64_value);
+  google::protobuf::UInt64Value uint64_value;
+  uint64_value.set_value(9007199254740993ULL);
+  const std::string uint64_value_json = JsonStringFor(uint64_value);
+  google::protobuf::Int32Value int32_value;
+  int32_value.set_value(12345);
+  const std::string int32_value_json = JsonStringFor(int32_value);
+  google::protobuf::UInt32Value uint32_value;
+  uint32_value.set_value(12345);
+  const std::string uint32_value_json = JsonStringFor(uint32_value);
+  google::protobuf::BoolValue bool_value;
+  bool_value.set_value(true);
+  const std::string bool_value_json = JsonStringFor(bool_value);
   google::protobuf::StringValue string_value;
   string_value.set_value("hello");
-  std::string string_value_json;
-  if (!google::protobuf::util::MessageToJsonString(string_value,
-                                                   &string_value_json)
-           .ok())
-    std::abort();
+  const std::string string_value_json = JsonStringFor(string_value);
   google::protobuf::BytesValue bytes_value;
   bytes_value.set_value("hi");
-  std::string bytes_value_json;
-  if (!google::protobuf::util::MessageToJsonString(bytes_value,
-                                                   &bytes_value_json)
-           .ok())
-    std::abort();
+  const std::string bytes_value_json = JsonStringFor(bytes_value);
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -475,6 +523,20 @@ int main() {
             << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
+            << "\n";
+  std::cout << "double value json payload size: " << double_value_json.size()
+            << "\n";
+  std::cout << "float value json payload size: " << float_value_json.size()
+            << "\n";
+  std::cout << "int64 value json payload size: " << int64_value_json.size()
+            << "\n";
+  std::cout << "uint64 value json payload size: " << uint64_value_json.size()
+            << "\n";
+  std::cout << "int32 value json payload size: " << int32_value_json.size()
+            << "\n";
+  std::cout << "uint32 value json payload size: " << uint32_value_json.size()
+            << "\n";
+  std::cout << "bool value json payload size: " << bool_value_json.size()
             << "\n";
   std::cout << "string value json payload size: " << string_value_json.size()
             << "\n";
@@ -1116,51 +1178,19 @@ int main() {
       });
   timestamp_json_parse.Print();
 
-  auto string_value_json_stringify = RunTimed(
-      "c++ protobuf StringValue JSON stringify", kIterations,
-      string_value_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(string_value, &out)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  string_value_json_stringify.Print();
-
-  auto string_value_json_parse = RunTimed(
-      "c++ protobuf StringValue JSON parse", kIterations,
-      string_value_json.size(), [&]() {
-        google::protobuf::StringValue decoded;
-        if (!google::protobuf::util::JsonStringToMessage(string_value_json,
-                                                         &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  string_value_json_parse.Print();
-
-  auto bytes_value_json_stringify = RunTimed(
-      "c++ protobuf BytesValue JSON stringify", kIterations,
-      bytes_value_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(bytes_value, &out)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  bytes_value_json_stringify.Print();
-
-  auto bytes_value_json_parse = RunTimed(
-      "c++ protobuf BytesValue JSON parse", kIterations,
-      bytes_value_json.size(), [&]() {
-        google::protobuf::BytesValue decoded;
-        if (!google::protobuf::util::JsonStringToMessage(bytes_value_json,
-                                                         &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  bytes_value_json_parse.Print();
+  RunWktJsonBenchPair("DoubleValue", double_value, double_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);
+  RunWktJsonBenchPair("Int64Value", int64_value, int64_value_json, kIterations);
+  RunWktJsonBenchPair("UInt64Value", uint64_value, uint64_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("Int32Value", int32_value, int32_value_json, kIterations);
+  RunWktJsonBenchPair("UInt32Value", uint32_value, uint32_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("BoolValue", bool_value, bool_value_json, kIterations);
+  RunWktJsonBenchPair("StringValue", string_value, string_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("BytesValue", bytes_value, bytes_value_json, kIterations);
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {
