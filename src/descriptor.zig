@@ -3622,6 +3622,39 @@ test "descriptor decodes encoded FileDescriptorProto back to schema" {
     try std.testing.expectEqual(@as(usize, 1), decoded.services.items.len);
 }
 
+fn exerciseFileDescriptorDecodeCleanup(allocator: std.mem.Allocator, encoded: []const u8) !void {
+    var decoded = try decodeFileDescriptorProto(allocator, encoded);
+    defer decoded.deinit();
+
+    try std.testing.expectEqualStrings("bag.proto", decoded.name);
+    try std.testing.expectEqual(@as(usize, 1), decoded.messages.items.len);
+    try std.testing.expectEqual(@as(usize, 1), decoded.enums.items.len);
+    try std.testing.expectEqual(@as(usize, 1), decoded.services.items.len);
+}
+
+test "descriptor decode cleans up allocation failures" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\package demo;
+        \\enum Kind { UNKNOWN = 0; ADMIN = 1; }
+        \\message Bag {
+        \\  oneof pick { string name = 1; int32 id = 2; }
+        \\  repeated int32 nums = 3;
+        \\  map<string, int32> counts = 4;
+        \\  Kind kind = 5;
+        \\}
+        \\service Bags { rpc Get (Bag) returns (Bag); }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    file.name = "bag.proto";
+
+    const encoded = try encodeFileDescriptorProto(allocator, &file, file.name);
+    defer allocator.free(encoded);
+    try std.testing.checkAllAllocationFailures(allocator, exerciseFileDescriptorDecodeCleanup, .{encoded});
+}
+
 test "descriptor rejects invalid service and method descriptors" {
     const allocator = std.testing.allocator;
     {
