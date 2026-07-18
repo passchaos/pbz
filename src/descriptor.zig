@@ -1447,6 +1447,60 @@ test "descriptor encodes nested message and enum type names with full scope" {
     try std.testing.expectEqual(@as(i64, 1), inner.findField("kind").?.default_value.?.integer);
 }
 
+fn appendFileDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.FileDescriptor), value: schema.FileDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit();
+    try list.append(allocator, owned);
+}
+
+fn appendMessageDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.MessageDescriptor), value: schema.MessageDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendEnumDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.EnumDescriptor), value: schema.EnumDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendServiceDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.ServiceDescriptor), value: schema.ServiceDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendMethodDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.MethodDescriptor), value: schema.MethodDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendFieldDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.FieldDescriptor), value: schema.FieldDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendEnumValueDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.EnumValueDescriptor), value: schema.EnumValueDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendOneofDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.OneofDescriptor), value: schema.OneofDescriptor) std.mem.Allocator.Error!void {
+    var owned = value;
+    errdefer owned.deinit(allocator);
+    try list.append(allocator, owned);
+}
+
+fn appendFieldOption(allocator: std.mem.Allocator, list: *schema.OptionList, value: schema.FieldOption) std.mem.Allocator.Error!void {
+    const owned = value;
+    errdefer if (owned.name_owned) allocator.free(owned.name);
+    try list.append(allocator, owned);
+}
+
 pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.FileDescriptor {
     var file = schema.FileDescriptor.init(allocator);
     errdefer file.deinit();
@@ -1469,10 +1523,10 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
             10 => try public_deps.append(allocator, try reader.readInt32()),
             11 => try weak_deps.append(allocator, try reader.readInt32()),
             15 => try file.imports.append(allocator, .{ .path = try reader.readBytes(), .kind = .option }),
-            4 => try file.messages.append(allocator, try decodeMessageDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
-            5 => try file.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
-            6 => try file.services.append(allocator, try decodeServiceDescriptor(allocator, try reader.readBytes())),
-            7 => try file.extensions.append(allocator, try decodeFieldDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
+            4 => try appendMessageDescriptor(allocator, &file.messages, try decodeMessageDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
+            5 => try appendEnumDescriptor(allocator, &file.enums, try decodeEnumDescriptor(allocator, try reader.readBytes())),
+            6 => try appendServiceDescriptor(allocator, &file.services, try decodeServiceDescriptor(allocator, try reader.readBytes())),
+            7 => try appendFieldDescriptor(allocator, &file.extensions, try decodeFieldDescriptor(allocator, &file.owned_strings, try reader.readBytes())),
             8 => saw_file_features = try decodeFileOptions(allocator, &file, try reader.readBytes()) or saw_file_features,
             9 => file.source_code_info = try decodeSourceCodeInfo(allocator, try reader.readBytes()),
             12 => {
@@ -2067,7 +2121,7 @@ pub fn decodeFileDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) 
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {
         if (tag.number == 1) {
-            try files.append(allocator, try decodeFileDescriptorProto(allocator, try reader.readBytes()));
+            try appendFileDescriptor(allocator, &files, try decodeFileDescriptorProto(allocator, try reader.readBytes()));
         } else try reader.skipValue(tag);
     }
     try validateDecodedFileDescriptorSetReferences(allocator, files.items);
@@ -2211,19 +2265,22 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Arr
             1 => message.name = try reader.readBytes(),
             2 => {
                 var field = try decodeFieldDescriptor(allocator, owned_strings, try reader.readBytes());
+                var owns_field = true;
+                errdefer if (owns_field) field.deinit(allocator);
                 if (field.oneof_name) |idx_text| {
                     const idx = try std.fmt.parseInt(usize, idx_text, 10);
                     field.oneof_name = null;
                     try oneof_indexes.append(allocator, .{ .field_index = message.fields.items.len, .oneof_index = idx });
                 }
-                try message.fields.append(allocator, field);
+                owns_field = false;
+                try appendFieldDescriptor(allocator, &message.fields, field);
             },
-            3 => try message.messages.append(allocator, try decodeMessageDescriptor(allocator, owned_strings, try reader.readBytes())),
-            4 => try message.enums.append(allocator, try decodeEnumDescriptor(allocator, try reader.readBytes())),
+            3 => try appendMessageDescriptor(allocator, &message.messages, try decodeMessageDescriptor(allocator, owned_strings, try reader.readBytes())),
+            4 => try appendEnumDescriptor(allocator, &message.enums, try decodeEnumDescriptor(allocator, try reader.readBytes())),
             5 => try message.extension_ranges.append(allocator, try decodeExtensionRange(allocator, try reader.readBytes())),
-            6 => try message.extensions.append(allocator, try decodeFieldDescriptor(allocator, owned_strings, try reader.readBytes())),
+            6 => try appendFieldDescriptor(allocator, &message.extensions, try decodeFieldDescriptor(allocator, owned_strings, try reader.readBytes())),
             7 => try decodeMessageOptions(allocator, &message, try reader.readBytes()),
-            8 => try message.oneofs.append(allocator, try decodeOneofDescriptor(allocator, try reader.readBytes())),
+            8 => try appendOneofDescriptor(allocator, &message.oneofs, try decodeOneofDescriptor(allocator, try reader.readBytes())),
             9 => try message.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), false)),
             10 => try message.reserved_names.append(allocator, try reader.readBytes()),
             else => try reader.skipValue(tag),
@@ -2772,7 +2829,7 @@ fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!s
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => enumeration.name = try reader.readBytes(),
-            2 => try enumeration.values.append(allocator, try decodeEnumValueDescriptor(allocator, try reader.readBytes())),
+            2 => try appendEnumValueDescriptor(allocator, &enumeration.values, try decodeEnumValueDescriptor(allocator, try reader.readBytes())),
             3 => try decodeEnumOptions(allocator, &enumeration, try reader.readBytes()),
             4 => try enumeration.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), true)),
             5 => try enumeration.reserved_names.append(allocator, try reader.readBytes()),
@@ -2806,7 +2863,7 @@ fn decodeEnumOptions(allocator: std.mem.Allocator, enumeration: *schema.EnumDesc
             3 => try enumeration.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
             6 => try enumeration.options.append(allocator, .{ .name = "deprecated_legacy_json_field_conflicts", .value = .{ .boolean = try reader.readBool() } }),
             7 => enumeration.features = try decodeFeatureSet(try reader.readBytes()),
-            999 => try enumeration.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &enumeration.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -2820,7 +2877,7 @@ fn decodeEnumValueOptions(allocator: std.mem.Allocator, value: *schema.EnumValue
             2 => value.features = try decodeFeatureSet(try reader.readBytes()),
             3 => try value.options.append(allocator, .{ .name = "debug_redact", .value = .{ .boolean = try reader.readBool() } }),
             4 => value.feature_support = try decodeFeatureSupport(try reader.readBytes()),
-            999 => try value.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &value.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -2978,7 +3035,7 @@ fn decodeExtensionRangeOptions(allocator: std.mem.Allocator, range: *schema.Exte
             2 => try range.declarations.append(allocator, try decodeExtensionDeclaration(try reader.readBytes())),
             3 => range.verification = std.enums.fromInt(schema.ExtensionRangeVerification, try reader.readInt32()) orelse return error.InvalidFieldType,
             50 => range.features = try decodeFeatureSet(try reader.readBytes()),
-            999 => try range.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &range.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -3082,7 +3139,7 @@ fn decodeServiceDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Erro
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => service.name = try reader.readBytes(),
-            2 => try service.methods.append(allocator, try decodeMethodDescriptor(allocator, try reader.readBytes())),
+            2 => try appendMethodDescriptor(allocator, &service.methods, try decodeMethodDescriptor(allocator, try reader.readBytes())),
             3 => try decodeServiceOptions(allocator, &service, try reader.readBytes()),
             else => try reader.skipValue(tag),
         }
@@ -3121,7 +3178,7 @@ fn decodeServiceOptions(allocator: std.mem.Allocator, service: *schema.ServiceDe
         switch (tag.number) {
             33 => try service.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
             34 => service.features = try decodeFeatureSet(try reader.readBytes()),
-            999 => try service.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &service.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -3134,7 +3191,7 @@ fn decodeMethodOptions(allocator: std.mem.Allocator, method: *schema.MethodDescr
             33 => try method.options.append(allocator, .{ .name = "deprecated", .value = .{ .boolean = try reader.readBool() } }),
             34 => try method.options.append(allocator, .{ .name = "idempotency_level", .value = .{ .integer = try readKnownEnumNumber(&reader, 0, 2) } }),
             35 => method.features = try decodeFeatureSet(try reader.readBytes()),
-            999 => try method.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &method.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -3145,7 +3202,7 @@ fn decodeOneofOptions(allocator: std.mem.Allocator, oneof: *schema.OneofDescript
     while (try reader.nextTag()) |tag| {
         switch (tag.number) {
             1 => oneof.features = try decodeFeatureSet(try reader.readBytes()),
-            999 => try oneof.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &oneof.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -3161,7 +3218,7 @@ fn decodeMessageOptions(allocator: std.mem.Allocator, message: *schema.MessageDe
             7 => message.map_entry = try reader.readBool(),
             11 => try message.options.append(allocator, .{ .name = "deprecated_legacy_json_field_conflicts", .value = .{ .boolean = try reader.readBool() } }),
             12 => message.features = try decodeFeatureSet(try reader.readBytes()),
-            999 => try message.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &message.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -3195,7 +3252,7 @@ fn decodeFileOptions(allocator: std.mem.Allocator, file: *schema.FileDescriptor,
                 file.features = try decodeFeatureSet(try reader.readBytes());
                 saw_features = true;
             },
-            999 => try file.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &file.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
@@ -3234,7 +3291,7 @@ fn decodeFieldOptions(allocator: std.mem.Allocator, bytes: []const u8) Error!Dec
             20 => try result.edition_defaults.append(allocator, try decodeFieldEditionDefault(try reader.readBytes())),
             21 => result.features = try decodeFeatureSet(try reader.readBytes()),
             22 => result.feature_support = try decodeFeatureSupport(try reader.readBytes()),
-            999 => try result.options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())),
+            999 => try appendFieldOption(allocator, &result.options, try decodeUninterpretedOption(allocator, try reader.readBytes())),
             else => try reader.skipValue(tag),
         }
     }
