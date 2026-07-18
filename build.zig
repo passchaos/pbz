@@ -244,7 +244,9 @@ pub fn build(b: *std.Build) void {
     const run_conformance_smoke = b.addSystemCommand(&.{
         "python3",
         "tools/smoke_conformance.py",
+        "--exe",
     });
+    run_conformance_smoke.addArtifactArg(conformance_exe);
     const conformance_smoke_step = b.step("conformance-smoke", "Run lightweight pbz-conformance smoke test");
     conformance_smoke_step.dependOn(&run_conformance_smoke.step);
 

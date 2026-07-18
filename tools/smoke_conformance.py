@@ -2,6 +2,7 @@
 """Smoke-test pbz-conformance without the upstream conformance-test-runner."""
 from __future__ import annotations
 
+import argparse
 import os
 import struct
 import subprocess
@@ -51,7 +52,14 @@ def run_framed(exe: list[str], request: bytes) -> bytes:
     return response
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--exe",
+        help="path to a prebuilt pbz-conformance executable; when omitted the script builds it first",
+    )
+    args = parser.parse_args(argv)
+
     with tempfile.TemporaryDirectory(prefix="pbz-conformance-") as tmp:
         tmp_path = Path(tmp)
         proto = tmp_path / "smoke.proto"
@@ -66,9 +74,13 @@ def main() -> int:
             ],
             check=True,
         )
-        subprocess.run(["zig", "build", "-Doptimize=ReleaseFast"], cwd=ROOT, check=True)
+        if args.exe:
+            conformance_exe = Path(args.exe).resolve()
+        else:
+            subprocess.run(["zig", "build", "-Doptimize=ReleaseFast"], cwd=ROOT, check=True)
+            conformance_exe = ROOT / "zig-out/bin/pbz-conformance"
 
-        exe = [str(ROOT / "zig-out/bin/pbz-conformance"), "--descriptor_set", str(descriptor)]
+        exe = [str(conformance_exe), "--descriptor_set", str(descriptor)]
 
         # ConformanceRequest:
         #   json_payload = {"id":7}
