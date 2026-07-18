@@ -393,10 +393,14 @@ pub const DynamicMessage = struct {
     fn addDecodedMapEntry(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
         std.debug.assert(field.kind == .map);
         std.debug.assert(value == .map_entry);
+        var owned = value;
+        var owns_owned = true;
+        errdefer if (owns_owned) deinitValue(&owned, self.allocator);
 
         if (field.oneof_name) |oneof_name| self.clearOneofExcept(oneof_name, field.number);
         var entry = try self.getOrCreateMutable(field);
-        try entry.values.append(self.allocator, value);
+        try entry.values.append(self.allocator, owned);
+        owns_owned = false;
     }
 
     fn deduplicateDecodedMapFields(self: *DynamicMessage) std.mem.Allocator.Error!void {
@@ -507,11 +511,15 @@ pub const DynamicMessage = struct {
 
     fn addOwned(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
         var owned = value;
+        var owns_owned = true;
+        errdefer if (owns_owned) deinitValue(&owned, self.allocator);
         if (try self.mergeSingularMessageValue(field, owned)) {
             deinitValue(&owned, self.allocator);
+            owns_owned = false;
             return;
         }
         try self.add(field, owned);
+        owns_owned = false;
     }
 
     fn mergeFieldFrom(self: *DynamicMessage, field: *const schema.FieldDescriptor, value: Value) std.mem.Allocator.Error!void {
@@ -811,21 +819,13 @@ pub const DynamicMessage = struct {
 
             if (field.kind == .message and registryEnumDescriptor(file, registry, self.descriptor, field.kind) == null and fieldMessageEncoding(file, field) == .delimited) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
-                var value = try decodeDelimitedMessageValue(self.allocator, file, registry, self.descriptor, field, reader);
-                self.addOwned(field, value) catch |err| {
-                    deinitValue(&value, self.allocator);
-                    return err;
-                };
+                try self.addOwned(field, try decodeDelimitedMessageValue(self.allocator, file, registry, self.descriptor, field, reader));
                 continue;
             }
 
             if (field.kind == .group) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
-                var value = try decodeGroupValue(self.allocator, file, registry, self.descriptor, field, reader);
-                self.addOwned(field, value) catch |err| {
-                    deinitValue(&value, self.allocator);
-                    return err;
-                };
+                try self.addOwned(field, try decodeGroupValue(self.allocator, file, registry, self.descriptor, field, reader));
                 continue;
             }
 
@@ -833,14 +833,11 @@ pub const DynamicMessage = struct {
                 if (tag.wire_type != .length_delimited) return error.InvalidWireType;
                 const payload = try reader.readBytes();
                 var entry_reader = try reader.nested(payload);
-                var value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field, field.kind.map, &entry_reader)) orelse {
+                const value = (try decodeMapEntryValue(self.allocator, file, registry, self.descriptor, field, field.kind.map, &entry_reader)) orelse {
                     try self.addUnknownRaw(tag.number, tag.wire_type, reader.input[start..reader.position()]);
                     continue;
                 };
-                self.addDecodedMapEntry(field, value) catch |err| {
-                    deinitValue(&value, self.allocator);
-                    return err;
-                };
+                try self.addDecodedMapEntry(field, value);
                 continue;
             }
 
@@ -905,11 +902,7 @@ pub const DynamicMessage = struct {
                 }
                 continue;
             }
-            var value = try decodeValue(self.allocator, file, registry, self.descriptor, field, field.kind, reader);
-            self.addOwned(field, value) catch |err| {
-                deinitValue(&value, self.allocator);
-                return err;
-            };
+            try self.addOwned(field, try decodeValue(self.allocator, file, registry, self.descriptor, field, field.kind, reader));
         }
         if (end_group != null) return error.TruncatedInput;
     }
@@ -1008,11 +1001,7 @@ pub const DynamicMessage = struct {
         };
         if (field.kind != .message or field.cardinality == .repeated or field.cardinality == .required) return error.TypeMismatch;
         var payload_reader = try source_reader.nested(payload);
-        var value = try decodeMessagePayload(self.allocator, file, registry, self.descriptor, field.kind.message, &payload_reader);
-        self.addOwned(field, value) catch |err| {
-            deinitValue(&value, self.allocator);
-            return err;
-        };
+        try self.addOwned(field, try decodeMessagePayload(self.allocator, file, registry, self.descriptor, field.kind.message, &payload_reader));
     }
 };
 
