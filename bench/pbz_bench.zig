@@ -24,6 +24,9 @@ const AnyValueWktJson =
 const AnyStringValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.StringValue","value":"hello"}
 ;
+const NestedAnyWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.Any","value":{"@type":"type.googleapis.com/google.protobuf.StringValue","value":"hello"}}
+;
 const TimestampJson = "\"2020-01-01T00:00:00.123Z\"";
 const DurationJson = "\"1.500s\"";
 const FieldMaskJson = "\"fooBar,nested.value\"";
@@ -2451,6 +2454,11 @@ pub fn main() !void {
     const any_string_value_wkt_json = try any_string_value_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_string_value_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_string_value_wkt_json, AnyStringValueWktJson));
+    var nested_any_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Any", any_string_value_wkt);
+    defer nested_any_wkt.deinit(allocator);
+    const nested_any_wkt_json = try nested_any_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(nested_any_wkt_json);
+    std.debug.assert(std.mem.eql(u8, nested_any_wkt_json, NestedAnyWktJson));
     const bytes_value = pbz.BytesValue{ .value = "hi" };
     const bytes_value_json = try bytes_value.jsonStringifyAlloc(allocator);
     defer allocator.free(bytes_value_json);
@@ -2462,7 +2470,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d} double_value_json={d} float_value_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} any_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_string_value_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len, double_value_json.len, float_value_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, any_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_string_value_wkt_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d} double_value_json={d} float_value_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} any_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_string_value_wkt_json={d} nested_any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len, double_value_json.len, float_value_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, any_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_string_value_wkt_json.len, nested_any_wkt_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2656,6 +2664,8 @@ pub fn main() !void {
         try runTimed(io, "pbz Any Value WKT JSON parse", iters.json, any_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any StringValue WKT JSON stringify", iters.json, any_string_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_string_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any StringValue WKT JSON parse", iters.json, any_string_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_string_value_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Nested Any WKT JSON stringify", iters.json, nested_any_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &nested_any_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Nested Any WKT JSON parse", iters.json, nested_any_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = nested_any_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Duration JSON stringify", iters.json, duration_json.len, DurationJsonStringifyCtx{ .allocator = allocator, .duration = duration_value }, durationJsonStringify),
         try runTimed(io, "pbz Duration JSON parse", iters.json, duration_json.len, DurationJsonParseCtx{ .json = duration_json }, durationJsonParse),
         try runTimed(io, "pbz FieldMask JSON stringify", iters.json, field_mask_json.len, FieldMaskJsonStringifyCtx{ .allocator = allocator, .mask = &field_mask_value }, fieldMaskJsonStringify),
