@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 102
+EXPECTED_WORKLOAD_COUNT = 104
 
 
 @dataclass(frozen=True)
@@ -95,6 +95,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any WKT", 73, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any FieldMask WKT", 87, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any Timestamp WKT", 92, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
+    ("Any Empty WKT", 53, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any Struct WKT", 121, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
     ("Any Value WKT", 120, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
     ("Any StringValue WKT", 75, (90.0, 500.0, 450.0), (120.0, 700.0, 650.0)),
@@ -415,6 +416,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any WKT"),
     *json_workload_pair("Any FieldMask WKT"),
     *json_workload_pair("Any Timestamp WKT"),
+    *json_workload_pair("Any Empty WKT"),
     *json_workload_pair("Any Struct WKT"),
     *json_workload_pair("Any Value WKT"),
     *json_workload_pair("Any StringValue WKT"),

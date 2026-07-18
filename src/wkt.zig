@@ -804,10 +804,20 @@ pub const Any = struct {
     pub fn jsonStringifyWithAllocator(self: Any, allocator: std.mem.Allocator, writer: *std.Io.Writer) anyerror!void {
         if (self.type_url.len == 0 or anyTypeName(self.type_url).len == 0) return error.TypeMismatch;
         try ensureUtf8(self.type_url);
+        const type_name = anyTypeName(self.type_url);
         try writer.writeAll("{\"@type\":");
         try std.json.Stringify.value(self.type_url, .{}, writer);
+        if (anyWellKnownKind(type_name) == .empty) {
+            // C++/Go protobuf canonicalize Any<google.protobuf.Empty> as just
+            // the @type envelope.  Accepting the empty wire payload here keeps
+            // pbz aligned with that cross-language JSON shape while still
+            // validating that the embedded payload is a decodable Empty.
+            _ = try Empty.decode(self.value);
+            try writer.writeAll("}");
+            return;
+        }
         try writer.writeAll(",\"value\":");
-        if (!(try writeAnyWellKnownJsonValue(allocator, anyTypeName(self.type_url), self.value, writer))) {
+        if (!(try writeAnyWellKnownJsonValue(allocator, type_name, self.value, writer))) {
             try writer.writeAll("\"");
             try std.base64.standard.Encoder.encodeWriter(writer, self.value);
             try writer.writeAll("\"");
@@ -850,10 +860,13 @@ fn anyFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value) !A
             };
             break :blk try decodeBase64(allocator, encoded);
         }
-    else if (isAnyWellKnownType(anyTypeName(type_url)))
-        return error.TypeMismatch
-    else
-        try allocator.dupe(u8, "");
+    else switch (anyWellKnownKind(anyTypeName(type_url)) orelse return .{
+        .type_url = owned_type_url,
+        .value = try allocator.dupe(u8, ""),
+    }) {
+        .empty => try Empty.encode(allocator),
+        else => return error.TypeMismatch,
+    };
     errdefer allocator.free(owned_value);
     return .{
         .type_url = owned_type_url,
@@ -1165,6 +1178,12 @@ test "any json maps embedded well known value field" {
     defer parsed_object.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 2), parsed_object.fields.len);
 
+    var empty_any = try Any.packBytes(allocator, "google.protobuf.Empty", "");
+    defer empty_any.deinit(allocator);
+    const empty_any_json = try empty_any.jsonStringifyAlloc(allocator);
+    defer allocator.free(empty_any_json);
+    try std.testing.expectEqualSlices(u8, "{\"@type\":\"type.googleapis.com/google.protobuf.Empty\"}", empty_any_json);
+
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.StringValue\"}"));
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.StringValue\",\"value\":{\"bad\":true}}"));
 }
@@ -1181,6 +1200,10 @@ test "any json parses embedded well known variants from parsed values" {
     var empty_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Empty\",\"value\":{}}");
     defer empty_any.deinit(allocator);
     _ = try empty_any.unpackEncoded(Empty, allocator, "google.protobuf.Empty");
+
+    var empty_any_canonical = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Empty\"}");
+    defer empty_any_canonical.deinit(allocator);
+    _ = try empty_any_canonical.unpackEncoded(Empty, allocator, "google.protobuf.Empty");
 
     var int64_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Int64Value\",\"value\":\"9007199254740993\"}");
     defer int64_any.deinit(allocator);

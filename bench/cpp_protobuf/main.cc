@@ -449,6 +449,9 @@ int main() {
   const std::string any_timestamp_wkt_json = JsonStringFor(any_timestamp_wkt);
   google::protobuf::Empty empty_value;
   const std::string empty_json = JsonStringFor(empty_value);
+  google::protobuf::Any any_empty_wkt;
+  any_empty_wkt.PackFrom(empty_value);
+  const std::string any_empty_wkt_json = JsonStringFor(any_empty_wkt);
   google::protobuf::Struct struct_value;
   (*struct_value.mutable_fields())["enabled"].set_bool_value(true);
   auto *items = (*struct_value.mutable_fields())["items"].mutable_list_value();
@@ -575,6 +578,8 @@ int main() {
   std::cout << "any FieldMask WKT json payload size: "
             << any_field_mask_wkt_json.size() << "\n";
   std::cout << "empty json payload size: " << empty_json.size() << "\n";
+  std::cout << "any Empty WKT json payload size: "
+            << any_empty_wkt_json.size() << "\n";
   std::cout << "struct json payload size: " << struct_json.size() << "\n";
   std::cout << "value json payload size: " << value_json.size() << "\n";
   std::cout << "list value json payload size: " << list_value_json.size()
@@ -1158,6 +1163,8 @@ int main() {
                       any_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
                       any_timestamp_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any Empty WKT", any_empty_wkt, any_empty_wkt_json,
+                      kIterations);
   RunWktJsonBenchPair("Any Struct WKT", any_struct_wkt,
                       any_struct_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Value WKT", any_value_wkt, any_value_wkt_json,
