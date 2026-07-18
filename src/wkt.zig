@@ -818,44 +818,48 @@ pub const Any = struct {
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Any {
         var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
         defer parsed.deinit();
-        const object = switch (parsed.value) {
-            .object => |object| object,
-            else => return error.TypeMismatch,
-        };
-        var it = object.iterator();
-        while (it.next()) |entry| {
-            if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
-        }
-        const type_url_json = object.get("@type") orelse return error.TypeMismatch;
-        const type_url = switch (type_url_json) {
-            .string => |value| value,
-            else => return error.TypeMismatch,
-        };
-        if (type_url.len == 0 or anyTypeName(type_url).len == 0) return error.TypeMismatch;
-        const maybe_value_json = object.get("value");
-        const owned_type_url = try allocator.dupe(u8, type_url);
-        errdefer allocator.free(owned_type_url);
-        const owned_value = if (maybe_value_json) |value_json|
-            if (try anyWellKnownJsonValueToBytes(allocator, anyTypeName(type_url), value_json)) |value|
-                value
-            else blk: {
-                const encoded = switch (value_json) {
-                    .string => |value| value,
-                    else => return error.TypeMismatch,
-                };
-                break :blk try decodeBase64(allocator, encoded);
-            }
-        else if (isAnyWellKnownType(anyTypeName(type_url)))
-            return error.TypeMismatch
-        else
-            try allocator.dupe(u8, "");
-        errdefer allocator.free(owned_value);
-        return .{
-            .type_url = owned_type_url,
-            .value = owned_value,
-        };
+        return try anyFromJsonValue(allocator, parsed.value);
     }
 };
+
+fn anyFromJsonValue(allocator: std.mem.Allocator, json_value: std.json.Value) !Any {
+    const object = switch (json_value) {
+        .object => |object| object,
+        else => return error.TypeMismatch,
+    };
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
+    }
+    const type_url_json = object.get("@type") orelse return error.TypeMismatch;
+    const type_url = switch (type_url_json) {
+        .string => |value| value,
+        else => return error.TypeMismatch,
+    };
+    if (type_url.len == 0 or anyTypeName(type_url).len == 0) return error.TypeMismatch;
+    const maybe_value_json = object.get("value");
+    const owned_type_url = try allocator.dupe(u8, type_url);
+    errdefer allocator.free(owned_type_url);
+    const owned_value = if (maybe_value_json) |value_json|
+        if (try anyWellKnownJsonValueToBytes(allocator, anyTypeName(type_url), value_json)) |value|
+            value
+        else blk: {
+            const encoded = switch (value_json) {
+                .string => |value| value,
+                else => return error.TypeMismatch,
+            };
+            break :blk try decodeBase64(allocator, encoded);
+        }
+    else if (isAnyWellKnownType(anyTypeName(type_url)))
+        return error.TypeMismatch
+    else
+        try allocator.dupe(u8, "");
+    errdefer allocator.free(owned_value);
+    return .{
+        .type_url = owned_type_url,
+        .value = owned_value,
+    };
+}
 
 fn makeTypeUrl(allocator: std.mem.Allocator, prefix: []const u8, full_name: []const u8) ![]u8 {
     if (full_name.len == 0) return error.TypeMismatch;
@@ -992,58 +996,95 @@ fn writeAnyWellKnownJsonValue(allocator: std.mem.Allocator, type_name: []const u
 
 fn anyWellKnownJsonValueToBytes(allocator: std.mem.Allocator, type_name: []const u8, value: std.json.Value) anyerror!?[]u8 {
     if (!isAnyWellKnownType(type_name)) return null;
-    const text = try std.json.Stringify.valueAlloc(allocator, value, .{});
-    defer allocator.free(text);
-
-    if (anyTypeNameIs(type_name, "google.protobuf.Timestamp")) return try (try Timestamp.jsonParse(text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.Duration")) return try (try Duration.jsonParse(text)).encode(allocator);
+    // `value` is already the parsed JSON subtree from the surrounding Any.
+    // Convert it directly to the target WKT wire payload instead of
+    // stringify-then-reparse; this avoids extra allocation/copy work on a hot
+    // reflection path and keeps ownership localized to the concrete WKT value.
+    if (anyTypeNameIs(type_name, "google.protobuf.Timestamp")) return try timestampJsonValueToBytes(allocator, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.Duration")) return try durationJsonValueToBytes(allocator, value);
     if (anyTypeNameIs(type_name, "google.protobuf.FieldMask")) {
-        var mask = try FieldMask.jsonParseOwned(allocator, text);
+        var mask = try fieldMaskFromJsonValue(allocator, value);
         defer mask.deinit(allocator);
         return try mask.encode(allocator);
     }
     if (anyTypeNameIs(type_name, "google.protobuf.Any")) {
-        var nested = try Any.jsonParse(allocator, text);
+        var nested = try anyFromJsonValue(allocator, value);
         defer nested.deinit(allocator);
         return try nested.encode(allocator);
     }
     if (anyTypeNameIs(type_name, "google.protobuf.Empty")) {
-        _ = try Empty.jsonParse(allocator, text);
+        _ = try emptyFromJsonValue(value);
         return try Empty.encode(allocator);
     }
     if (anyTypeNameIs(type_name, "google.protobuf.Struct")) {
-        var object = try Struct.jsonParse(allocator, text);
+        var object = try structFromJsonValue(allocator, value);
         defer object.deinit(allocator);
         return try object.encode(allocator);
     }
     if (anyTypeNameIs(type_name, "google.protobuf.Value")) {
-        var parsed = try Value.jsonParse(allocator, text);
+        var parsed = try valueFromJsonValue(allocator, value);
         defer parsed.deinit(allocator);
         return try parsed.encode(allocator);
     }
     if (anyTypeNameIs(type_name, "google.protobuf.ListValue")) {
-        var list = try ListValue.jsonParse(allocator, text);
+        var list = try listValueFromJsonValue(allocator, value);
         defer list.deinit(allocator);
         return try list.encode(allocator);
     }
-    if (anyTypeNameIs(type_name, "google.protobuf.DoubleValue")) return try (try DoubleValue.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.FloatValue")) return try (try FloatValue.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.Int64Value")) return try (try Int64Value.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.UInt64Value")) return try (try UInt64Value.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.Int32Value")) return try (try Int32Value.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.UInt32Value")) return try (try UInt32Value.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.BoolValue")) return try (try BoolValue.jsonParse(allocator, text)).encode(allocator);
-    if (anyTypeNameIs(type_name, "google.protobuf.StringValue")) {
-        var parsed = try StringValue.jsonParseOwned(allocator, text);
-        defer parsed.deinit(allocator);
-        return try parsed.encode(allocator);
-    }
-    if (anyTypeNameIs(type_name, "google.protobuf.BytesValue")) {
-        var parsed = try BytesValue.jsonParseOwned(allocator, text);
-        defer parsed.deinit(allocator);
-        return try parsed.encode(allocator);
-    }
+    if (anyTypeNameIs(type_name, "google.protobuf.DoubleValue")) return try wrapperJsonValueToBytes(allocator, DoubleValue, f64, .double, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.FloatValue")) return try wrapperJsonValueToBytes(allocator, FloatValue, f32, .float, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.Int64Value")) return try wrapperJsonValueToBytes(allocator, Int64Value, i64, .int64, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.UInt64Value")) return try wrapperJsonValueToBytes(allocator, UInt64Value, u64, .uint64, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.Int32Value")) return try wrapperJsonValueToBytes(allocator, Int32Value, i32, .int32, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.UInt32Value")) return try wrapperJsonValueToBytes(allocator, UInt32Value, u32, .uint32, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.BoolValue")) return try wrapperJsonValueToBytes(allocator, BoolValue, bool, .bool, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.StringValue")) return try wrapperJsonValueToBytes(allocator, StringValue, []const u8, .string, value);
+    if (anyTypeNameIs(type_name, "google.protobuf.BytesValue")) return try wrapperJsonValueToBytes(allocator, BytesValue, []const u8, .bytes, value);
     return null;
+}
+
+fn timestampJsonValueToBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]u8 {
+    const text = switch (value) {
+        .string => |text| text,
+        else => return error.TypeMismatch,
+    };
+    return try (try Timestamp.jsonParse(text)).encode(allocator);
+}
+
+fn durationJsonValueToBytes(allocator: std.mem.Allocator, value: std.json.Value) ![]u8 {
+    const text = switch (value) {
+        .string => |text| text,
+        else => return error.TypeMismatch,
+    };
+    return try (try Duration.jsonParse(text)).encode(allocator);
+}
+
+fn fieldMaskFromJsonValue(allocator: std.mem.Allocator, value: std.json.Value) !FieldMask {
+    const text = switch (value) {
+        .string => |text| text,
+        else => return error.TypeMismatch,
+    };
+    return .{ .paths = try FieldMask.jsonParse(allocator, text) };
+}
+
+fn emptyFromJsonValue(value: std.json.Value) !Empty {
+    const object = switch (value) {
+        .object => |object| object,
+        else => return error.TypeMismatch,
+    };
+    if (object.count() != 0) return error.UnknownField;
+    return .{};
+}
+
+fn wrapperJsonValueToBytes(allocator: std.mem.Allocator, comptime WrapperType: type, comptime T: type, comptime scalar: WrapperScalar, value: std.json.Value) ![]u8 {
+    var parsed = try wrapperFromJsonValue(allocator, WrapperType, T, scalar, value);
+    defer parsed.deinit(allocator);
+    return try parsed.encode(allocator);
+}
+
+fn wrapperFromJsonValue(allocator: std.mem.Allocator, comptime WrapperType: type, comptime T: type, comptime scalar: WrapperScalar, value: std.json.Value) !WrapperType {
+    if (value == .null) return .{ .value = defaultWrapperValue(T) };
+    return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, value), .owns_value = wrapperValueUsesAllocator(scalar) };
 }
 
 fn messageDescriptorFile(default_file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor) *const schema_mod.FileDescriptor {
@@ -1136,6 +1177,54 @@ test "any json maps embedded well known value field" {
 
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.StringValue\"}"));
     try std.testing.expectError(error.TypeMismatch, Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.StringValue\",\"value\":{\"bad\":true}}"));
+}
+
+test "any json parses embedded well known variants from parsed values" {
+    const allocator = std.testing.allocator;
+
+    var duration_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Duration\",\"value\":\"1.500s\"}");
+    defer duration_any.deinit(allocator);
+    const duration = try duration_any.unpackEncoded(Duration, allocator, "google.protobuf.Duration");
+    try std.testing.expectEqual(@as(i64, 1), duration.seconds);
+    try std.testing.expectEqual(@as(i32, 500_000_000), duration.nanos);
+
+    var empty_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Empty\",\"value\":{}}");
+    defer empty_any.deinit(allocator);
+    _ = try empty_any.unpackEncoded(Empty, allocator, "google.protobuf.Empty");
+
+    var int64_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Int64Value\",\"value\":\"9007199254740993\"}");
+    defer int64_any.deinit(allocator);
+    const int64_value = try int64_any.unpackEncoded(Int64Value, allocator, "google.protobuf.Int64Value");
+    try std.testing.expectEqual(@as(i64, 9007199254740993), int64_value.value);
+
+    var bytes_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.BytesValue\",\"value\":\"aGk=\"}");
+    defer bytes_any.deinit(allocator);
+    var bytes_value = try bytes_any.unpackEncodedOwned(BytesValue, allocator, "google.protobuf.BytesValue");
+    defer bytes_value.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "hi", bytes_value.value);
+
+    var list_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.ListValue\",\"value\":[null,\"zig\"]}");
+    defer list_any.deinit(allocator);
+    var list_value = try list_any.unpackEncodedOwned(ListValue, allocator, "google.protobuf.ListValue");
+    defer list_value.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 2), list_value.values.len);
+    try std.testing.expectEqual(Value.null_value, list_value.values[0]);
+    try std.testing.expectEqualSlices(u8, "zig", list_value.values[1].string_value);
+
+    var value_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Value\",\"value\":{\"flag\":true}}");
+    defer value_any.deinit(allocator);
+    var value = try value_any.unpackEncodedOwned(Value, allocator, "google.protobuf.Value");
+    defer value.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 1), value.struct_value.fields.len);
+    try std.testing.expectEqualSlices(u8, "flag", value.struct_value.fields[0].key);
+
+    var nested_any = try Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Any\",\"value\":{\"@type\":\"type.googleapis.com/google.protobuf.StringValue\",\"value\":\"nested\"}}");
+    defer nested_any.deinit(allocator);
+    var nested = try nested_any.unpackEncodedOwned(Any, allocator, "google.protobuf.Any");
+    defer nested.deinit(allocator);
+    var nested_string = try nested.unpackEncodedOwned(StringValue, allocator, "google.protobuf.StringValue");
+    defer nested_string.deinit(allocator);
+    try std.testing.expectEqualSlices(u8, "nested", nested_string.value);
 }
 
 test "any clone and duplicate field decode helpers" {
@@ -1998,7 +2087,9 @@ test "empty wire and json helper" {
     try std.testing.expectError(error.UnknownField, Empty.jsonParse(allocator, "{\"x\":1}"));
 }
 
-pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, uint64, int32, uint32, bool, string, bytes }) type {
+const WrapperScalar = enum { double, float, int64, uint64, int32, uint32, bool, string, bytes };
+
+pub fn Wrapper(comptime T: type, comptime scalar: WrapperScalar) type {
     return struct {
         value: T,
         // String/bytes wrappers may either borrow from an input wire buffer
@@ -2146,7 +2237,7 @@ pub fn Wrapper(comptime T: type, comptime scalar: enum { double, float, int64, u
     };
 }
 
-fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptime scalar: anytype, value: std.json.Value) !T {
+fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptime scalar: WrapperScalar, value: std.json.Value) !T {
     return switch (scalar) {
         .double => try parseWrapperFloat(T, value),
         .float => try parseWrapperFloat(T, value),
@@ -2166,7 +2257,7 @@ fn parseWrapperJsonValue(allocator: std.mem.Allocator, comptime T: type, comptim
     };
 }
 
-fn wrapperValueUsesAllocator(comptime scalar: anytype) bool {
+fn wrapperValueUsesAllocator(comptime scalar: WrapperScalar) bool {
     return scalar == .string or scalar == .bytes;
 }
 
