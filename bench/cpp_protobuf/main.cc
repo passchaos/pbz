@@ -1120,118 +1120,13 @@ int main() {
       });
   json_parse_reuse.Print();
 
-  auto any_wkt_json_stringify = RunTimed(
-      "c++ protobuf Any WKT JSON stringify", kIterations,
-      any_wkt_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(any_wkt, &out).ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  any_wkt_json_stringify.Print();
-
-  auto any_wkt_json_parse = RunTimed(
-      "c++ protobuf Any WKT JSON parse", kIterations,
-      std::string(kAnyWktJson).size(), [&]() {
-        google::protobuf::Any decoded;
-        if (!google::protobuf::util::JsonStringToMessage(kAnyWktJson, &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  any_wkt_json_parse.Print();
-
-  auto any_struct_wkt_json_stringify = RunTimed(
-      "c++ protobuf Any Struct WKT JSON stringify", kIterations,
-      any_struct_wkt_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(any_struct_wkt, &out)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  any_struct_wkt_json_stringify.Print();
-
-  auto any_struct_wkt_json_parse = RunTimed(
-      "c++ protobuf Any Struct WKT JSON parse", kIterations,
-      any_struct_wkt_json.size(), [&]() {
-        google::protobuf::Any decoded;
-        if (!google::protobuf::util::JsonStringToMessage(any_struct_wkt_json,
-                                                         &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  any_struct_wkt_json_parse.Print();
-
-  auto duration_json_stringify = RunTimed(
-      "c++ protobuf Duration JSON stringify", kIterations,
-      duration_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(any_wkt_duration,
-                                                         &out)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  duration_json_stringify.Print();
-
-  auto duration_json_parse = RunTimed(
-      "c++ protobuf Duration JSON parse", kIterations, duration_json.size(),
-      [&]() {
-        google::protobuf::Duration decoded;
-        if (!google::protobuf::util::JsonStringToMessage(duration_json,
-                                                         &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  duration_json_parse.Print();
-
-  auto field_mask_json_stringify = RunTimed(
-      "c++ protobuf FieldMask JSON stringify", kIterations,
-      field_mask_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(field_mask, &out)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  field_mask_json_stringify.Print();
-
-  auto field_mask_json_parse = RunTimed(
-      "c++ protobuf FieldMask JSON parse", kIterations, field_mask_json.size(),
-      [&]() {
-        google::protobuf::FieldMask decoded;
-        if (!google::protobuf::util::JsonStringToMessage(field_mask_json,
-                                                         &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  field_mask_json_parse.Print();
-
-  auto timestamp_json_stringify = RunTimed(
-      "c++ protobuf Timestamp JSON stringify", kIterations,
-      timestamp_json.size(), [&]() {
-        std::string out;
-        if (!google::protobuf::util::MessageToJsonString(timestamp, &out).ok())
-          std::abort();
-        asm volatile("" : : "g"(out.data()) : "memory");
-      });
-  timestamp_json_stringify.Print();
-
-  auto timestamp_json_parse = RunTimed(
-      "c++ protobuf Timestamp JSON parse", kIterations, timestamp_json.size(),
-      [&]() {
-        google::protobuf::Timestamp decoded;
-        if (!google::protobuf::util::JsonStringToMessage(timestamp_json,
-                                                         &decoded)
-                 .ok())
-          std::abort();
-        asm volatile("" : : "g"(&decoded) : "memory");
-      });
-  timestamp_json_parse.Print();
+  RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any Struct WKT", any_struct_wkt,
+                      any_struct_wkt_json, kIterations);
+  RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
+                      kIterations);
+  RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
+  RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
 
   RunWktJsonBenchPair("Empty", empty_value, empty_json, kIterations);
   RunWktJsonBenchPair("Struct", struct_value, struct_json, kIterations);
