@@ -102,6 +102,18 @@ pub fn tagSize(number: FieldNumber, wire_type: WireType) Error!usize {
     return encodedVarintSize(try (Tag{ .number = number, .wire_type = wire_type }).encode());
 }
 
+pub inline fn rawFieldNumber(raw_field: []const u8) Error!FieldNumber {
+    var index: usize = 0;
+    const raw_tag = try readVarintAt(raw_field, &index);
+    // Keep the same tag validation as Reader.nextTag while avoiding a full
+    // Reader setup when callers only need to bucket an already-preserved raw
+    // field by number.  A protobuf tag contains 29 field-number bits plus the
+    // 3 wire-type bits, so any tag varint wider than five bytes is malformed
+    // even if the generic varint decoder could represent its u64 value.
+    if (index > 5) return error.MalformedVarint;
+    return (try Tag.decode(raw_tag)).number;
+}
+
 pub fn writePackedFixedWidthPayload(comptime T: type, w: *Writer, values: []const T) std.mem.Allocator.Error!void {
     if (T != u32 and T != i32 and T != f32 and T != u64 and T != i64 and T != f64) {
         @compileError("writePackedFixedWidthPayload requires u32, i32, f32, u64, i64, or f64");
@@ -1467,6 +1479,11 @@ test "wire tag writers preserve single and multi-byte tags" {
     buffered.writeTagAssumeCapacity(15, .fixed32);
     buffered.writeTagAssumeCapacity(16, .varint);
     try std.testing.expectEqualSlices(u8, writer.slice(), buffered.slice());
+
+    try std.testing.expectEqual(@as(FieldNumber, 15), try rawFieldNumber(writer.slice()[0..1]));
+    try std.testing.expectEqual(@as(FieldNumber, 16), try rawFieldNumber(writer.slice()[1..]));
+    try std.testing.expectError(error.InvalidWireType, rawFieldNumber(&.{0x0f}));
+    try std.testing.expectError(error.MalformedVarint, rawFieldNumber(&.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x00 }));
 }
 
 test "wire bool writers use canonical one-byte values" {

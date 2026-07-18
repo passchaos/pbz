@@ -220,10 +220,7 @@ pub const demo = struct {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -236,10 +233,7 @@ pub const demo = struct {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -1840,10 +1834,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -1856,10 +1847,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -3521,10 +3509,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -3537,10 +3522,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -4738,10 +4720,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -4754,10 +4733,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -5987,10 +5963,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -6003,10 +5976,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -7339,10 +7309,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
                 var count: usize = 0;
                 for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    if (try r.nextTag()) |tag| {
-                        if (tag.number == number) count += 1;
-                    }
+                    if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
                 }
                 return count;
             }
@@ -7355,10 +7322,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 var list: std.ArrayList([]const u8) = .empty;
                 errdefer list.deinit(allocator);
                 for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    if (try r.nextTag()) |tag| {
-                        if (tag.number == number) try list.append(allocator, raw);
-                    }
+                    if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
                 }
                 return try list.toOwnedSlice(allocator);
             }
@@ -8388,10 +8352,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -8404,10 +8365,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -9511,10 +9469,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -9527,10 +9482,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -10636,10 +10588,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -10652,10 +10601,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -11753,10 +11699,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -11769,10 +11712,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -12870,10 +12810,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -12886,10 +12823,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -13987,10 +13921,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -14003,10 +13934,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -15104,10 +15032,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -15120,10 +15045,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -16221,10 +16143,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -16237,10 +16156,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -17344,10 +17260,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -17360,10 +17273,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -18467,10 +18377,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -18483,10 +18390,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -19590,10 +19494,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -19606,10 +19507,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -20713,10 +20611,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -20729,10 +20624,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -21836,10 +21728,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -21852,10 +21741,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -22937,10 +22823,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -22953,10 +22836,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -24098,10 +23978,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -24114,10 +23991,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -25433,10 +25307,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
             var count: usize = 0;
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) count += 1;
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
             }
             return count;
         }
@@ -25449,10 +25320,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var list: std.ArrayList([]const u8) = .empty;
             errdefer list.deinit(allocator);
             for (self._unknown_fields) |raw| {
-                var r = pbz.Reader.init(raw);
-                if (try r.nextTag()) |tag| {
-                    if (tag.number == number) try list.append(allocator, raw);
-                }
+                if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
             }
             return try list.toOwnedSlice(allocator);
         }
@@ -26920,10 +26788,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn unknownFieldCountByNumber(self: @This(), number: pbz.FieldNumber) !usize {
                 var count: usize = 0;
                 for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    if (try r.nextTag()) |tag| {
-                        if (tag.number == number) count += 1;
-                    }
+                    if ((try pbz.wire.rawFieldNumber(raw)) == number) count += 1;
                 }
                 return count;
             }
@@ -26936,10 +26801,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 var list: std.ArrayList([]const u8) = .empty;
                 errdefer list.deinit(allocator);
                 for (self._unknown_fields) |raw| {
-                    var r = pbz.Reader.init(raw);
-                    if (try r.nextTag()) |tag| {
-                        if (tag.number == number) try list.append(allocator, raw);
-                    }
+                    if ((try pbz.wire.rawFieldNumber(raw)) == number) try list.append(allocator, raw);
                 }
                 return try list.toOwnedSlice(allocator);
             }
