@@ -169,6 +169,12 @@ claiming broad superiority beyond the covered workloads:
 - The comparison matrix is intentionally broad but not infinite: additional
   workloads such as remaining well-known-type edge cases may deserve separate
   rows.
+- The local pbz benchmark includes unknown-field stress decode and
+  count-by-number rows. They are useful regression signals, but they are not
+  part of the cross-language fail-on-loss matrix yet because the C++ baseline
+  exposes unknowns through `UnknownFieldSet` rather than pbz's exact raw-field
+  slice preservation API. A future audit can add a semantics-matched row if
+  that API difference is normalized.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.
