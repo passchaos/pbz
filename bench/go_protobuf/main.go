@@ -8,12 +8,15 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
+	_ "google.golang.org/protobuf/types/known/durationpb"
 )
 
 const benchmarkSamples = 3
 const largeMapEntryCount = 1024
 const largeMapShuffleMultiplier = 257
 const largeMapShuffleIncrement = 911
+const anyWKTJSON = `{"@type":"type.googleapis.com/google.protobuf.Duration","value":"1.500s"}`
 
 type benchResult struct {
 	name         string
@@ -417,6 +420,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
+	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSON))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
@@ -649,6 +653,13 @@ func main() {
 	runTimed("go protobuf JSON parse", iterations, len(jsonBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(jsonBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Any WKT JSON parse", iterations, len(anyWKTJSON), func() {
+		var decoded anypb.Any
+		if err := jsonUnmarshalOptions.Unmarshal([]byte(anyWKTJSON), &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

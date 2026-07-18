@@ -5,8 +5,10 @@
 #include <iostream>
 #include <string>
 
+#include <google/protobuf/any.pb.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <google/protobuf/struct.pb.h>
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/json_util.h>
 
@@ -22,6 +24,8 @@ constexpr int kUnknownFieldStressFirstNumber = 1000;
 constexpr int kUnknownFieldStressNumberSpan = 16;
 constexpr int kUnknownFieldStressCountPerNumber =
     kUnknownFieldStressCount / kUnknownFieldStressNumberSpan;
+constexpr const char *kAnyWktJson =
+    R"({"@type":"type.googleapis.com/google.protobuf.Duration","value":"1.500s"})";
 
 struct BenchResult {
   const char *name;
@@ -421,6 +425,8 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "any WKT json payload size: " << std::string(kAnyWktJson).size()
+            << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
@@ -965,6 +971,17 @@ int main() {
         asm volatile("" : : "g"(&reused_json_decoded) : "memory");
       });
   json_parse_reuse.Print();
+
+  auto any_wkt_json_parse = RunTimed(
+      "c++ protobuf Any WKT JSON parse", kIterations,
+      std::string(kAnyWktJson).size(), [&]() {
+        google::protobuf::Any decoded;
+        if (!google::protobuf::util::JsonStringToMessage(kAnyWktJson, &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  any_wkt_json_parse.Print();
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {

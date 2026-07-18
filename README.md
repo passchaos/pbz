@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py --fail-on-loss /tmp/pbz-compare.log
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-after-borrowed-slices-fast.log`,
-summarized in `/tmp/pbz-summary-after-borrowed-slices-fast.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-any-wkt-json.log`,
+summarized in `/tmp/pbz-summary-after-any-wkt-json.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
@@ -92,25 +92,26 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |
 |---|---:|---:|---:|---:|---:|
-| binary encode | 15.77 | 125.02 (7.93x) | 48.83 (3.10x) | 110.53 (7.01x) | 818.98 (51.93x) |
-| binary decode | 102.17 | 299.09 (2.93x) | 224.66 (2.20x) | 231.02 (2.26x) | 866.83 (8.48x) |
-| unknown count by number | 3.57 | — | — | 151.50 (42.44x) | — |
-| scalarmix encode | 19.04 | 93.85 (4.93x) | 49.07 (2.58x) | 30.01 (1.58x) | 203.80 (10.70x) |
-| scalarmix decode | 39.03 | 134.76 (3.45x) | 171.72 (4.40x) | 85.83 (2.20x) | 299.77 (7.68x) |
-| textbytes encode | 11.53 | 76.63 (6.65x) | 33.34 (2.89x) | 120.92 (10.49x) | 174.55 (15.14x) |
-| complex decode | 168.35 | 445.41 (2.65x) | 344.24 (2.04x) | 390.34 (2.32x) | 1422.06 (8.45x) |
-| complex JSON parse | 2392.14 | — | — | 12059.90 (5.04x) | 7352.11 (3.07x) |
-| TextFormat parse | 667.10 | — | — | 5413.94 (8.12x) | 6858.02 (10.28x) |
-| packed int32 decode | 685.16 | 1930.67 (2.82x) | 3226.71 (4.71x) | 950.11 (1.39x) | 3358.07 (4.90x) |
-| packed bool encode | 2.06 | 1329.29 (645.29x) | 521.19 (253.00x) | 15.93 (7.73x) | 2243.84 (1089.24x) |
-| packed bool decode | 262.72 | 1540.01 (5.86x) | 2552.25 (9.71x) | 805.47 (3.07x) | 1735.58 (6.61x) |
-| largebytes decode | 88.01 | 5584.14 (63.45x) | 3048.34 (34.64x) | 2722.00 (30.93x) | 22717.43 (258.12x) |
-| large map decode | 25719.08 | 92198.23 (3.58x) | 91547.59 (3.56x) | 92657.60 (3.60x) | 272923.24 (10.61x) |
-| shuffled large map deterministic binary encode | 27942.28 | — | — | 94328.30 (3.38x) | 382858.11 (13.70x) |
+| binary encode | 16.87 | 110.62 (6.56x) | 64.81 (3.84x) | 130.97 (7.76x) | 807.79 (47.88x) |
+| binary decode | 90.25 | 251.69 (2.79x) | 268.51 (2.98x) | 221.78 (2.46x) | 854.49 (9.47x) |
+| unknown count by number | 3.57 | — | — | 153.50 (43.00x) | — |
+| scalarmix encode | 19.08 | 109.31 (5.73x) | 51.02 (2.67x) | 30.57 (1.60x) | 210.14 (11.01x) |
+| scalarmix decode | 38.49 | 172.20 (4.47x) | 184.55 (4.79x) | 89.81 (2.33x) | 284.76 (7.40x) |
+| textbytes encode | 16.12 | 94.58 (5.87x) | 34.31 (2.13x) | 120.80 (7.49x) | 142.75 (8.86x) |
+| complex decode | 178.45 | 399.28 (2.24x) | 347.02 (1.94x) | 389.93 (2.19x) | 1261.69 (7.07x) |
+| complex JSON parse | 2374.27 | — | — | 11922.80 (5.02x) | 6945.32 (2.93x) |
+| Any WKT JSON parse | 520.34 | — | — | 2997.30 (5.76x) | 1423.98 (2.74x) |
+| TextFormat parse | 703.34 | — | — | 4992.53 (7.10x) | 6032.92 (8.58x) |
+| packed int32 decode | 677.61 | 1904.19 (2.81x) | 3212.47 (4.74x) | 967.00 (1.43x) | 2898.93 (4.28x) |
+| packed bool encode | 2.01 | 1356.01 (674.63x) | 518.48 (257.95x) | 15.95 (7.93x) | 2454.58 (1221.18x) |
+| packed bool decode | 262.49 | 1572.95 (5.99x) | 2550.01 (9.71x) | 813.17 (3.10x) | 1651.76 (6.29x) |
+| largebytes decode | 93.45 | 5596.87 (59.89x) | 3003.77 (32.14x) | 2757.74 (29.51x) | 20946.21 (224.14x) |
+| large map decode | 25585.68 | 90807.37 (3.55x) | 89779.50 (3.51x) | 92012.60 (3.60x) | 280116.01 (10.95x) |
+| shuffled large map deterministic binary encode | 27989.56 | — | — | 92479.60 (3.30x) | 368340.30 (13.16x) |
 
 The matrix covers binary encode/decode, unknown-field count-by-number, deterministic
-encode, JSON, TextFormat, packed scalars, large bytes, maps, oneof/optional
-workloads, and complex nested messages. Benchmark results are hardware-sensitive; compare full same-machine
+encode, JSON, Any/WKT JSON, TextFormat, packed scalars, large bytes, maps,
+oneof/optional workloads, and complex nested messages. Benchmark results are hardware-sensitive; compare full same-machine
 runs rather than individual copied rows.
 
 ## Basic usage

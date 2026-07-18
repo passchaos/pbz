@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-borrowed-slices-fast.log` summarized by
-`/tmp/pbz-summary-after-borrowed-slices-fast.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-after-any-wkt-json.log` summarized by
+`/tmp/pbz-summary-after-any-wkt-json.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-borrowed-slices-fast.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-after-any-wkt-json.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 54 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 55 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -85,6 +85,7 @@ The matrix includes:
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode
 - complex JSON stringify/parse
+- `google.protobuf.Any` containing a well-known-type JSON value parse
 - complex TextFormat format/parse
 - simple JSON stringify/parse
 - simple TextFormat format/parse
