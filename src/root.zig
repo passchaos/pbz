@@ -172,7 +172,7 @@ test "root exports request-based plugin codegen" {
     var request = CodeGeneratorRequest.init(allocator);
     defer request.deinit();
     try request.files_to_generate.append(allocator, "app.proto");
-    try request.proto_files.append(allocator, try parser.Parser.parse(allocator,
+    try request.appendProtoFile(try parser.Parser.parse(allocator,
         \\syntax = "proto2";
         \\message App { optional int32 id = 1; }
     ));

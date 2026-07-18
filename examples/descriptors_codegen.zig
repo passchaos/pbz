@@ -39,7 +39,7 @@ pub fn main() !void {
     defer request.deinit();
     request.parameter = "paths=source_relative,pbz_import=pbz";
     try request.files_to_generate.append(allocator, file.name);
-    try request.proto_files.append(allocator, try pbz.ProtoParser.parse(allocator,
+    try request.appendProtoFile(try pbz.ProtoParser.parse(allocator,
         \\syntax = "proto3";
         \\message Event { int32 id = 1; }
     ));

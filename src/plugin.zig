@@ -33,6 +33,18 @@ pub const CodeGeneratorRequest = struct {
         self.* = undefined;
     }
 
+    pub fn appendProtoFile(self: *CodeGeneratorRequest, file: schema.FileDescriptor) std.mem.Allocator.Error!void {
+        var owned = file;
+        errdefer owned.deinit();
+        try self.proto_files.append(self.allocator, owned);
+    }
+
+    pub fn appendSourceFileDescriptor(self: *CodeGeneratorRequest, file: schema.FileDescriptor) std.mem.Allocator.Error!void {
+        var owned = file;
+        errdefer owned.deinit();
+        try self.source_file_descriptors.append(self.allocator, owned);
+    }
+
     pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) Error!CodeGeneratorRequest {
         var request = CodeGeneratorRequest.init(allocator);
         errdefer request.deinit();
@@ -42,18 +54,12 @@ pub const CodeGeneratorRequest = struct {
                 1 => try request.files_to_generate.append(allocator, try reader.readBytes()),
                 2 => request.parameter = try reader.readBytes(),
                 3 => request.compiler_version = try decodeVersion(try reader.readBytes()),
-                15 => try appendFileDescriptor(allocator, &request.proto_files, try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
-                17 => try appendFileDescriptor(allocator, &request.source_file_descriptors, try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
+                15 => try request.appendProtoFile(try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
+                17 => try request.appendSourceFileDescriptor(try descriptor.decodeFileDescriptorProto(allocator, try reader.readBytes())),
                 else => try reader.skipValue(tag),
             }
         }
         return request;
-    }
-
-    fn appendFileDescriptor(allocator: std.mem.Allocator, list: *std.ArrayList(schema.FileDescriptor), value: schema.FileDescriptor) std.mem.Allocator.Error!void {
-        var owned = value;
-        errdefer owned.deinit();
-        try list.append(allocator, owned);
     }
 
     fn decodeVersion(bytes: []const u8) wire.Error!Version {
