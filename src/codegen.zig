@@ -1186,14 +1186,6 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n");
 }
 
-fn messageTextParseUsesAllocator(message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.cardinality == .repeated or field.kind == .map) return true;
-        if (field.kind == .message or field.kind == .group) return true;
-    }
-    return false;
-}
-
 fn writeTextParseExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     for (file.extensions.items) |*field| {
@@ -1904,23 +1896,9 @@ fn writeOneofValueEncodeAssumeCapacity(ctx: *const CodegenContext, field: *const
     }
 }
 
-fn typedSingularMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
-    if (field.oneof_name != null or field.cardinality == .repeated) return null;
-    if (field.kind != .message) return null;
-    if (fieldMessageEncoding(file, field) != .length_prefixed) return null;
-    return if (codegenCanReferenceMessage(file, field.kind.message)) field.kind.message else null;
-}
-
 fn typedSingularMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
     if (field.oneof_name != null or field.cardinality == .repeated) return null;
     return typedLengthPrefixedOrGroupFieldWithContext(ctx, field);
-}
-
-fn typedRepeatedMessageField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
-    if (field.oneof_name != null or field.cardinality != .repeated) return null;
-    if (field.kind != .message) return null;
-    if (fieldMessageEncoding(file, field) != .length_prefixed) return null;
-    return if (codegenCanReferenceMessage(file, field.kind.message)) field.kind.message else null;
 }
 
 fn typedRepeatedMessageFieldWithContext(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) ?[]const u8 {
@@ -2002,19 +1980,9 @@ fn messageHasValuePathTo(ctx: *const CodegenContext, from: *const schema.Message
     return false;
 }
 
-fn writeTypedMessageType(type_name: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeByte('?');
-    try writeMessageTypeReference(type_name, writer);
-}
-
 fn writeTypedMessageTypeWithContext(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
     try writer.writeByte('?');
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-}
-
-fn writeTypedRepeatedMessageType(type_name: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("[]const ");
-    try writeMessageTypeReference(type_name, writer);
 }
 
 fn writeTypedRepeatedMessageTypeWithContext(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -4044,14 +4012,6 @@ fn writeMergeFrom(ctx: *const CodegenContext, message: *const schema.MessageDesc
     try writer.writeAll("}\n");
 }
 
-fn mergeUsesAllocator(message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.oneof_name != null) continue;
-        if (field.cardinality == .repeated or field.kind == .map or field.kind == .message or field.kind == .group) return true;
-    }
-    return false;
-}
-
 fn writeMergeField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     if (field.kind == .map) return try writeMergeMapField(ctx, field, writer, depth);
@@ -6076,14 +6036,6 @@ fn messageHasRepeatedOrMap(message: *const schema.MessageDescriptor) bool {
     return false;
 }
 
-fn messageDecodeUsesAllocator(message: *const schema.MessageDescriptor) bool {
-    if (messageHasRepeatedOrMap(message)) return true;
-    for (message.fields.items) |field| {
-        if (field.oneof_name == null and field.cardinality != .repeated and (field.kind == .message or field.kind == .group)) return true;
-    }
-    return false;
-}
-
 fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
@@ -7549,15 +7501,6 @@ fn mapEntryValueIsTypedMessage(ctx: *const CodegenContext, field: *const schema.
     return typedMapMessageValueWithContext(ctx, field) != null;
 }
 
-fn writeMapEntryValueFieldSizeExprUsingLen(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, value_len_expr: []const u8, writer: *std.Io.Writer) Error!void {
-    const map_type = field.kind.map;
-    if (mapEntryValueIsTypedMessage(ctx, field)) {
-        try writer.print("1 + pbz.wire.encodedVarintSize({s}) + {s}", .{ value_len_expr, value_len_expr });
-    } else {
-        try writeMapEntryFieldSizeExpr(2, map_type.value.*, value_expr, writer);
-    }
-}
-
 fn writeMapEntryValueFieldSizeExpr(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     const map_type = field.kind.map;
     if (typedMapMessageValueWithContext(ctx, field)) |_| {
@@ -8069,16 +8012,6 @@ fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
 
     try writer.writeAll("\n");
     try writeTextParseMethods(ctx, message, writer, depth);
-}
-
-fn messageTextHasFields(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.oneof_name == null and textFieldSupported(ctx, field)) return true;
-    }
-    for (message.oneofs.items) |oneof| {
-        if (oneofHasTextField(ctx, message, oneof.name)) return true;
-    }
-    return false;
 }
 
 fn messageTextUsesAllocator(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
@@ -9029,14 +8962,6 @@ fn jsonExtensionUsesArenaWithContext(ctx: *const CodegenContext, field: *const s
     return switch (field.kind) {
         .scalar => |scalar| scalar == .bytes,
         .message, .group => |name| codegenCanReferenceMessageWithContext(ctx, name),
-        else => false,
-    };
-}
-
-fn jsonExtensionUsesArena(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
-    return switch (field.kind) {
-        .scalar => |scalar| scalar == .bytes,
-        .message, .group => |name| codegenCanReferenceMessage(file, name),
         else => false,
     };
 }
@@ -11607,11 +11532,6 @@ fn countMessageExtensions(message: *const schema.MessageDescriptor) usize {
     return count;
 }
 
-fn writeIdent(name: []const u8, writer: *std.Io.Writer) Error!void {
-    if (canWriteBareIdent(name)) return try writer.writeAll(name);
-    return try writeQuotedIdent(name, writer);
-}
-
 fn writeIdentWithSuffix(name: []const u8, suffix: []const u8, writer: *std.Io.Writer) Error!void {
     if (canWriteBareIdentParts("", name, suffix)) {
         try writer.writeAll(name);
@@ -12060,10 +11980,6 @@ fn writeRpcMessageTypeReferenceOrVoid(ctx: *const CodegenContext, type_name: []c
 
 fn writeRpcMessageTypeReference(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-}
-
-fn outputName(allocator: std.mem.Allocator, input: []const u8) std.mem.Allocator.Error![]u8 {
-    return try outputNameWithOptions(allocator, input, ".pb.zig", true);
 }
 
 fn outputNameWithOptions(allocator: std.mem.Allocator, input: []const u8, suffix: []const u8, strip_proto_ext: bool) std.mem.Allocator.Error![]u8 {
