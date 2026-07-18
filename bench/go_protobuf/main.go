@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const benchmarkSamples = 3
@@ -360,6 +361,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	stringValue := wrapperspb.String("hello")
+	stringValueJSONBytes, err := protojson.Marshal(stringValue)
+	if err != nil {
+		panic(err)
+	}
 	packed := makePacked()
 	packedBytes, err := proto.Marshal(packed)
 	if err != nil {
@@ -447,6 +453,7 @@ func main() {
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
+	fmt.Printf("string value json payload size: %d\n", len(stringValueJSONBytes))
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
@@ -740,6 +747,21 @@ func main() {
 	runTimed("go protobuf Timestamp JSON parse", iterations, len(timestampJSONBytes), func() {
 		var decoded timestamppb.Timestamp
 		if err := jsonUnmarshalOptions.Unmarshal(timestampJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf StringValue JSON stringify", iterations, len(stringValueJSONBytes), func() {
+		out, err := protojson.Marshal(stringValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf StringValue JSON parse", iterations, len(stringValueJSONBytes), func() {
+		var decoded wrapperspb.StringValue
+		if err := jsonUnmarshalOptions.Unmarshal(stringValueJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
