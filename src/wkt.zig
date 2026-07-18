@@ -2064,12 +2064,7 @@ pub const Empty = struct {
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Empty {
         var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
         defer parsed.deinit();
-        const object = switch (parsed.value) {
-            .object => |object| object,
-            else => return error.TypeMismatch,
-        };
-        if (object.count() != 0) return error.UnknownField;
-        return .{};
+        return try emptyFromJsonValue(parsed.value);
     }
 };
 
@@ -2227,8 +2222,7 @@ pub fn Wrapper(comptime T: type, comptime scalar: WrapperScalar) type {
         pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Self {
             var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
             defer parsed.deinit();
-            if (parsed.value == .null) return .{ .value = defaultWrapperValue(T) };
-            return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, parsed.value), .owns_value = wrapperValueUsesAllocator(scalar) };
+            return try wrapperFromJsonValue(allocator, Self, T, scalar, parsed.value);
         }
 
         pub fn jsonParseOwned(allocator: std.mem.Allocator, text: []const u8) !Self {
