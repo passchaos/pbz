@@ -232,6 +232,15 @@ pub const demo = struct {
                     pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 }
 
+                fn _pbzDeinitOneof_selected(self: *@This(), allocator: std.mem.Allocator) void {
+                    switch (self.selected) {
+                        .chosen => |*value| value.deinit(allocator),
+                        else => {},
+                    }
+                    self.selected = .none;
+                }
+
+
 
                 // no same-file extension accessors
 
@@ -260,8 +269,8 @@ pub const demo = struct {
                     }
                     switch (other.selected) {
                         .none => {},
-                        .chosen => |value| self.selected = .{ .chosen = try value.cloneOwned(allocator) },
-                        .fallback => |value| self.selected = .{ .fallback = value },
+                        .chosen => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_selected(allocator); self.selected = .{ .chosen = owned_value }; },
+                        .fallback => |value| { self._pbzDeinitOneof_selected(allocator); self.selected = .{ .fallback = value }; },
                     }
                     try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
                 }
@@ -546,8 +555,8 @@ pub const demo = struct {
                                 }
                                 try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                             },
-                            4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.selected = .{ .chosen = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader) }; },
-                            5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
+                            4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator); self.selected = .{ .chosen = nested }; },
+                            5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_selected(allocator); self.selected = .{ .fallback = value }; },
                             else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                         }
                     }
@@ -595,8 +604,8 @@ pub const demo = struct {
                                 }
                                 try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
                             },
-                            4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.selected = .{ .chosen = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader) }; },
-                            5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.selected = .{ .fallback = value }; },
+                            4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator); self.selected = .{ .chosen = nested }; },
+                            5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_selected(allocator); self.selected = .{ .fallback = value }; },
                             else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                         }
                     }
@@ -801,8 +810,8 @@ pub const demo = struct {
                                 @This().deinitMap_by_name(allocator, &self.by_name);
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) { self.selected = .none; continue; }
-                            if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) { self.selected = .none; continue; }
+                            if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) { self._pbzDeinitOneof_selected(allocator); continue; }
+                            if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) { self._pbzDeinitOneof_selected(allocator); continue; }
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
@@ -841,11 +850,11 @@ pub const demo = struct {
                             continue;
                         }
                         if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) {
-                            self.selected = .{ .chosen = blk: { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } };
+                            { var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator);self.selected = .{ .chosen = nested }; }
                             continue;
                         }
                         if (std.mem.eql(u8, key, "fallback") or std.mem.eql(u8, key, "fallback")) {
-                            self.selected = .{ .fallback = try @This().jsonString(value) };
+                            self._pbzDeinitOneof_selected(allocator); self.selected = .{ .fallback = try @This().jsonString(value) };
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
@@ -1454,10 +1463,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             defer allocator.free(block);
                             var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             defer nested.deinit(allocator);
-                            self.selected = .{ .chosen = try nested.cloneOwned(allocator) };
+                            {
+                                var owned_nested = try nested.cloneOwned(allocator);
+                                errdefer owned_nested.deinit(allocator);
+                                self._pbzDeinitOneof_selected(allocator);
+                                self.selected = .{ .chosen = owned_nested };
+                            }
                             continue;
                         }
-                        if (@This().textFieldValue(line, "fallback")) |raw_value| { self.selected = .{ .fallback = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
+                        if (@This().textFieldValue(line, "fallback")) |raw_value| { self._pbzDeinitOneof_selected(allocator); self.selected = .{ .fallback = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
                         if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                         if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                         if (options.ignore_unknown_fields) continue;

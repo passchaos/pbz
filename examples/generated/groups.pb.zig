@@ -188,6 +188,15 @@ pub const demo = struct {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             }
 
+            fn _pbzDeinitOneof_picked(self: *@This(), allocator: std.mem.Allocator) void {
+                switch (self.picked) {
+                    .picked_box => |*value| value.deinit(allocator),
+                    else => {},
+                }
+                self.picked = .none;
+            }
+
+
 
             // no same-file extension accessors
 
@@ -206,8 +215,8 @@ pub const demo = struct {
                 }
                 switch (other.picked) {
                     .none => {},
-                    .picked_box => |value| self.picked = .{ .picked_box = try value.cloneOwned(allocator) },
-                    .note => |value| self.picked = .{ .note = value },
+                    .picked_box => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = owned_value }; },
+                    .note => |value| { self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = value }; },
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
@@ -374,8 +383,8 @@ pub const demo = struct {
                         1 => { self.id = try r.readInt32(); self.has_id = true; },
                         2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; } },
                         4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try item_list.append(allocator, nested); },
-                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.picked = .{ .picked_box = try Box.decodeFromReader(allocator, &payload_reader) }; },
-                        7 => self.picked = .{ .note = try r.readBytes() },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; },
+                        7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator);self.picked = .{ .note = value }; },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
                 }
@@ -410,8 +419,8 @@ pub const demo = struct {
                         1 => { self.id = try r.readInt32(); self.has_id = true; },
                         2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; } },
                         4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try item_list.append(allocator, nested); },
-                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.picked = .{ .picked_box = try Box.decodeFromReader(allocator, &payload_reader) }; },
-                        7 => self.picked = .{ .note = try r.readBytes() },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; },
+                        7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator);self.picked = .{ .note = value }; },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
                 }
@@ -602,8 +611,8 @@ pub const demo = struct {
                             const old = self.item; self.item = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "picked_box") or std.mem.eql(u8, key, "pickedBox")) { self.picked = .none; continue; }
-                        if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) { self.picked = .none; continue; }
+                        if (std.mem.eql(u8, key, "picked_box") or std.mem.eql(u8, key, "pickedBox")) { self._pbzDeinitOneof_picked(allocator); continue; }
+                        if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) { self._pbzDeinitOneof_picked(allocator); continue; }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
@@ -631,11 +640,11 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "picked_box") or std.mem.eql(u8, key, "pickedBox")) {
-                        self.picked = .{ .picked_box = blk: { var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } };
+                        { var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator);self.picked = .{ .picked_box = nested }; }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "note") or std.mem.eql(u8, key, "note")) {
-                        self.picked = .{ .note = try @This().jsonString(value) };
+                        self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = try @This().jsonString(value) };
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -1212,10 +1221,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         defer allocator.free(block);
                         var nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(allocator);
-                        self.picked = .{ .picked_box = try nested.cloneOwned(allocator) };
+                        {
+                            var owned_nested = try nested.cloneOwned(allocator);
+                            errdefer owned_nested.deinit(allocator);
+                            self._pbzDeinitOneof_picked(allocator);
+                            self.picked = .{ .picked_box = owned_nested };
+                        }
                         continue;
                     }
-                    if (@This().textFieldValue(line, "note")) |raw_value| { self.picked = .{ .note = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) }; continue; }
+                    if (@This().textFieldValue(line, "note")) |raw_value| { self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) }; continue; }
                     if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                     if (try @This().textUnknownGroup(allocator, line, &lines)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                     if (options.ignore_unknown_fields) continue;
@@ -1326,6 +1340,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
                     pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 }
+
 
                 pub fn labelFieldView(bytes: []const u8) !?[]const u8 {
                     return try pbz.wire.bytesFieldView(bytes, 3);
@@ -2261,6 +2276,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
                     pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 }
+
 
 
                 // no same-file extension accessors

@@ -111,6 +111,7 @@ pub const demo = struct {
                     pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 }
 
+
                 pub fn nameFieldView(bytes: []const u8) !?[]const u8 {
                     return try pbz.wire.bytesFieldView(bytes, 2);
                 }

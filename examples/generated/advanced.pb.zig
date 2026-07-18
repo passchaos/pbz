@@ -305,6 +305,15 @@ pub const demo = struct {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             }
 
+            fn _pbzDeinitOneof_subject(self: *@This(), allocator: std.mem.Allocator) void {
+                switch (self.subject) {
+                    .audit_subject => |*value| value.deinit(allocator),
+                    else => {},
+                }
+                self.subject = .none;
+            }
+
+
 
             // no same-file extension accessors
 
@@ -327,9 +336,9 @@ pub const demo = struct {
                 }
                 switch (other.subject) {
                     .none => {},
-                    .user_name => |value| self.subject = .{ .user_name = value },
-                    .organization_id => |value| self.subject = .{ .organization_id = value },
-                    .audit_subject => |value| self.subject = .{ .audit_subject = try value.cloneOwned(allocator) },
+                    .user_name => |value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
+                    .organization_id => |value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
+                    .audit_subject => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = owned_value }; },
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
@@ -618,9 +627,9 @@ pub const demo = struct {
                         1 => { self.id = try r.readInt32(); },
                         2 => { const value = try r.readInt32(); self.kind = value; },
                         3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
-                        4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
-                        5 => self.subject = .{ .organization_id = try r.readBytes() },
-                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
+                        4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
+                        5 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .organization_id = value }; },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; },
                         7 => {
                             var entry = auditsEntry{};
                             errdefer entry.value.deinit(allocator);
@@ -665,9 +674,9 @@ pub const demo = struct {
                         1 => { self.id = try r.readInt32(); },
                         2 => { const value = try r.readInt32(); self.kind = value; },
                         3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.audit = nested; } },
-                        4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
-                        5 => self.subject = .{ .organization_id = try r.readBytes() },
-                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); self.subject = .{ .audit_subject = try Audit.decodeFromReader(allocator, &payload_reader) }; },
+                        4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
+                        5 => { const value = try r.readBytes(); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .organization_id = value }; },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = nested }; },
                         7 => {
                             var entry = auditsEntry{};
                             errdefer entry.value.deinit(allocator);
@@ -892,9 +901,9 @@ pub const demo = struct {
                             @This().deinitMap_audits(allocator, &self.audits);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) { self.subject = .none; continue; }
-                        if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) { self.subject = .none; continue; }
-                        if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) { self.subject = .none; continue; }
+                        if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) { self._pbzDeinitOneof_subject(allocator); continue; }
+                        if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) { self._pbzDeinitOneof_subject(allocator); continue; }
+                        if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) { self._pbzDeinitOneof_subject(allocator); continue; }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
@@ -929,15 +938,15 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
-                        self.subject = .{ .user_name = try @This().jsonString(value) };
+                        self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = try @This().jsonString(value) };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
-                        self.subject = .{ .organization_id = try @This().jsonBytes(arena_allocator, value) };
+                        self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = try @This().jsonBytes(arena_allocator, value) };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
-                        self.subject = .{ .audit_subject = blk: { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); break :blk nested; } };
+                        { var nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator);self.subject = .{ .audit_subject = nested }; }
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -1534,14 +1543,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         try @This().appendOrReplaceMapEntry_audits(allocator, &audits_list, entry);
                         continue;
                     }
-                    if (@This().textFieldValue(line, "user_name") orelse @This().textFieldValue(line, "userName")) |raw_value| { self.subject = .{ .user_name = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
-                    if (@This().textFieldValue(line, "organization_id") orelse @This().textFieldValue(line, "organizationId")) |raw_value| { self.subject = .{ .organization_id = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) }; continue; }
+                    if (@This().textFieldValue(line, "user_name") orelse @This().textFieldValue(line, "userName")) |raw_value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
+                    if (@This().textFieldValue(line, "organization_id") orelse @This().textFieldValue(line, "organizationId")) |raw_value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) }; continue; }
                     if (@This().textBlockField(line, "audit_subject") or @This().textBlockField(line, "auditSubject")) {
                         const block = try @This().textBlock(allocator, &lines);
                         defer allocator.free(block);
                         var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer nested.deinit(allocator);
-                        self.subject = .{ .audit_subject = try nested.cloneOwned(allocator) };
+                        {
+                            var owned_nested = try nested.cloneOwned(allocator);
+                            errdefer owned_nested.deinit(allocator);
+                            self._pbzDeinitOneof_subject(allocator);
+                            self.subject = .{ .audit_subject = owned_nested };
+                        }
                         continue;
                     }
                     if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
@@ -1673,6 +1687,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
                     pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 }
+
 
                 pub fn actorFieldView(bytes: []const u8) !?[]const u8 {
                     return try pbz.wire.bytesFieldView(bytes, 1);
