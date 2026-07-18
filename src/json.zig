@@ -166,24 +166,18 @@ fn fillMessageObject(
                 else => return error.TypeMismatch,
             };
             for (array.items) |item| {
-                var value = parseValue(allocator, file, registry, message.descriptor, field.kind, item, options) catch |err| {
+                const value = parseValue(allocator, file, registry, message.descriptor, field.kind, item, options) catch |err| {
                     if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, field.kind, err)) continue;
                     return err;
                 };
-                message.add(field, value) catch |err| {
-                    dynamic.deinitValue(&value, allocator);
-                    return err;
-                };
+                try addOwnedValue(allocator, message, field, value);
             }
         } else {
-            var value = parseValue(allocator, file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
+            const value = parseValue(allocator, file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
                 if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, field.kind, err)) continue;
                 return err;
             };
-            message.add(field, value) catch |err| {
-                dynamic.deinitValue(&value, allocator);
-                return err;
-            };
+            try addOwnedValue(allocator, message, field, value);
         }
     }
 }
@@ -1103,11 +1097,8 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
             message.deinit();
             allocator.destroy(message);
         }
-        var value = try parseWrapperValue(allocator, kind, json_value);
-        message.add(descriptor.findField("value") orelse return error.TypeMismatch, value) catch |err| {
-            dynamic.deinitValue(&value, allocator);
-            return err;
-        };
+        const field = descriptor.findField("value") orelse return error.TypeMismatch;
+        try addOwnedValue(allocator, message, field, try parseWrapperValue(allocator, kind, json_value));
         return message;
     }
     if (typeNameEquals(name, "google.protobuf.Empty")) {
