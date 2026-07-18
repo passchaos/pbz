@@ -314,9 +314,16 @@ pub const demo = struct {
                 if (other.audit) |other_value| {
                     if (self.audit) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.audit = try other_value.cloneOwned(allocator); }
                 }
-                if (other.audits.count() != 0) {
+                const audits_other_count = other.audits.count();
+                if (audits_other_count != 0) {
+                    try self.audits.ensureUnusedCapacity(allocator, audits_other_count);
                     var other_it = other.audits.iterator();
-                    while (other_it.next()) |entry| try @This().putMapEntry_audits(allocator, &self.audits, .{ .key = entry.key_ptr.*, .value = try entry.value_ptr.cloneOwned(allocator) });
+                    while (other_it.next()) |entry| {
+                        const cloned_value = try entry.value_ptr.cloneOwned(allocator);
+                        const result = self.audits.getOrPutAssumeCapacity(entry.key_ptr.*);
+                        if (result.found_existing) result.value_ptr.deinit(allocator);
+                        result.value_ptr.* = cloned_value;
+                    }
                 }
                 switch (other.subject) {
                     .none => {},

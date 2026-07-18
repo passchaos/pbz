@@ -247,9 +247,16 @@ pub const demo = struct {
                         self.history = merged;
                         if (old.len != 0) allocator.free(old);
                     }
-                    if (other.by_name.count() != 0) {
+                    const by_name_other_count = other.by_name.count();
+                    if (by_name_other_count != 0) {
+                        try self.by_name.ensureUnusedCapacity(allocator, by_name_other_count);
                         var other_it = other.by_name.iterator();
-                        while (other_it.next()) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, .{ .key = entry.key_ptr.*, .value = try entry.value_ptr.cloneOwned(allocator) });
+                        while (other_it.next()) |entry| {
+                            const cloned_value = try entry.value_ptr.cloneOwned(allocator);
+                            const result = self.by_name.getOrPutAssumeCapacity(entry.key_ptr.*);
+                            if (result.found_existing) result.value_ptr.deinit(allocator);
+                            result.value_ptr.* = cloned_value;
+                        }
                     }
                     switch (other.selected) {
                         .none => {},

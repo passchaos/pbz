@@ -5145,26 +5145,48 @@ fn writeMergeRepeatedField(ctx: *const CodegenContext, field: *const schema.Fiel
 }
 
 fn writeMergeMapField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const typed_message_value = typedMapMessageValueWithContext(ctx, field) != null;
     try indent(writer, depth);
-    try writer.writeAll("if (other.");
+    try writer.writeAll("const ");
+    try writeQuotedIdentWithSuffix(field.name, "_other_count", writer);
+    try writer.writeAll(" = other.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".count() != 0) {\n");
+    try writer.writeAll(".count();\n");
+    try indent(writer, depth);
+    try writer.writeAll("if (");
+    try writeQuotedIdentWithSuffix(field.name, "_other_count", writer);
+    try writer.writeAll(" != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".ensureUnusedCapacity(allocator, ");
+    try writeQuotedIdentWithSuffix(field.name, "_other_count", writer);
+    try writer.writeAll(");\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var other_it = other.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".iterator();\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("while (other_it.next()) |entry| try @This().");
-    try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-    try writer.writeAll("(allocator, &self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(", .{ .key = entry.key_ptr.*, .value = ");
-    if (typedMapMessageValueWithContext(ctx, field)) |_| {
-        try writer.writeAll("try entry.value_ptr.cloneOwned(allocator)");
-    } else {
-        try writer.writeAll("entry.value_ptr.*");
+    try writer.writeAll("while (other_it.next()) |entry| {\n");
+    if (typed_message_value) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const cloned_value = try entry.value_ptr.cloneOwned(allocator);\n");
     }
-    try writer.writeAll(" });\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("const result = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".getOrPutAssumeCapacity(entry.key_ptr.*);\n");
+    if (typed_message_value) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (result.found_existing) result.value_ptr.deinit(allocator);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("result.value_ptr.* = cloned_value;\n");
+    } else {
+        try indent(writer, depth + 2);
+        try writer.writeAll("result.value_ptr.* = entry.value_ptr.*;\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -14540,7 +14562,9 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, existing.key, entry.key)) { existing.* = entry; return; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn appendOrReplaceMapEntry_flags(allocator: std.mem.Allocator, list: *std.ArrayList(flagsEntry), entry: flagsEntry) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (existing.key == entry.key) { existing.* = entry; return; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const counts_other_count = other.counts.count();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, counts_other_count);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const result = self.counts.getOrPutAssumeCapacity(entry.key_ptr.*);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const result = try map.getOrPut(allocator, entry.key);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.clearRetainingCapacity();") != null);

@@ -270,9 +270,14 @@ pub const demo = struct {
                 self.scores = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            if (other.counts.count() != 0) {
+            const counts_other_count = other.counts.count();
+            if (counts_other_count != 0) {
+                try self.counts.ensureUnusedCapacity(allocator, counts_other_count);
                 var other_it = other.counts.iterator();
-                while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });
+                while (other_it.next()) |entry| {
+                    const result = self.counts.getOrPutAssumeCapacity(entry.key_ptr.*);
+                    result.value_ptr.* = entry.value_ptr.*;
+                }
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
@@ -22424,9 +22429,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         // no same-file extension accessors
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.counts.count() != 0) {
+            const counts_other_count = other.counts.count();
+            if (counts_other_count != 0) {
+                try self.counts.ensureUnusedCapacity(allocator, counts_other_count);
                 var other_it = other.counts.iterator();
-                while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });
+                while (other_it.next()) |entry| {
+                    const result = self.counts.getOrPutAssumeCapacity(entry.key_ptr.*);
+                    result.value_ptr.* = entry.value_ptr.*;
+                }
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
@@ -23685,9 +23695,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 self.history = merged;
                 if (old.len != 0) allocator.free(old);
             }
-            if (other.audits.count() != 0) {
+            const audits_other_count = other.audits.count();
+            if (audits_other_count != 0) {
+                try self.audits.ensureUnusedCapacity(allocator, audits_other_count);
                 var other_it = other.audits.iterator();
-                while (other_it.next()) |entry| try @This().putMapEntry_audits(allocator, &self.audits, .{ .key = entry.key_ptr.*, .value = try entry.value_ptr.cloneOwned(allocator) });
+                while (other_it.next()) |entry| {
+                    const cloned_value = try entry.value_ptr.cloneOwned(allocator);
+                    const result = self.audits.getOrPutAssumeCapacity(entry.key_ptr.*);
+                    if (result.found_existing) result.value_ptr.deinit(allocator);
+                    result.value_ptr.* = cloned_value;
+                }
             }
             switch (other.subject) {
                 .none => {},
