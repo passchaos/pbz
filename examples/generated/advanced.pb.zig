@@ -774,25 +774,21 @@ pub const demo = struct {
                 try writer.writeAll("{");
                 var first = true;
                 if (self.id != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"id\":");
+                    try writer.writeAll(if (first) "\"id\":" else ",\"id\":"); first = false;
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
                 if (self.kind != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"kind\":");
+                    try writer.writeAll(if (first) "\"kind\":" else ",\"kind\":"); first = false;
                     const value = self.kind;
                     try @This().jsonWriteEnum(writer, value, &.{"KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG"}, &.{0, 1, 2}, options.enum_as_name);
                 }
                 if (self.audit) |nested| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"audit\":");
+                    try writer.writeAll(if (first) "\"audit\":" else ",\"audit\":"); first = false;
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.audits.count() != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"audits\":");
+                    try writer.writeAll(if (first) "\"audits\":" else ",\"audits\":"); first = false;
                     try writer.writeAll("{");
                     var map_it = self.audits.iterator();
                     var i: usize = 0;
@@ -808,18 +804,15 @@ pub const demo = struct {
                 switch (self.subject) {
                     .none => {},
                     .user_name => |value| {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"user_name\":" else "\"userName\":");
+                        try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"user_name\":" else ",\"user_name\":") else (if (first) "\"userName\":" else ",\"userName\":")); first = false;
                         try @This().jsonWriteString(writer, value);
                     },
                     .organization_id => |value| {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"organization_id\":" else "\"organizationId\":");
+                        try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"organization_id\":" else ",\"organization_id\":") else (if (first) "\"organizationId\":" else ",\"organizationId\":")); first = false;
                         try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
                     },
                     .audit_subject => |value| {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"audit_subject\":" else "\"auditSubject\":");
+                        try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"audit_subject\":" else ",\"audit_subject\":") else (if (first) "\"auditSubject\":" else ",\"auditSubject\":")); first = false;
                         try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                     },
                 }
@@ -1935,14 +1928,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     try writer.writeAll("{");
                     var first = true;
                     if (self.actor.len != 0 or options.always_print_primitive_fields) {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll("\"actor\":");
+                        try writer.writeAll(if (first) "\"actor\":" else ",\"actor\":"); first = false;
                         const value = self.actor;
                         try @This().jsonWriteString(writer, value);
                     }
                     if (self.at_unix != 0 or options.always_print_primitive_fields) {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"at_unix\":" else "\"atUnix\":");
+                        try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"at_unix\":" else ",\"at_unix\":") else (if (first) "\"atUnix\":" else ",\"atUnix\":")); first = false;
                         const value = self.at_unix;
                         try writer.print("\"{d}\"", .{value});
                     }

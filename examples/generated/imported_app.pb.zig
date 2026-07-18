@@ -694,13 +694,11 @@ pub const demo = struct {
                     try writer.writeAll("{");
                     var first = true;
                     if (self.primary) |nested| {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll("\"primary\":");
+                        try writer.writeAll(if (first) "\"primary\":" else ",\"primary\":"); first = false;
                         try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                     }
                     if (self.history.len != 0 or options.always_print_primitive_fields) {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll("\"history\":");
+                        try writer.writeAll(if (first) "\"history\":" else ",\"history\":"); first = false;
                         try writer.writeAll("[");
                         for (self.history, 0..) |item, i| {
                             if (i != 0) try writer.writeAll(",");
@@ -709,8 +707,7 @@ pub const demo = struct {
                         try writer.writeAll("]");
                     }
                     if (self.by_name.count() != 0 or options.always_print_primitive_fields) {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"by_name\":" else "\"byName\":");
+                        try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"by_name\":" else ",\"by_name\":") else (if (first) "\"byName\":" else ",\"byName\":")); first = false;
                         try writer.writeAll("{");
                         var map_it = self.by_name.iterator();
                         var i: usize = 0;
@@ -726,13 +723,11 @@ pub const demo = struct {
                     switch (self.selected) {
                         .none => {},
                         .chosen => |value| {
-                            if (!first) try writer.writeAll(","); first = false;
-                            try writer.writeAll("\"chosen\":");
+                            try writer.writeAll(if (first) "\"chosen\":" else ",\"chosen\":"); first = false;
                             try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                         },
                         .fallback => |value| {
-                            if (!first) try writer.writeAll(","); first = false;
-                            try writer.writeAll("\"fallback\":");
+                            try writer.writeAll(if (first) "\"fallback\":" else ",\"fallback\":"); first = false;
                             try @This().jsonWriteString(writer, value);
                         },
                     }

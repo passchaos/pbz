@@ -503,19 +503,16 @@ pub const demo = struct {
                 try writer.writeAll("{");
                 var first = true;
                 if (self.has_id or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"id\":");
+                    try writer.writeAll(if (first) "\"id\":" else ",\"id\":"); first = false;
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
                 if (self.box) |nested| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"box\":");
+                    try writer.writeAll(if (first) "\"box\":" else ",\"box\":"); first = false;
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.item.len != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"item\":");
+                    try writer.writeAll(if (first) "\"item\":" else ",\"item\":"); first = false;
                     try writer.writeAll("[");
                     for (self.item, 0..) |item, i| {
                         if (i != 0) try writer.writeAll(",");
@@ -526,13 +523,11 @@ pub const demo = struct {
                 switch (self.picked) {
                     .none => {},
                     .picked_box => |value| {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"picked_box\":" else "\"pickedBox\":");
+                        try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"picked_box\":" else ",\"picked_box\":") else (if (first) "\"pickedBox\":" else ",\"pickedBox\":")); first = false;
                         try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                     },
                     .note => |value| {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll("\"note\":");
+                        try writer.writeAll(if (first) "\"note\":" else ",\"note\":"); first = false;
                         try @This().jsonWriteString(writer, value);
                     },
                 }
@@ -1578,8 +1573,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     try writer.writeAll("{");
                     var first = true;
                     if (self.has_label or options.always_print_primitive_fields) {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll("\"label\":");
+                        try writer.writeAll(if (first) "\"label\":" else ",\"label\":"); first = false;
                         const value = self.label;
                         try @This().jsonWriteString(writer, value);
                     }
@@ -2518,8 +2512,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     try writer.writeAll("{");
                     var first = true;
                     if (self.has_rank or options.always_print_primitive_fields) {
-                        if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll("\"rank\":");
+                        try writer.writeAll(if (first) "\"rank\":" else ",\"rank\":"); first = false;
                         const value = self.rank;
                         try writer.print("{d}", .{value});
                     }

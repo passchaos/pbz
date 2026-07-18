@@ -708,27 +708,23 @@ pub const demo = struct {
             try writer.writeAll("{");
             var first = true;
             if (self.id != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"id\":");
+                try writer.writeAll(if (first) "\"id\":" else ",\"id\":"); first = false;
                 const value = self.id;
                 try writer.print("{d}", .{value});
             }
             if (self.name.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"name\":");
+                try writer.writeAll(if (first) "\"name\":" else ",\"name\":"); first = false;
                 const value = self.name;
                 try @This().jsonWriteString(writer, value);
             }
             if (self.scores.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"scores\":");
+                try writer.writeAll(if (first) "\"scores\":" else ",\"scores\":"); first = false;
                 try writer.writeAll("[");
                 for (self.scores, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
             }
             if (self.counts.count() != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"counts\":");
+                try writer.writeAll(if (first) "\"counts\":" else ",\"counts\":"); first = false;
                 try writer.writeAll("{");
                 var map_it = self.counts.iterator();
                 var i: usize = 0;
@@ -2361,87 +2357,73 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.active or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"active\":");
+                try writer.writeAll(if (first) "\"active\":" else ",\"active\":"); first = false;
                 const value = self.active;
                 try writer.writeAll(if (value) "true" else "false");
             }
             if (self.count != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"count\":");
+                try writer.writeAll(if (first) "\"count\":" else ",\"count\":"); first = false;
                 const value = self.count;
                 try writer.print("{d}", .{value});
             }
             if (self.total != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"total\":");
+                try writer.writeAll(if (first) "\"total\":" else ",\"total\":"); first = false;
                 const value = self.total;
                 try writer.print("\"{d}\"", .{value});
             }
             if (self.delta != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"delta\":");
+                try writer.writeAll(if (first) "\"delta\":" else ",\"delta\":"); first = false;
                 const value = self.delta;
                 try writer.print("{d}", .{value});
             }
             if (self.big_delta != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll(if (options.preserve_proto_field_names) "\"big_delta\":" else "\"bigDelta\":");
+                try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"big_delta\":" else ",\"big_delta\":") else (if (first) "\"bigDelta\":" else ",\"bigDelta\":")); first = false;
                 const value = self.big_delta;
                 try writer.print("\"{d}\"", .{value});
             }
             if (self.checksum != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"checksum\":");
+                try writer.writeAll(if (first) "\"checksum\":" else ",\"checksum\":"); first = false;
                 const value = self.checksum;
                 try writer.print("{d}", .{value});
             }
             if (self.token != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"token\":");
+                try writer.writeAll(if (first) "\"token\":" else ",\"token\":"); first = false;
                 const value = self.token;
                 try writer.print("\"{d}\"", .{value});
             }
             if (self.signed_fixed != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll(if (options.preserve_proto_field_names) "\"signed_fixed\":" else "\"signedFixed\":");
+                try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"signed_fixed\":" else ",\"signed_fixed\":") else (if (first) "\"signedFixed\":" else ",\"signedFixed\":")); first = false;
                 const value = self.signed_fixed;
                 try writer.print("{d}", .{value});
             }
             if (self.signed_big_fixed != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll(if (options.preserve_proto_field_names) "\"signed_big_fixed\":" else "\"signedBigFixed\":");
+                try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"signed_big_fixed\":" else ",\"signed_big_fixed\":") else (if (first) "\"signedBigFixed\":" else ",\"signedBigFixed\":")); first = false;
                 const value = self.signed_big_fixed;
                 try writer.print("\"{d}\"", .{value});
             }
             if (self.ratio != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"ratio\":");
+                try writer.writeAll(if (first) "\"ratio\":" else ",\"ratio\":"); first = false;
                 const value = self.ratio;
                 if (std.math.isNan(value)) try writer.writeAll("\"NaN\"") else if (std.math.isPositiveInf(value)) try writer.writeAll("\"Infinity\"") else if (std.math.isNegativeInf(value)) try writer.writeAll("\"-Infinity\"") else try writer.print("{d}", .{value});
             }
             if (self.score != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"score\":");
+                try writer.writeAll(if (first) "\"score\":" else ",\"score\":"); first = false;
                 const value = self.score;
                 if (std.math.isNan(value)) try writer.writeAll("\"NaN\"") else if (std.math.isPositiveInf(value)) try writer.writeAll("\"Infinity\"") else if (std.math.isNegativeInf(value)) try writer.writeAll("\"-Infinity\"") else try writer.print("{d}", .{value});
             }
             if (self.kind != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"kind\":");
+                try writer.writeAll(if (first) "\"kind\":" else ",\"kind\":"); first = false;
                 const value = self.kind;
                 try @This().jsonWriteEnum(writer, value, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, options.enum_as_name);
             }
             if (self.flags.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"flags\":");
+                try writer.writeAll(if (first) "\"flags\":" else ",\"flags\":"); first = false;
                 try writer.writeAll("[");
                 for (self.flags, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.writeAll(if (item) "true" else "false"); }
                 try writer.writeAll("]");
             }
             if (self.ids.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"ids\":");
+                try writer.writeAll(if (first) "\"ids\":" else ",\"ids\":"); first = false;
                 try writer.writeAll("[");
                 for (self.ids, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
@@ -3755,27 +3737,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.title.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"title\":");
+                try writer.writeAll(if (first) "\"title\":" else ",\"title\":"); first = false;
                 const value = self.title;
                 try @This().jsonWriteString(writer, value);
             }
             if (self.payload.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"payload\":");
+                try writer.writeAll(if (first) "\"payload\":" else ",\"payload\":"); first = false;
                 const value = self.payload;
                 try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
             }
             if (self.tags.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"tags\":");
+                try writer.writeAll(if (first) "\"tags\":" else ",\"tags\":"); first = false;
                 try writer.writeAll("[");
                 for (self.tags, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try @This().jsonWriteString(writer, item); }
                 try writer.writeAll("]");
             }
             if (self.chunks.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"chunks\":");
+                try writer.writeAll(if (first) "\"chunks\":" else ",\"chunks\":"); first = false;
                 try writer.writeAll("[");
                 for (self.chunks, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, item); try writer.writeByte('"'); }
                 try writer.writeAll("]");
@@ -4848,14 +4826,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.payload.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"payload\":");
+                try writer.writeAll(if (first) "\"payload\":" else ",\"payload\":"); first = false;
                 const value = self.payload;
                 try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
             }
             if (self.chunks.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"chunks\":");
+                try writer.writeAll(if (first) "\"chunks\":" else ",\"chunks\":"); first = false;
                 try writer.writeAll("[");
                 for (self.chunks, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, item); try writer.writeByte('"'); }
                 try writer.writeAll("]");
@@ -6202,54 +6178,46 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.child) |nested| {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"child\":");
+                try writer.writeAll(if (first) "\"child\":" else ",\"child\":"); first = false;
                 try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
             }
             switch (self.pick) {
                 .none => {},
                 .name => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"name\":");
+                    try writer.writeAll(if (first) "\"name\":" else ",\"name\":"); first = false;
                     try @This().jsonWriteString(writer, value);
                 },
                 .token => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"token\":");
+                    try writer.writeAll(if (first) "\"token\":" else ",\"token\":"); first = false;
                     try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
                 },
                 .nested => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"nested\":");
+                    try writer.writeAll(if (first) "\"nested\":" else ",\"nested\":"); first = false;
                     try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 },
                 .code => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"code\":");
+                    try writer.writeAll(if (first) "\"code\":" else ",\"code\":"); first = false;
                     try writer.print("\"{d}\"", .{value});
                 },
             }
             switch (self._count) {
                 .none => {},
                 .count => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"count\":");
+                    try writer.writeAll(if (first) "\"count\":" else ",\"count\":"); first = false;
                     try writer.print("{d}", .{value});
                 },
             }
             switch (self._note) {
                 .none => {},
                 .note => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"note\":");
+                    try writer.writeAll(if (first) "\"note\":" else ",\"note\":"); first = false;
                     try @This().jsonWriteString(writer, value);
                 },
             }
             switch (self._raw) {
                 .none => {},
                 .raw => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"raw\":");
+                    try writer.writeAll(if (first) "\"raw\":" else ",\"raw\":"); first = false;
                     try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
                 },
             }
@@ -7325,14 +7293,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try writer.writeAll("{");
                 var first = true;
                 if (self.id != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"id\":");
+                    try writer.writeAll(if (first) "\"id\":" else ",\"id\":"); first = false;
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
                 if (self.label.len != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"label\":");
+                    try writer.writeAll(if (first) "\"label\":" else ",\"label\":"); first = false;
                     const value = self.label;
                     try @This().jsonWriteString(writer, value);
                 }
@@ -8404,8 +8370,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -9471,8 +9436,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -10530,8 +10494,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
@@ -11589,8 +11552,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -12648,8 +12610,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
@@ -13707,8 +13668,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); if (std.math.isNan(item)) try writer.writeAll("\"NaN\"") else if (std.math.isPositiveInf(item)) try writer.writeAll("\"Infinity\"") else if (std.math.isNegativeInf(item)) try writer.writeAll("\"-Infinity\"") else try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -14766,8 +14726,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); if (std.math.isNan(item)) try writer.writeAll("\"NaN\"") else if (std.math.isPositiveInf(item)) try writer.writeAll("\"Infinity\"") else if (std.math.isNegativeInf(item)) try writer.writeAll("\"-Infinity\"") else try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -15831,8 +15790,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
@@ -16896,8 +16854,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -17961,8 +17918,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
@@ -19026,8 +18982,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                 try writer.writeAll("]");
@@ -20091,8 +20046,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("\"{d}\"", .{item}); }
                 try writer.writeAll("]");
@@ -21134,8 +21088,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.writeAll(if (item) "true" else "false"); }
                 try writer.writeAll("]");
@@ -22202,8 +22155,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.values.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"values\":");
+                try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                 try writer.writeAll("[");
                 for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try @This().jsonWriteEnum(writer, item, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, options.enum_as_name); }
                 try writer.writeAll("]");
@@ -23320,8 +23272,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.counts.count() != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"counts\":");
+                try writer.writeAll(if (first) "\"counts\":" else ",\"counts\":"); first = false;
                 try writer.writeAll("{");
                 var map_it = self.counts.iterator();
                 var i: usize = 0;
@@ -24753,19 +24704,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             try writer.writeAll("{");
             var first = true;
             if (self.id != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"id\":");
+                try writer.writeAll(if (first) "\"id\":" else ",\"id\":"); first = false;
                 const value = self.id;
                 try writer.print("{d}", .{value});
             }
             if (self.audit) |nested| {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"audit\":");
+                try writer.writeAll(if (first) "\"audit\":" else ",\"audit\":"); first = false;
                 try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
             }
             if (self.history.len != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"history\":");
+                try writer.writeAll(if (first) "\"history\":" else ",\"history\":"); first = false;
                 try writer.writeAll("[");
                 for (self.history, 0..) |item, i| {
                     if (i != 0) try writer.writeAll(",");
@@ -24774,8 +24722,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try writer.writeAll("]");
             }
             if (self.audits.count() != 0 or options.always_print_primitive_fields) {
-                if (!first) try writer.writeAll(","); first = false;
-                try writer.writeAll("\"audits\":");
+                try writer.writeAll(if (first) "\"audits\":" else ",\"audits\":"); first = false;
                 try writer.writeAll("{");
                 var map_it = self.audits.iterator();
                 var i: usize = 0;
@@ -24791,18 +24738,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             switch (self.subject) {
                 .none => {},
                 .user_name => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"user_name\":" else "\"userName\":");
+                    try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"user_name\":" else ",\"user_name\":") else (if (first) "\"userName\":" else ",\"userName\":")); first = false;
                     try @This().jsonWriteString(writer, value);
                 },
                 .organization_id => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"organization_id\":" else "\"organizationId\":");
+                    try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"organization_id\":" else ",\"organization_id\":") else (if (first) "\"organizationId\":" else ",\"organizationId\":")); first = false;
                     try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
                 },
                 .audit_subject => |value| {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"audit_subject\":" else "\"auditSubject\":");
+                    try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"audit_subject\":" else ",\"audit_subject\":") else (if (first) "\"auditSubject\":" else ",\"auditSubject\":")); first = false;
                     try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 },
             }
@@ -25940,14 +25884,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try writer.writeAll("{");
                 var first = true;
                 if (self.actor.len != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll("\"actor\":");
+                    try writer.writeAll(if (first) "\"actor\":" else ",\"actor\":"); first = false;
                     const value = self.actor;
                     try @This().jsonWriteString(writer, value);
                 }
                 if (self.at_unix != 0 or options.always_print_primitive_fields) {
-                    if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"at_unix\":" else "\"atUnix\":");
+                    try writer.writeAll(if (options.preserve_proto_field_names) (if (first) "\"at_unix\":" else ",\"at_unix\":") else (if (first) "\"atUnix\":" else ",\"atUnix\":")); first = false;
                     const value = self.at_unix;
                     try writer.print("\"{d}\"", .{value});
                 }

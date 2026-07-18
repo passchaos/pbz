@@ -10109,19 +10109,23 @@ fn writeJsonField(ctx: *const CodegenContext, field: *const schema.FieldDescript
 
 fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (!first) try writer.writeAll(\",\"); first = false;\n");
-    try indent(writer, depth);
     if (jsonFieldNameMatchesProtoName(field)) {
-        try writer.writeAll("try writer.writeAll(\"\\\"");
+        try writer.writeAll("try writer.writeAll(if (first) \"\\\"");
         try writeEscapedStringContents(field.name, writer);
-        try writer.writeAll("\\\":\");\n");
+        try writer.writeAll("\\\":\" else \",\\\"");
+        try writeEscapedStringContents(field.name, writer);
+        try writer.writeAll("\\\":\"); first = false;\n");
         return;
     }
-    try writer.writeAll("try writer.writeAll(if (options.preserve_proto_field_names) \"\\\"");
+    try writer.writeAll("try writer.writeAll(if (options.preserve_proto_field_names) (if (first) \"\\\"");
     try writeEscapedStringContents(field.name, writer);
-    try writer.writeAll("\\\":\" else \"\\\"");
+    try writer.writeAll("\\\":\" else \",\\\"");
+    try writeEscapedStringContents(field.name, writer);
+    try writer.writeAll("\\\":\") else (if (first) \"\\\"");
     try writeJsonFieldNameLiteralContents(field, writer);
-    try writer.writeAll("\\\":\");\n");
+    try writer.writeAll("\\\":\" else \",\\\"");
+    try writeJsonFieldNameLiteralContents(field, writer);
+    try writer.writeAll("\\\":\")); first = false;\n");
 }
 
 fn jsonFieldNameMatchesProtoName(field: *const schema.FieldDescriptor) bool {
@@ -10509,11 +10513,11 @@ fn writeJsonExtensionValue(ctx: *const CodegenContext, kind: schema.FieldKind, v
 
 fn writeJsonExtensionPrefix(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (!first) try writer.writeAll(\",\"); first = false;\n");
-    try indent(writer, depth);
-    try writer.writeAll("try writer.writeAll(\"\\\"[");
+    try writer.writeAll("try writer.writeAll(if (first) \"\\\"[");
     try writeExtensionTextNameContents(file, field, true, writer);
-    try writer.writeAll("]\\\":\");\n");
+    try writer.writeAll("]\\\":\" else \",\\\"[");
+    try writeExtensionTextNameContents(file, field, true, writer);
+    try writer.writeAll("]\\\":\"); first = false;\n");
 }
 
 fn writeJsonScalarValue(scalar: schema.ScalarType, prefix: []const u8, writer: *std.Io.Writer) Error!void {
@@ -13815,10 +13819,10 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"id\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (first) \"\\\"id\\\":\" else \",\\\"id\\\":\"); first = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"id\\\":\" else \"\\\"id\\\":\"") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"user_id\\\":\" else \"\\\"userId\\\":\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"display_name\\\":\" else \"\\\"shownName\\\":\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) (if (first) \"\\\"user_id\\\":\" else \",\\\"user_id\\\":\") else (if (first) \"\\\"userId\\\":\" else \",\\\"userId\\\":\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) (if (first) \"\\\"display_name\\\":\" else \",\\\"display_name\\\":\") else (if (first) \"\\\"shownName\\\":\" else \",\\\"shownName\\\":\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.id != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.kind != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.tags.len != 0 or options.always_print_primitive_fields)") != null);
@@ -14099,11 +14103,11 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Note.jsonParseValueWithOptions(arena_allocator, arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.note.replaceInUnknown(self, allocator, try nested.encode(arena_allocator));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.tag.decodeAllFromUnknown(self, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"[demo.tag]\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (first) \"\\\"[demo.tag]\\\":\" else \",\\\"[demo.tag]\\\":\"); first = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const value = values[values.len - 1];") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteString(writer, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.nums.decodeAllFromUnknown(self, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"[demo.nums]\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (first) \"\\\"[demo.nums]\\\":\" else \",\\\"[demo.nums]\\\":\"); first = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try Note.decode(allocator_, payload_);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.tag.decodeRaw(raw) catch null) |value| {") != null);
