@@ -794,6 +794,7 @@ pub const FileDescriptor = struct {
     }
 
     pub fn addOption(self: *FileDescriptor, option: FieldOption) std.mem.Allocator.Error!void {
+        errdefer if (option.name_owned) self.allocator.free(option.name);
         try self.options.append(self.allocator, option);
         if (std.mem.startsWith(u8, option.name, "features.")) self.features.applyOption(option.name, option.value);
     }
