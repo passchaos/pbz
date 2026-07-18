@@ -1456,8 +1456,11 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try indent(writer, depth + 1);
         try writer.writeAll("errdefer entry.value.deinit(allocator);\n");
     }
-    try indent(writer, depth + 1);
-    try writer.writeAll(if (textMapEntryCanSkip(map_type)) "var skip_entry = false;\n" else "const skip_entry = false;\n");
+    const can_skip_entry = textMapEntryCanSkip(map_type);
+    if (can_skip_entry) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var skip_entry = false;\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("while (lines.next()) |raw_entry_line| {\n");
     try indent(writer, depth + 2);
@@ -1516,8 +1519,10 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try writer.writeAll("return error.UnknownField;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (skip_entry) continue;\n");
+    if (can_skip_entry) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (skip_entry) continue;\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("try @This().");
     try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
@@ -7486,8 +7491,11 @@ fn writeDecodeMapField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try writer.writeAll("const payload = try r.readBytes();\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var entry_reader = try r.nested(payload);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll(if (wireMapEntryCanSkip(file, map_type)) "var skip_entry = false;\n" else "const skip_entry = false;\n");
+    const can_skip_entry = wireMapEntryCanSkip(file, map_type);
+    if (can_skip_entry) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("var skip_entry = false;\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("while (try entry_reader.nextTag()) |entry_tag| {\n");
     try indent(writer, depth + 2);
@@ -7501,7 +7509,10 @@ fn writeDecodeMapField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().");
+    if (can_skip_entry) {
+        try writer.writeAll("if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else ");
+    }
+    try writer.writeAll("try @This().");
     try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
     try writer.writeAll("(allocator, &self.");
     try writeQuotedIdent(field.name, writer);
@@ -14538,7 +14549,8 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.clearRetainingCapacity();") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "else try @This().putMapEntry_counts(allocator, &self.counts, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_counts(allocator, &self.counts, entry);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const skip_entry = false;") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;

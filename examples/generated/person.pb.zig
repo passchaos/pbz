@@ -574,7 +574,6 @@ pub const demo = struct {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
                         var entry_reader = try r.nested(payload);
-                        const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
@@ -582,7 +581,7 @@ pub const demo = struct {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
@@ -622,7 +621,6 @@ pub const demo = struct {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
                         var entry_reader = try r.nested(payload);
-                        const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
@@ -630,7 +628,7 @@ pub const demo = struct {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
@@ -1390,7 +1388,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
                 if (@This().textBlockField(line, "counts")) {
                     var entry = countsEntry{};
-                    const skip_entry = false;
                     while (lines.next()) |raw_entry_line| {
                         const entry_line = @This().textCleanLine(raw_entry_line);
                         if (entry_line.len == 0) continue;
@@ -1399,7 +1396,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         if (@This().textFieldValue(entry_line, "value")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }
                         return error.UnknownField;
                     }
-                    if (skip_entry) continue;
                     try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);
                     continue;
                 }
@@ -22645,7 +22641,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
                         var entry_reader = try r.nested(payload);
-                        const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
@@ -22653,7 +22648,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                 }
@@ -22676,7 +22671,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry = countsEntry{};
                         const payload = try r.readBytes();
                         var entry_reader = try r.nested(payload);
-                        const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
@@ -22684,7 +22678,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_counts(allocator, &self.counts, entry);
+                        try @This().putMapEntry_counts(allocator, &self.counts, entry);
                     },
                     else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                 }
@@ -23379,7 +23373,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (line.len == 0) continue;
                 if (@This().textBlockField(line, "counts")) {
                     var entry = countsEntry{};
-                    const skip_entry = false;
                     while (lines.next()) |raw_entry_line| {
                         const entry_line = @This().textCleanLine(raw_entry_line);
                         if (entry_line.len == 0) continue;
@@ -23388,7 +23381,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         if (@This().textFieldValue(entry_line, "value")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }
                         return error.UnknownField;
                     }
-                    if (skip_entry) continue;
                     try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);
                     continue;
                 }
@@ -23997,7 +23989,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         errdefer entry.value.deinit(allocator);
                         const payload = try r.readBytes();
                         var entry_reader = try r.nested(payload);
-                        const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
@@ -24005,7 +23996,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                        try @This().putMapEntry_audits(allocator, &self.audits, entry);
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
                     6 => self.subject = .{ .organization_id = try r.readBytes() },
@@ -24050,7 +24041,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         errdefer entry.value.deinit(allocator);
                         const payload = try r.readBytes();
                         var entry_reader = try r.nested(payload);
-                        const skip_entry = false;
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
                                 1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
@@ -24058,7 +24048,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
-                        if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                        try @This().putMapEntry_audits(allocator, &self.audits, entry);
                     },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self.subject = .{ .user_name = value }; },
                     6 => self.subject = .{ .organization_id = try r.readBytes() },
@@ -24918,7 +24908,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (@This().textBlockField(line, "audits")) {
                     var entry = auditsEntry{};
                     errdefer entry.value.deinit(allocator);
-                    const skip_entry = false;
                     while (lines.next()) |raw_entry_line| {
                         const entry_line = @This().textCleanLine(raw_entry_line);
                         if (entry_line.len == 0) continue;
@@ -24935,7 +24924,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         }
                         return error.UnknownField;
                     }
-                    if (skip_entry) continue;
                     try @This().appendOrReplaceMapEntry_audits(allocator, &audits_list, entry);
                     continue;
                 }
