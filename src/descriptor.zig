@@ -1530,7 +1530,10 @@ pub fn decodeFileDescriptorProto(allocator: std.mem.Allocator, bytes: []const u8
     var saw_syntax: ?schema.Syntax = null;
     var saw_edition_field = false;
     const owned_bytes = try allocator.dupe(u8, bytes);
+    var owns_owned_bytes = true;
+    errdefer if (owns_owned_bytes) allocator.free(owned_bytes);
     try file.owned_strings.append(allocator, owned_bytes);
+    owns_owned_bytes = false;
 
     var reader = wire.Reader.init(owned_bytes);
     while (try reader.nextTag()) |tag| {
