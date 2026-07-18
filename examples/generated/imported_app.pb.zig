@@ -214,7 +214,7 @@ pub const demo = struct {
                 }
 
                 pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
-                    return try pbz.wire.rawFieldsByNumberAlloc(allocator, self._unknown_fields, number);
+                    return try pbz.wire.rawFieldsByNumberAllocAssumeValid(allocator, self._unknown_fields, number);
                 }
 
                 pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void {

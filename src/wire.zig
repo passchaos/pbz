@@ -129,11 +129,7 @@ pub fn rawFieldCountByNumber(fields: []const []const u8, number: FieldNumber) Er
 /// rawFieldCountByNumber instead.
 pub inline fn rawFieldCountByNumberAssumeValid(fields: []const []const u8, number: FieldNumber) usize {
     const matcher = RawFieldNumberMatcher.init(number);
-    var count: usize = 0;
-    for (fields) |raw| {
-        if (matcher.matches(raw)) count += 1;
-    }
-    return count;
+    return rawFieldCountByNumberWithMatcher(fields, matcher);
 }
 
 /// Fast membership check for already-validated raw unknown fields.
@@ -213,6 +209,34 @@ pub fn rawFieldsByNumberAlloc(allocator: std.mem.Allocator, fields: []const []co
     }
     std.debug.assert(index == count);
     return matched;
+}
+
+/// Returns borrowed raw-field slices for already-validated unknown-field
+/// storage.  This mirrors rawFieldsByNumberAlloc but uses the same fast tag
+/// matcher as rawFieldCountByNumberAssumeValid.
+pub fn rawFieldsByNumberAllocAssumeValid(allocator: std.mem.Allocator, fields: []const []const u8, number: FieldNumber) std.mem.Allocator.Error![]const []const u8 {
+    const matcher = RawFieldNumberMatcher.init(number);
+    const count = rawFieldCountByNumberWithMatcher(fields, matcher);
+    if (count == 0) return &.{};
+
+    const matched = try allocator.alloc([]const u8, count);
+    var index: usize = 0;
+    for (fields) |raw| {
+        if (matcher.matches(raw)) {
+            matched[index] = raw;
+            index += 1;
+        }
+    }
+    std.debug.assert(index == count);
+    return matched;
+}
+
+inline fn rawFieldCountByNumberWithMatcher(fields: []const []const u8, matcher: RawFieldNumberMatcher) usize {
+    var count: usize = 0;
+    for (fields) |raw| {
+        if (matcher.matches(raw)) count += 1;
+    }
+    return count;
 }
 
 pub fn freeRawFields(allocator: std.mem.Allocator, fields: []const []const u8) void {
@@ -1803,6 +1827,12 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectEqual(@as(usize, 2), matched.len);
     try std.testing.expectEqualSlices(u8, writer.slice()[1..], matched[0]);
     try std.testing.expectEqualSlices(u8, &noncanonical_field_16, matched[1]);
+
+    const matched_fast = try rawFieldsByNumberAllocAssumeValid(std.testing.allocator, &raw_fields, 16);
+    defer std.testing.allocator.free(matched_fast);
+    try std.testing.expectEqual(@as(usize, 2), matched_fast.len);
+    try std.testing.expectEqualSlices(u8, writer.slice()[1..], matched_fast[0]);
+    try std.testing.expectEqualSlices(u8, &noncanonical_field_16, matched_fast[1]);
 }
 
 test "wire clears raw fields by number without reallocating on miss" {
