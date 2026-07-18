@@ -344,13 +344,13 @@ pub const demo = struct {
                 var first = true;
                 if (self.id != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"id\":" else "\"id\":");
+                    try writer.writeAll("\"id\":");
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
                 if (self.note.len != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"note\":" else "\"note\":");
+                    try writer.writeAll("\"note\":");
                     const value = self.note;
                     try @This().jsonWriteString(writer, value);
                 }

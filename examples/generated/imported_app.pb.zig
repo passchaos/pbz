@@ -695,12 +695,12 @@ pub const demo = struct {
                     var first = true;
                     if (self.primary) |nested| {
                         if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"primary\":" else "\"primary\":");
+                        try writer.writeAll("\"primary\":");
                         try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                     }
                     if (self.history.len != 0 or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"history\":" else "\"history\":");
+                        try writer.writeAll("\"history\":");
                         try writer.writeAll("[");
                         for (self.history, 0..) |item, i| {
                             if (i != 0) try writer.writeAll(",");
@@ -727,12 +727,12 @@ pub const demo = struct {
                         .none => {},
                         .chosen => |value| {
                             if (!first) try writer.writeAll(","); first = false;
-                            try writer.writeAll(if (options.preserve_proto_field_names) "\"chosen\":" else "\"chosen\":");
+                            try writer.writeAll("\"chosen\":");
                             try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                         },
                         .fallback => |value| {
                             if (!first) try writer.writeAll(","); first = false;
-                            try writer.writeAll(if (options.preserve_proto_field_names) "\"fallback\":" else "\"fallback\":");
+                            try writer.writeAll("\"fallback\":");
                             try @This().jsonWriteString(writer, value);
                         },
                     }

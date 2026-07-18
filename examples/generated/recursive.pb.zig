@@ -366,14 +366,14 @@ pub const demo = struct {
                 var first = true;
                 if (self.child.len != 0) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"child\":" else "\"child\":");
+                    try writer.writeAll("\"child\":");
                     var nested = try Node.decode(allocator, self.child);
                     defer nested.deinit(allocator);
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.children.len != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"children\":" else "\"children\":");
+                    try writer.writeAll("\"children\":");
                     try writer.writeAll("[");
                     for (self.children, 0..) |item, i| {
                         if (i != 0) try writer.writeAll(",");

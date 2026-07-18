@@ -10111,11 +10111,22 @@ fn writeJsonPrefix(field: *const schema.FieldDescriptor, writer: *std.Io.Writer,
     try indent(writer, depth);
     try writer.writeAll("if (!first) try writer.writeAll(\",\"); first = false;\n");
     try indent(writer, depth);
+    if (jsonFieldNameMatchesProtoName(field)) {
+        try writer.writeAll("try writer.writeAll(\"\\\"");
+        try writeEscapedStringContents(field.name, writer);
+        try writer.writeAll("\\\":\");\n");
+        return;
+    }
     try writer.writeAll("try writer.writeAll(if (options.preserve_proto_field_names) \"\\\"");
     try writeEscapedStringContents(field.name, writer);
     try writer.writeAll("\\\":\" else \"\\\"");
     try writeJsonFieldNameLiteralContents(field, writer);
     try writer.writeAll("\\\":\");\n");
+}
+
+fn jsonFieldNameMatchesProtoName(field: *const schema.FieldDescriptor) bool {
+    if (field.json_name) |json_name| return std.mem.eql(u8, json_name, field.name);
+    return std.mem.indexOfScalar(u8, field.name, '_') == null;
 }
 
 fn writeJsonScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -13804,7 +13815,8 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"id\\\":\" else \"\\\"id\\\":\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"\\\"id\\\":\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"id\\\":\" else \"\\\"id\\\":\"") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"user_id\\\":\" else \"\\\"userId\\\":\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.preserve_proto_field_names) \"\\\"display_name\\\":\" else \"\\\"shownName\\\":\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.id != 0 or options.always_print_primitive_fields)") != null);

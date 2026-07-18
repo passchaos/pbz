@@ -775,24 +775,24 @@ pub const demo = struct {
                 var first = true;
                 if (self.id != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"id\":" else "\"id\":");
+                    try writer.writeAll("\"id\":");
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
                 if (self.kind != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"kind\":" else "\"kind\":");
+                    try writer.writeAll("\"kind\":");
                     const value = self.kind;
                     try @This().jsonWriteEnum(writer, value, &.{"KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG"}, &.{0, 1, 2}, options.enum_as_name);
                 }
                 if (self.audit) |nested| {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"audit\":" else "\"audit\":");
+                    try writer.writeAll("\"audit\":");
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.audits.count() != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"audits\":" else "\"audits\":");
+                    try writer.writeAll("\"audits\":");
                     try writer.writeAll("{");
                     var map_it = self.audits.iterator();
                     var i: usize = 0;
@@ -1936,7 +1936,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var first = true;
                     if (self.actor.len != 0 or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"actor\":" else "\"actor\":");
+                        try writer.writeAll("\"actor\":");
                         const value = self.actor;
                         try @This().jsonWriteString(writer, value);
                     }

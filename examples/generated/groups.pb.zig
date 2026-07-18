@@ -504,18 +504,18 @@ pub const demo = struct {
                 var first = true;
                 if (self.has_id or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"id\":" else "\"id\":");
+                    try writer.writeAll("\"id\":");
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
                 if (self.box) |nested| {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"box\":" else "\"box\":");
+                    try writer.writeAll("\"box\":");
                     try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.item.len != 0 or options.always_print_primitive_fields) {
                     if (!first) try writer.writeAll(","); first = false;
-                    try writer.writeAll(if (options.preserve_proto_field_names) "\"item\":" else "\"item\":");
+                    try writer.writeAll("\"item\":");
                     try writer.writeAll("[");
                     for (self.item, 0..) |item, i| {
                         if (i != 0) try writer.writeAll(",");
@@ -532,7 +532,7 @@ pub const demo = struct {
                     },
                     .note => |value| {
                         if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"note\":" else "\"note\":");
+                        try writer.writeAll("\"note\":");
                         try @This().jsonWriteString(writer, value);
                     },
                 }
@@ -1579,7 +1579,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var first = true;
                     if (self.has_label or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"label\":" else "\"label\":");
+                        try writer.writeAll("\"label\":");
                         const value = self.label;
                         try @This().jsonWriteString(writer, value);
                     }
@@ -2519,7 +2519,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     var first = true;
                     if (self.has_rank or options.always_print_primitive_fields) {
                         if (!first) try writer.writeAll(","); first = false;
-                        try writer.writeAll(if (options.preserve_proto_field_names) "\"rank\":" else "\"rank\":");
+                        try writer.writeAll("\"rank\":");
                         const value = self.rank;
                         try writer.print("{d}", .{value});
                     }
