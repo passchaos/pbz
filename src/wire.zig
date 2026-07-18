@@ -542,7 +542,7 @@ pub const PackedUInt64Iterator = struct {
     remaining_fields: []const u8 = &.{},
     field_number: FieldNumber = 0,
 
-    pub fn next(self: *PackedUInt64Iterator) Error!?u64 {
+    pub inline fn next(self: *PackedUInt64Iterator) Error!?u64 {
         return try nextPackedVarint(self);
     }
 };
@@ -565,7 +565,7 @@ pub const PackedUInt32Iterator = struct {
     remaining_fields: []const u8 = &.{},
     field_number: FieldNumber = 0,
 
-    pub fn next(self: *PackedUInt32Iterator) Error!?u32 {
+    pub inline fn next(self: *PackedUInt32Iterator) Error!?u32 {
         const value = (try nextPackedVarint(self)) orelse return null;
         return @as(u32, @truncate(value));
     }
@@ -577,7 +577,7 @@ pub const PackedInt64Iterator = struct {
     remaining_fields: []const u8 = &.{},
     field_number: FieldNumber = 0,
 
-    pub fn next(self: *PackedInt64Iterator) Error!?i64 {
+    pub inline fn next(self: *PackedInt64Iterator) Error!?i64 {
         const value = (try nextPackedVarint(self)) orelse return null;
         return @bitCast(value);
     }
@@ -601,7 +601,7 @@ pub const PackedSInt64Iterator = struct {
     remaining_fields: []const u8 = &.{},
     field_number: FieldNumber = 0,
 
-    pub fn next(self: *PackedSInt64Iterator) Error!?i64 {
+    pub inline fn next(self: *PackedSInt64Iterator) Error!?i64 {
         const value = (try nextPackedVarint(self)) orelse return null;
         return zigZagDecode64(value);
     }
