@@ -206,21 +206,27 @@ pub const Reflection = struct {
     }
 
     pub fn putMapEntryOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: dynamic.Value, value: dynamic.Value) Error!void {
+        var owned_key = key;
+        var owns_key = true;
+        errdefer if (owns_key) dynamic.deinitValue(&owned_key, self.allocator);
+        var owned_value = value;
+        var owns_value = true;
+        errdefer if (owns_value) dynamic.deinitValue(&owned_value, self.allocator);
         const field = try self.fieldByName(message_value.descriptor, name);
         const entry = try self.allocator.create(dynamic.MapEntry);
         var owns_entry = true;
         errdefer if (owns_entry) self.allocator.destroy(entry);
-        entry.* = .{ .key = key, .value = value };
+        entry.* = .{ .key = owned_key, .value = owned_value };
+        owns_key = false;
+        owns_value = false;
         errdefer if (owns_entry) entry.deinit(self.allocator);
+        try message_value.add(field, .{ .map_entry = entry });
         owns_entry = false;
-        try self.add(message_value, field, .{ .map_entry = entry });
     }
 
     pub fn putStringInt32MapEntry(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: []const u8, value: i32) Error!void {
         const owned_key = try self.allocator.dupe(u8, key);
-        var key_value = dynamic.Value{ .string = owned_key };
-        errdefer dynamic.deinitValue(&key_value, self.allocator);
-        try self.putMapEntryOwned(message_value, name, key_value, .{ .int32 = value });
+        try self.putMapEntryOwned(message_value, name, .{ .string = owned_key }, .{ .int32 = value });
     }
 };
 
@@ -270,4 +276,37 @@ test "reflection facade creates and edits dynamic messages" {
 
     try refl.clearField(&msg, "name");
     try std.testing.expect(!(try refl.hasField(&msg, "name")));
+}
+
+fn exerciseReflectionCleanup(allocator: std.mem.Allocator, registry: *const registry_mod.Registry) !void {
+    const refl = Reflection.init(allocator, registry);
+    var msg = try refl.newMessage("demo.Person");
+    defer msg.deinit();
+
+    try refl.setString(&msg, "name", "Zig");
+    try refl.addString(&msg, "tags", "one");
+    try refl.putStringInt32MapEntry(&msg, "counts", "red", 1);
+
+    try std.testing.expectEqualStrings("Zig", try refl.getString(&msg, "name"));
+    try std.testing.expectEqual(@as(usize, 1), try refl.repeatedLen(&msg, "tags"));
+    try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
+}
+
+test "reflection facade cleans up allocation failures" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Person {
+        \\  string name = 1;
+        \\  repeated string tags = 2;
+        \\  map<string, int32> counts = 3;
+        \\}
+    );
+    defer file.deinit();
+    var reg = registry_mod.Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&file);
+
+    try std.testing.checkAllAllocationFailures(allocator, exerciseReflectionCleanup, .{&reg});
 }
