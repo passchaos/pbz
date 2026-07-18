@@ -3529,7 +3529,7 @@ fn writeLengthDelimitedBorrowedSlicesMethod(field: *const schema.FieldDescriptor
     try writeQuotedIdentWithSuffix(field.name, "FieldSlices", writer);
     try writer.writeAll("(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {\n");
     try indent(writer, depth + 1);
-    try writer.print("return try pbz.wire.lengthDelimitedFieldSlices(header, {d}, value);\n", .{field.number});
+    try writer.print("return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, {d}, value);\n", .{field.number});
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
     if (field.kind.scalar == .bytes) {
@@ -13466,6 +13466,30 @@ test "codegen emits borrowed packed bool slices helper" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn valuesPackedBoolSlices(header: *[20]u8, values: []const bool) !pbz.wire.BorrowedFieldSlices") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.packedBoolFieldSlices(header, 1, values);") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen emits borrowed length-delimited slices helpers" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  string title = 1;
+        \\  repeated bytes chunks = 2;
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn titleFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 1, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn titleStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn chunksBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

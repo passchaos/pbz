@@ -125,7 +125,7 @@ pub const demo = struct {
                 }
 
                 pub fn nameFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                    return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+                    return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
                 }
 
                 pub fn nameStringView(bytes: []const u8) !?[]const u8 {

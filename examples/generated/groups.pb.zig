@@ -1383,7 +1383,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn labelFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                    return try pbz.wire.lengthDelimitedFieldSlices(header, 3, value);
+                    return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 3, value);
                 }
 
                 pub fn labelStringView(bytes: []const u8) !?[]const u8 {

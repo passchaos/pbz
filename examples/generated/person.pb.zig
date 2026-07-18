@@ -250,7 +250,7 @@ pub const demo = struct {
         }
 
         pub fn nameFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
         }
 
         pub fn nameStringView(bytes: []const u8) !?[]const u8 {
@@ -3458,7 +3458,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn titleFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 1, value);
         }
 
         pub fn titleStringView(bytes: []const u8) !?[]const u8 {
@@ -3474,7 +3474,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn payloadFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
         }
 
         pub fn payloadBytesView(bytes: []const u8) !?[]const u8 {
@@ -3490,7 +3490,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn tagsFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 3, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 3, value);
         }
 
         pub fn tagsStringView(bytes: []const u8) !?[]const u8 {
@@ -3506,7 +3506,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn chunksFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 4, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 4, value);
         }
 
         pub fn chunksBytesView(bytes: []const u8) !?[]const u8 {
@@ -4634,7 +4634,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn payloadFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 1, value);
         }
 
         pub fn payloadBytesView(bytes: []const u8) !?[]const u8 {
@@ -4650,7 +4650,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn chunksFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-            return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
         }
 
         pub fn chunksBytesView(bytes: []const u8) !?[]const u8 {
@@ -7169,7 +7169,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn labelFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                return try pbz.wire.lengthDelimitedFieldSlices(header, 2, value);
+                return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
             }
 
             pub fn labelStringView(bytes: []const u8) !?[]const u8 {
@@ -26083,7 +26083,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn actorFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                return try pbz.wire.lengthDelimitedFieldSlices(header, 1, value);
+                return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 1, value);
             }
 
             pub fn actorStringView(bytes: []const u8) !?[]const u8 {

@@ -688,6 +688,14 @@ pub inline fn writeRawLittleToSlice(comptime T: type, buffer: []u8, index: *usiz
 
 pub fn lengthDelimitedFieldSlices(header: *[20]u8, number: FieldNumber, payload: []const u8) Error!BorrowedFieldSlices {
     const tag = try (Tag{ .number = number, .wire_type = .length_delimited }).encode();
+    return lengthDelimitedFieldSlicesAssumeValidTag(header, tag, payload);
+}
+
+pub inline fn lengthDelimitedFieldSlicesAssumeValid(header: *[20]u8, number: FieldNumber, payload: []const u8) BorrowedFieldSlices {
+    return lengthDelimitedFieldSlicesAssumeValidTag(header, (@as(u64, number) << 3) | @intFromEnum(WireType.length_delimited), payload);
+}
+
+inline fn lengthDelimitedFieldSlicesAssumeValidTag(header: *[20]u8, tag: u64, payload: []const u8) BorrowedFieldSlices {
     var header_len: usize = 0;
     header_len += writeVarintToBuffer(header[header_len..], tag);
     header_len += writeVarintToBuffer(header[header_len..], @intCast(payload.len));
@@ -2353,6 +2361,14 @@ test "wire exposes borrowed packed fixed32 view" {
 
     const aligned_values = [_]u32{ 1, 0x01020304 };
     var header: [20]u8 = undefined;
+    const bytes_slices = try lengthDelimitedFieldSlices(&header, 3, "zig");
+    try std.testing.expectEqualSlices(u8, &.{ 0x1a, 0x03 }, bytes_slices.header);
+    try std.testing.expectEqualSlices(u8, "zig", bytes_slices.payload);
+
+    const trusted_bytes_slices = lengthDelimitedFieldSlicesAssumeValid(&header, 3, "zig");
+    try std.testing.expectEqualSlices(u8, bytes_slices.header, trusted_bytes_slices.header);
+    try std.testing.expectEqualSlices(u8, bytes_slices.payload, trusted_bytes_slices.payload);
+
     const slices = try packedFixed32FieldSlices(&header, 1, &aligned_values);
     try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0x08 }, slices.header);
     try std.testing.expectEqual(@intFromPtr(std.mem.sliceAsBytes(&aligned_values).ptr), @intFromPtr(slices.payload.ptr));
