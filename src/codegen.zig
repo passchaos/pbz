@@ -1497,9 +1497,17 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try writer.writeAll("defer nested.deinit(allocator);\n");
         if (typedMapMessageValueWithContext(ctx, field)) |_| {
             try indent(writer, depth + 3);
+            try writer.writeAll("{\n");
+            try indent(writer, depth + 4);
+            try writer.writeAll("var owned_value = try nested.cloneOwned(allocator);\n");
+            try indent(writer, depth + 4);
+            try writer.writeAll("errdefer owned_value.deinit(allocator);\n");
+            try indent(writer, depth + 4);
             try writer.writeAll("entry.value.deinit(allocator);\n");
+            try indent(writer, depth + 4);
+            try writer.writeAll("entry.value = owned_value;\n");
             try indent(writer, depth + 3);
-            try writer.writeAll("entry.value = try nested.cloneOwned(allocator);\n");
+            try writer.writeAll("}\n");
         } else {
             try indent(writer, depth + 3);
             try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
@@ -14444,7 +14452,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try nested.cloneOwned(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var owned_value = try nested.cloneOwned(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer owned_value.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = owned_value;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);

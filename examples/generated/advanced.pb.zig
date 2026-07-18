@@ -1521,8 +1521,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                 defer allocator.free(block);
                                 var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                                 defer nested.deinit(allocator);
-                                entry.value.deinit(allocator);
-                                entry.value = try nested.cloneOwned(allocator);
+                                {
+                                    var owned_value = try nested.cloneOwned(allocator);
+                                    errdefer owned_value.deinit(allocator);
+                                    entry.value.deinit(allocator);
+                                    entry.value = owned_value;
+                                }
                                 continue;
                             }
                             return error.UnknownField;
