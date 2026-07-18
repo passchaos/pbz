@@ -235,8 +235,7 @@ pub const demo = struct {
                     .audit_subject => |*value| value.deinit(allocator),
                     else => {},
                 }
-                for (self._unknown_fields) |raw| allocator.free(raw);
-                allocator.free(self._unknown_fields);
+                pbz.wire.freeRawFields(allocator, self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                 self.* = undefined;
             }
@@ -259,11 +258,7 @@ pub const demo = struct {
                     .organization_id => |value| .{ .organization_id = try owned_allocator.dupe(u8, value) },
                     .audit_subject => |value| .{ .audit_subject = try value.cloneOwned(allocator) },
                 };
-                if (self._unknown_fields.len != 0) {
-                    const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);
-                    for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);
-                    out._unknown_fields = cloned_unknowns;
-                }
+                out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
                 return out;
             }
 
@@ -306,9 +301,7 @@ pub const demo = struct {
             }
 
             pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
-                for (self._unknown_fields) |raw| allocator.free(raw);
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = &.{};
+                pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             }
 
 
@@ -643,9 +636,7 @@ pub const demo = struct {
             }
 
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
-                for (self._unknown_fields) |raw| allocator.free(raw);
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = &.{};
+                pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
                 self.audits.clearRetainingCapacity();
                 switch (self.subject) {
@@ -1616,8 +1607,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-                    for (self._unknown_fields) |raw| allocator.free(raw);
-                    allocator.free(self._unknown_fields);
+                    pbz.wire.freeRawFields(allocator, self._unknown_fields);
                     if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                     self.* = undefined;
                 }
@@ -1628,11 +1618,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const owned_allocator = try out._pbzOwnedAllocator(allocator);
                     out.actor = try owned_allocator.dupe(u8, self.actor);
                     out.at_unix = self.at_unix;
-                    if (self._unknown_fields.len != 0) {
-                        const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);
-                        for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);
-                        out._unknown_fields = cloned_unknowns;
-                    }
+                    out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
                     return out;
                 }
 
@@ -1675,9 +1661,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
-                    for (self._unknown_fields) |raw| allocator.free(raw);
-                    if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                    self._unknown_fields = &.{};
+                    pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 }
 
                 pub fn actorFieldView(bytes: []const u8) !?[]const u8 {
@@ -1826,9 +1810,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
-                    for (self._unknown_fields) |raw| allocator.free(raw);
-                    if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                    self._unknown_fields = &.{};
+                    pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                     if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
                     self.actor = "";
                     self.at_unix = 0;

@@ -142,6 +142,32 @@ pub fn rawFieldsByNumberAlloc(allocator: std.mem.Allocator, fields: []const []co
     return matched;
 }
 
+pub fn freeRawFields(allocator: std.mem.Allocator, fields: []const []const u8) void {
+    for (fields) |raw| allocator.free(raw);
+    if (fields.len != 0) allocator.free(fields);
+}
+
+pub fn clearRawFields(allocator: std.mem.Allocator, fields: *[]const []const u8) void {
+    freeRawFields(allocator, fields.*);
+    fields.* = &.{};
+}
+
+pub fn cloneRawFields(allocator: std.mem.Allocator, fields: []const []const u8) std.mem.Allocator.Error![]const []const u8 {
+    if (fields.len == 0) return &.{};
+
+    const cloned = try allocator.alloc([]const u8, fields.len);
+    var cloned_count: usize = 0;
+    errdefer {
+        for (cloned[0..cloned_count]) |raw| allocator.free(raw);
+        allocator.free(cloned);
+    }
+    for (fields, 0..) |raw, i| {
+        cloned[i] = try allocator.dupe(u8, raw);
+        cloned_count += 1;
+    }
+    return cloned;
+}
+
 pub fn validateRawField(raw: []const u8) Error!void {
     var reader = Reader.init(raw);
     const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
@@ -1719,6 +1745,30 @@ test "wire appends cloned raw fields in batches" {
     try std.testing.expectError(error.InvalidWireType, appendRawFieldsClone(allocator, &fields, &.{&.{0x0f}}));
     try std.testing.expectEqual(before_invalid.ptr, fields.ptr);
     try std.testing.expectEqual(@as(usize, 3), fields.len);
+}
+
+test "wire clones and clears raw field slices" {
+    const allocator = std.testing.allocator;
+    var first = Writer.init(allocator);
+    defer first.deinit();
+    try first.writeUInt32(15, 1);
+
+    var second = Writer.init(allocator);
+    defer second.deinit();
+    try second.writeString(16, "zig");
+
+    const source = [_][]const u8{ first.slice(), second.slice() };
+    var cloned = try cloneRawFields(allocator, &source);
+    defer clearRawFields(allocator, &cloned);
+
+    try std.testing.expectEqual(@as(usize, 2), cloned.len);
+    try std.testing.expectEqualSlices(u8, source[0], cloned[0]);
+    try std.testing.expectEqualSlices(u8, source[1], cloned[1]);
+    try std.testing.expect(cloned[0].ptr != source[0].ptr);
+    try std.testing.expect(cloned[1].ptr != source[1].ptr);
+
+    clearRawFields(allocator, &cloned);
+    try std.testing.expectEqual(@as(usize, 0), cloned.len);
 }
 
 test "wire writes deterministic raw fields in generated order" {

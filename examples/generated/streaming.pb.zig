@@ -53,8 +53,7 @@ pub const demo = struct {
             }
 
             pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-                for (self._unknown_fields) |raw| allocator.free(raw);
-                allocator.free(self._unknown_fields);
+                pbz.wire.freeRawFields(allocator, self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                 self.* = undefined;
             }
@@ -65,11 +64,7 @@ pub const demo = struct {
                 const owned_allocator = try out._pbzOwnedAllocator(allocator);
                 out.id = self.id;
                 out.note = try owned_allocator.dupe(u8, self.note);
-                if (self._unknown_fields.len != 0) {
-                    const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);
-                    for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);
-                    out._unknown_fields = cloned_unknowns;
-                }
+                out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
                 return out;
             }
 
@@ -112,9 +107,7 @@ pub const demo = struct {
             }
 
             pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {
-                for (self._unknown_fields) |raw| allocator.free(raw);
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = &.{};
+                pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             }
 
             pub fn noteFieldView(bytes: []const u8) !?[]const u8 {
@@ -263,9 +256,7 @@ pub const demo = struct {
             }
 
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
-                for (self._unknown_fields) |raw| allocator.free(raw);
-                if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);
-                self._unknown_fields = &.{};
+                pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
                 self.id = 0;
                 self.note = "";

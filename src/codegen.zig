@@ -4445,11 +4445,7 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = &.{};\n");
+    try writer.writeAll("pbz.wire.clearRawFields(allocator, &self._unknown_fields);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -5379,9 +5375,7 @@ fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescrip
         }
     }
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("allocator.free(self._unknown_fields);\n");
+    try writer.writeAll("pbz.wire.freeRawFields(allocator, self._unknown_fields);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }\n");
     try indent(writer, depth + 1);
@@ -5577,15 +5571,7 @@ fn writeCloneOneof(ctx: *const CodegenContext, message: *const schema.MessageDes
 
 fn writeCloneUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("if (self._unknown_fields.len != 0) {\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("out._unknown_fields = cloned_unknowns;\n");
-    try indent(writer, depth);
-    try writer.writeAll("}\n");
+    try writer.writeAll("out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);\n");
 }
 
 fn writeCloneFieldValueExpr(kind: schema.FieldKind, field_name: []const u8, writer: *std.Io.Writer) Error!void {
@@ -6618,11 +6604,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
     for (message.fields.items) |*field| try writeRepeatedReuseListDecl(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = &.{};\n");
+    try writer.writeAll("pbz.wire.clearRawFields(allocator, &self._unknown_fields);\n");
     for (message.fields.items) |*field| try writeDecodeReuseClearMap(ctx, field, writer, depth + 1);
     for (message.oneofs.items) |oneof| try writeDecodeReuseClearOneof(ctx, message, oneof, writer, depth + 1);
     try indent(writer, depth + 1);
@@ -6681,11 +6663,7 @@ fn writeDecodeKnownReuse(ctx: *const CodegenContext, message: *const schema.Mess
         try writer.writeAll(": usize = 0;\n");
     }
     try indent(writer, depth + 1);
-    try writer.writeAll("for (self._unknown_fields) |raw| allocator.free(raw);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("if (self._unknown_fields.len != 0) allocator.free(self._unknown_fields);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = &.{};\n");
+    try writer.writeAll("pbz.wire.clearRawFields(allocator, &self._unknown_fields);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
     for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx, field, writer, depth + 1);
@@ -13297,9 +13275,7 @@ test "codegen emits owned clone helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, ".alias => |value| .{ .alias = try owned_allocator.dupe(u8, value) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| .{ .picked = try value.cloneOwned(allocator) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".id => |value| .{ .id = value },") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const cloned_unknowns = try allocator.alloc([]const u8, self._unknown_fields.len);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields, 0..) |raw, i| cloned_unknowns[i] = try allocator.dupe(u8, raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "out._unknown_fields = cloned_unknowns;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -14699,6 +14675,7 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.clearRawFieldsByNumber(allocator, &self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendUnknownRaw(self: *@This(), allocator: std.mem.Allocator, raw: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawFieldClone(allocator, &self._unknown_fields, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pbz.wire.clearRawFields(allocator, &self._unknown_fields);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFields(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "else => { const tag = try pbz.wire.Tag.decode(raw_tag); try r.skipValue(tag); const raw = try allocator.dupe(u8, r.input[raw_tag_start..r.position()]); errdefer allocator.free(raw); try _unknown_fields_list.append(allocator, raw); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self._unknown_fields) |raw| try w.appendSlice(raw);") != null);
