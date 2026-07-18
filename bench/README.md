@@ -44,6 +44,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - `google.protobuf.Any` with an embedded well-known-type JSON value
   stringify/parse
 - direct `google.protobuf.Duration` JSON stringify/parse
+- direct `google.protobuf.FieldMask` JSON stringify/parse
 - large `map<string, int32>` encode/decode
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
 - packed repeated integer encode/decode

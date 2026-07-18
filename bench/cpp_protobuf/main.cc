@@ -7,6 +7,7 @@
 
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/duration.pb.h>
+#include <google/protobuf/field_mask.pb.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/struct.pb.h>
@@ -386,6 +387,14 @@ int main() {
                                                    &duration_json)
            .ok())
     std::abort();
+  google::protobuf::FieldMask field_mask;
+  field_mask.add_paths("foo_bar");
+  field_mask.add_paths("nested.value");
+  std::string field_mask_json;
+  if (!google::protobuf::util::MessageToJsonString(field_mask,
+                                                   &field_mask_json)
+           .ok())
+    std::abort();
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -440,6 +449,8 @@ int main() {
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
+  std::cout << "field mask json payload size: " << field_mask_json.size()
+            << "\n";
   std::cout << "any WKT json payload size: " << any_wkt_json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
@@ -1030,6 +1041,29 @@ int main() {
         asm volatile("" : : "g"(&decoded) : "memory");
       });
   duration_json_parse.Print();
+
+  auto field_mask_json_stringify = RunTimed(
+      "c++ protobuf FieldMask JSON stringify", kIterations,
+      field_mask_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(field_mask, &out)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  field_mask_json_stringify.Print();
+
+  auto field_mask_json_parse = RunTimed(
+      "c++ protobuf FieldMask JSON parse", kIterations, field_mask_json.size(),
+      [&]() {
+        google::protobuf::FieldMask decoded;
+        if (!google::protobuf::util::JsonStringToMessage(field_mask_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  field_mask_json_parse.Print();
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {

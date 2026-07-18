@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py --fail-on-loss /tmp/pbz-compare.log
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-after-duration-json.log`,
-summarized in `/tmp/pbz-summary-after-duration-json.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-fieldmask-json.log`,
+summarized in `/tmp/pbz-summary-after-fieldmask-json.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
@@ -92,25 +92,27 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |
 |---|---:|---:|---:|---:|---:|
-| binary encode | 17.58 | 120.60 (6.86x) | 51.40 (2.92x) | 111.50 (6.34x) | 844.17 (48.02x) |
-| binary decode | 86.41 | 254.76 (2.95x) | 233.91 (2.71x) | 225.71 (2.61x) | 871.21 (10.08x) |
-| unknown count by number | 3.58 | — | — | 154.29 (43.10x) | — |
-| scalarmix encode | 19.02 | 98.72 (5.19x) | 49.23 (2.59x) | 28.82 (1.52x) | 198.68 (10.45x) |
-| scalarmix decode | 34.58 | 139.58 (4.04x) | 169.79 (4.91x) | 84.82 (2.45x) | 287.13 (8.30x) |
-| textbytes encode | 9.53 | 80.41 (8.44x) | 33.60 (3.53x) | 118.85 (12.47x) | 156.13 (16.38x) |
-| complex decode | 181.93 | 397.22 (2.18x) | 339.21 (1.86x) | 396.51 (2.18x) | 1358.77 (7.47x) |
-| complex JSON parse | 2377.29 | — | — | 11922.70 (5.02x) | 7326.31 (3.08x) |
-| Any WKT JSON stringify | 125.18 | — | — | 1903.93 (15.21x) | 1011.40 (8.08x) |
-| Any WKT JSON parse | 513.21 | — | — | 3058.86 (5.96x) | 1447.62 (2.82x) |
-| Duration JSON stringify | 58.12 | — | — | 959.98 (16.52x) | 337.82 (5.81x) |
-| Duration JSON parse | 7.58 | — | — | 1439.67 (189.93x) | 365.21 (48.18x) |
-| TextFormat parse | 700.64 | — | — | 5015.41 (7.16x) | 6180.15 (8.82x) |
-| packed int32 decode | 766.02 | 1892.48 (2.47x) | 3231.89 (4.22x) | 938.76 (1.23x) | 3131.14 (4.09x) |
-| packed bool encode | 2.01 | 1322.77 (658.09x) | 531.89 (264.62x) | 15.91 (7.91x) | 2229.14 (1109.02x) |
-| packed bool decode | 263.43 | 1534.87 (5.83x) | 2582.60 (9.80x) | 804.83 (3.06x) | 1724.09 (6.54x) |
-| largebytes decode | 92.95 | 5507.81 (59.26x) | 2996.07 (32.23x) | 2815.33 (30.29x) | 22451.07 (241.54x) |
-| large map decode | 25759.24 | 92174.88 (3.58x) | 93010.40 (3.61x) | 94191.80 (3.66x) | 272671.11 (10.59x) |
-| shuffled large map deterministic binary encode | 28458.44 | — | — | 103674.00 (3.64x) | 381681.18 (13.41x) |
+| binary encode | 23.50 | 97.96 (4.17x) | 52.07 (2.22x) | 100.69 (4.28x) | 833.32 (35.46x) |
+| binary decode | 132.49 | 244.71 (1.85x) | 226.21 (1.71x) | 225.54 (1.70x) | 924.02 (6.97x) |
+| unknown count by number | 3.57 | — | — | 151.23 (42.36x) | — |
+| scalarmix encode | 18.70 | 110.22 (5.89x) | 48.21 (2.58x) | 30.57 (1.63x) | 229.93 (12.30x) |
+| scalarmix decode | 39.00 | 135.69 (3.48x) | 197.60 (5.07x) | 85.83 (2.20x) | 308.04 (7.90x) |
+| textbytes encode | 9.52 | 76.72 (8.06x) | 35.27 (3.70x) | 117.14 (12.30x) | 145.32 (15.26x) |
+| complex decode | 171.28 | 389.72 (2.28x) | 344.99 (2.01x) | 388.18 (2.27x) | 1491.23 (8.71x) |
+| complex JSON parse | 2376.87 | — | — | 12109.30 (5.09x) | 7941.96 (3.34x) |
+| Any WKT JSON stringify | 117.49 | — | — | 1874.01 (15.95x) | 1057.90 (9.00x) |
+| Any WKT JSON parse | 524.28 | — | — | 2984.01 (5.69x) | 1791.33 (3.42x) |
+| Duration JSON stringify | 59.44 | — | — | 987.88 (16.62x) | 366.62 (6.17x) |
+| Duration JSON parse | 8.30 | — | — | 1464.06 (176.39x) | 401.51 (48.37x) |
+| FieldMask JSON stringify | 81.77 | — | — | 892.23 (10.91x) | 657.11 (8.04x) |
+| FieldMask JSON parse | 146.52 | — | — | 1684.35 (11.50x) | 872.51 (5.95x) |
+| TextFormat parse | 708.25 | — | — | 5007.02 (7.07x) | 6805.18 (9.61x) |
+| packed int32 decode | 688.02 | 1909.70 (2.78x) | 3209.00 (4.66x) | 949.39 (1.38x) | 3520.50 (5.12x) |
+| packed bool encode | 2.01 | 1350.61 (671.95x) | 518.88 (258.15x) | 16.26 (8.09x) | 2221.06 (1105.00x) |
+| packed bool decode | 264.14 | 1518.67 (5.75x) | 2551.93 (9.66x) | 807.59 (3.06x) | 2044.74 (7.74x) |
+| largebytes decode | 89.37 | 5577.64 (62.41x) | 3005.53 (33.63x) | 2794.66 (31.27x) | 23637.23 (264.49x) |
+| large map decode | 25612.42 | 90610.35 (3.54x) | 89546.16 (3.50x) | 91118.00 (3.56x) | 276288.43 (10.79x) |
+| shuffled large map deterministic binary encode | 28038.65 | — | — | 94770.40 (3.38x) | 391180.88 (13.95x) |
 
 The matrix covers binary encode/decode, unknown-field count-by-number, deterministic
 encode, JSON, Any/WKT JSON, direct WKT JSON, TextFormat, packed scalars, large bytes, maps,
