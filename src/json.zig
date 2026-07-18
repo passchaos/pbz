@@ -352,21 +352,6 @@ fn parseScalar(allocator: std.mem.Allocator, scalar: schema.ScalarType, json_val
     };
 }
 
-fn parseEnum(file: *const schema.FileDescriptor, name: []const u8, json_value: std.json.Value) !dynamic.Value {
-    switch (json_value) {
-        .string => |value| {
-            if (file.findEnumDeep(name)) |enumeration| {
-                for (enumeration.values.items) |enum_value| {
-                    if (std.mem.eql(u8, enum_value.name, value)) return .{ .enumeration = enum_value.number };
-                }
-            }
-            return .{ .enumeration = std.fmt.parseInt(i32, value, 10) catch return error.InvalidEnumValue };
-        },
-        .null => if (typeNameEqualsInFile(file, name, "google.protobuf.NullValue")) .{ .enumeration = 0 } else error.TypeMismatch,
-        else => return .{ .enumeration = try numberAsInt(i32, json_value) },
-    }
-}
-
 fn parseEnumWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8, json_value: std.json.Value) !dynamic.Value {
     const enumeration = registryEnumDescriptor(file, registry, current, name);
     switch (json_value) {
@@ -1244,11 +1229,6 @@ fn anyUsesValueEnvelope(name: []const u8) bool {
         typeNameEquals(name, "google.protobuf.Value") or
         typeNameEquals(name, "google.protobuf.ListValue") or
         wrapperKind(name) != null;
-}
-
-fn resolveAnyType(file: *const schema.FileDescriptor, type_url: []const u8) ?*const schema.MessageDescriptor {
-    const name = if (std.mem.lastIndexOfScalar(u8, type_url, '/')) |idx| type_url[idx + 1 ..] else type_url;
-    return file.findMessageDeep(name);
 }
 
 fn resolveAnyTypeWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, type_url: []const u8) ?*const schema.MessageDescriptor {

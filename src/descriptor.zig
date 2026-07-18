@@ -3140,13 +3140,6 @@ fn decodeMethodOptions(allocator: std.mem.Allocator, method: *schema.MethodDescr
     }
 }
 
-fn decodeGenericOptions(allocator: std.mem.Allocator, options: *schema.OptionList, bytes: []const u8) Error!void {
-    var reader = wire.Reader.init(bytes);
-    while (try reader.nextTag()) |tag| {
-        if (tag.number == 999) try options.append(allocator, try decodeUninterpretedOption(allocator, try reader.readBytes())) else try reader.skipValue(tag);
-    }
-}
-
 fn decodeOneofOptions(allocator: std.mem.Allocator, oneof: *schema.OneofDescriptor, bytes: []const u8) Error!void {
     var reader = wire.Reader.init(bytes);
     while (try reader.nextTag()) |tag| {

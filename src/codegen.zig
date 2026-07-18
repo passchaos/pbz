@@ -6029,13 +6029,6 @@ fn writeDecodeReuseClearOneof(ctx: *const CodegenContext, message: *const schema
     try writer.writeAll(" = .none;\n");
 }
 
-fn messageHasRepeatedOrMap(message: *const schema.MessageDescriptor) bool {
-    for (message.fields.items) |field| {
-        if (field.cardinality == .repeated or field.kind == .map) return true;
-    }
-    return false;
-}
-
 fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
@@ -7495,10 +7488,6 @@ fn writeMapKeyLessExpr(scalar: schema.ScalarType, a: []const u8, b: []const u8, 
         .int32, .int64, .uint32, .uint64, .sint32, .sint64, .fixed32, .fixed64, .sfixed32, .sfixed64 => try writer.print("{s} < {s}", .{ a, b }),
         .double, .float, .bytes => try writer.writeAll("false"),
     }
-}
-
-fn mapEntryValueIsTypedMessage(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
-    return typedMapMessageValueWithContext(ctx, field) != null;
 }
 
 fn writeMapEntryValueFieldSizeExpr(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, value_expr: []const u8, writer: *std.Io.Writer) Error!void {

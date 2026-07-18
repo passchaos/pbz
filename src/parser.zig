@@ -2086,10 +2086,6 @@ fn enumAliasState(enumeration: *const schema.EnumDescriptor) EnumAliasState {
     return .{};
 }
 
-fn enumAllowsAlias(enumeration: *const schema.EnumDescriptor) bool {
-    return enumAliasState(enumeration).allow_alias;
-}
-
 fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
     if (syntax == .proto3 and message.extension_ranges.items.len != 0) return error.InvalidSyntax;
     const max_end = messageRangeMaxExclusive(message);

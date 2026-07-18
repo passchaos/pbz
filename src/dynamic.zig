@@ -1657,13 +1657,6 @@ fn fieldMessageEncoding(file: *const schema.FileDescriptor, field: *const schema
     return file.features.message_encoding;
 }
 
-fn fieldHasPresence(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) bool {
-    if (fieldIsRequired(field) or field.proto3_optional or field.oneof_name != null or field.kind == .message or field.kind == .group) return true;
-    if (field.cardinality == .repeated or field.kind == .map) return false;
-    if (field.features) |features| return features.field_presence != .implicit;
-    return file.features.field_presence != .implicit;
-}
-
 fn fieldHasPresenceForEncoding(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
     if (fieldIsRequired(field) or field.proto3_optional or field.oneof_name != null or field.kind == .group) return true;
     if (field.kind == .message and fieldKindIsRegistryEnum(file, registry, current, field.kind) == null) return true;
