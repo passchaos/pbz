@@ -388,8 +388,10 @@ fn deterministicRawFieldIndexes(allocator: std.mem.Allocator, fields: []const []
 }
 
 fn rawFieldFirstTag(raw: []const u8) ?Tag {
-    var reader = Reader.init(raw);
-    return (reader.nextTag() catch null) orelse null;
+    var index: usize = 0;
+    const raw_tag = readVarintAt(raw, &index) catch return null;
+    if (index > 5) return null;
+    return Tag.decode(raw_tag) catch null;
 }
 
 fn deterministicRawFieldIndexLessThan(fields: []const []const u8, a: usize, b: usize) bool {
