@@ -255,6 +255,7 @@ Important examples:
 ## Validation commands
 
 ```sh
+zig build check
 zig build test
 zig build examples
 zig build build-codegen-smoke

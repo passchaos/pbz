@@ -55,6 +55,7 @@ All parsed cross-language rows are pbz wins.
 The same audit pass also kept these functional coverage gates green:
 
 ```sh
+zig build check
 zig build test
 zig build examples
 zig build conformance-smoke

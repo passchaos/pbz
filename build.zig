@@ -252,4 +252,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(examples_step);
     test_step.dependOn(&run_summary_self_test.step);
+
+    const check_step = b.step("check", "Run non-benchmark validation gates");
+    check_step.dependOn(test_step);
+    check_step.dependOn(conformance_smoke_step);
 }
