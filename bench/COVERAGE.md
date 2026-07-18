@@ -76,7 +76,6 @@ include:
 The matrix includes:
 
 - binary encode/decode
-- generated/dynamic unknown-field stress decode and count-by-number query
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
@@ -92,6 +91,13 @@ The matrix includes:
 - packed uint64/uint32/int64/sint32/sint64/bool/enum encode/decode
 - large `map<string, int32>` encode/decode
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
+
+The local `zig build bench` output also includes generated/dynamic
+unknown-field stress decode and count-by-number query rows. Those rows are kept
+as pbz regression signals, but they are deliberately outside
+`bench/summarize_compare.py`'s cross-language fail-on-loss matrix until the
+C++/Go/Rust baselines normalize their unknown-field API semantics against pbz's
+exact raw-field slice preservation.
 
 ## Generated performance APIs now used by the matrix
 

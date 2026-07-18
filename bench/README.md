@@ -53,6 +53,11 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - JSON stringify/parse
 - TextFormat format/parse
 
+The unknown-field stress rows are local pbz regression signals rather than
+cross-language fail-on-loss rows. C++ protobuf exposes unknowns through
+`UnknownFieldSet`, while pbz preserves exact raw-field byte slices, so a fair
+comparison needs an explicit semantics normalization layer first.
+
 The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and
 `FixedPacked { repeated fixed32 values = 1; }` and
