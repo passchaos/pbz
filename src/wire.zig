@@ -144,6 +144,69 @@ pub fn rawFieldNumberCount(numbers: []const FieldNumber, number: FieldNumber) us
     return count;
 }
 
+pub const RawFieldNumberRun = struct {
+    number: FieldNumber,
+    count: usize,
+};
+
+/// Compact sidecar for repeated raw-unknown count queries.
+///
+/// Unlike `rawFieldNumbersAlloc`, this coalesces duplicate field numbers after
+/// sorting.  The result is most useful when unknown fields contain many
+/// repeated numbers: queries binary-search only the unique numbers rather than
+/// scanning every raw field.  Number `0` is reserved for malformed/empty
+/// sentinel entries and is omitted from the compact sidecar.
+pub fn rawFieldNumberRunsAlloc(allocator: std.mem.Allocator, fields: []const []const u8) (std.mem.Allocator.Error || Error)![]RawFieldNumberRun {
+    if (fields.len == 0) return &.{};
+
+    const numbers = try rawFieldNumbersAlloc(allocator, fields);
+    defer allocator.free(numbers);
+    std.mem.sort(FieldNumber, numbers, {}, std.sort.asc(FieldNumber));
+
+    var run_count: usize = 0;
+    var index: usize = 0;
+    while (index < numbers.len) {
+        const number = numbers[index];
+        var next = index + 1;
+        while (next < numbers.len and numbers[next] == number) : (next += 1) {}
+        if (number != 0) run_count += 1;
+        index = next;
+    }
+    if (run_count == 0) return &.{};
+
+    const runs = try allocator.alloc(RawFieldNumberRun, run_count);
+    var run_index: usize = 0;
+    index = 0;
+    while (index < numbers.len) {
+        const number = numbers[index];
+        var next = index + 1;
+        while (next < numbers.len and numbers[next] == number) : (next += 1) {}
+        if (number != 0) {
+            runs[run_index] = .{ .number = number, .count = next - index };
+            run_index += 1;
+        }
+        index = next;
+    }
+    return runs;
+}
+
+pub fn rawFieldNumberRunCount(runs: []const RawFieldNumberRun, number: FieldNumber) usize {
+    var low: usize = 0;
+    var high: usize = runs.len;
+    while (low < high) {
+        const mid = low + (high - low) / 2;
+        const candidate = runs[mid].number;
+        if (candidate < number) {
+            low = mid + 1;
+        } else if (candidate > number) {
+            high = mid;
+        } else {
+            return runs[mid].count;
+        }
+    }
+    return 0;
+}
+
 /// Counts already-validated raw unknown fields without re-running full tag
 /// validation for every entry. Use this only for storage populated by Reader
 /// decode or appendRawFieldClone(); arbitrary caller bytes should use
@@ -1886,6 +1949,14 @@ test "wire tag writers preserve single and multi-byte tags" {
     try std.testing.expectEqualSlices(FieldNumber, &.{ 15, 0, 16, 16, 31 }, raw_numbers);
     try std.testing.expectEqual(@as(usize, 2), rawFieldNumberCount(raw_numbers, 16));
     try std.testing.expectEqual(@as(usize, 0), rawFieldNumberCount(raw_numbers, 17));
+    const raw_number_runs = try rawFieldNumberRunsAlloc(std.testing.allocator, &raw_fields);
+    defer std.testing.allocator.free(raw_number_runs);
+    try std.testing.expectEqual(@as(usize, 3), raw_number_runs.len);
+    try std.testing.expectEqual(RawFieldNumberRun{ .number = 15, .count = 1 }, raw_number_runs[0]);
+    try std.testing.expectEqual(RawFieldNumberRun{ .number = 16, .count = 2 }, raw_number_runs[1]);
+    try std.testing.expectEqual(RawFieldNumberRun{ .number = 31, .count = 1 }, raw_number_runs[2]);
+    try std.testing.expectEqual(@as(usize, 2), rawFieldNumberRunCount(raw_number_runs, 16));
+    try std.testing.expectEqual(@as(usize, 0), rawFieldNumberRunCount(raw_number_runs, 17));
     try std.testing.expect(rawFieldHasNumberAssumeValid(&raw_fields, 16));
     try std.testing.expect(!rawFieldHasNumberAssumeValid(&raw_fields, 17));
     const matched = try rawFieldsByNumberAlloc(std.testing.allocator, &raw_fields, 16);

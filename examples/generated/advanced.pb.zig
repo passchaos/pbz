@@ -290,6 +290,10 @@ pub const demo = struct {
                 return try pbz.wire.rawFieldNumbersAlloc(allocator, self._unknown_fields);
             }
 
+            pub fn unknownFieldNumberRunsAlloc(self: @This(), allocator: std.mem.Allocator) ![]pbz.wire.RawFieldNumberRun {
+                return try pbz.wire.rawFieldNumberRunsAlloc(allocator, self._unknown_fields);
+            }
+
             pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {
                 return try pbz.wire.rawFieldsByNumberAllocAssumeValid(allocator, self._unknown_fields, number);
             }
@@ -1696,6 +1700,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
                 pub fn unknownFieldNumbersAlloc(self: @This(), allocator: std.mem.Allocator) ![]pbz.FieldNumber {
                     return try pbz.wire.rawFieldNumbersAlloc(allocator, self._unknown_fields);
+                }
+
+                pub fn unknownFieldNumberRunsAlloc(self: @This(), allocator: std.mem.Allocator) ![]pbz.wire.RawFieldNumberRun {
+                    return try pbz.wire.rawFieldNumberRunsAlloc(allocator, self._unknown_fields);
                 }
 
                 pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {

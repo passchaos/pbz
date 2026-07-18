@@ -31,7 +31,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 
 - binary encode/decode
 - generated/dynamic unknown-field stress decode and count-by-number query,
-  including an optional generated raw-field-number sidecar for repeated queries
+  including optional generated raw-field-number and compact run sidecars for
+  repeated queries
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
@@ -56,12 +57,14 @@ The benchmark currently measures pbz generated and dynamic paths for:
 
 The unknown-field stress rows are pbz regression signals. Generated messages
 preserve exact raw-field byte slices; callers that need to issue repeated
-number queries over those raw fields can build a compact field-number sidecar
-with `pbz.wire.rawFieldNumbersAlloc` and query it with
-`pbz.wire.rawFieldNumberCount`. `run_compare.sh` also emits C++
-`UnknownFieldSet` decode and count-by-number rows for manual context, but these
-rows deliberately remain outside the cross-language fail-on-loss matrix: C++
-exposes parsed unknown fields, while pbz preserves exact raw-field byte slices.
+number queries over those raw fields can build either a parallel field-number
+sidecar with `pbz.wire.rawFieldNumbersAlloc` /
+`pbz.wire.rawFieldNumberCount` or a compact sorted run sidecar with
+`pbz.wire.rawFieldNumberRunsAlloc` / `pbz.wire.rawFieldNumberRunCount`.
+`run_compare.sh` also emits C++ `UnknownFieldSet` decode and count-by-number
+rows for manual context, but these rows deliberately remain outside the
+cross-language fail-on-loss matrix: C++ exposes parsed unknown fields, while pbz
+preserves exact raw-field byte slices.
 
 The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and

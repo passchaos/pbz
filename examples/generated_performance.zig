@@ -96,6 +96,26 @@ pub fn main() !void {
     try reusable_enum_packed.decodeKnownReuse(allocator, enum_packed_bytes);
     std.debug.assert(std.mem.eql(i32, reusable_enum_packed.values, enum_packed.values));
 
+    // Unknown fields are kept as exact raw bytes.  If an application repeatedly
+    // asks for counts by field number, it can build either a parallel number
+    // sidecar or a compact sorted run sidecar instead of decoding every raw tag
+    // on every query.
+    var unknown_writer = pbz.Writer.init(allocator);
+    defer unknown_writer.deinit();
+    try unknown_writer.appendSlice(encoded_person);
+    try unknown_writer.writeUInt32(1000, 1);
+    try unknown_writer.writeUInt32(1000, 2);
+    try unknown_writer.writeUInt32(1001, 3);
+
+    var unknown_person = try person_pb.demo.Person.decode(allocator, unknown_writer.slice());
+    defer unknown_person.deinit(allocator);
+    const unknown_numbers = try unknown_person.unknownFieldNumbersAlloc(allocator);
+    defer allocator.free(unknown_numbers);
+    std.debug.assert(pbz.wire.rawFieldNumberCount(unknown_numbers, 1000) == 2);
+    const unknown_number_runs = try unknown_person.unknownFieldNumberRunsAlloc(allocator);
+    defer allocator.free(unknown_number_runs);
+    std.debug.assert(pbz.wire.rawFieldNumberRunCount(unknown_number_runs, 1000) == 2);
+
     // Known-schema decode reuse keeps previously allocated repeated buffers and
     // skips unknown-field preservation for trusted hot-loop payloads.
     var scalar = person_pb.demo.ScalarMix.init();

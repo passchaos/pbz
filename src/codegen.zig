@@ -3361,6 +3361,13 @@ fn writeUnknownFieldMethods(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
+    try writer.writeAll("pub fn unknownFieldNumberRunsAlloc(self: @This(), allocator: std.mem.Allocator) ![]pbz.wire.RawFieldNumberRun {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try pbz.wire.rawFieldNumberRunsAlloc(allocator, self._unknown_fields);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
     try writer.writeAll("pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8 {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return try pbz.wire.rawFieldsByNumberAllocAssumeValid(allocator, self._unknown_fields, number);\n");
@@ -13628,6 +13635,8 @@ test "codegen emits basic decode method" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return pbz.wire.rawFieldHasNumberAssumeValid(self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldNumbersAlloc(self: @This(), allocator: std.mem.Allocator) ![]pbz.FieldNumber") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.rawFieldNumbersAlloc(allocator, self._unknown_fields);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldNumberRunsAlloc(self: @This(), allocator: std.mem.Allocator) ![]pbz.wire.RawFieldNumberRun") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.rawFieldNumberRunsAlloc(allocator, self._unknown_fields);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn unknownFieldsByNumberAlloc(self: @This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) ![]const []const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try pbz.wire.rawFieldsByNumberAllocAssumeValid(allocator, self._unknown_fields, number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clearUnknownFieldsByNumber(self: *@This(), allocator: std.mem.Allocator, number: pbz.FieldNumber) !void") != null);

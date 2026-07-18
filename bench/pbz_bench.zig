@@ -1673,6 +1673,12 @@ fn generatedUnknownNumberCountByNumber(ctx: GeneratedUnknownNumberQueryCtx) !voi
     std.mem.doNotOptimizeAway(count);
 }
 
+const GeneratedUnknownRunQueryCtx = struct { runs: []const pbz.wire.RawFieldNumberRun, number: pbz.FieldNumber };
+fn generatedUnknownNumberRunCountByNumber(ctx: GeneratedUnknownRunQueryCtx) !void {
+    const count = pbz.wire.rawFieldNumberRunCount(ctx.runs, ctx.number);
+    std.mem.doNotOptimizeAway(count);
+}
+
 const DynamicEncodeCtx = struct { message: *const pbz.DynamicMessage, file: *const pbz.FileDescriptor };
 fn dynamicEncode(ctx: DynamicEncodeCtx) !void {
     const bytes = try ctx.message.encoded(ctx.file);
@@ -1983,6 +1989,8 @@ pub fn main() !void {
     defer generated_unknown_person.deinit(allocator);
     const generated_unknown_numbers = try generated_unknown_person.unknownFieldNumbersAlloc(allocator);
     defer allocator.free(generated_unknown_numbers);
+    const generated_unknown_number_runs = try generated_unknown_person.unknownFieldNumberRunsAlloc(allocator);
+    defer allocator.free(generated_unknown_number_runs);
     var dynamic_unknown_person = pbz.DynamicMessage.init(allocator, desc);
     defer dynamic_unknown_person.deinit();
     try dynamic_unknown_person.decode(&file, generated_unknown_bytes);
@@ -2190,6 +2198,7 @@ pub fn main() !void {
         try runTimed(io, "generated unknown fields decode", iters.large_map, generated_unknown_bytes.len, GeneratedUnknownDecodeCtx{ .allocator = allocator, .bytes = generated_unknown_bytes }, generatedUnknownDecode),
         try runTimed(io, "generated unknown fields count by number", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownQueryCtx{ .message = &generated_unknown_person, .number = UnknownFieldStressFirstNumber }, generatedUnknownCountByNumber),
         try runTimed(io, "generated unknown field number sidecar count", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownNumberQueryCtx{ .numbers = generated_unknown_numbers, .number = UnknownFieldStressFirstNumber }, generatedUnknownNumberCountByNumber),
+        try runTimed(io, "generated unknown field number run sidecar count", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownRunQueryCtx{ .runs = generated_unknown_number_runs, .number = UnknownFieldStressFirstNumber }, generatedUnknownNumberRunCountByNumber),
         try runTimed(io, "generated scalarmix encode", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeCtx{ .allocator = allocator, .message = &generated_scalar_mix }, generatedScalarMixEncode),
         try runTimed(io, "generated scalarmix writeToAssumeCapacity reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixWriteToCtx{ .writer = &reusable_scalar_mix_writer, .message = &generated_scalar_mix }, generatedScalarMixWriteToReuse),
         try runTimed(io, "generated scalarmix encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_scalar_mix_bytes.len, GeneratedScalarMixEncodeIntoCtx{ .buffer = generated_scalar_mix_buffer, .message = &generated_scalar_mix }, generatedScalarMixEncodeIntoReuse),
