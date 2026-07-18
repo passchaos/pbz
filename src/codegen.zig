@@ -5527,19 +5527,17 @@ fn writeCloneMapField(ctx: *const CodegenContext, field: *const schema.FieldDesc
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".iterator();\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("while (map_it.next()) |entry| try @This().");
-    try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-    try writer.writeAll("(allocator, &out.");
+    try writer.writeAll("while (map_it.next()) |entry| out.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(", .{ .key = ");
+    try writer.writeAll(".putAssumeCapacityNoClobber(");
     try writeCloneValueExpr(.{ .scalar = map_type.key }, "entry.key_ptr.*", writer);
-    try writer.writeAll(", .value = ");
+    try writer.writeAll(", ");
     if (typedMapMessageValueWithContext(ctx, field)) |_| {
         try writer.writeAll("try entry.value_ptr.cloneOwned(allocator)");
     } else {
         try writeCloneValueExpr(map_type.value.*, "entry.value_ptr.*", writer);
     }
-    try writer.writeAll(" });\n");
+    try writer.writeAll(");\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -7209,11 +7207,9 @@ fn writeMapAssign(field: *const schema.FieldDescriptor, writer: *std.Io.Writer, 
     try indent(writer, depth);
     try writer.writeAll("for (");
     try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-    try writer.writeAll(".items) |entry| try @This().");
-    try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-    try writer.writeAll("(allocator, &self.");
+    try writer.writeAll(".items) |entry| self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(", entry);\n");
+    try writer.writeAll(".putAssumeCapacityNoClobber(entry.key, entry.value);\n");
 }
 
 fn writeRepeatedElementType(field: schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
@@ -10510,11 +10506,9 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".ensureUnusedCapacity(allocator, list.items.len);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (list.items) |list_entry| try @This().");
-    try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
-    try writer.writeAll("(allocator, &self.");
+    try writer.writeAll("for (list.items) |list_entry| self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(", list_entry);\n");
+    try writer.writeAll(".putAssumeCapacityNoClobber(list_entry.key, list_entry.value);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
@@ -13282,7 +13276,7 @@ test "codegen emits owned clone helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "out.tags = cloned;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |value| out.child = try value.cloneOwned(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.children, 0..) |item, i| cloned[i] = try item.cloneOwned(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_blobs(allocator, &out.blobs, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = try owned_allocator.dupe(u8, entry.value_ptr.*) });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "out.blobs.putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), try owned_allocator.dupe(u8, entry.value_ptr.*));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".alias => |value| .{ .alias = try owned_allocator.dupe(u8, value) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| .{ .picked = try value.cloneOwned(allocator) },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".id => |value| .{ .id = value },") != null);
@@ -14645,6 +14639,7 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, list.items.len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@This().deinitMap_counts(allocator, &self.counts);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
@@ -14756,6 +14751,7 @@ test "codegen decodes map fields into entry slices" {
     try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, counts_list.items.len)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.putAssumeCapacityNoClobber(entry.key, entry.value);") != null);
 }
 
 test "codegen emits presence flags for optional required and proto3 optional fields" {

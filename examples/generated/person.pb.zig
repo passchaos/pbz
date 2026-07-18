@@ -188,7 +188,7 @@ pub const demo = struct {
             if (self.counts.count() != 0) {
                 try out.counts.ensureUnusedCapacity(allocator, self.counts.count());
                 var map_it = self.counts.iterator();
-                while (map_it.next()) |entry| try @This().putMapEntry_counts(allocator, &out.counts, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = entry.value_ptr.* });
+                while (map_it.next()) |entry| out.counts.putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), entry.value_ptr.*);
             }
             out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
             return out;
@@ -836,7 +836,7 @@ pub const demo = struct {
                     }
                     @This().deinitMap_counts(allocator, &self.counts);
                     try self.counts.ensureUnusedCapacity(allocator, list.items.len);
-                    for (list.items) |list_entry| try @This().putMapEntry_counts(allocator, &self.counts, list_entry);
+                    for (list.items) |list_entry| self.counts.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -1407,7 +1407,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
             self.counts = .empty;
             try self.counts.ensureUnusedCapacity(allocator, counts_list.items.len);
-            for (counts_list.items) |entry| try @This().putMapEntry_counts(allocator, &self.counts, entry);
+            for (counts_list.items) |entry| self.counts.putAssumeCapacityNoClobber(entry.key, entry.value);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
             return self;
         }
@@ -22372,7 +22372,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.counts.count() != 0) {
                 try out.counts.ensureUnusedCapacity(allocator, self.counts.count());
                 var map_it = self.counts.iterator();
-                while (map_it.next()) |entry| try @This().putMapEntry_counts(allocator, &out.counts, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = entry.value_ptr.* });
+                while (map_it.next()) |entry| out.counts.putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), entry.value_ptr.*);
             }
             out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
             return out;
@@ -22838,7 +22838,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                     @This().deinitMap_counts(allocator, &self.counts);
                     try self.counts.ensureUnusedCapacity(allocator, list.items.len);
-                    for (list.items) |list_entry| try @This().putMapEntry_counts(allocator, &self.counts, list_entry);
+                    for (list.items) |list_entry| self.counts.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -23391,7 +23391,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.counts = .empty;
             try self.counts.ensureUnusedCapacity(allocator, counts_list.items.len);
-            for (counts_list.items) |entry| try @This().putMapEntry_counts(allocator, &self.counts, entry);
+            for (counts_list.items) |entry| self.counts.putAssumeCapacityNoClobber(entry.key, entry.value);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
             return self;
         }
@@ -23615,7 +23615,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.audits.count() != 0) {
                 try out.audits.ensureUnusedCapacity(allocator, self.audits.count());
                 var map_it = self.audits.iterator();
-                while (map_it.next()) |entry| try @This().putMapEntry_audits(allocator, &out.audits, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = try entry.value_ptr.cloneOwned(allocator) });
+                while (map_it.next()) |entry| out.audits.putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), try entry.value_ptr.cloneOwned(allocator));
             }
             out.subject = switch (self.subject) {
                 .none => .none,
@@ -24312,7 +24312,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                     @This().deinitMap_audits(allocator, &self.audits);
                     try self.audits.ensureUnusedCapacity(allocator, list.items.len);
-                    for (list.items) |list_entry| try @This().putMapEntry_audits(allocator, &self.audits, list_entry);
+                    for (list.items) |list_entry| self.audits.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                     continue;
                 }
                 if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
@@ -24946,7 +24946,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
             self.audits = .empty;
             try self.audits.ensureUnusedCapacity(allocator, audits_list.items.len);
-            for (audits_list.items) |entry| try @This().putMapEntry_audits(allocator, &self.audits, entry);
+            for (audits_list.items) |entry| self.audits.putAssumeCapacityNoClobber(entry.key, entry.value);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
             return self;
         }

@@ -251,7 +251,7 @@ pub const demo = struct {
                 if (self.audits.count() != 0) {
                     try out.audits.ensureUnusedCapacity(allocator, self.audits.count());
                     var map_it = self.audits.iterator();
-                    while (map_it.next()) |entry| try @This().putMapEntry_audits(allocator, &out.audits, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = try entry.value_ptr.cloneOwned(allocator) });
+                    while (map_it.next()) |entry| out.audits.putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), try entry.value_ptr.cloneOwned(allocator));
                 }
                 out.subject = switch (self.subject) {
                     .none => .none,
@@ -916,7 +916,7 @@ pub const demo = struct {
                         }
                         @This().deinitMap_audits(allocator, &self.audits);
                         try self.audits.ensureUnusedCapacity(allocator, list.items.len);
-                        for (list.items) |list_entry| try @This().putMapEntry_audits(allocator, &self.audits, list_entry);
+                        for (list.items) |list_entry| self.audits.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
@@ -1538,7 +1538,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
                 self.audits = .empty;
                 try self.audits.ensureUnusedCapacity(allocator, audits_list.items.len);
-                for (audits_list.items) |entry| try @This().putMapEntry_audits(allocator, &self.audits, entry);
+                for (audits_list.items) |entry| self.audits.putAssumeCapacityNoClobber(entry.key, entry.value);
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                 return self;
             }

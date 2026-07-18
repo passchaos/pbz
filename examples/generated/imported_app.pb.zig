@@ -179,7 +179,7 @@ pub const demo = struct {
                     if (self.by_name.count() != 0) {
                         try out.by_name.ensureUnusedCapacity(allocator, self.by_name.count());
                         var map_it = self.by_name.iterator();
-                        while (map_it.next()) |entry| try @This().putMapEntry_by_name(allocator, &out.by_name, .{ .key = try owned_allocator.dupe(u8, entry.key_ptr.*), .value = try entry.value_ptr.cloneOwned(allocator) });
+                        while (map_it.next()) |entry| out.by_name.putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), try entry.value_ptr.cloneOwned(allocator));
                     }
                     out.selected = switch (self.selected) {
                         .none => .none,
@@ -828,7 +828,7 @@ pub const demo = struct {
                             }
                             @This().deinitMap_by_name(allocator, &self.by_name);
                             try self.by_name.ensureUnusedCapacity(allocator, list.items.len);
-                            for (list.items) |list_entry| try @This().putMapEntry_by_name(allocator, &self.by_name, list_entry);
+                            for (list.items) |list_entry| self.by_name.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "chosen") or std.mem.eql(u8, key, "chosen")) {
@@ -1449,7 +1449,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
                     self.by_name = .empty;
                     try self.by_name.ensureUnusedCapacity(allocator, by_name_list.items.len);
-                    for (by_name_list.items) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
+                    for (by_name_list.items) |entry| self.by_name.putAssumeCapacityNoClobber(entry.key, entry.value);
                     self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                     return self;
                 }
