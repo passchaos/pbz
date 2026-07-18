@@ -61,10 +61,11 @@ number queries over those raw fields can build either a parallel field-number
 sidecar with `pbz.wire.rawFieldNumbersAlloc` /
 `pbz.wire.rawFieldNumberCount` or a compact sorted run sidecar with
 `pbz.wire.rawFieldNumberRunsAlloc` / `pbz.wire.rawFieldNumberRunCount`.
-`run_compare.sh` also emits C++ `UnknownFieldSet` decode and count-by-number
-rows for manual context, but these rows deliberately remain outside the
-cross-language fail-on-loss matrix: C++ exposes parsed unknown fields, while pbz
-preserves exact raw-field byte slices.
+`bench/summarize_compare.py` includes the C++ `UnknownFieldSet`
+count-by-number row in the fail-on-loss matrix when comparing against the
+compact run sidecar. The C++ unknown-field decode row remains manual context:
+C++ exposes parsed unknown fields, while pbz preserves exact raw-field byte
+slices.
 
 The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
 `Packed { repeated int32 values = 1; }` and

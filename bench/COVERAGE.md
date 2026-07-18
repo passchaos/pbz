@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 53 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 54 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -77,6 +77,7 @@ The matrix includes:
 
 - binary encode/decode
 - deterministic binary encode
+- unknown-field count-by-number against C++ `UnknownFieldSet` count
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode
 - large bytes and repeated large bytes encode/decode
@@ -96,9 +97,9 @@ The local `zig build bench` output also includes generated/dynamic
 unknown-field stress decode and count-by-number query rows, plus generated
 raw-field-number and compact run sidecar count rows for callers that repeatedly
 query preserved raw unknown fields by number. `bench/run_compare.sh` now emits
-C++ `UnknownFieldSet` stress decode/count rows for manual context. Those rows
-are deliberately outside `bench/summarize_compare.py`'s cross-language
-fail-on-loss matrix because C++ exposes parsed unknown fields, while pbz
+C++ `UnknownFieldSet` stress decode/count rows; the count-by-number row is in
+the fail-on-loss matrix against pbz's compact run sidecar, while the decode row
+remains manual context because C++ exposes parsed unknown fields and pbz
 preserves exact raw-field byte slices.
 
 ## Generated performance APIs now used by the matrix
@@ -187,10 +188,11 @@ claiming broad superiority beyond the covered workloads:
   workloads such as remaining well-known-type edge cases may deserve separate
   rows.
 - The local pbz benchmark includes unknown-field stress decode and
-  count-by-number rows. `bench/run_compare.sh` also emits C++ `UnknownFieldSet`
-  rows for manual context, but they are not part of the cross-language
-  fail-on-loss matrix because the APIs differ: C++ exposes parsed unknown
-  fields, while pbz preserves exact raw-field slice bytes.
+  count-by-number rows. The C++ `UnknownFieldSet` count-by-number row is parsed
+  into the fail-on-loss matrix against pbz's compact run sidecar; the C++
+  unknown-field decode row remains manual context because the APIs differ: C++
+  exposes parsed unknown fields, while pbz preserves exact raw-field slice
+  bytes.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.

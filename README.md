@@ -94,6 +94,7 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 |---|---:|---:|---:|---:|---:|
 | binary encode | 25.48 | 102.20 (4.01x) | 66.74 (2.62x) | 104.44 (4.10x) | 816.22 (32.03x) |
 | binary decode | 90.61 | 251.57 (2.78x) | 232.35 (2.56x) | 228.19 (2.52x) | 867.85 (9.58x) |
+| unknown count by number | 5.15 | — | — | 151.52 (29.42x) | — |
 | scalarmix encode | 19.33 | 97.27 (5.03x) | 47.20 (2.44x) | 29.52 (1.53x) | 212.55 (11.00x) |
 | scalarmix decode | 47.10 | 139.73 (2.97x) | 183.71 (3.90x) | 85.72 (1.82x) | 321.31 (6.82x) |
 | textbytes encode | 26.66 | 80.78 (3.03x) | 34.31 (1.29x) | 119.57 (4.48x) | 161.75 (6.07x) |
@@ -107,9 +108,9 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 | large map decode | 25473.54 | 90671.14 (3.56x) | 90023.32 (3.53x) | 90248.10 (3.54x) | 260428.85 (10.22x) |
 | shuffled large map deterministic binary encode | 28619.48 | — | — | 91609.30 (3.20x) | 377222.58 (13.18x) |
 
-The matrix covers binary encode/decode, deterministic encode, JSON, TextFormat,
-packed scalars, large bytes, maps, oneof/optional workloads, and complex nested
-messages. Benchmark results are hardware-sensitive; compare full same-machine
+The matrix covers binary encode/decode, unknown-field count-by-number, deterministic
+encode, JSON, TextFormat, packed scalars, large bytes, maps, oneof/optional
+workloads, and complex nested messages. Benchmark results are hardware-sensitive; compare full same-machine
 runs rather than individual copied rows.
 
 ## Basic usage

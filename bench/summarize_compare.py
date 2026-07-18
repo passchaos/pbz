@@ -61,6 +61,18 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     Workload(
+        "unknown fields count by number",
+        (
+            "generated unknown fields count by number",
+            "generated unknown field number sidecar count",
+            "generated unknown field number run sidecar count",
+            "dynamic unknown fields count by number",
+        ),
+        {
+            "c++ protobuf": ("c++ protobuf unknown fields count by number",),
+        },
+    ),
+    Workload(
         "deterministic binary encode",
         (
             "generated deterministic binary encode",
