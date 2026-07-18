@@ -1398,19 +1398,15 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
     try writer.writeAll("var nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-    try indent(writer, depth);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
     if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
         try indent(writer, depth);
         try writer.writeAll("{\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var owned_nested = try nested.cloneOwned(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("errdefer owned_nested.deinit(allocator);\n");
+        try writer.writeAll("errdefer nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(".append(allocator, owned_nested);\n");
+        try writer.writeAll(".append(allocator, nested);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
         return;
@@ -1419,9 +1415,9 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, nested); } else { self.");
+        try writer.writeAll(") |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try nested.cloneOwned(allocator); }\n");
+        try writer.writeAll(" = nested; }\n");
         return;
     }
     if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
@@ -1429,9 +1425,7 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try indent(writer, depth);
         try writer.writeAll("{\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var owned_nested = try nested.cloneOwned(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("errdefer owned_nested.deinit(allocator);\n");
+        try writer.writeAll("errdefer nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
         try writeOneofDeinitCall(oneof_name, writer);
         try writer.writeAll("\n");
@@ -1440,11 +1434,13 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try writeQuotedIdent(oneof_name, writer);
         try writer.writeAll(" = .{ .");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = owned_nested };\n");
+        try writer.writeAll(" = nested };\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
         return;
     }
+    try indent(writer, depth);
+    try writer.writeAll("defer nested.deinit(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth);
@@ -1551,22 +1547,20 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try writer.writeAll("var nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, map_type.value.message, writer);
         try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 3);
-        try writer.writeAll("defer nested.deinit(allocator);\n");
         if (typedMapMessageValueWithContext(ctx, field)) |_| {
             try indent(writer, depth + 3);
             try writer.writeAll("{\n");
             try indent(writer, depth + 4);
-            try writer.writeAll("var owned_value = try nested.cloneOwned(allocator);\n");
-            try indent(writer, depth + 4);
-            try writer.writeAll("errdefer owned_value.deinit(allocator);\n");
+            try writer.writeAll("errdefer nested.deinit(allocator);\n");
             try indent(writer, depth + 4);
             try writer.writeAll("entry.value.deinit(allocator);\n");
             try indent(writer, depth + 4);
-            try writer.writeAll("entry.value = owned_value;\n");
+            try writer.writeAll("entry.value = nested;\n");
             try indent(writer, depth + 3);
             try writer.writeAll("}\n");
         } else {
+            try indent(writer, depth + 3);
+            try writer.writeAll("defer nested.deinit(allocator);\n");
             try indent(writer, depth + 3);
             try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
             try indent(writer, depth + 3);
@@ -12244,9 +12238,9 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var owned_nested = try nested.cloneOwned(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_pick(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = owned_nested };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = nested };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.common_proto.demo.common.User.decode(allocator, payload);") != null);
@@ -13293,9 +13287,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var owned_value = try nested.cloneOwned(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer owned_value.deinit(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = owned_value;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = nested;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
@@ -13321,10 +13315,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var owned_nested = try nested.cloneOwned(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer owned_nested.deinit(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try children_list.append(allocator, owned_nested);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.child = try nested.cloneOwned(allocator); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try children_list.append(allocator, nested);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype) ![]u8") != null);

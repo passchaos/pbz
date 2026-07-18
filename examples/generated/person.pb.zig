@@ -6815,8 +6815,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const block = try @This().textBlock(allocator, &lines);
                     defer allocator.free(block);
                     var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    defer nested.deinit(allocator);
-                    if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.child = try nested.cloneOwned(allocator); }
+                    if (self.child) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.child = nested; }
                     continue;
                 }
                 if (@This().textFieldValue(line, "name")) |raw_value| { self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
@@ -6825,12 +6824,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const block = try @This().textBlock(allocator, &lines);
                     defer allocator.free(block);
                     var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    defer nested.deinit(allocator);
                     {
-                        var owned_nested = try nested.cloneOwned(allocator);
-                        errdefer owned_nested.deinit(allocator);
+                        errdefer nested.deinit(allocator);
                         self._pbzDeinitOneof_pick(allocator);
-                        self.pick = .{ .nested = owned_nested };
+                        self.pick = .{ .nested = nested };
                     }
                     continue;
                 }
@@ -24957,19 +24954,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const block = try @This().textBlock(allocator, &lines);
                     defer allocator.free(block);
                     var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    defer nested.deinit(allocator);
-                    if (self.audit) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.audit = try nested.cloneOwned(allocator); }
+                    if (self.audit) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.audit = nested; }
                     continue;
                 }
                 if (@This().textBlockField(line, "history")) {
                     const block = try @This().textBlock(allocator, &lines);
                     defer allocator.free(block);
                     var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    defer nested.deinit(allocator);
                     {
-                        var owned_nested = try nested.cloneOwned(allocator);
-                        errdefer owned_nested.deinit(allocator);
-                        try history_list.append(allocator, owned_nested);
+                        errdefer nested.deinit(allocator);
+                        try history_list.append(allocator, nested);
                     }
                     continue;
                 }
@@ -24985,12 +24979,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
                             var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            defer nested.deinit(allocator);
                             {
-                                var owned_value = try nested.cloneOwned(allocator);
-                                errdefer owned_value.deinit(allocator);
+                                errdefer nested.deinit(allocator);
                                 entry.value.deinit(allocator);
-                                entry.value = owned_value;
+                                entry.value = nested;
                             }
                             continue;
                         }
@@ -25005,12 +24997,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const block = try @This().textBlock(allocator, &lines);
                     defer allocator.free(block);
                     var nested = try Audit.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                    defer nested.deinit(allocator);
                     {
-                        var owned_nested = try nested.cloneOwned(allocator);
-                        errdefer owned_nested.deinit(allocator);
+                        errdefer nested.deinit(allocator);
                         self._pbzDeinitOneof_subject(allocator);
-                        self.subject = .{ .audit_subject = owned_nested };
+                        self.subject = .{ .audit_subject = nested };
                     }
                     continue;
                 }

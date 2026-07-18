@@ -1409,19 +1409,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
                             var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            defer nested.deinit(allocator);
-                            if (self.primary) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.primary = try nested.cloneOwned(allocator); }
+                            if (self.primary) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.primary = nested; }
                             continue;
                         }
                         if (@This().textBlockField(line, "history")) {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
                             var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            defer nested.deinit(allocator);
                             {
-                                var owned_nested = try nested.cloneOwned(allocator);
-                                errdefer owned_nested.deinit(allocator);
-                                try history_list.append(allocator, owned_nested);
+                                errdefer nested.deinit(allocator);
+                                try history_list.append(allocator, nested);
                             }
                             continue;
                         }
@@ -1437,12 +1434,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                                     const block = try @This().textBlock(allocator, &lines);
                                     defer allocator.free(block);
                                     var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                                    defer nested.deinit(allocator);
                                     {
-                                        var owned_value = try nested.cloneOwned(allocator);
-                                        errdefer owned_value.deinit(allocator);
+                                        errdefer nested.deinit(allocator);
                                         entry.value.deinit(allocator);
-                                        entry.value = owned_value;
+                                        entry.value = nested;
                                     }
                                     continue;
                                 }
@@ -1455,12 +1450,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                             const block = try @This().textBlock(allocator, &lines);
                             defer allocator.free(block);
                             var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            defer nested.deinit(allocator);
                             {
-                                var owned_nested = try nested.cloneOwned(allocator);
-                                errdefer owned_nested.deinit(allocator);
+                                errdefer nested.deinit(allocator);
                                 self._pbzDeinitOneof_selected(allocator);
-                                self.selected = .{ .chosen = owned_nested };
+                                self.selected = .{ .chosen = nested };
                             }
                             continue;
                         }

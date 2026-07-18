@@ -1023,11 +1023,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const block = try @This().textBlock(allocator, &lines);
                         defer allocator.free(block);
                         var nested = try Node.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
                         {
-                            var owned_nested = try nested.cloneOwned(allocator);
-                            errdefer owned_nested.deinit(allocator);
-                            try children_list.append(allocator, owned_nested);
+                            errdefer nested.deinit(allocator);
+                            try children_list.append(allocator, nested);
                         }
                         continue;
                     }

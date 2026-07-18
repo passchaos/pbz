@@ -1193,19 +1193,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const block = try @This().textBlock(allocator, &lines);
                         defer allocator.free(block);
                         var nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
-                        if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); } else { self.box = try nested.cloneOwned(allocator); }
+                        if (self.box) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.box = nested; }
                         continue;
                     }
                     if (@This().textBlockField(line, "item")) {
                         const block = try @This().textBlock(allocator, &lines);
                         defer allocator.free(block);
                         var nested = try Item.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
                         {
-                            var owned_nested = try nested.cloneOwned(allocator);
-                            errdefer owned_nested.deinit(allocator);
-                            try item_list.append(allocator, owned_nested);
+                            errdefer nested.deinit(allocator);
+                            try item_list.append(allocator, nested);
                         }
                         continue;
                     }
@@ -1213,12 +1210,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const block = try @This().textBlock(allocator, &lines);
                         defer allocator.free(block);
                         var nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
                         {
-                            var owned_nested = try nested.cloneOwned(allocator);
-                            errdefer owned_nested.deinit(allocator);
+                            errdefer nested.deinit(allocator);
                             self._pbzDeinitOneof_picked(allocator);
-                            self.picked = .{ .picked_box = owned_nested };
+                            self.picked = .{ .picked_box = nested };
                         }
                         continue;
                     }
