@@ -188,7 +188,14 @@ const RawFieldNumberMatcher = struct {
         // Once the first byte's low seven bits have been range-checked, all
         // following canonical varint bytes must exactly match the
         // field-number-only tag.
-        return raw[0] >= 0x80 and std.mem.eql(u8, raw[1..self.canonical_tag_len], self.canonical_tag[1..self.canonical_tag_len]);
+        if (raw[0] < 0x80) return false;
+        return switch (self.canonical_tag_len) {
+            2 => raw[1] == self.canonical_tag[1],
+            3 => raw[1] == self.canonical_tag[1] and raw[2] == self.canonical_tag[2],
+            4 => raw[1] == self.canonical_tag[1] and raw[2] == self.canonical_tag[2] and raw[3] == self.canonical_tag[3],
+            5 => raw[1] == self.canonical_tag[1] and raw[2] == self.canonical_tag[2] and raw[3] == self.canonical_tag[3] and raw[4] == self.canonical_tag[4],
+            else => unreachable,
+        };
     }
 };
 
