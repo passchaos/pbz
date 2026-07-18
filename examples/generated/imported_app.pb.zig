@@ -519,7 +519,7 @@ pub const demo = struct {
                     defer history_list.deinit(allocator);
                     errdefer for (history_list.items) |item| { var mutable = item; mutable.deinit(allocator); };
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
-                    errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+                    errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                     while (try r.nextTag()) |tag| {
                         switch (tag.number) {
                             1 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.primary) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.primary = nested; } },
@@ -545,7 +545,7 @@ pub const demo = struct {
                         }
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
-                    self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+                    self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                     return self;
                 }
 
@@ -568,7 +568,7 @@ pub const demo = struct {
                     self.primary = null;
                     errdefer self.deinit(allocator);
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
-                    errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+                    errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                     var r = pbz.Reader.init(bytes);
                     while (try r.nextTag()) |tag| {
                         switch (tag.number) {
@@ -595,7 +595,7 @@ pub const demo = struct {
                         }
                     }
                     self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
-                    self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);
+                    self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                 }
 
                 pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -1387,7 +1387,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     defer by_name_list.deinit(allocator);
                     errdefer for (by_name_list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
                     var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
-                    errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }
+                    errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                     const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
                     const normalized_text = if (needs_normalized_text) try @This().textNormalizeSeparators(allocator, text) else text;
                     defer if (needs_normalized_text) allocator.free(normalized_text);
@@ -1453,7 +1453,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.by_name = .empty;
                     try self.by_name.ensureUnusedCapacity(allocator, by_name_list.items.len);
                     for (by_name_list.items) |entry| try @This().putMapEntry_by_name(allocator, &self.by_name, entry);
-                    self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);
+                    self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                     return self;
                 }
 

@@ -168,6 +168,19 @@ pub fn cloneRawFields(allocator: std.mem.Allocator, fields: []const []const u8) 
     return cloned;
 }
 
+pub fn deinitRawFieldList(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8)) void {
+    for (list.items) |raw| allocator.free(raw);
+    list.deinit(allocator);
+}
+
+pub fn rawFieldListToOwnedSlice(allocator: std.mem.Allocator, list: *std.ArrayList([]const u8)) std.mem.Allocator.Error![]const []const u8 {
+    if (list.items.len == 0) {
+        list.deinit(allocator);
+        return &.{};
+    }
+    return try list.toOwnedSlice(allocator);
+}
+
 pub fn validateRawField(raw: []const u8) Error!void {
     var reader = Reader.init(raw);
     const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
@@ -1769,6 +1782,18 @@ test "wire clones and clears raw field slices" {
 
     clearRawFields(allocator, &cloned);
     try std.testing.expectEqual(@as(usize, 0), cloned.len);
+
+    var list: std.ArrayList([]const u8) = .empty;
+    errdefer deinitRawFieldList(allocator, &list);
+    try list.append(allocator, try allocator.dupe(u8, first.slice()));
+    const owned = try rawFieldListToOwnedSlice(allocator, &list);
+    defer freeRawFields(allocator, owned);
+    try std.testing.expectEqual(@as(usize, 1), owned.len);
+    try std.testing.expectEqualSlices(u8, first.slice(), owned[0]);
+
+    var empty_list: std.ArrayList([]const u8) = .empty;
+    const empty = try rawFieldListToOwnedSlice(allocator, &empty_list);
+    try std.testing.expectEqual(@as(usize, 0), empty.len);
 }
 
 test "wire writes deterministic raw fields in generated order" {

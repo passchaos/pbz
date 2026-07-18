@@ -1061,7 +1061,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth + 1);
     try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
+    try writer.writeAll("errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);\n");
     try indent(writer, depth + 1);
@@ -1099,7 +1099,7 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssign(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -6346,7 +6346,7 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try indent(writer, depth + 1);
     try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
+    try writer.writeAll("errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (try r.nextTag()) |tag| {\n");
     try indent(writer, depth + 2);
@@ -6360,7 +6360,7 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("}\n");
     for (message.fields.items) |*field| try writeRepeatedAssignForDecode(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -6403,11 +6403,11 @@ fn writeDecodeFastRawTag(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth + 1);
     try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
+    try writer.writeAll("errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);\n");
     try writeRawTagDecodeLoop(ctx, message, writer, depth + 1);
     for (message.fields.items) |*field| try writeRepeatedAssignForDecode(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
@@ -6615,7 +6615,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     try indent(writer, depth + 1);
     try writer.writeAll("var _unknown_fields_list: std.ArrayList([]const u8) = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer { for (_unknown_fields_list.items) |raw| allocator.free(raw); _unknown_fields_list.deinit(allocator); }\n");
+    try writer.writeAll("errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
     if (messageCanFastRawTagDecode(ctx.file, message)) {
@@ -6635,7 +6635,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     }
     for (message.fields.items) |*field| try writeRepeatedAssignForDecode(field, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("self._unknown_fields = if (_unknown_fields_list.items.len == 0) &.{} else try _unknown_fields_list.toOwnedSlice(allocator);\n");
+    try writer.writeAll("self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
