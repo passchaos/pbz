@@ -915,12 +915,22 @@ fn parseStructMessage(allocator: std.mem.Allocator, file: *const schema.FileDesc
     var it = object.iterator();
     while (it.next()) |entry| {
         const value_message = try parseValueMessage(allocator, file, value_desc, entry.value_ptr.*);
+        var owns_value_message = true;
+        errdefer if (owns_value_message) {
+            value_message.deinit();
+            allocator.destroy(value_message);
+        };
+        const key = try allocator.dupe(u8, entry.key_ptr.*);
+        var owns_key = true;
+        errdefer if (owns_key) allocator.free(key);
         const map_entry = try allocator.create(dynamic.MapEntry);
         map_entry.* = .{
-            .key = .{ .string = try allocator.dupe(u8, entry.key_ptr.*) },
+            .key = .{ .string = key },
             .value = .{ .message = value_message },
         };
-        try message.add(field, .{ .map_entry = map_entry });
+        owns_key = false;
+        owns_value_message = false;
+        try addOwnedValue(allocator, message, field, .{ .map_entry = map_entry });
     }
     return message;
 }
@@ -941,7 +951,9 @@ fn parseListValueMessage(allocator: std.mem.Allocator, file: *const schema.FileD
         .message => |name| resolveMessageDescriptor(file, descriptor, name) orelse return error.TypeMismatch,
         else => return error.TypeMismatch,
     };
-    for (array.items) |item| try message.add(field, .{ .message = try parseValueMessage(allocator, file, value_desc, item) });
+    for (array.items) |item| {
+        try addOwnedValue(allocator, message, field, .{ .message = try parseValueMessage(allocator, file, value_desc, item) });
+    }
     return message;
 }
 
@@ -957,14 +969,14 @@ fn parseValueMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
         .bool => |value| try message.add(descriptor.findField("bool_value") orelse return error.TypeMismatch, .{ .boolean = value }),
         .integer => |value| try message.add(descriptor.findField("number_value") orelse return error.TypeMismatch, .{ .double = @floatFromInt(value) }),
         .float, .number_string => try message.add(descriptor.findField("number_value") orelse return error.TypeMismatch, .{ .double = try numberAsFloat(f64, json_value) }),
-        .string => |value| try message.add(descriptor.findField("string_value") orelse return error.TypeMismatch, .{ .string = try allocator.dupe(u8, value) }),
+        .string => |value| try addOwnedValue(allocator, message, descriptor.findField("string_value") orelse return error.TypeMismatch, .{ .string = try allocator.dupe(u8, value) }),
         .object => {
             const struct_desc = resolveMessageDescriptor(file, descriptor, "Struct") orelse return error.TypeMismatch;
-            try message.add(descriptor.findField("struct_value") orelse return error.TypeMismatch, .{ .message = try parseStructMessage(allocator, file, struct_desc, json_value) });
+            try addOwnedValue(allocator, message, descriptor.findField("struct_value") orelse return error.TypeMismatch, .{ .message = try parseStructMessage(allocator, file, struct_desc, json_value) });
         },
         .array => {
             const list_desc = resolveMessageDescriptor(file, descriptor, "ListValue") orelse return error.TypeMismatch;
-            try message.add(descriptor.findField("list_value") orelse return error.TypeMismatch, .{ .message = try parseListValueMessage(allocator, file, list_desc, json_value) });
+            try addOwnedValue(allocator, message, descriptor.findField("list_value") orelse return error.TypeMismatch, .{ .message = try parseListValueMessage(allocator, file, list_desc, json_value) });
         },
     }
     return message;
@@ -1137,7 +1149,7 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
             allocator.free(paths);
         }
         const field = descriptor.findField("paths") orelse return error.TypeMismatch;
-        for (paths) |path| try message.add(field, .{ .string = try allocator.dupe(u8, path) });
+        for (paths) |path| try addOwnedValue(allocator, message, field, .{ .string = try allocator.dupe(u8, path) });
         return message;
     }
     message.deinit();
@@ -1167,7 +1179,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
         else => return error.TypeMismatch,
     };
     if (!anyTypeUrlIsValid(type_url)) return error.TypeMismatch;
-    try message.add(type_field, .{ .string = try allocator.dupe(u8, type_url) });
+    try addOwnedValue(allocator, message, type_field, .{ .string = try allocator.dupe(u8, type_url) });
     const payload_desc = resolveAnyTypeWithRegistry(file, registry, descriptor, type_url);
     if (object.get("value")) |value_json| {
         if (payload_desc) |resolved| {
@@ -1186,7 +1198,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
                 if (options.validate_any_payloads) try payload.validateRequired();
                 const encoded = try payload.encodedDeterministicWithRegistry(payload_file, registry);
                 defer allocator.free(encoded);
-                try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
+                try addOwnedValue(allocator, message, value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
                 return message;
             }
         }
@@ -1199,7 +1211,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
                 .string => |value| value,
                 else => return error.TypeMismatch,
             };
-            try message.add(value_field, .{ .bytes = try decodeBase64(allocator, encoded) });
+            try addOwnedValue(allocator, message, value_field, .{ .bytes = try decodeBase64(allocator, encoded) });
             return message;
         }
     }
@@ -1215,7 +1227,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
         if (options.validate_any_payloads) try payload.validateRequired();
         const encoded = try payload.encodedDeterministicWithRegistry(payload_file, registry);
         defer allocator.free(encoded);
-        try message.add(value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
+        try addOwnedValue(allocator, message, value_field, .{ .bytes = try allocator.dupe(u8, encoded) });
     } else return error.TypeMismatch;
     return message;
 }
