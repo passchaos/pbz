@@ -886,12 +886,17 @@ def self_test() -> None:
     sample = """
     generated binary encodeIntoAssumeCapacity buffer reuse: best of 3 x 10 iters, 47 bytes/iter, 40.00 ns/op, 1 ops/s, 1 MiB/s
     generated binary decode: best of 3 x 10 iters, 47 bytes/iter, 200.00 ns/op, 1 ops/s, 1 MiB/s
+    generated unknown field number run sidecar count: best of 3 x 10 iters, 4016 bytes/iter, 5.00 ns/op, 1 ops/s, 1 MiB/s
+    c++ protobuf unknown fields count by number: best of 3 x 10 iters, 4016 bytes/iter, 100.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary encode reuse: best of 3 x 10 iters, 47 bytes/iter, 50.00 ns/op, 1 ops/s, 1 MiB/s
     quick-protobuf binary decode: best of 3 x 10 iters, 47 bytes/iter, 150.00 ns/op, 1 ops/s, 1 MiB/s
     """
     results = parse_results(sample)
     output, has_loss = summarize(results)
     assert "binary encode" in output
+    assert "unknown fields count by number" in output
+    assert "generated unknown field number run sidecar count" in output
+    assert "c++ protobuf unknown fields count by number" in output
     assert "WIN" in output
     assert "LOSS" in output
     assert "Uncovered benchmark rows" in output
