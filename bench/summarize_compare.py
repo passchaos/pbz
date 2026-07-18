@@ -34,6 +34,36 @@ class Workload:
     baselines: dict[str, tuple[str, ...]]
 
 
+def json_workload_pair(label: str) -> tuple[Workload, Workload]:
+    """Return direct pbz-vs-C++/Go JSON stringify and parse workloads.
+
+    Most well-known-type JSON rows follow the same public row-name pattern in
+    every implementation.  Keeping that convention in one helper makes future
+    WKT coverage additions less error-prone: the self-test still guards the
+    expected matrix size, while the helper avoids copy/paste drift between
+    stringify and parse rows.
+    """
+
+    return (
+        Workload(
+            f"{label} JSON stringify",
+            (f"pbz {label} JSON stringify",),
+            {
+                "c++ protobuf": (f"c++ protobuf {label} JSON stringify",),
+                "go protobuf": (f"go protobuf {label} JSON stringify",),
+            },
+        ),
+        Workload(
+            f"{label} JSON parse",
+            (f"pbz {label} JSON parse",),
+            {
+                "c++ protobuf": (f"c++ protobuf {label} JSON parse",),
+                "go protobuf": (f"go protobuf {label} JSON parse",),
+            },
+        ),
+    )
+
+
 WORKLOADS: tuple[Workload, ...] = (
     Workload(
         "binary encode",
@@ -327,294 +357,24 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf JSON parse",),
         },
     ),
-    Workload(
-        "Any WKT JSON parse",
-        ("pbz Any WKT JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Any WKT JSON parse",),
-            "go protobuf": ("go protobuf Any WKT JSON parse",),
-        },
-    ),
-    Workload(
-        "Any WKT JSON stringify",
-        ("pbz Any WKT JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Any WKT JSON stringify",),
-            "go protobuf": ("go protobuf Any WKT JSON stringify",),
-        },
-    ),
-    Workload(
-        "Any Struct WKT JSON stringify",
-        ("pbz Any Struct WKT JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Any Struct WKT JSON stringify",),
-            "go protobuf": ("go protobuf Any Struct WKT JSON stringify",),
-        },
-    ),
-    Workload(
-        "Any Struct WKT JSON parse",
-        ("pbz Any Struct WKT JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Any Struct WKT JSON parse",),
-            "go protobuf": ("go protobuf Any Struct WKT JSON parse",),
-        },
-    ),
-    Workload(
-        "Duration JSON stringify",
-        ("pbz Duration JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Duration JSON stringify",),
-            "go protobuf": ("go protobuf Duration JSON stringify",),
-        },
-    ),
-    Workload(
-        "Duration JSON parse",
-        ("pbz Duration JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Duration JSON parse",),
-            "go protobuf": ("go protobuf Duration JSON parse",),
-        },
-    ),
-    Workload(
-        "FieldMask JSON stringify",
-        ("pbz FieldMask JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf FieldMask JSON stringify",),
-            "go protobuf": ("go protobuf FieldMask JSON stringify",),
-        },
-    ),
-    Workload(
-        "FieldMask JSON parse",
-        ("pbz FieldMask JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf FieldMask JSON parse",),
-            "go protobuf": ("go protobuf FieldMask JSON parse",),
-        },
-    ),
-    Workload(
-        "Timestamp JSON stringify",
-        ("pbz Timestamp JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Timestamp JSON stringify",),
-            "go protobuf": ("go protobuf Timestamp JSON stringify",),
-        },
-    ),
-    Workload(
-        "Timestamp JSON parse",
-        ("pbz Timestamp JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Timestamp JSON parse",),
-            "go protobuf": ("go protobuf Timestamp JSON parse",),
-        },
-    ),
-    Workload(
-        "Empty JSON stringify",
-        ("pbz Empty JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Empty JSON stringify",),
-            "go protobuf": ("go protobuf Empty JSON stringify",),
-        },
-    ),
-    Workload(
-        "Empty JSON parse",
-        ("pbz Empty JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Empty JSON parse",),
-            "go protobuf": ("go protobuf Empty JSON parse",),
-        },
-    ),
-    Workload(
-        "Struct JSON stringify",
-        ("pbz Struct JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Struct JSON stringify",),
-            "go protobuf": ("go protobuf Struct JSON stringify",),
-        },
-    ),
-    Workload(
-        "Struct JSON parse",
-        ("pbz Struct JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Struct JSON parse",),
-            "go protobuf": ("go protobuf Struct JSON parse",),
-        },
-    ),
-    Workload(
-        "Value JSON stringify",
-        ("pbz Value JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Value JSON stringify",),
-            "go protobuf": ("go protobuf Value JSON stringify",),
-        },
-    ),
-    Workload(
-        "Value JSON parse",
-        ("pbz Value JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Value JSON parse",),
-            "go protobuf": ("go protobuf Value JSON parse",),
-        },
-    ),
-    Workload(
-        "ListValue JSON stringify",
-        ("pbz ListValue JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf ListValue JSON stringify",),
-            "go protobuf": ("go protobuf ListValue JSON stringify",),
-        },
-    ),
-    Workload(
-        "ListValue JSON parse",
-        ("pbz ListValue JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf ListValue JSON parse",),
-            "go protobuf": ("go protobuf ListValue JSON parse",),
-        },
-    ),
-    Workload(
-        "DoubleValue JSON stringify",
-        ("pbz DoubleValue JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf DoubleValue JSON stringify",),
-            "go protobuf": ("go protobuf DoubleValue JSON stringify",),
-        },
-    ),
-    Workload(
-        "DoubleValue JSON parse",
-        ("pbz DoubleValue JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf DoubleValue JSON parse",),
-            "go protobuf": ("go protobuf DoubleValue JSON parse",),
-        },
-    ),
-    Workload(
-        "FloatValue JSON stringify",
-        ("pbz FloatValue JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf FloatValue JSON stringify",),
-            "go protobuf": ("go protobuf FloatValue JSON stringify",),
-        },
-    ),
-    Workload(
-        "FloatValue JSON parse",
-        ("pbz FloatValue JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf FloatValue JSON parse",),
-            "go protobuf": ("go protobuf FloatValue JSON parse",),
-        },
-    ),
-    Workload(
-        "Int64Value JSON stringify",
-        ("pbz Int64Value JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Int64Value JSON stringify",),
-            "go protobuf": ("go protobuf Int64Value JSON stringify",),
-        },
-    ),
-    Workload(
-        "Int64Value JSON parse",
-        ("pbz Int64Value JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Int64Value JSON parse",),
-            "go protobuf": ("go protobuf Int64Value JSON parse",),
-        },
-    ),
-    Workload(
-        "UInt64Value JSON stringify",
-        ("pbz UInt64Value JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf UInt64Value JSON stringify",),
-            "go protobuf": ("go protobuf UInt64Value JSON stringify",),
-        },
-    ),
-    Workload(
-        "UInt64Value JSON parse",
-        ("pbz UInt64Value JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf UInt64Value JSON parse",),
-            "go protobuf": ("go protobuf UInt64Value JSON parse",),
-        },
-    ),
-    Workload(
-        "Int32Value JSON stringify",
-        ("pbz Int32Value JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf Int32Value JSON stringify",),
-            "go protobuf": ("go protobuf Int32Value JSON stringify",),
-        },
-    ),
-    Workload(
-        "Int32Value JSON parse",
-        ("pbz Int32Value JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf Int32Value JSON parse",),
-            "go protobuf": ("go protobuf Int32Value JSON parse",),
-        },
-    ),
-    Workload(
-        "UInt32Value JSON stringify",
-        ("pbz UInt32Value JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf UInt32Value JSON stringify",),
-            "go protobuf": ("go protobuf UInt32Value JSON stringify",),
-        },
-    ),
-    Workload(
-        "UInt32Value JSON parse",
-        ("pbz UInt32Value JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf UInt32Value JSON parse",),
-            "go protobuf": ("go protobuf UInt32Value JSON parse",),
-        },
-    ),
-    Workload(
-        "BoolValue JSON stringify",
-        ("pbz BoolValue JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf BoolValue JSON stringify",),
-            "go protobuf": ("go protobuf BoolValue JSON stringify",),
-        },
-    ),
-    Workload(
-        "BoolValue JSON parse",
-        ("pbz BoolValue JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf BoolValue JSON parse",),
-            "go protobuf": ("go protobuf BoolValue JSON parse",),
-        },
-    ),
-    Workload(
-        "StringValue JSON stringify",
-        ("pbz StringValue JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf StringValue JSON stringify",),
-            "go protobuf": ("go protobuf StringValue JSON stringify",),
-        },
-    ),
-    Workload(
-        "StringValue JSON parse",
-        ("pbz StringValue JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf StringValue JSON parse",),
-            "go protobuf": ("go protobuf StringValue JSON parse",),
-        },
-    ),
-    Workload(
-        "BytesValue JSON stringify",
-        ("pbz BytesValue JSON stringify",),
-        {
-            "c++ protobuf": ("c++ protobuf BytesValue JSON stringify",),
-            "go protobuf": ("go protobuf BytesValue JSON stringify",),
-        },
-    ),
-    Workload(
-        "BytesValue JSON parse",
-        ("pbz BytesValue JSON parse",),
-        {
-            "c++ protobuf": ("c++ protobuf BytesValue JSON parse",),
-            "go protobuf": ("go protobuf BytesValue JSON parse",),
-        },
-    ),
+    *json_workload_pair("Any WKT"),
+    *json_workload_pair("Any Struct WKT"),
+    *json_workload_pair("Duration"),
+    *json_workload_pair("FieldMask"),
+    *json_workload_pair("Timestamp"),
+    *json_workload_pair("Empty"),
+    *json_workload_pair("Struct"),
+    *json_workload_pair("Value"),
+    *json_workload_pair("ListValue"),
+    *json_workload_pair("DoubleValue"),
+    *json_workload_pair("FloatValue"),
+    *json_workload_pair("Int64Value"),
+    *json_workload_pair("UInt64Value"),
+    *json_workload_pair("Int32Value"),
+    *json_workload_pair("UInt32Value"),
+    *json_workload_pair("BoolValue"),
+    *json_workload_pair("StringValue"),
+    *json_workload_pair("BytesValue"),
     Workload(
         "TextFormat format",
         ("generated TextFormat format",),
