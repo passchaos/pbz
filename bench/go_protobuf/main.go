@@ -10,7 +10,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -361,6 +363,43 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	emptyValue := &emptypb.Empty{}
+	emptyJSONBytes, err := protojson.Marshal(emptyValue)
+	if err != nil {
+		panic(err)
+	}
+	structValue := &structpb.Struct{Fields: map[string]*structpb.Value{
+		"enabled": structpb.NewBoolValue(true),
+		"items": structpb.NewListValue(&structpb.ListValue{Values: []*structpb.Value{
+			structpb.NewNullValue(),
+			structpb.NewStringValue("zig"),
+		}}),
+		"meta": structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{
+			"score": structpb.NewNumberValue(1.5),
+		}}),
+	}}
+	structJSONBytes, err := protojson.Marshal(structValue)
+	if err != nil {
+		panic(err)
+	}
+	valueValue := structpb.NewStructValue(structValue)
+	valueJSONBytes, err := protojson.Marshal(valueValue)
+	if err != nil {
+		panic(err)
+	}
+	listValue := &structpb.ListValue{Values: []*structpb.Value{
+		structpb.NewNullValue(),
+		structpb.NewStringValue("zig"),
+		structpb.NewNumberValue(1.5),
+		structpb.NewBoolValue(true),
+		structpb.NewStructValue(&structpb.Struct{Fields: map[string]*structpb.Value{
+			"nested": structpb.NewStringValue("value"),
+		}}),
+	}}
+	listValueJSONBytes, err := protojson.Marshal(listValue)
+	if err != nil {
+		panic(err)
+	}
 	doubleValue := wrapperspb.Double(3.25)
 	doubleValueJSONBytes, err := protojson.Marshal(doubleValue)
 	if err != nil {
@@ -493,6 +532,10 @@ func main() {
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
+	fmt.Printf("empty json payload size: %d\n", len(emptyJSONBytes))
+	fmt.Printf("struct json payload size: %d\n", len(structJSONBytes))
+	fmt.Printf("value json payload size: %d\n", len(valueJSONBytes))
+	fmt.Printf("list value json payload size: %d\n", len(listValueJSONBytes))
 	fmt.Printf("double value json payload size: %d\n", len(doubleValueJSONBytes))
 	fmt.Printf("float value json payload size: %d\n", len(floatValueJSONBytes))
 	fmt.Printf("int64 value json payload size: %d\n", len(int64ValueJSONBytes))
@@ -795,6 +838,66 @@ func main() {
 	runTimed("go protobuf Timestamp JSON parse", iterations, len(timestampJSONBytes), func() {
 		var decoded timestamppb.Timestamp
 		if err := jsonUnmarshalOptions.Unmarshal(timestampJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Empty JSON stringify", iterations, len(emptyJSONBytes), func() {
+		out, err := protojson.Marshal(emptyValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Empty JSON parse", iterations, len(emptyJSONBytes), func() {
+		var decoded emptypb.Empty
+		if err := jsonUnmarshalOptions.Unmarshal(emptyJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Struct JSON stringify", iterations, len(structJSONBytes), func() {
+		out, err := protojson.Marshal(structValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Struct JSON parse", iterations, len(structJSONBytes), func() {
+		var decoded structpb.Struct
+		if err := jsonUnmarshalOptions.Unmarshal(structJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf Value JSON stringify", iterations, len(valueJSONBytes), func() {
+		out, err := protojson.Marshal(valueValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf Value JSON parse", iterations, len(valueJSONBytes), func() {
+		var decoded structpb.Value
+		if err := jsonUnmarshalOptions.Unmarshal(valueJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf ListValue JSON stringify", iterations, len(listValueJSONBytes), func() {
+		out, err := protojson.Marshal(listValue)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+
+	runTimed("go protobuf ListValue JSON parse", iterations, len(listValueJSONBytes), func() {
+		var decoded structpb.ListValue
+		if err := jsonUnmarshalOptions.Unmarshal(listValueJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

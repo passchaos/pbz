@@ -18,6 +18,10 @@ const AnyWktJson =
 const TimestampJson = "\"2020-01-01T00:00:00.123Z\"";
 const DurationJson = "\"1.500s\"";
 const FieldMaskJson = "\"fooBar,nested.value\"";
+const EmptyJson = "{}";
+const StructJson = "{\"enabled\":true,\"items\":[null,\"zig\"],\"meta\":{\"score\":1.5}}";
+const ValueJson = StructJson;
+const ListValueJson = "[null,\"zig\",1.5,true,{\"nested\":\"value\"}]";
 const DoubleValueJson = "3.25";
 const FloatValueJson = "1.5";
 const Int64ValueJson = "\"9007199254740993\"";
@@ -1856,26 +1860,40 @@ fn timestampJsonParse(ctx: TimestampJsonParseCtx) !void {
     std.mem.doNotOptimizeAway(timestamp);
 }
 
-fn WrapperJsonStringifyCtx(comptime Value: type) type {
+const EmptyJsonStringifyCtx = struct { allocator: std.mem.Allocator };
+fn emptyJsonStringify(ctx: EmptyJsonStringifyCtx) !void {
+    var out: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer out.deinit();
+    try pbz.Empty.jsonStringify(&out.writer);
+    std.mem.doNotOptimizeAway(out.written().ptr);
+}
+
+const EmptyJsonParseCtx = struct { allocator: std.mem.Allocator, json: []const u8 };
+fn emptyJsonParse(ctx: EmptyJsonParseCtx) !void {
+    const value = try pbz.Empty.jsonParse(ctx.allocator, ctx.json);
+    std.mem.doNotOptimizeAway(value);
+}
+
+fn WktJsonStringifyCtx(comptime Value: type) type {
     return struct { allocator: std.mem.Allocator, value: Value };
 }
 
-fn wrapperJsonStringify(ctx: anytype) !void {
+fn wktJsonStringify(ctx: anytype) !void {
     const json = try ctx.value.jsonStringifyAlloc(ctx.allocator);
     std.mem.doNotOptimizeAway(json.ptr);
     ctx.allocator.free(json);
 }
 
-fn WrapperJsonParseCtx(comptime Value: type) type {
+fn WktJsonParseCtx(comptime Value: type) type {
     return struct {
         allocator: std.mem.Allocator,
         json: []const u8,
-        const Wrapper = Value;
+        const Wkt = Value;
     };
 }
 
-fn wrapperJsonParse(ctx: anytype) !void {
-    var value = try @TypeOf(ctx).Wrapper.jsonParse(ctx.allocator, ctx.json);
+fn wktJsonParse(ctx: anytype) !void {
+    var value = try @TypeOf(ctx).Wkt.jsonParse(ctx.allocator, ctx.json);
     std.mem.doNotOptimizeAway(&value);
     value.deinit(ctx.allocator);
 }
@@ -2342,6 +2360,41 @@ pub fn main() !void {
     const timestamp_json = try timestamp_value.jsonStringifyAlloc(allocator);
     defer allocator.free(timestamp_json);
     std.debug.assert(std.mem.eql(u8, timestamp_json, TimestampJson));
+    var empty_json_out: std.Io.Writer.Allocating = .init(allocator);
+    defer empty_json_out.deinit();
+    try pbz.Empty.jsonStringify(&empty_json_out.writer);
+    const empty_json = empty_json_out.written();
+    std.debug.assert(std.mem.eql(u8, empty_json, EmptyJson));
+    const struct_items_values = [_]pbz.Value{ .null_value, .{ .string_value = "zig" } };
+    var struct_items = pbz.ListValue{ .values = &struct_items_values };
+    const struct_meta_fields = [_]pbz.Struct.Field{.{ .key = "score", .value = .{ .number_value = 1.5 } }};
+    var struct_meta = pbz.Struct{ .fields = &struct_meta_fields };
+    const struct_fields = [_]pbz.Struct.Field{
+        .{ .key = "enabled", .value = .{ .bool_value = true } },
+        .{ .key = "items", .value = .{ .list_value = &struct_items } },
+        .{ .key = "meta", .value = .{ .struct_value = &struct_meta } },
+    };
+    var struct_value = pbz.Struct{ .fields = &struct_fields };
+    const struct_json = try struct_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(struct_json);
+    std.debug.assert(std.mem.eql(u8, struct_json, StructJson));
+    const value_value = pbz.Value{ .struct_value = &struct_value };
+    const value_json = try value_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(value_json);
+    std.debug.assert(std.mem.eql(u8, value_json, ValueJson));
+    const list_nested_fields = [_]pbz.Struct.Field{.{ .key = "nested", .value = .{ .string_value = "value" } }};
+    var list_nested = pbz.Struct{ .fields = &list_nested_fields };
+    const list_values = [_]pbz.Value{
+        .null_value,
+        .{ .string_value = "zig" },
+        .{ .number_value = 1.5 },
+        .{ .bool_value = true },
+        .{ .struct_value = &list_nested },
+    };
+    const list_value = pbz.ListValue{ .values = &list_values };
+    const list_value_json = try list_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(list_value_json);
+    std.debug.assert(std.mem.eql(u8, list_value_json, ListValueJson));
     const double_value = pbz.DoubleValue{ .value = 3.25 };
     const double_value_json = try double_value.jsonStringifyAlloc(allocator);
     defer allocator.free(double_value_json);
@@ -2385,7 +2438,7 @@ pub fn main() !void {
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
     std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} double_value_json={d} float_value_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, double_value_json.len, float_value_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, any_wkt_json.len, generated_text.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d} double_value_json={d} float_value_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} any_wkt_json={d} text={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len, double_value_json.len, float_value_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, any_wkt_json.len, generated_text.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2579,24 +2632,32 @@ pub fn main() !void {
         try runTimed(io, "pbz FieldMask JSON parse", iters.json, field_mask_json.len, FieldMaskJsonParseCtx{ .allocator = allocator, .json = field_mask_json }, fieldMaskJsonParse),
         try runTimed(io, "pbz Timestamp JSON stringify", iters.json, timestamp_json.len, TimestampJsonStringifyCtx{ .allocator = allocator, .timestamp = timestamp_value }, timestampJsonStringify),
         try runTimed(io, "pbz Timestamp JSON parse", iters.json, timestamp_json.len, TimestampJsonParseCtx{ .json = timestamp_json }, timestampJsonParse),
-        try runTimed(io, "pbz DoubleValue JSON stringify", iters.json, double_value_json.len, WrapperJsonStringifyCtx(pbz.DoubleValue){ .allocator = allocator, .value = double_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz DoubleValue JSON parse", iters.json, double_value_json.len, WrapperJsonParseCtx(pbz.DoubleValue){ .allocator = allocator, .json = double_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz FloatValue JSON stringify", iters.json, float_value_json.len, WrapperJsonStringifyCtx(pbz.FloatValue){ .allocator = allocator, .value = float_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz FloatValue JSON parse", iters.json, float_value_json.len, WrapperJsonParseCtx(pbz.FloatValue){ .allocator = allocator, .json = float_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz Int64Value JSON stringify", iters.json, int64_value_json.len, WrapperJsonStringifyCtx(pbz.Int64Value){ .allocator = allocator, .value = int64_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz Int64Value JSON parse", iters.json, int64_value_json.len, WrapperJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = int64_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz UInt64Value JSON stringify", iters.json, uint64_value_json.len, WrapperJsonStringifyCtx(pbz.UInt64Value){ .allocator = allocator, .value = uint64_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz UInt64Value JSON parse", iters.json, uint64_value_json.len, WrapperJsonParseCtx(pbz.UInt64Value){ .allocator = allocator, .json = uint64_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz Int32Value JSON stringify", iters.json, int32_value_json.len, WrapperJsonStringifyCtx(pbz.Int32Value){ .allocator = allocator, .value = int32_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz Int32Value JSON parse", iters.json, int32_value_json.len, WrapperJsonParseCtx(pbz.Int32Value){ .allocator = allocator, .json = int32_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz UInt32Value JSON stringify", iters.json, uint32_value_json.len, WrapperJsonStringifyCtx(pbz.UInt32Value){ .allocator = allocator, .value = uint32_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz UInt32Value JSON parse", iters.json, uint32_value_json.len, WrapperJsonParseCtx(pbz.UInt32Value){ .allocator = allocator, .json = uint32_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz BoolValue JSON stringify", iters.json, bool_value_json.len, WrapperJsonStringifyCtx(pbz.BoolValue){ .allocator = allocator, .value = bool_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz BoolValue JSON parse", iters.json, bool_value_json.len, WrapperJsonParseCtx(pbz.BoolValue){ .allocator = allocator, .json = bool_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz StringValue JSON stringify", iters.json, string_value_json.len, WrapperJsonStringifyCtx(pbz.StringValue){ .allocator = allocator, .value = string_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz StringValue JSON parse", iters.json, string_value_json.len, WrapperJsonParseCtx(pbz.StringValue){ .allocator = allocator, .json = string_value_json }, wrapperJsonParse),
-        try runTimed(io, "pbz BytesValue JSON stringify", iters.json, bytes_value_json.len, WrapperJsonStringifyCtx(pbz.BytesValue){ .allocator = allocator, .value = bytes_value }, wrapperJsonStringify),
-        try runTimed(io, "pbz BytesValue JSON parse", iters.json, bytes_value_json.len, WrapperJsonParseCtx(pbz.BytesValue){ .allocator = allocator, .json = bytes_value_json }, wrapperJsonParse),
+        try runTimed(io, "pbz Empty JSON stringify", iters.json, empty_json.len, EmptyJsonStringifyCtx{ .allocator = allocator }, emptyJsonStringify),
+        try runTimed(io, "pbz Empty JSON parse", iters.json, empty_json.len, EmptyJsonParseCtx{ .allocator = allocator, .json = empty_json }, emptyJsonParse),
+        try runTimed(io, "pbz Struct JSON stringify", iters.json, struct_json.len, WktJsonStringifyCtx(pbz.Struct){ .allocator = allocator, .value = struct_value }, wktJsonStringify),
+        try runTimed(io, "pbz Struct JSON parse", iters.json, struct_json.len, WktJsonParseCtx(pbz.Struct){ .allocator = allocator, .json = struct_json }, wktJsonParse),
+        try runTimed(io, "pbz Value JSON stringify", iters.json, value_json.len, WktJsonStringifyCtx(pbz.Value){ .allocator = allocator, .value = value_value }, wktJsonStringify),
+        try runTimed(io, "pbz Value JSON parse", iters.json, value_json.len, WktJsonParseCtx(pbz.Value){ .allocator = allocator, .json = value_json }, wktJsonParse),
+        try runTimed(io, "pbz ListValue JSON stringify", iters.json, list_value_json.len, WktJsonStringifyCtx(pbz.ListValue){ .allocator = allocator, .value = list_value }, wktJsonStringify),
+        try runTimed(io, "pbz ListValue JSON parse", iters.json, list_value_json.len, WktJsonParseCtx(pbz.ListValue){ .allocator = allocator, .json = list_value_json }, wktJsonParse),
+        try runTimed(io, "pbz DoubleValue JSON stringify", iters.json, double_value_json.len, WktJsonStringifyCtx(pbz.DoubleValue){ .allocator = allocator, .value = double_value }, wktJsonStringify),
+        try runTimed(io, "pbz DoubleValue JSON parse", iters.json, double_value_json.len, WktJsonParseCtx(pbz.DoubleValue){ .allocator = allocator, .json = double_value_json }, wktJsonParse),
+        try runTimed(io, "pbz FloatValue JSON stringify", iters.json, float_value_json.len, WktJsonStringifyCtx(pbz.FloatValue){ .allocator = allocator, .value = float_value }, wktJsonStringify),
+        try runTimed(io, "pbz FloatValue JSON parse", iters.json, float_value_json.len, WktJsonParseCtx(pbz.FloatValue){ .allocator = allocator, .json = float_value_json }, wktJsonParse),
+        try runTimed(io, "pbz Int64Value JSON stringify", iters.json, int64_value_json.len, WktJsonStringifyCtx(pbz.Int64Value){ .allocator = allocator, .value = int64_value }, wktJsonStringify),
+        try runTimed(io, "pbz Int64Value JSON parse", iters.json, int64_value_json.len, WktJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = int64_value_json }, wktJsonParse),
+        try runTimed(io, "pbz UInt64Value JSON stringify", iters.json, uint64_value_json.len, WktJsonStringifyCtx(pbz.UInt64Value){ .allocator = allocator, .value = uint64_value }, wktJsonStringify),
+        try runTimed(io, "pbz UInt64Value JSON parse", iters.json, uint64_value_json.len, WktJsonParseCtx(pbz.UInt64Value){ .allocator = allocator, .json = uint64_value_json }, wktJsonParse),
+        try runTimed(io, "pbz Int32Value JSON stringify", iters.json, int32_value_json.len, WktJsonStringifyCtx(pbz.Int32Value){ .allocator = allocator, .value = int32_value }, wktJsonStringify),
+        try runTimed(io, "pbz Int32Value JSON parse", iters.json, int32_value_json.len, WktJsonParseCtx(pbz.Int32Value){ .allocator = allocator, .json = int32_value_json }, wktJsonParse),
+        try runTimed(io, "pbz UInt32Value JSON stringify", iters.json, uint32_value_json.len, WktJsonStringifyCtx(pbz.UInt32Value){ .allocator = allocator, .value = uint32_value }, wktJsonStringify),
+        try runTimed(io, "pbz UInt32Value JSON parse", iters.json, uint32_value_json.len, WktJsonParseCtx(pbz.UInt32Value){ .allocator = allocator, .json = uint32_value_json }, wktJsonParse),
+        try runTimed(io, "pbz BoolValue JSON stringify", iters.json, bool_value_json.len, WktJsonStringifyCtx(pbz.BoolValue){ .allocator = allocator, .value = bool_value }, wktJsonStringify),
+        try runTimed(io, "pbz BoolValue JSON parse", iters.json, bool_value_json.len, WktJsonParseCtx(pbz.BoolValue){ .allocator = allocator, .json = bool_value_json }, wktJsonParse),
+        try runTimed(io, "pbz StringValue JSON stringify", iters.json, string_value_json.len, WktJsonStringifyCtx(pbz.StringValue){ .allocator = allocator, .value = string_value }, wktJsonStringify),
+        try runTimed(io, "pbz StringValue JSON parse", iters.json, string_value_json.len, WktJsonParseCtx(pbz.StringValue){ .allocator = allocator, .json = string_value_json }, wktJsonParse),
+        try runTimed(io, "pbz BytesValue JSON stringify", iters.json, bytes_value_json.len, WktJsonStringifyCtx(pbz.BytesValue){ .allocator = allocator, .value = bytes_value }, wktJsonStringify),
+        try runTimed(io, "pbz BytesValue JSON parse", iters.json, bytes_value_json.len, WktJsonParseCtx(pbz.BytesValue){ .allocator = allocator, .json = bytes_value_json }, wktJsonParse),
         try runTimed(io, "generated TextFormat format", iters.text, generated_text.len, GeneratedTextFormatCtx{ .allocator = allocator, .person = &generated_person }, generatedTextFormat),
         try runTimed(io, "generated TextFormat parse", iters.text, generated_text.len, GeneratedTextParseCtx{ .allocator = allocator, .text = generated_text }, generatedTextParse),
         try runTimed(io, "dynamic TextFormat format", iters.text, dynamic_text.len, DynamicTextFormatCtx{ .allocator = allocator, .file = &file, .message = &dynamic_person }, dynamicTextFormat),

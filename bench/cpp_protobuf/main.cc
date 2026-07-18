@@ -7,6 +7,7 @@
 
 #include <google/protobuf/any.pb.h>
 #include <google/protobuf/duration.pb.h>
+#include <google/protobuf/empty.pb.h>
 #include <google/protobuf/field_mask.pb.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
@@ -439,6 +440,27 @@ int main() {
   if (!google::protobuf::util::MessageToJsonString(timestamp, &timestamp_json)
            .ok())
     std::abort();
+  google::protobuf::Empty empty_value;
+  const std::string empty_json = JsonStringFor(empty_value);
+  google::protobuf::Struct struct_value;
+  (*struct_value.mutable_fields())["enabled"].set_bool_value(true);
+  auto *items = (*struct_value.mutable_fields())["items"].mutable_list_value();
+  items->add_values()->set_null_value(google::protobuf::NULL_VALUE);
+  items->add_values()->set_string_value("zig");
+  auto *meta = (*struct_value.mutable_fields())["meta"].mutable_struct_value();
+  (*meta->mutable_fields())["score"].set_number_value(1.5);
+  const std::string struct_json = JsonStringFor(struct_value);
+  google::protobuf::Value value_value;
+  value_value.mutable_struct_value()->CopyFrom(struct_value);
+  const std::string value_json = JsonStringFor(value_value);
+  google::protobuf::ListValue list_value;
+  list_value.add_values()->set_null_value(google::protobuf::NULL_VALUE);
+  list_value.add_values()->set_string_value("zig");
+  list_value.add_values()->set_number_value(1.5);
+  list_value.add_values()->set_bool_value(true);
+  auto *list_nested = list_value.add_values()->mutable_struct_value();
+  (*list_nested->mutable_fields())["nested"].set_string_value("value");
+  const std::string list_value_json = JsonStringFor(list_value);
   google::protobuf::DoubleValue double_value;
   double_value.set_value(3.25);
   const std::string double_value_json = JsonStringFor(double_value);
@@ -523,6 +545,11 @@ int main() {
             << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
+            << "\n";
+  std::cout << "empty json payload size: " << empty_json.size() << "\n";
+  std::cout << "struct json payload size: " << struct_json.size() << "\n";
+  std::cout << "value json payload size: " << value_json.size() << "\n";
+  std::cout << "list value json payload size: " << list_value_json.size()
             << "\n";
   std::cout << "double value json payload size: " << double_value_json.size()
             << "\n";
@@ -1178,6 +1205,10 @@ int main() {
       });
   timestamp_json_parse.Print();
 
+  RunWktJsonBenchPair("Empty", empty_value, empty_json, kIterations);
+  RunWktJsonBenchPair("Struct", struct_value, struct_json, kIterations);
+  RunWktJsonBenchPair("Value", value_value, value_json, kIterations);
+  RunWktJsonBenchPair("ListValue", list_value, list_value_json, kIterations);
   RunWktJsonBenchPair("DoubleValue", double_value, double_value_json,
                       kIterations);
   RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);

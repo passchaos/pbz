@@ -46,6 +46,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - direct `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
 - direct `google.protobuf.Timestamp` JSON stringify/parse
+- direct `google.protobuf.Empty`, `Struct`, `Value`, and `ListValue` JSON stringify/parse
 - direct scalar wrapper JSON stringify/parse for `DoubleValue`, `FloatValue`,
   `Int64Value`, `UInt64Value`, `Int32Value`, `UInt32Value`, `BoolValue`,
   `StringValue`, and `BytesValue`
