@@ -198,51 +198,13 @@ pub const demo = struct {
                 pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.id != 0) try w.writeInt32(1, self.id);
                     if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; try w.writeString(2, self.name); }
-                    if (self._unknown_fields.len != 0) {
-                        const indexes = try allocator.alloc(usize, self._unknown_fields.len);
-                        defer allocator.free(indexes);
-                        for (indexes, 0..) |*index, i| index.* = i;
-                        std.mem.sort(usize, indexes, self._unknown_fields, struct {
-                            fn firstTag(raw: []const u8) ?pbz.wire.Tag {
-                                var r = pbz.Reader.init(raw);
-                                return (r.nextTag() catch null) orelse null;
-                            }
-                            fn lessThan(raws: []const []const u8, a: usize, b: usize) bool {
-                                const tag_a = firstTag(raws[a]);
-                                const tag_b = firstTag(raws[b]);
-                                if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, raws[a], raws[b]);
-                                if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;
-                                if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);
-                                return std.mem.lessThan(u8, raws[a], raws[b]);
-                            }
-                        }.lessThan);
-                        for (indexes) |index| try w.appendSlice(self._unknown_fields[index]);
-                    }
+                    try pbz.wire.writeRawFieldsDeterministic(allocator, self._unknown_fields, w);
                 }
 
                 pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
                     if (self.id != 0) w.writeInt32AssumeCapacity(1, self.id);
                     if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.name); }
-                    if (self._unknown_fields.len != 0) {
-                        const indexes = try allocator.alloc(usize, self._unknown_fields.len);
-                        defer allocator.free(indexes);
-                        for (indexes, 0..) |*index, i| index.* = i;
-                        std.mem.sort(usize, indexes, self._unknown_fields, struct {
-                            fn firstTag(raw: []const u8) ?pbz.wire.Tag {
-                                var r = pbz.Reader.init(raw);
-                                return (r.nextTag() catch null) orelse null;
-                            }
-                            fn lessThan(raws: []const []const u8, a: usize, b: usize) bool {
-                                const tag_a = firstTag(raws[a]);
-                                const tag_b = firstTag(raws[b]);
-                                if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, raws[a], raws[b]);
-                                if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;
-                                if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);
-                                return std.mem.lessThan(u8, raws[a], raws[b]);
-                            }
-                        }.lessThan);
-                        for (indexes) |index| w.appendSliceAssumeCapacity(self._unknown_fields[index]);
-                    }
+                    try pbz.wire.writeRawFieldsDeterministicAssumeCapacity(allocator, self._unknown_fields, w);
                 }
 
                 pub fn encodeDeterministic(self: @This(), allocator: std.mem.Allocator) ![]u8 {

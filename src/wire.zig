@@ -181,6 +181,51 @@ fn appendRawFieldsCloneUnchecked(allocator: std.mem.Allocator, fields: *[]const 
     if (old.len != 0) allocator.free(old);
 }
 
+pub fn writeRawFieldsDeterministic(allocator: std.mem.Allocator, fields: []const []const u8, w: *Writer) std.mem.Allocator.Error!void {
+    if (fields.len == 0) return;
+    if (fields.len == 1) {
+        try w.appendSlice(fields[0]);
+        return;
+    }
+
+    const indexes = try deterministicRawFieldIndexes(allocator, fields);
+    defer allocator.free(indexes);
+    for (indexes) |index| try w.appendSlice(fields[index]);
+}
+
+pub fn writeRawFieldsDeterministicAssumeCapacity(allocator: std.mem.Allocator, fields: []const []const u8, w: *Writer) std.mem.Allocator.Error!void {
+    if (fields.len == 0) return;
+    if (fields.len == 1) {
+        w.appendSliceAssumeCapacity(fields[0]);
+        return;
+    }
+
+    const indexes = try deterministicRawFieldIndexes(allocator, fields);
+    defer allocator.free(indexes);
+    for (indexes) |index| w.appendSliceAssumeCapacity(fields[index]);
+}
+
+fn deterministicRawFieldIndexes(allocator: std.mem.Allocator, fields: []const []const u8) std.mem.Allocator.Error![]usize {
+    const indexes = try allocator.alloc(usize, fields.len);
+    for (indexes, 0..) |*index, i| index.* = i;
+    std.mem.sort(usize, indexes, fields, deterministicRawFieldIndexLessThan);
+    return indexes;
+}
+
+fn rawFieldFirstTag(raw: []const u8) ?Tag {
+    var reader = Reader.init(raw);
+    return (reader.nextTag() catch null) orelse null;
+}
+
+fn deterministicRawFieldIndexLessThan(fields: []const []const u8, a: usize, b: usize) bool {
+    const tag_a = rawFieldFirstTag(fields[a]);
+    const tag_b = rawFieldFirstTag(fields[b]);
+    if (tag_a == null or tag_b == null) return std.mem.lessThan(u8, fields[a], fields[b]);
+    if (tag_a.?.number != tag_b.?.number) return tag_a.?.number < tag_b.?.number;
+    if (tag_a.?.wire_type != tag_b.?.wire_type) return @intFromEnum(tag_a.?.wire_type) < @intFromEnum(tag_b.?.wire_type);
+    return std.mem.lessThan(u8, fields[a], fields[b]);
+}
+
 pub fn clearRawFieldsByNumber(allocator: std.mem.Allocator, fields: *[]const []const u8, number: FieldNumber) (std.mem.Allocator.Error || Error)!void {
     var keep_count: usize = 0;
     var remove_count: usize = 0;
@@ -1674,6 +1719,49 @@ test "wire appends cloned raw fields in batches" {
     try std.testing.expectError(error.InvalidWireType, appendRawFieldsClone(allocator, &fields, &.{&.{0x0f}}));
     try std.testing.expectEqual(before_invalid.ptr, fields.ptr);
     try std.testing.expectEqual(@as(usize, 3), fields.len);
+}
+
+test "wire writes deterministic raw fields in generated order" {
+    const allocator = std.testing.allocator;
+    var field_50_value_2 = Writer.init(allocator);
+    defer field_50_value_2.deinit();
+    try field_50_value_2.writeUInt32(50, 2);
+
+    var field_40 = Writer.init(allocator);
+    defer field_40.deinit();
+    try field_40.writeUInt32(40, 1);
+
+    var field_50_bytes = Writer.init(allocator);
+    defer field_50_bytes.deinit();
+    try field_50_bytes.writeString(50, "a");
+
+    var field_50_value_1 = Writer.init(allocator);
+    defer field_50_value_1.deinit();
+    try field_50_value_1.writeUInt32(50, 1);
+
+    const fields = [_][]const u8{
+        field_50_value_2.slice(),
+        field_40.slice(),
+        field_50_bytes.slice(),
+        field_50_value_1.slice(),
+    };
+
+    var expected = Writer.init(allocator);
+    defer expected.deinit();
+    try expected.appendSlice(field_40.slice());
+    try expected.appendSlice(field_50_value_1.slice());
+    try expected.appendSlice(field_50_value_2.slice());
+    try expected.appendSlice(field_50_bytes.slice());
+
+    var sorted = Writer.init(allocator);
+    defer sorted.deinit();
+    try writeRawFieldsDeterministic(allocator, &fields, &sorted);
+    try std.testing.expectEqualSlices(u8, expected.slice(), sorted.slice());
+
+    var buffer: [64]u8 = undefined;
+    var buffered = Writer.initBuffer(allocator, &buffer);
+    try writeRawFieldsDeterministicAssumeCapacity(allocator, &fields, &buffered);
+    try std.testing.expectEqualSlices(u8, expected.slice(), buffered.slice());
 }
 
 test "wire bool writers use canonical one-byte values" {
