@@ -32,8 +32,13 @@ pub fn main() !void {
     envelope.subject = .{ .user_name = "ziggy" };
     try envelope.audits.put(allocator, "latest", try audit.cloneOwned(allocator));
     {
-        var old = envelope.audits.fetchPut(allocator, "latest", try review.cloneOwned(allocator)) catch |err| return err;
-        if (old) |*entry| entry.value.deinit(allocator);
+        var owned = try review.cloneOwned(allocator);
+        errdefer owned.deinit(allocator);
+        const old = try envelope.audits.fetchPut(allocator, "latest", owned);
+        if (old) |entry| {
+            var old_value = entry.value;
+            old_value.deinit(allocator);
+        }
     }
 
     const bytes = try envelope.encodeInitialized(allocator);
