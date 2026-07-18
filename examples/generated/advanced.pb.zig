@@ -198,8 +198,9 @@ pub const demo = struct {
             }
 
             fn putMapEntry_audits(allocator: std.mem.Allocator, map: *auditsMap, entry: auditsEntry) !void {
-                if (map.getEntry(entry.key)) |existing| { existing.value_ptr.deinit(allocator); existing.value_ptr.* = entry.value; return; }
-                try map.put(allocator, entry.key, entry.value);
+                const result = try map.getOrPut(allocator, entry.key);
+                if (result.found_existing) result.value_ptr.deinit(allocator);
+                result.value_ptr.* = entry.value;
             }
 
             fn deinitMap_audits(allocator: std.mem.Allocator, map: *auditsMap) void {

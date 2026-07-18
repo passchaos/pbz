@@ -146,8 +146,8 @@ pub const demo = struct {
         }
 
         fn putMapEntry_counts(allocator: std.mem.Allocator, map: *countsMap, entry: countsEntry) !void {
-            if (map.getEntry(entry.key)) |existing| { existing.value_ptr.* = entry.value; return; }
-            try map.put(allocator, entry.key, entry.value);
+            const result = try map.getOrPut(allocator, entry.key);
+            result.value_ptr.* = entry.value;
         }
 
         fn deinitMap_counts(allocator: std.mem.Allocator, map: *countsMap) void {
@@ -22341,8 +22341,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         fn putMapEntry_counts(allocator: std.mem.Allocator, map: *countsMap, entry: countsEntry) !void {
-            if (map.getEntry(entry.key)) |existing| { existing.value_ptr.* = entry.value; return; }
-            try map.put(allocator, entry.key, entry.value);
+            const result = try map.getOrPut(allocator, entry.key);
+            result.value_ptr.* = entry.value;
         }
 
         fn deinitMap_counts(allocator: std.mem.Allocator, map: *countsMap) void {
@@ -23556,8 +23556,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         fn putMapEntry_audits(allocator: std.mem.Allocator, map: *auditsMap, entry: auditsEntry) !void {
-            if (map.getEntry(entry.key)) |existing| { existing.value_ptr.deinit(allocator); existing.value_ptr.* = entry.value; return; }
-            try map.put(allocator, entry.key, entry.value);
+            const result = try map.getOrPut(allocator, entry.key);
+            if (result.found_existing) result.value_ptr.deinit(allocator);
+            result.value_ptr.* = entry.value;
         }
 
         fn deinitMap_audits(allocator: std.mem.Allocator, map: *auditsMap) void {

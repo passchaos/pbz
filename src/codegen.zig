@@ -2043,13 +2043,13 @@ fn writeMapEntryHelpers(ctx: *const CodegenContext, field: *const schema.FieldDe
     try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("if (map.getEntry(entry.key)) |existing| { ");
+    try writer.writeAll("const result = try map.getOrPut(allocator, entry.key);\n");
     if (typedMapMessageValueWithContext(ctx, field)) |_| {
-        try writer.writeAll("existing.value_ptr.deinit(allocator); ");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (result.found_existing) result.value_ptr.deinit(allocator);\n");
     }
-    try writer.writeAll("existing.value_ptr.* = entry.value; return; }\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try map.put(allocator, entry.key, entry.value);\n");
+    try writer.writeAll("result.value_ptr.* = entry.value;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -14547,6 +14547,7 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn appendOrReplaceMapEntry_flags(allocator: std.mem.Allocator, list: *std.ArrayList(flagsEntry), entry: flagsEntry) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (existing.key == entry.key) { existing.* = entry; return; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (other_it.next()) |entry| try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const result = try map.getOrPut(allocator, entry.key);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.clearRetainingCapacity();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_counts(allocator, &self.counts, entry);") != null);
