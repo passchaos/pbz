@@ -602,6 +602,14 @@ int main() {
   any_int64_value_wkt.PackFrom(int64_value);
   const std::string any_int64_value_wkt_json =
       JsonStringFor(any_int64_value_wkt);
+  google::protobuf::Int64Value negative_int64_value;
+  negative_int64_value.set_value(-9007199254740993LL);
+  const std::string negative_int64_value_json =
+      JsonStringFor(negative_int64_value);
+  google::protobuf::Any any_negative_int64_value_wkt;
+  any_negative_int64_value_wkt.PackFrom(negative_int64_value);
+  const std::string any_negative_int64_value_wkt_json =
+      JsonStringFor(any_negative_int64_value_wkt);
   google::protobuf::UInt64Value uint64_value;
   uint64_value.set_value(9007199254740993ULL);
   const std::string uint64_value_json = JsonStringFor(uint64_value);
@@ -616,6 +624,14 @@ int main() {
   any_int32_value_wkt.PackFrom(int32_value);
   const std::string any_int32_value_wkt_json =
       JsonStringFor(any_int32_value_wkt);
+  google::protobuf::Int32Value negative_int32_value;
+  negative_int32_value.set_value(-12345);
+  const std::string negative_int32_value_json =
+      JsonStringFor(negative_int32_value);
+  google::protobuf::Any any_negative_int32_value_wkt;
+  any_negative_int32_value_wkt.PackFrom(negative_int32_value);
+  const std::string any_negative_int32_value_wkt_json =
+      JsonStringFor(any_negative_int32_value_wkt);
   google::protobuf::UInt32Value uint32_value;
   uint32_value.set_value(12345);
   const std::string uint32_value_json = JsonStringFor(uint32_value);
@@ -794,6 +810,10 @@ int main() {
             << "\n";
   std::cout << "any Int64Value WKT json payload size: "
             << any_int64_value_wkt_json.size() << "\n";
+  std::cout << "negative int64 value json payload size: "
+            << negative_int64_value_json.size() << "\n";
+  std::cout << "any NegativeInt64Value WKT json payload size: "
+            << any_negative_int64_value_wkt_json.size() << "\n";
   std::cout << "uint64 value json payload size: " << uint64_value_json.size()
             << "\n";
   std::cout << "any UInt64Value WKT json payload size: "
@@ -802,6 +822,10 @@ int main() {
             << "\n";
   std::cout << "any Int32Value WKT json payload size: "
             << any_int32_value_wkt_json.size() << "\n";
+  std::cout << "negative int32 value json payload size: "
+            << negative_int32_value_json.size() << "\n";
+  std::cout << "any NegativeInt32Value WKT json payload size: "
+            << any_negative_int32_value_wkt_json.size() << "\n";
   std::cout << "uint32 value json payload size: " << uint32_value_json.size()
             << "\n";
   std::cout << "any UInt32Value WKT json payload size: "
@@ -1458,6 +1482,11 @@ int main() {
   RunWktJsonBenchPair("Int64Value", int64_value, int64_value_json, kIterations);
   RunWktJsonBenchPair("Any Int64Value WKT", any_int64_value_wkt,
                       any_int64_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("NegativeInt64Value", negative_int64_value,
+                      negative_int64_value_json, kIterations);
+  RunWktJsonBenchPair("Any NegativeInt64Value WKT",
+                      any_negative_int64_value_wkt,
+                      any_negative_int64_value_wkt_json, kIterations);
   RunWktJsonBenchPair("UInt64Value", uint64_value, uint64_value_json,
                       kIterations);
   RunWktJsonBenchPair("Any UInt64Value WKT", any_uint64_value_wkt,
@@ -1465,6 +1494,11 @@ int main() {
   RunWktJsonBenchPair("Int32Value", int32_value, int32_value_json, kIterations);
   RunWktJsonBenchPair("Any Int32Value WKT", any_int32_value_wkt,
                       any_int32_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("NegativeInt32Value", negative_int32_value,
+                      negative_int32_value_json, kIterations);
+  RunWktJsonBenchPair("Any NegativeInt32Value WKT",
+                      any_negative_int32_value_wkt,
+                      any_negative_int32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("UInt32Value", uint32_value, uint32_value_json,
                       kIterations);
   RunWktJsonBenchPair("Any UInt32Value WKT", any_uint32_value_wkt,

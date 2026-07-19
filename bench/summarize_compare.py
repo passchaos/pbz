@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 174
+EXPECTED_WORKLOAD_COUNT = 182
 
 
 @dataclass(frozen=True)
@@ -115,8 +115,10 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any FloatValue Infinity WKT", 77, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any FloatValue NegativeInfinity WKT", 78, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any Int64Value WKT", 85, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
+    ("Any NegativeInt64Value WKT", 86, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any UInt64Value WKT", 86, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any Int32Value WKT", 72, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
+    ("Any NegativeInt32Value WKT", 73, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any UInt32Value WKT", 73, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any BoolValue WKT", 70, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any StringValue WKT", 75, (90.0, 500.0, 450.0), (120.0, 700.0, 650.0)),
@@ -146,8 +148,10 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("FloatValue Infinity", 10, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("FloatValue NegativeInfinity", 11, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("Int64Value", 18, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("NegativeInt64Value", 19, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("UInt64Value", 18, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("Int32Value", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("NegativeInt32Value", 6, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("UInt32Value", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("BoolValue", 4, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("StringValue", 7, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
@@ -471,8 +475,10 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any FloatValue Infinity WKT"),
     *json_workload_pair("Any FloatValue NegativeInfinity WKT"),
     *json_workload_pair("Any Int64Value WKT"),
+    *json_workload_pair("Any NegativeInt64Value WKT"),
     *json_workload_pair("Any UInt64Value WKT"),
     *json_workload_pair("Any Int32Value WKT"),
+    *json_workload_pair("Any NegativeInt32Value WKT"),
     *json_workload_pair("Any UInt32Value WKT"),
     *json_workload_pair("Any BoolValue WKT"),
     *json_workload_pair("Any StringValue WKT"),
@@ -502,8 +508,10 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("FloatValue Infinity"),
     *json_workload_pair("FloatValue NegativeInfinity"),
     *json_workload_pair("Int64Value"),
+    *json_workload_pair("NegativeInt64Value"),
     *json_workload_pair("UInt64Value"),
     *json_workload_pair("Int32Value"),
+    *json_workload_pair("NegativeInt32Value"),
     *json_workload_pair("UInt32Value"),
     *json_workload_pair("BoolValue"),
     *json_workload_pair("StringValue"),
