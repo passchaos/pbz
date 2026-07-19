@@ -510,6 +510,10 @@ int main() {
   any_field_mask_wkt.PackFrom(field_mask);
   const std::string any_field_mask_wkt_json =
       JsonStringFor(any_field_mask_wkt);
+  const std::string field_mask_escape_json =
+      R"("fooBar,\u006eested.value")";
+  const std::string any_field_mask_escape_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.FieldMask","value":"fooBar,\u006eested.value"})";
   google::protobuf::FieldMask empty_field_mask;
   const std::string empty_field_mask_json = JsonStringFor(empty_field_mask);
   google::protobuf::Any any_empty_field_mask_wkt;
@@ -1078,6 +1082,10 @@ int main() {
             << any_min_duration_wkt_json.size() << "\n";
   std::cout << "any ZeroDuration WKT json payload size: "
             << any_zero_duration_wkt_json.size() << "\n";
+  std::cout << "field mask escape json payload size: "
+            << field_mask_escape_json.size() << "\n";
+  std::cout << "any FieldMask Escape WKT json payload size: "
+            << any_field_mask_escape_wkt_json.size() << "\n";
   std::cout << "any FieldMask WKT json payload size: "
             << any_field_mask_wkt_json.size() << "\n";
   std::cout << "empty field mask json payload size: "
@@ -1903,6 +1911,9 @@ int main() {
                       any_zero_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any FieldMask WKT", any_field_mask_wkt,
                       any_field_mask_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any FieldMask Escape WKT", any_field_mask_escape_wkt_json,
+      kIterations);
   RunWktJsonBenchPair("Any EmptyFieldMask WKT", any_empty_field_mask_wkt,
                       any_empty_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
@@ -2020,6 +2031,8 @@ int main() {
   RunWktJsonBenchPair("ZeroDuration", zero_duration, zero_duration_json,
                       kIterations);
   RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::FieldMask>(
+      "FieldMask Escape", field_mask_escape_json, kIterations);
   RunWktJsonBenchPair("EmptyFieldMask", empty_field_mask,
                       empty_field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);

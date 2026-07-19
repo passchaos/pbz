@@ -437,7 +437,19 @@ pub const FieldMask = struct {
     }
 
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) ![][]const u8 {
-        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
+        var parsed: ?std.json.Parsed(std.json.Value) = null;
+        defer if (parsed) |*value| value.deinit();
+        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') blk: {
+            // FieldMask's JSON form is a string.  Parse quoted input through
+            // the JSON parser instead of trimming quotes by hand so legal JSON
+            // spellings such as "\u006eested.value" are normalized before the
+            // lowerCamel-to-snake conversion and validation logic runs.
+            parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
+            break :blk switch (parsed.?.value) {
+                .string => |value| value,
+                else => return error.InvalidFieldMask,
+            };
+        } else text;
         if (unquoted.len == 0) return try allocator.alloc([]const u8, 0);
         var paths: std.ArrayList([]const u8) = .empty;
         errdefer {
@@ -579,6 +591,15 @@ test "field mask wire and json helpers" {
     }
     try std.testing.expectEqualSlices(u8, "foo_bar", dotted[0]);
     try std.testing.expectEqualSlices(u8, "baz.qux_value", dotted[1]);
+
+    const escaped = try FieldMask.jsonParse(allocator, "\"fooBar,\\u006eested.value\"");
+    defer {
+        for (escaped) |path| allocator.free(path);
+        allocator.free(escaped);
+    }
+    try std.testing.expectEqualSlices(u8, "foo_bar", escaped[0]);
+    try std.testing.expectEqualSlices(u8, "nested.value", escaped[1]);
+
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo_bar\""));
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo,,bar\""));
     try std.testing.expectError(error.InvalidFieldMask, FieldMask.jsonParse(allocator, "\"foo.\""));

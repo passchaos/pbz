@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-string-escape-json-isolated.log` summarized by
-`/tmp/pbz-summary-string-escape-json-isolated.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-fieldmask-escape-json-isolated.log` summarized by
+`/tmp/pbz-summary-fieldmask-escape-json-isolated.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-string-escape-json-isolated.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-fieldmask-escape-json-isolated.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 340 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 342 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -86,9 +86,9 @@ The matrix includes:
 - complex nested message / oneof / map-message encode/decode
 - complex JSON stringify/parse
 - `google.protobuf.Any` containing a well-known-type JSON value stringify/parse,
-  including embedded zero/explicit-plus parse/short-fraction parse/positive/micro/nano/integer-negative/fractional-negative/min-max-bound `Duration`, non-empty and empty `Struct`, object/list/scalar `Value` (including default-like scalar and empty object/list kinds), camel-case and empty `FieldMask`, short-fraction parse/micro/nano/offset/min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit min/zero/positive/number-input parse/negative/max `Int64Value`, negative/zero/positive finite/string-input parse `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), negative/zero/positive finite/string-input parse `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), min/zero/positive/string-input parse/negative/max `Int32Value`, zero/normal/string-input parse/max unsigned `UInt32Value`, zero/normal/number-input parse/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/escape-input parse/empty `StringValue`, base64/base64url parse/empty `BytesValue`, and recursive nested `Any` payloads
+  including embedded zero/explicit-plus parse/short-fraction parse/positive/micro/nano/integer-negative/fractional-negative/min-max-bound `Duration`, non-empty and empty `Struct`, object/list/scalar `Value` (including default-like scalar and empty object/list kinds), camel-case, escaped JSON parse input, and empty `FieldMask`, short-fraction parse/micro/nano/offset/min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit min/zero/positive/number-input parse/negative/max `Int64Value`, negative/zero/positive finite/string-input parse `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), negative/zero/positive finite/string-input parse `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), min/zero/positive/string-input parse/negative/max `Int32Value`, zero/normal/string-input parse/max unsigned `UInt32Value`, zero/normal/number-input parse/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/escape-input parse/empty `StringValue`, base64/base64url parse/empty `BytesValue`, and recursive nested `Any` payloads
 - direct zero, explicit-plus parse, short-fraction parse, positive, micro, nano, integer-negative, fractional-negative, min-bound, and max-bound `google.protobuf.Duration` JSON stringify/parse
-- direct non-empty and empty `google.protobuf.FieldMask` JSON stringify/parse
+- direct non-empty, escaped-input parse, and empty `google.protobuf.FieldMask` JSON stringify/parse
 - direct short-fraction parse, micro, nano, timezone-offset parse, min-bound, pre-epoch, post-epoch, and max-bound `google.protobuf.Timestamp` JSON stringify/parse
 - direct `google.protobuf.Empty`, non-empty/empty `Struct`, object/list/scalar `Value` (including default-like scalar and empty object/list kinds), and non-empty/empty `ListValue` JSON stringify/parse
 - direct scalar wrapper JSON stringify/parse for `DoubleValue`, `FloatValue`,

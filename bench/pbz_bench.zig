@@ -45,6 +45,9 @@ const AnyZeroDurationWktJson =
 const AnyFieldMaskWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.FieldMask","value":"fooBar,nested.value"}
 ;
+const AnyFieldMaskEscapeWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.FieldMask","value":"fooBar,\u006eested.value"}
+;
 const AnyEmptyFieldMaskWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.FieldMask","value":""}
 ;
@@ -262,6 +265,7 @@ const MaxDurationJson = "\"315576000000s\"";
 const MinDurationJson = "\"-315576000000s\"";
 const ZeroDurationJson = "\"0s\"";
 const FieldMaskJson = "\"fooBar,nested.value\"";
+const FieldMaskEscapeJson = "\"fooBar,\\u006eested.value\"";
 const EmptyFieldMaskJson = "\"\"";
 const EmptyJson = "{}";
 const StructJson = "{\"enabled\":true,\"items\":[null,\"zig\"],\"meta\":{\"score\":1.5}}";
@@ -2724,6 +2728,21 @@ pub fn main() !void {
     const any_field_mask_wkt_json = try any_field_mask_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_field_mask_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_field_mask_wkt_json, AnyFieldMaskWktJson));
+    const field_mask_escape_paths = try pbz.FieldMask.jsonParse(allocator, FieldMaskEscapeJson);
+    defer {
+        for (field_mask_escape_paths) |path| allocator.free(path);
+        allocator.free(field_mask_escape_paths);
+    }
+    std.debug.assert(field_mask_escape_paths.len == 2);
+    std.debug.assert(std.mem.eql(u8, field_mask_escape_paths[0], "foo_bar"));
+    std.debug.assert(std.mem.eql(u8, field_mask_escape_paths[1], "nested.value"));
+    var any_field_mask_escape_wkt = try pbz.Any.jsonParse(allocator, AnyFieldMaskEscapeWktJson);
+    defer any_field_mask_escape_wkt.deinit(allocator);
+    var any_field_mask_escape_value = try any_field_mask_escape_wkt.unpackEncodedOwned(pbz.FieldMask, allocator, "google.protobuf.FieldMask");
+    defer any_field_mask_escape_value.deinit(allocator);
+    std.debug.assert(any_field_mask_escape_value.paths.len == 2);
+    std.debug.assert(std.mem.eql(u8, any_field_mask_escape_value.paths[0], "foo_bar"));
+    std.debug.assert(std.mem.eql(u8, any_field_mask_escape_value.paths[1], "nested.value"));
     const empty_field_mask_value = pbz.FieldMask{ .paths = &.{} };
     const empty_field_mask_json = try empty_field_mask_value.jsonStringifyAlloc(allocator);
     defer allocator.free(empty_field_mask_json);
@@ -3306,7 +3325,7 @@ pub fn main() !void {
     // inventory split into thematic groups so adding future WKT edge-case rows
     // does not silently push any single diagnostic over the compiler-enforced
     // limit again.
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} short_fraction_timestamp_json={d} micro_timestamp_json={d} nano_timestamp_json={d} offset_timestamp_json={d} pre_epoch_timestamp_json={d} max_timestamp_json={d} min_timestamp_json={d} duration_json={d} plus_duration_json={d} short_fraction_duration_json={d} micro_duration_json={d} nano_duration_json={d} negative_duration_json={d} fractional_negative_duration_json={d} max_duration_json={d} min_duration_json={d} zero_duration_json={d} field_mask_json={d} empty_field_mask_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, ShortFractionTimestampJson.len, micro_timestamp_json.len, nano_timestamp_json.len, OffsetTimestampJson.len, pre_epoch_timestamp_json.len, max_timestamp_json.len, min_timestamp_json.len, duration_json.len, PlusDurationJson.len, ShortFractionDurationJson.len, micro_duration_json.len, nano_duration_json.len, negative_duration_json.len, fractional_negative_duration_json.len, max_duration_json.len, min_duration_json.len, zero_duration_json.len, field_mask_json.len, empty_field_mask_json.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} short_fraction_timestamp_json={d} micro_timestamp_json={d} nano_timestamp_json={d} offset_timestamp_json={d} pre_epoch_timestamp_json={d} max_timestamp_json={d} min_timestamp_json={d} duration_json={d} plus_duration_json={d} short_fraction_duration_json={d} micro_duration_json={d} nano_duration_json={d} negative_duration_json={d} fractional_negative_duration_json={d} max_duration_json={d} min_duration_json={d} zero_duration_json={d} field_mask_json={d} field_mask_escape_json={d} empty_field_mask_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, ShortFractionTimestampJson.len, micro_timestamp_json.len, nano_timestamp_json.len, OffsetTimestampJson.len, pre_epoch_timestamp_json.len, max_timestamp_json.len, min_timestamp_json.len, duration_json.len, PlusDurationJson.len, ShortFractionDurationJson.len, micro_duration_json.len, nano_duration_json.len, negative_duration_json.len, fractional_negative_duration_json.len, max_duration_json.len, min_duration_json.len, zero_duration_json.len, field_mask_json.len, FieldMaskEscapeJson.len, empty_field_mask_json.len });
     std.debug.print("payload sizes direct object/value WKTs: empty_json={d} struct_json={d} empty_struct_json={d} value_json={d} null_value_json={d} string_scalar_value_json={d} empty_string_scalar_value_json={d} number_value_json={d} zero_number_value_json={d} bool_scalar_value_json={d} false_bool_scalar_value_json={d} list_kind_value_json={d} empty_struct_kind_value_json={d} empty_list_kind_value_json={d} list_value_json={d} empty_list_value_json={d}\n", .{ empty_json.len, struct_json.len, empty_struct_json.len, value_json.len, null_value_json.len, string_scalar_value_json.len, empty_string_scalar_value_json.len, number_value_json.len, zero_number_value_json.len, bool_scalar_value_json.len, false_bool_scalar_value_json.len, list_kind_value_json.len, empty_struct_kind_value_json.len, empty_list_kind_value_json.len, list_value_json.len, empty_list_value_json.len });
     std.debug.print("payload sizes direct float WKT wrappers: double_value_json={d} double_value_string_json={d} negative_double_value_json={d} zero_double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} double_value_neg_inf_json={d} float_value_json={d} float_value_string_json={d} negative_float_value_json={d} zero_float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} float_value_neg_inf_json={d}\n", .{ double_value_json.len, DoubleValueStringJson.len, negative_double_value_json.len, zero_double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, double_value_neg_inf_json.len, float_value_json.len, FloatValueStringJson.len, negative_float_value_json.len, zero_float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, float_value_neg_inf_json.len });
     std.debug.print("payload sizes direct integer WKT wrappers: int64_value_json={d} int64_value_number_json={d} zero_int64_value_json={d} negative_int64_value_json={d} min_int64_value_json={d} max_int64_value_json={d} uint64_value_json={d} uint64_value_number_json={d} zero_uint64_value_json={d} max_uint64_value_json={d} int32_value_json={d} int32_value_string_json={d} zero_int32_value_json={d} negative_int32_value_json={d} min_int32_value_json={d} max_int32_value_json={d} uint32_value_json={d} uint32_value_string_json={d} zero_uint32_value_json={d} max_uint32_value_json={d}\n", .{ int64_value_json.len, Int64ValueNumberJson.len, zero_int64_value_json.len, negative_int64_value_json.len, min_int64_value_json.len, max_int64_value_json.len, uint64_value_json.len, UInt64ValueNumberJson.len, zero_uint64_value_json.len, max_uint64_value_json.len, int32_value_json.len, Int32ValueStringJson.len, zero_int32_value_json.len, negative_int32_value_json.len, min_int32_value_json.len, max_int32_value_json.len, uint32_value_json.len, UInt32ValueStringJson.len, zero_uint32_value_json.len, max_uint32_value_json.len });
@@ -3521,6 +3540,7 @@ pub fn main() !void {
         try runTimed(io, "pbz Any ZeroDuration WKT JSON parse", iters.json, any_zero_duration_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_zero_duration_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any FieldMask WKT JSON stringify", iters.json, any_field_mask_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_field_mask_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any FieldMask WKT JSON parse", iters.json, any_field_mask_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_field_mask_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any FieldMask Escape WKT JSON parse", iters.json, AnyFieldMaskEscapeWktJson.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = AnyFieldMaskEscapeWktJson }, anyWktJsonParse),
         try runTimed(io, "pbz Any EmptyFieldMask WKT JSON stringify", iters.json, any_empty_field_mask_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_empty_field_mask_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any EmptyFieldMask WKT JSON parse", iters.json, any_empty_field_mask_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_empty_field_mask_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any Timestamp WKT JSON stringify", iters.json, any_timestamp_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_timestamp_wkt }, anyWktJsonStringify),
@@ -3663,6 +3683,7 @@ pub fn main() !void {
         try runTimed(io, "pbz ZeroDuration JSON parse", iters.json, zero_duration_json.len, DurationJsonParseCtx{ .json = zero_duration_json }, durationJsonParse),
         try runTimed(io, "pbz FieldMask JSON stringify", iters.json, field_mask_json.len, FieldMaskJsonStringifyCtx{ .allocator = allocator, .mask = &field_mask_value }, fieldMaskJsonStringify),
         try runTimed(io, "pbz FieldMask JSON parse", iters.json, field_mask_json.len, FieldMaskJsonParseCtx{ .allocator = allocator, .json = field_mask_json }, fieldMaskJsonParse),
+        try runTimed(io, "pbz FieldMask Escape JSON parse", iters.json, FieldMaskEscapeJson.len, FieldMaskJsonParseCtx{ .allocator = allocator, .json = FieldMaskEscapeJson }, fieldMaskJsonParse),
         try runTimed(io, "pbz EmptyFieldMask JSON stringify", iters.json, empty_field_mask_json.len, FieldMaskJsonStringifyCtx{ .allocator = allocator, .mask = &empty_field_mask_value }, fieldMaskJsonStringify),
         try runTimed(io, "pbz EmptyFieldMask JSON parse", iters.json, empty_field_mask_json.len, FieldMaskJsonParseCtx{ .allocator = allocator, .json = empty_field_mask_json }, fieldMaskJsonParse),
         try runTimed(io, "pbz Timestamp JSON stringify", iters.json, timestamp_json.len, TimestampJsonStringifyCtx{ .allocator = allocator, .timestamp = timestamp_value }, timestampJsonStringify),
