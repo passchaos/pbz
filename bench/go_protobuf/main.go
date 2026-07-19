@@ -601,6 +601,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	emptyStringScalarValue := structpb.NewStringValue("")
+	emptyStringScalarValueJSONBytes, err := protojson.Marshal(emptyStringScalarValue)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyStringScalarValueWKT, err := anypb.New(emptyStringScalarValue)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyStringScalarValueWKTJSONBytes, err := protojson.Marshal(anyEmptyStringScalarValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	numberValue := structpb.NewNumberValue(1.5)
 	numberValueJSONBytes, err := protojson.Marshal(numberValue)
 	if err != nil {
@@ -614,6 +627,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	zeroNumberValue := structpb.NewNumberValue(0)
+	zeroNumberValueJSONBytes, err := protojson.Marshal(zeroNumberValue)
+	if err != nil {
+		panic(err)
+	}
+	anyZeroNumberValueWKT, err := anypb.New(zeroNumberValue)
+	if err != nil {
+		panic(err)
+	}
+	anyZeroNumberValueWKTJSONBytes, err := protojson.Marshal(anyZeroNumberValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	boolScalarValue := structpb.NewBoolValue(true)
 	boolScalarValueJSONBytes, err := protojson.Marshal(boolScalarValue)
 	if err != nil {
@@ -624,6 +650,19 @@ func main() {
 		panic(err)
 	}
 	anyBoolScalarValueWKTJSONBytes, err := protojson.Marshal(anyBoolScalarValueWKT)
+	if err != nil {
+		panic(err)
+	}
+	falseBoolScalarValue := structpb.NewBoolValue(false)
+	falseBoolScalarValueJSONBytes, err := protojson.Marshal(falseBoolScalarValue)
+	if err != nil {
+		panic(err)
+	}
+	anyFalseBoolScalarValueWKT, err := anypb.New(falseBoolScalarValue)
+	if err != nil {
+		panic(err)
+	}
+	anyFalseBoolScalarValueWKTJSONBytes, err := protojson.Marshal(anyFalseBoolScalarValueWKT)
 	if err != nil {
 		panic(err)
 	}
@@ -1255,10 +1294,16 @@ func main() {
 	fmt.Printf("any NullValue WKT json payload size: %d\n", len(anyNullValueWKTJSONBytes))
 	fmt.Printf("string scalar value json payload size: %d\n", len(stringScalarValueJSONBytes))
 	fmt.Printf("any StringScalarValue WKT json payload size: %d\n", len(anyStringScalarValueWKTJSONBytes))
+	fmt.Printf("empty string scalar value json payload size: %d\n", len(emptyStringScalarValueJSONBytes))
+	fmt.Printf("any EmptyStringScalarValue WKT json payload size: %d\n", len(anyEmptyStringScalarValueWKTJSONBytes))
 	fmt.Printf("number value json payload size: %d\n", len(numberValueJSONBytes))
 	fmt.Printf("any NumberValue WKT json payload size: %d\n", len(anyNumberValueWKTJSONBytes))
+	fmt.Printf("zero number value json payload size: %d\n", len(zeroNumberValueJSONBytes))
+	fmt.Printf("any ZeroNumberValue WKT json payload size: %d\n", len(anyZeroNumberValueWKTJSONBytes))
 	fmt.Printf("bool scalar value json payload size: %d\n", len(boolScalarValueJSONBytes))
 	fmt.Printf("any BoolScalarValue WKT json payload size: %d\n", len(anyBoolScalarValueWKTJSONBytes))
+	fmt.Printf("false bool scalar value json payload size: %d\n", len(falseBoolScalarValueJSONBytes))
+	fmt.Printf("any FalseBoolScalarValue WKT json payload size: %d\n", len(anyFalseBoolScalarValueWKTJSONBytes))
 	fmt.Printf("list-kind value json payload size: %d\n", len(listKindValueJSONBytes))
 	fmt.Printf("any ListKindValue WKT json payload size: %d\n", len(anyListKindValueWKTJSONBytes))
 	fmt.Printf("empty struct-kind value json payload size: %d\n", len(emptyStructKindValueJSONBytes))
@@ -1589,8 +1634,11 @@ func main() {
 	runProtoJSONPair("Any Value WKT", iterations, anyValueWKTJSONBytes, anyValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NullValue WKT", iterations, anyNullValueWKTJSONBytes, anyNullValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any StringScalarValue WKT", iterations, anyStringScalarValueWKTJSONBytes, anyStringScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any EmptyStringScalarValue WKT", iterations, anyEmptyStringScalarValueWKTJSONBytes, anyEmptyStringScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NumberValue WKT", iterations, anyNumberValueWKTJSONBytes, anyNumberValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any ZeroNumberValue WKT", iterations, anyZeroNumberValueWKTJSONBytes, anyZeroNumberValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any BoolScalarValue WKT", iterations, anyBoolScalarValueWKTJSONBytes, anyBoolScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any FalseBoolScalarValue WKT", iterations, anyFalseBoolScalarValueWKTJSONBytes, anyFalseBoolScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any ListKindValue WKT", iterations, anyListKindValueWKTJSONBytes, anyListKindValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any EmptyStructKindValue WKT", iterations, anyEmptyStructKindValueWKTJSONBytes, anyEmptyStructKindValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any EmptyListKindValue WKT", iterations, anyEmptyListKindValueWKTJSONBytes, anyEmptyListKindValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1615,8 +1663,11 @@ func main() {
 	runProtoJSONPair("Value", iterations, valueJSONBytes, valueValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NullValue", iterations, nullValueJSONBytes, nullValueValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("StringScalarValue", iterations, stringScalarValueJSONBytes, stringScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("EmptyStringScalarValue", iterations, emptyStringScalarValueJSONBytes, emptyStringScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NumberValue", iterations, numberValueJSONBytes, numberValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("ZeroNumberValue", iterations, zeroNumberValueJSONBytes, zeroNumberValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BoolScalarValue", iterations, boolScalarValueJSONBytes, boolScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("FalseBoolScalarValue", iterations, falseBoolScalarValueJSONBytes, falseBoolScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("ListKindValue", iterations, listKindValueJSONBytes, listKindValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("EmptyStructKindValue", iterations, emptyStructKindValueJSONBytes, emptyStructKindValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("EmptyListKindValue", iterations, emptyListKindValueJSONBytes, emptyListKindValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)

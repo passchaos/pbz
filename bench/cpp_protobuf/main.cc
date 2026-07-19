@@ -555,12 +555,27 @@ int main() {
   any_string_scalar_value_wkt.PackFrom(string_scalar_value);
   const std::string any_string_scalar_value_wkt_json =
       JsonStringFor(any_string_scalar_value_wkt);
+  google::protobuf::Value empty_string_scalar_value;
+  empty_string_scalar_value.set_string_value("");
+  const std::string empty_string_scalar_value_json =
+      JsonStringFor(empty_string_scalar_value);
+  google::protobuf::Any any_empty_string_scalar_value_wkt;
+  any_empty_string_scalar_value_wkt.PackFrom(empty_string_scalar_value);
+  const std::string any_empty_string_scalar_value_wkt_json =
+      JsonStringFor(any_empty_string_scalar_value_wkt);
   google::protobuf::Value number_value;
   number_value.set_number_value(1.5);
   const std::string number_value_json = JsonStringFor(number_value);
   google::protobuf::Any any_number_value_wkt;
   any_number_value_wkt.PackFrom(number_value);
   const std::string any_number_value_wkt_json = JsonStringFor(any_number_value_wkt);
+  google::protobuf::Value zero_number_value;
+  zero_number_value.set_number_value(0);
+  const std::string zero_number_value_json = JsonStringFor(zero_number_value);
+  google::protobuf::Any any_zero_number_value_wkt;
+  any_zero_number_value_wkt.PackFrom(zero_number_value);
+  const std::string any_zero_number_value_wkt_json =
+      JsonStringFor(any_zero_number_value_wkt);
   google::protobuf::Value bool_scalar_value;
   bool_scalar_value.set_bool_value(true);
   const std::string bool_scalar_value_json = JsonStringFor(bool_scalar_value);
@@ -568,6 +583,14 @@ int main() {
   any_bool_scalar_value_wkt.PackFrom(bool_scalar_value);
   const std::string any_bool_scalar_value_wkt_json =
       JsonStringFor(any_bool_scalar_value_wkt);
+  google::protobuf::Value false_bool_scalar_value;
+  false_bool_scalar_value.set_bool_value(false);
+  const std::string false_bool_scalar_value_json =
+      JsonStringFor(false_bool_scalar_value);
+  google::protobuf::Any any_false_bool_scalar_value_wkt;
+  any_false_bool_scalar_value_wkt.PackFrom(false_bool_scalar_value);
+  const std::string any_false_bool_scalar_value_wkt_json =
+      JsonStringFor(any_false_bool_scalar_value_wkt);
   google::protobuf::ListValue list_value;
   list_value.add_values()->set_null_value(google::protobuf::NULL_VALUE);
   list_value.add_values()->set_string_value("zig");
@@ -970,14 +993,26 @@ int main() {
             << string_scalar_value_json.size() << "\n";
   std::cout << "any StringScalarValue WKT json payload size: "
             << any_string_scalar_value_wkt_json.size() << "\n";
+  std::cout << "empty string scalar value json payload size: "
+            << empty_string_scalar_value_json.size() << "\n";
+  std::cout << "any EmptyStringScalarValue WKT json payload size: "
+            << any_empty_string_scalar_value_wkt_json.size() << "\n";
   std::cout << "number value json payload size: " << number_value_json.size()
             << "\n";
   std::cout << "any NumberValue WKT json payload size: "
             << any_number_value_wkt_json.size() << "\n";
+  std::cout << "zero number value json payload size: "
+            << zero_number_value_json.size() << "\n";
+  std::cout << "any ZeroNumberValue WKT json payload size: "
+            << any_zero_number_value_wkt_json.size() << "\n";
   std::cout << "bool scalar value json payload size: "
             << bool_scalar_value_json.size() << "\n";
   std::cout << "any BoolScalarValue WKT json payload size: "
             << any_bool_scalar_value_wkt_json.size() << "\n";
+  std::cout << "false bool scalar value json payload size: "
+            << false_bool_scalar_value_json.size() << "\n";
+  std::cout << "any FalseBoolScalarValue WKT json payload size: "
+            << any_false_bool_scalar_value_wkt_json.size() << "\n";
   std::cout << "list-kind value json payload size: "
             << list_kind_value_json.size() << "\n";
   std::cout << "any ListKindValue WKT json payload size: "
@@ -1712,10 +1747,18 @@ int main() {
   RunWktJsonBenchPair("Any StringScalarValue WKT",
                       any_string_scalar_value_wkt,
                       any_string_scalar_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any EmptyStringScalarValue WKT",
+                      any_empty_string_scalar_value_wkt,
+                      any_empty_string_scalar_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any NumberValue WKT", any_number_value_wkt,
                       any_number_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroNumberValue WKT", any_zero_number_value_wkt,
+                      any_zero_number_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BoolScalarValue WKT", any_bool_scalar_value_wkt,
                       any_bool_scalar_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any FalseBoolScalarValue WKT",
+                      any_false_bool_scalar_value_wkt,
+                      any_false_bool_scalar_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any ListKindValue WKT", any_list_kind_value_wkt,
                       any_list_kind_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any EmptyStructKindValue WKT",
@@ -1763,10 +1806,16 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("StringScalarValue", string_scalar_value,
                       string_scalar_value_json, kIterations);
+  RunWktJsonBenchPair("EmptyStringScalarValue", empty_string_scalar_value,
+                      empty_string_scalar_value_json, kIterations);
   RunWktJsonBenchPair("NumberValue", number_value, number_value_json,
                       kIterations);
+  RunWktJsonBenchPair("ZeroNumberValue", zero_number_value,
+                      zero_number_value_json, kIterations);
   RunWktJsonBenchPair("BoolScalarValue", bool_scalar_value,
                       bool_scalar_value_json, kIterations);
+  RunWktJsonBenchPair("FalseBoolScalarValue", false_bool_scalar_value,
+                      false_bool_scalar_value_json, kIterations);
   RunWktJsonBenchPair("ListKindValue", list_kind_value,
                       list_kind_value_json, kIterations);
   RunWktJsonBenchPair("EmptyStructKindValue", empty_struct_kind_value,
