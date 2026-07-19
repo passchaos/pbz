@@ -42,13 +42,13 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - `google.protobuf.Any` with embedded well-known-type JSON values, including
-  zero/positive/integer-negative/fractional-negative/min-max-bound `Duration`, camel-case `FieldMask`, min/pre/post/max-bound `Timestamp`, canonical `Empty`, object-subtree `Struct`, object-valued `Value`, 64-bit positive/negative `Int64Value`, floating `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), positive/negative `Int32Value`, normal/max unsigned `UInt32Value`, normal/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/empty `StringValue`, base64/empty `BytesValue`, and recursive nested `Any`, stringify/parse
+  zero/positive/integer-negative/fractional-negative/min-max-bound `Duration`, camel-case `FieldMask`, min/pre/post/max-bound `Timestamp`, canonical `Empty`, object-subtree `Struct`, object-valued `Value`, 64-bit zero/positive/negative `Int64Value`, zero/finite `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), zero/finite `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), zero/positive/negative `Int32Value`, zero/normal/max unsigned `UInt32Value`, zero/normal/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/empty `StringValue`, base64/empty `BytesValue`, and recursive nested `Any`, stringify/parse
 - direct zero, positive, integer-negative, fractional-negative, min-bound, and max-bound `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
 - direct min-bound, pre-epoch, post-epoch, and max-bound `google.protobuf.Timestamp` JSON stringify/parse
 - direct `google.protobuf.Empty`, `Struct`, `Value`, and `ListValue` JSON stringify/parse
 - direct scalar wrapper JSON stringify/parse for `DoubleValue`, `FloatValue`,
-  positive/negative `Int64Value`, normal/max `UInt64Value`, positive/negative `Int32Value`, normal/max `UInt32Value`, true/false `BoolValue`, plus non-finite `DoubleValue` and `FloatValue` (`NaN`, `Infinity`, `-Infinity`),
+  zero/positive/negative `Int64Value`, zero/normal/max `UInt64Value`, zero/positive/negative `Int32Value`, zero/normal/max `UInt32Value`, true/false `BoolValue`, plus zero and non-finite `DoubleValue` and `FloatValue` (`NaN`, `Infinity`, `-Infinity`),
   non-empty/empty `StringValue`, and base64/empty `BytesValue`
 - large `map<string, int32>` encode/decode
 - shuffled large `map<string, int32>` deterministic encode against C++/Go

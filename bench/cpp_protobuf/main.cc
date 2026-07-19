@@ -544,6 +544,13 @@ int main() {
   any_double_value_wkt.PackFrom(double_value);
   const std::string any_double_value_wkt_json =
       JsonStringFor(any_double_value_wkt);
+  google::protobuf::DoubleValue zero_double_value;
+  zero_double_value.set_value(0.0);
+  const std::string zero_double_value_json = JsonStringFor(zero_double_value);
+  google::protobuf::Any any_zero_double_value_wkt;
+  any_zero_double_value_wkt.PackFrom(zero_double_value);
+  const std::string any_zero_double_value_wkt_json =
+      JsonStringFor(any_zero_double_value_wkt);
   google::protobuf::DoubleValue double_value_nan;
   double_value_nan.set_value(std::numeric_limits<double>::quiet_NaN());
   const std::string double_value_nan_json = JsonStringFor(double_value_nan);
@@ -573,6 +580,13 @@ int main() {
   any_float_value_wkt.PackFrom(float_value);
   const std::string any_float_value_wkt_json =
       JsonStringFor(any_float_value_wkt);
+  google::protobuf::FloatValue zero_float_value;
+  zero_float_value.set_value(0.0f);
+  const std::string zero_float_value_json = JsonStringFor(zero_float_value);
+  google::protobuf::Any any_zero_float_value_wkt;
+  any_zero_float_value_wkt.PackFrom(zero_float_value);
+  const std::string any_zero_float_value_wkt_json =
+      JsonStringFor(any_zero_float_value_wkt);
   google::protobuf::FloatValue float_value_nan;
   float_value_nan.set_value(std::numeric_limits<float>::quiet_NaN());
   const std::string float_value_nan_json = JsonStringFor(float_value_nan);
@@ -602,6 +616,13 @@ int main() {
   any_int64_value_wkt.PackFrom(int64_value);
   const std::string any_int64_value_wkt_json =
       JsonStringFor(any_int64_value_wkt);
+  google::protobuf::Int64Value zero_int64_value;
+  zero_int64_value.set_value(0);
+  const std::string zero_int64_value_json = JsonStringFor(zero_int64_value);
+  google::protobuf::Any any_zero_int64_value_wkt;
+  any_zero_int64_value_wkt.PackFrom(zero_int64_value);
+  const std::string any_zero_int64_value_wkt_json =
+      JsonStringFor(any_zero_int64_value_wkt);
   google::protobuf::Int64Value negative_int64_value;
   negative_int64_value.set_value(-9007199254740993LL);
   const std::string negative_int64_value_json =
@@ -617,6 +638,13 @@ int main() {
   any_uint64_value_wkt.PackFrom(uint64_value);
   const std::string any_uint64_value_wkt_json =
       JsonStringFor(any_uint64_value_wkt);
+  google::protobuf::UInt64Value zero_uint64_value;
+  zero_uint64_value.set_value(0);
+  const std::string zero_uint64_value_json = JsonStringFor(zero_uint64_value);
+  google::protobuf::Any any_zero_uint64_value_wkt;
+  any_zero_uint64_value_wkt.PackFrom(zero_uint64_value);
+  const std::string any_zero_uint64_value_wkt_json =
+      JsonStringFor(any_zero_uint64_value_wkt);
   google::protobuf::UInt64Value max_uint64_value;
   max_uint64_value.set_value(std::numeric_limits<uint64_t>::max());
   const std::string max_uint64_value_json = JsonStringFor(max_uint64_value);
@@ -631,6 +659,13 @@ int main() {
   any_int32_value_wkt.PackFrom(int32_value);
   const std::string any_int32_value_wkt_json =
       JsonStringFor(any_int32_value_wkt);
+  google::protobuf::Int32Value zero_int32_value;
+  zero_int32_value.set_value(0);
+  const std::string zero_int32_value_json = JsonStringFor(zero_int32_value);
+  google::protobuf::Any any_zero_int32_value_wkt;
+  any_zero_int32_value_wkt.PackFrom(zero_int32_value);
+  const std::string any_zero_int32_value_wkt_json =
+      JsonStringFor(any_zero_int32_value_wkt);
   google::protobuf::Int32Value negative_int32_value;
   negative_int32_value.set_value(-12345);
   const std::string negative_int32_value_json =
@@ -646,6 +681,13 @@ int main() {
   any_uint32_value_wkt.PackFrom(uint32_value);
   const std::string any_uint32_value_wkt_json =
       JsonStringFor(any_uint32_value_wkt);
+  google::protobuf::UInt32Value zero_uint32_value;
+  zero_uint32_value.set_value(0);
+  const std::string zero_uint32_value_json = JsonStringFor(zero_uint32_value);
+  google::protobuf::Any any_zero_uint32_value_wkt;
+  any_zero_uint32_value_wkt.PackFrom(zero_uint32_value);
+  const std::string any_zero_uint32_value_wkt_json =
+      JsonStringFor(any_zero_uint32_value_wkt);
   google::protobuf::UInt32Value max_uint32_value;
   max_uint32_value.set_value(std::numeric_limits<uint32_t>::max());
   const std::string max_uint32_value_json = JsonStringFor(max_uint32_value);
@@ -813,6 +855,10 @@ int main() {
             << "\n";
   std::cout << "any DoubleValue WKT json payload size: "
             << any_double_value_wkt_json.size() << "\n";
+  std::cout << "zero double value json payload size: "
+            << zero_double_value_json.size() << "\n";
+  std::cout << "any ZeroDoubleValue WKT json payload size: "
+            << any_zero_double_value_wkt_json.size() << "\n";
   std::cout << "double value NaN json payload size: "
             << double_value_nan_json.size() << "\n";
   std::cout << "any DoubleValue NaN WKT json payload size: "
@@ -829,6 +875,10 @@ int main() {
             << "\n";
   std::cout << "any FloatValue WKT json payload size: "
             << any_float_value_wkt_json.size() << "\n";
+  std::cout << "zero float value json payload size: "
+            << zero_float_value_json.size() << "\n";
+  std::cout << "any ZeroFloatValue WKT json payload size: "
+            << any_zero_float_value_wkt_json.size() << "\n";
   std::cout << "float value NaN json payload size: "
             << float_value_nan_json.size() << "\n";
   std::cout << "any FloatValue NaN WKT json payload size: "
@@ -845,6 +895,10 @@ int main() {
             << "\n";
   std::cout << "any Int64Value WKT json payload size: "
             << any_int64_value_wkt_json.size() << "\n";
+  std::cout << "zero int64 value json payload size: "
+            << zero_int64_value_json.size() << "\n";
+  std::cout << "any ZeroInt64Value WKT json payload size: "
+            << any_zero_int64_value_wkt_json.size() << "\n";
   std::cout << "negative int64 value json payload size: "
             << negative_int64_value_json.size() << "\n";
   std::cout << "any NegativeInt64Value WKT json payload size: "
@@ -853,6 +907,10 @@ int main() {
             << "\n";
   std::cout << "any UInt64Value WKT json payload size: "
             << any_uint64_value_wkt_json.size() << "\n";
+  std::cout << "zero uint64 value json payload size: "
+            << zero_uint64_value_json.size() << "\n";
+  std::cout << "any ZeroUInt64Value WKT json payload size: "
+            << any_zero_uint64_value_wkt_json.size() << "\n";
   std::cout << "max uint64 value json payload size: "
             << max_uint64_value_json.size() << "\n";
   std::cout << "any MaxUInt64Value WKT json payload size: "
@@ -861,6 +919,10 @@ int main() {
             << "\n";
   std::cout << "any Int32Value WKT json payload size: "
             << any_int32_value_wkt_json.size() << "\n";
+  std::cout << "zero int32 value json payload size: "
+            << zero_int32_value_json.size() << "\n";
+  std::cout << "any ZeroInt32Value WKT json payload size: "
+            << any_zero_int32_value_wkt_json.size() << "\n";
   std::cout << "negative int32 value json payload size: "
             << negative_int32_value_json.size() << "\n";
   std::cout << "any NegativeInt32Value WKT json payload size: "
@@ -869,6 +931,10 @@ int main() {
             << "\n";
   std::cout << "any UInt32Value WKT json payload size: "
             << any_uint32_value_wkt_json.size() << "\n";
+  std::cout << "zero uint32 value json payload size: "
+            << zero_uint32_value_json.size() << "\n";
+  std::cout << "any ZeroUInt32Value WKT json payload size: "
+            << any_zero_uint32_value_wkt_json.size() << "\n";
   std::cout << "max uint32 value json payload size: "
             << max_uint32_value_json.size() << "\n";
   std::cout << "any MaxUInt32Value WKT json payload size: "
@@ -1504,6 +1570,10 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any DoubleValue WKT", any_double_value_wkt,
                       any_double_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("ZeroDoubleValue", zero_double_value,
+                      zero_double_value_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroDoubleValue WKT", any_zero_double_value_wkt,
+                      any_zero_double_value_wkt_json, kIterations);
   RunWktJsonBenchPair("DoubleValue NaN", double_value_nan,
                       double_value_nan_json, kIterations);
   RunWktJsonBenchPair("Any DoubleValue NaN WKT", any_double_value_nan_wkt,
@@ -1521,6 +1591,10 @@ int main() {
   RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue WKT", any_float_value_wkt,
                       any_float_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("ZeroFloatValue", zero_float_value,
+                      zero_float_value_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroFloatValue WKT", any_zero_float_value_wkt,
+                      any_zero_float_value_wkt_json, kIterations);
   RunWktJsonBenchPair("FloatValue NaN", float_value_nan,
                       float_value_nan_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue NaN WKT", any_float_value_nan_wkt,
@@ -1537,6 +1611,10 @@ int main() {
   RunWktJsonBenchPair("Int64Value", int64_value, int64_value_json, kIterations);
   RunWktJsonBenchPair("Any Int64Value WKT", any_int64_value_wkt,
                       any_int64_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("ZeroInt64Value", zero_int64_value,
+                      zero_int64_value_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroInt64Value WKT", any_zero_int64_value_wkt,
+                      any_zero_int64_value_wkt_json, kIterations);
   RunWktJsonBenchPair("NegativeInt64Value", negative_int64_value,
                       negative_int64_value_json, kIterations);
   RunWktJsonBenchPair("Any NegativeInt64Value WKT",
@@ -1546,6 +1624,10 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any UInt64Value WKT", any_uint64_value_wkt,
                       any_uint64_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("ZeroUInt64Value", zero_uint64_value,
+                      zero_uint64_value_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroUInt64Value WKT", any_zero_uint64_value_wkt,
+                      any_zero_uint64_value_wkt_json, kIterations);
   RunWktJsonBenchPair("MaxUInt64Value", max_uint64_value,
                       max_uint64_value_json, kIterations);
   RunWktJsonBenchPair("Any MaxUInt64Value WKT", any_max_uint64_value_wkt,
@@ -1553,6 +1635,10 @@ int main() {
   RunWktJsonBenchPair("Int32Value", int32_value, int32_value_json, kIterations);
   RunWktJsonBenchPair("Any Int32Value WKT", any_int32_value_wkt,
                       any_int32_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("ZeroInt32Value", zero_int32_value,
+                      zero_int32_value_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroInt32Value WKT", any_zero_int32_value_wkt,
+                      any_zero_int32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("NegativeInt32Value", negative_int32_value,
                       negative_int32_value_json, kIterations);
   RunWktJsonBenchPair("Any NegativeInt32Value WKT",
@@ -1562,6 +1648,10 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any UInt32Value WKT", any_uint32_value_wkt,
                       any_uint32_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("ZeroUInt32Value", zero_uint32_value,
+                      zero_uint32_value_json, kIterations);
+  RunWktJsonBenchPair("Any ZeroUInt32Value WKT", any_zero_uint32_value_wkt,
+                      any_zero_uint32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("MaxUInt32Value", max_uint32_value,
                       max_uint32_value_json, kIterations);
   RunWktJsonBenchPair("Any MaxUInt32Value WKT", any_max_uint32_value_wkt,
