@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 350
+EXPECTED_WORKLOAD_COUNT = 352
 
 
 @dataclass(frozen=True)
@@ -569,6 +569,7 @@ WORKLOADS: tuple[Workload, ...] = (
     json_parse_workload("Any Value Escape WKT"),
     *json_workload_pair("Any NullValue WKT"),
     *json_workload_pair("Any StringScalarValue WKT"),
+    json_parse_workload("Any StringScalarValue Escape WKT"),
     *json_workload_pair("Any EmptyStringScalarValue WKT"),
     *json_workload_pair("Any NumberValue WKT"),
     *json_workload_pair("Any ZeroNumberValue WKT"),
@@ -651,6 +652,7 @@ WORKLOADS: tuple[Workload, ...] = (
     json_parse_workload("Value Escape"),
     *json_workload_pair("NullValue"),
     *json_workload_pair("StringScalarValue"),
+    json_parse_workload("StringScalarValue Escape"),
     *json_workload_pair("EmptyStringScalarValue"),
     *json_workload_pair("NumberValue"),
     *json_workload_pair("ZeroNumberValue"),
@@ -1350,8 +1352,10 @@ def self_test() -> None:
     for label, bytes_per_iter in (
         ("Any Struct Escape WKT", 130),
         ("Any Value Escape WKT", 129),
+        ("Any StringScalarValue Escape WKT", 72),
         ("Struct Escape", 67),
         ("Value Escape", 67),
+        ("StringScalarValue Escape", 10),
     ):
         sample_lines.extend(
             (
