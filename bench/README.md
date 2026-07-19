@@ -17,11 +17,13 @@ Summarize a full comparison log with:
 ```sh
 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log
+python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot > /tmp/pbz-compare-pivot.md
 ```
 
 Use `--fail-on-loss` when a CI-style non-zero exit is desired for any parsed
 row where the fastest relevant public pbz path is still slower than the fastest
-baseline path for the same workload.
+baseline path for the same workload. Use `--pivot` to emit the README-style
+workload-by-baseline table without manually transposing the detailed summary.
 The summary compares the fastest relevant public pbz path against Rust
 `prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf rows when present.
 See [`COVERAGE.md`](COVERAGE.md) for the current feature/performance audit

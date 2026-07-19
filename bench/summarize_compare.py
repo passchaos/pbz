@@ -1213,6 +1213,57 @@ def summarize(results: dict[str, float]) -> tuple[str, bool]:
     return "\n".join(lines), has_gap
 
 
+def summarize_pivot(results: dict[str, float]) -> tuple[str, bool]:
+    """Return a README-friendly workload-by-baseline comparison table.
+
+    This intentionally uses the same workload matrix and gap accounting as the
+    default detailed summary, but pivots each workload into one row so humans can
+    scan README updates without manually transposing the fail-on-loss output.
+    Missing baseline cells are rendered as em dashes while still contributing to
+    ``has_gap`` for callers that also pass ``--fail-on-loss``.
+    """
+
+    baseline_order = ("rust prost", "rust quick-protobuf", "c++ protobuf", "go protobuf")
+    rows: list[tuple[str, float, dict[str, tuple[float, float]]]] = []
+    has_gap = False
+
+    for workload in WORKLOADS:
+        pbz_best = best(results, workload.pbz)
+        if pbz_best is None:
+            has_gap = True
+            continue
+        _pbz_name, pbz_ns = pbz_best
+        baseline_cells: dict[str, tuple[float, float]] = {}
+        for impl, names in workload.baselines.items():
+            baseline_best = best(results, names)
+            if baseline_best is None:
+                has_gap = True
+                continue
+            _baseline_name, baseline_ns = baseline_best
+            if pbz_ns >= baseline_ns:
+                has_gap = True
+            baseline_cells[impl] = (baseline_ns, baseline_ns / pbz_ns if pbz_ns else float("inf"))
+        rows.append((workload.name, pbz_ns, baseline_cells))
+
+    if not rows:
+        return "No comparable benchmark rows found.", True
+
+    lines = [
+        "| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for workload, pbz_ns, baseline_cells in rows:
+        cells = []
+        for impl in baseline_order:
+            if impl in baseline_cells:
+                baseline_ns, ratio = baseline_cells[impl]
+                cells.append(f"{baseline_ns:.2f} ({ratio:.2f}x)")
+            else:
+                cells.append("—")
+        lines.append(f"| {workload} | {pbz_ns:.2f} | " + " | ".join(cells) + " |")
+    return "\n".join(lines), has_gap
+
+
 def self_test() -> None:
     validate_workloads()
 
@@ -1267,11 +1318,20 @@ def self_test() -> None:
     assert "unknown fields count by number" in dynamic_output
     assert dynamic_has_loss
 
+    pivot_output, pivot_has_loss = summarize_pivot(results)
+    assert "| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |" in pivot_output
+    assert "| binary encode |" in pivot_output
+    assert "50.00 (1.25x)" in pivot_output
+    assert "| Any WKT JSON stringify |" in pivot_output
+    assert "| EmptyBytesValue JSON parse |" in pivot_output
+    assert pivot_has_loss
+
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", nargs="?", help="run_compare output log; stdin is used when omitted")
     parser.add_argument("--fail-on-loss", action="store_true", help="exit non-zero if any parsed row is a pbz loss or missing baseline")
+    parser.add_argument("--pivot", action="store_true", help="print a README-friendly workload-by-baseline table")
     parser.add_argument("--self-test", action="store_true", help="run parser self-test")
     args = parser.parse_args(argv)
 
@@ -1283,7 +1343,8 @@ def main(argv: list[str]) -> int:
         text = Path(args.log).read_text(encoding="utf-8")
     else:
         text = sys.stdin.read()
-    output, has_loss = summarize(parse_results(text))
+    results = parse_results(text)
+    output, has_loss = summarize_pivot(results) if args.pivot else summarize(results)
     print(output)
     return 1 if args.fail_on_loss and has_loss else 0
 

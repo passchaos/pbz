@@ -79,6 +79,7 @@ baselines when those toolchains are available:
 ```sh
 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot > /tmp/pbz-compare-pivot.md
 ```
 
 Latest accepted comparison (`/tmp/pbz-compare-default-value-scalars-json-isolated.log`,
