@@ -109,6 +109,20 @@ void RunWktJsonBenchPair(const char *type_name, const Message &message,
   parse.Print();
 }
 
+template <class Message>
+void RunWktJsonParseOnly(const char *type_name, const std::string &json,
+                         int iterations) {
+  const std::string parse_name =
+      std::string("c++ protobuf ") + type_name + " JSON parse";
+  auto parse = RunTimed(parse_name.c_str(), iterations, json.size(), [&]() {
+    Message decoded;
+    if (!google::protobuf::util::JsonStringToMessage(json, &decoded).ok())
+      std::abort();
+    asm volatile("" : : "g"(&decoded) : "memory");
+  });
+  parse.Print();
+}
+
 void AppendVarint(std::string *out, uint64_t value) {
   while (value >= 0x80) {
     out->push_back(static_cast<char>((value & 0x7f) | 0x80));
@@ -756,10 +770,13 @@ int main() {
   google::protobuf::Int64Value int64_value;
   int64_value.set_value(9007199254740993LL);
   const std::string int64_value_json = JsonStringFor(int64_value);
+  const std::string int64_value_number_json = R"(9007199254740993)";
   google::protobuf::Any any_int64_value_wkt;
   any_int64_value_wkt.PackFrom(int64_value);
   const std::string any_int64_value_wkt_json =
       JsonStringFor(any_int64_value_wkt);
+  const std::string any_int64_value_number_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Int64Value","value":9007199254740993})";
   google::protobuf::Int64Value zero_int64_value;
   zero_int64_value.set_value(0);
   const std::string zero_int64_value_json = JsonStringFor(zero_int64_value);
@@ -792,10 +809,13 @@ int main() {
   google::protobuf::UInt64Value uint64_value;
   uint64_value.set_value(9007199254740993ULL);
   const std::string uint64_value_json = JsonStringFor(uint64_value);
+  const std::string uint64_value_number_json = R"(9007199254740993)";
   google::protobuf::Any any_uint64_value_wkt;
   any_uint64_value_wkt.PackFrom(uint64_value);
   const std::string any_uint64_value_wkt_json =
       JsonStringFor(any_uint64_value_wkt);
+  const std::string any_uint64_value_number_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.UInt64Value","value":9007199254740993})";
   google::protobuf::UInt64Value zero_uint64_value;
   zero_uint64_value.set_value(0);
   const std::string zero_uint64_value_json = JsonStringFor(zero_uint64_value);
@@ -1151,8 +1171,12 @@ int main() {
             << any_float_value_neg_inf_wkt_json.size() << "\n";
   std::cout << "int64 value json payload size: " << int64_value_json.size()
             << "\n";
+  std::cout << "int64 value number json payload size: "
+            << int64_value_number_json.size() << "\n";
   std::cout << "any Int64Value WKT json payload size: "
             << any_int64_value_wkt_json.size() << "\n";
+  std::cout << "any Int64Value Number WKT json payload size: "
+            << any_int64_value_number_wkt_json.size() << "\n";
   std::cout << "zero int64 value json payload size: "
             << zero_int64_value_json.size() << "\n";
   std::cout << "any ZeroInt64Value WKT json payload size: "
@@ -1171,8 +1195,12 @@ int main() {
             << any_max_int64_value_wkt_json.size() << "\n";
   std::cout << "uint64 value json payload size: " << uint64_value_json.size()
             << "\n";
+  std::cout << "uint64 value number json payload size: "
+            << uint64_value_number_json.size() << "\n";
   std::cout << "any UInt64Value WKT json payload size: "
             << any_uint64_value_wkt_json.size() << "\n";
+  std::cout << "any UInt64Value Number WKT json payload size: "
+            << any_uint64_value_number_wkt_json.size() << "\n";
   std::cout << "zero uint64 value json payload size: "
             << zero_uint64_value_json.size() << "\n";
   std::cout << "any ZeroUInt64Value WKT json payload size: "
@@ -2047,8 +2075,13 @@ int main() {
                       any_float_value_neg_inf_wkt,
                       any_float_value_neg_inf_wkt_json, kIterations);
   RunWktJsonBenchPair("Int64Value", int64_value, int64_value_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Int64Value>(
+      "Int64Value Number", int64_value_number_json, kIterations);
   RunWktJsonBenchPair("Any Int64Value WKT", any_int64_value_wkt,
                       any_int64_value_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any Int64Value Number WKT", any_int64_value_number_wkt_json,
+      kIterations);
   RunWktJsonBenchPair("ZeroInt64Value", zero_int64_value,
                       zero_int64_value_json, kIterations);
   RunWktJsonBenchPair("Any ZeroInt64Value WKT", any_zero_int64_value_wkt,
@@ -2068,8 +2101,13 @@ int main() {
                       any_max_int64_value_wkt_json, kIterations);
   RunWktJsonBenchPair("UInt64Value", uint64_value, uint64_value_json,
                       kIterations);
+  RunWktJsonParseOnly<google::protobuf::UInt64Value>(
+      "UInt64Value Number", uint64_value_number_json, kIterations);
   RunWktJsonBenchPair("Any UInt64Value WKT", any_uint64_value_wkt,
                       any_uint64_value_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any UInt64Value Number WKT", any_uint64_value_number_wkt_json,
+      kIterations);
   RunWktJsonBenchPair("ZeroUInt64Value", zero_uint64_value,
                       zero_uint64_value_json, kIterations);
   RunWktJsonBenchPair("Any ZeroUInt64Value WKT", any_zero_uint64_value_wkt,
