@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 330
+EXPECTED_WORKLOAD_COUNT = 334
 
 
 @dataclass(frozen=True)
@@ -572,12 +572,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any EmptyStructKindValue WKT"),
     *json_workload_pair("Any EmptyListKindValue WKT"),
     *json_workload_pair("Any DoubleValue WKT"),
+    json_parse_workload("Any DoubleValue String WKT"),
     *json_workload_pair("Any NegativeDoubleValue WKT"),
     *json_workload_pair("Any ZeroDoubleValue WKT"),
     *json_workload_pair("Any DoubleValue NaN WKT"),
     *json_workload_pair("Any DoubleValue Infinity WKT"),
     *json_workload_pair("Any DoubleValue NegativeInfinity WKT"),
     *json_workload_pair("Any FloatValue WKT"),
+    json_parse_workload("Any FloatValue String WKT"),
     *json_workload_pair("Any NegativeFloatValue WKT"),
     *json_workload_pair("Any ZeroFloatValue WKT"),
     *json_workload_pair("Any FloatValue NaN WKT"),
@@ -646,12 +648,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("ListValue"),
     *json_workload_pair("EmptyListValue"),
     *json_workload_pair("DoubleValue"),
+    json_parse_workload("DoubleValue String"),
     *json_workload_pair("NegativeDoubleValue"),
     *json_workload_pair("ZeroDoubleValue"),
     *json_workload_pair("DoubleValue NaN"),
     *json_workload_pair("DoubleValue Infinity"),
     *json_workload_pair("DoubleValue NegativeInfinity"),
     *json_workload_pair("FloatValue"),
+    json_parse_workload("FloatValue String"),
     *json_workload_pair("NegativeFloatValue"),
     *json_workload_pair("ZeroFloatValue"),
     *json_workload_pair("FloatValue NaN"),
