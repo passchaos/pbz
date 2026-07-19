@@ -472,6 +472,13 @@ int main() {
   any_max_timestamp_wkt.PackFrom(max_timestamp);
   const std::string any_max_timestamp_wkt_json =
       JsonStringFor(any_max_timestamp_wkt);
+  google::protobuf::Timestamp min_timestamp;
+  min_timestamp.set_seconds(-62135596800LL);
+  const std::string min_timestamp_json = JsonStringFor(min_timestamp);
+  google::protobuf::Any any_min_timestamp_wkt;
+  any_min_timestamp_wkt.PackFrom(min_timestamp);
+  const std::string any_min_timestamp_wkt_json =
+      JsonStringFor(any_min_timestamp_wkt);
   google::protobuf::Empty empty_value;
   const std::string empty_json = JsonStringFor(empty_value);
   google::protobuf::Any any_empty_wkt;
@@ -677,6 +684,10 @@ int main() {
             << max_timestamp_json.size() << "\n";
   std::cout << "any Max Timestamp WKT json payload size: "
             << any_max_timestamp_wkt_json.size() << "\n";
+  std::cout << "min timestamp json payload size: "
+            << min_timestamp_json.size() << "\n";
+  std::cout << "any Min Timestamp WKT json payload size: "
+            << any_min_timestamp_wkt_json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
   std::cout << "negative duration json payload size: "
             << negative_duration_json.size() << "\n";
@@ -1317,6 +1328,8 @@ int main() {
                       any_pre_epoch_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Max Timestamp WKT", any_max_timestamp_wkt,
                       any_max_timestamp_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any Min Timestamp WKT", any_min_timestamp_wkt,
+                      any_min_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Empty WKT", any_empty_wkt, any_empty_wkt_json,
                       kIterations);
   RunWktJsonBenchPair("Any Struct WKT", any_struct_wkt,
@@ -1338,6 +1351,8 @@ int main() {
   RunWktJsonBenchPair("PreEpoch Timestamp", pre_epoch_timestamp,
                       pre_epoch_timestamp_json, kIterations);
   RunWktJsonBenchPair("Max Timestamp", max_timestamp, max_timestamp_json,
+                      kIterations);
+  RunWktJsonBenchPair("Min Timestamp", min_timestamp, min_timestamp_json,
                       kIterations);
 
   RunWktJsonBenchPair("Empty", empty_value, empty_json, kIterations);
