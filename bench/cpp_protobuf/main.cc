@@ -499,6 +499,13 @@ int main() {
   any_float_value_wkt.PackFrom(float_value);
   const std::string any_float_value_wkt_json =
       JsonStringFor(any_float_value_wkt);
+  google::protobuf::FloatValue float_value_nan;
+  float_value_nan.set_value(std::numeric_limits<float>::quiet_NaN());
+  const std::string float_value_nan_json = JsonStringFor(float_value_nan);
+  google::protobuf::Any any_float_value_nan_wkt;
+  any_float_value_nan_wkt.PackFrom(float_value_nan);
+  const std::string any_float_value_nan_wkt_json =
+      JsonStringFor(any_float_value_nan_wkt);
   google::protobuf::Int64Value int64_value;
   int64_value.set_value(9007199254740993LL);
   const std::string int64_value_json = JsonStringFor(int64_value);
@@ -642,6 +649,10 @@ int main() {
             << "\n";
   std::cout << "any FloatValue WKT json payload size: "
             << any_float_value_wkt_json.size() << "\n";
+  std::cout << "float value NaN json payload size: "
+            << float_value_nan_json.size() << "\n";
+  std::cout << "any FloatValue NaN WKT json payload size: "
+            << any_float_value_nan_wkt_json.size() << "\n";
   std::cout << "int64 value json payload size: " << int64_value_json.size()
             << "\n";
   std::cout << "any Int64Value WKT json payload size: "
@@ -1249,6 +1260,10 @@ int main() {
   RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue WKT", any_float_value_wkt,
                       any_float_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("FloatValue NaN", float_value_nan,
+                      float_value_nan_json, kIterations);
+  RunWktJsonBenchPair("Any FloatValue NaN WKT", any_float_value_nan_wkt,
+                      any_float_value_nan_wkt_json, kIterations);
   RunWktJsonBenchPair("Int64Value", int64_value, int64_value_json, kIterations);
   RunWktJsonBenchPair("Any Int64Value WKT", any_int64_value_wkt,
                       any_int64_value_wkt_json, kIterations);
