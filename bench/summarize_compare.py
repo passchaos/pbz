@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 270
+EXPECTED_WORKLOAD_COUNT = 276
 
 
 @dataclass(frozen=True)
@@ -106,6 +106,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any Min Timestamp WKT", 88, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any Empty WKT", 53, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any Struct WKT", 121, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
+    ("Any EmptyStruct WKT", 65, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any Value WKT", 120, (120.0, 1000.0, 900.0), (180.0, 1200.0, 1100.0)),
     ("Any NullValue WKT", 66, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any StringScalarValue WKT", 67, (90.0, 500.0, 450.0), (120.0, 700.0, 650.0)),
@@ -160,12 +161,14 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Min Timestamp", 22, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
     ("Empty", 2, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
     ("Struct", 58, (90.0, 900.0, 800.0), (120.0, 1000.0, 900.0)),
+    ("EmptyStruct", 2, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
     ("Value", 58, (90.0, 900.0, 800.0), (120.0, 1000.0, 900.0)),
     ("NullValue", 4, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
     ("StringScalarValue", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("NumberValue", 3, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("BoolScalarValue", 4, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
     ("ListValue", 40, (80.0, 850.0, 760.0), (110.0, 950.0, 850.0)),
+    ("EmptyListValue", 2, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
     ("DoubleValue", 4, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("NegativeDoubleValue", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("ZeroDoubleValue", 1, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
@@ -510,6 +513,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any Min Timestamp WKT"),
     *json_workload_pair("Any Empty WKT"),
     *json_workload_pair("Any Struct WKT"),
+    *json_workload_pair("Any EmptyStruct WKT"),
     *json_workload_pair("Any Value WKT"),
     *json_workload_pair("Any NullValue WKT"),
     *json_workload_pair("Any StringScalarValue WKT"),
@@ -564,12 +568,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Min Timestamp"),
     *json_workload_pair("Empty"),
     *json_workload_pair("Struct"),
+    *json_workload_pair("EmptyStruct"),
     *json_workload_pair("Value"),
     *json_workload_pair("NullValue"),
     *json_workload_pair("StringScalarValue"),
     *json_workload_pair("NumberValue"),
     *json_workload_pair("BoolScalarValue"),
     *json_workload_pair("ListValue"),
+    *json_workload_pair("EmptyListValue"),
     *json_workload_pair("DoubleValue"),
     *json_workload_pair("NegativeDoubleValue"),
     *json_workload_pair("ZeroDoubleValue"),
