@@ -1207,6 +1207,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	stringValueEscapeJSONBytes := []byte(`"\u0068ello"`)
+	anyStringValueEscapeWKTJSONBytes := []byte(`{"@type":"type.googleapis.com/google.protobuf.StringValue","value":"\u0068ello"}`)
 	emptyStringValue := wrapperspb.String("")
 	emptyStringValueJSONBytes, err := protojson.Marshal(emptyStringValue)
 	if err != nil {
@@ -1487,6 +1489,8 @@ func main() {
 	fmt.Printf("false bool value json payload size: %d\n", len(falseBoolValueJSONBytes))
 	fmt.Printf("any FalseBoolValue WKT json payload size: %d\n", len(anyFalseBoolValueWKTJSONBytes))
 	fmt.Printf("string value json payload size: %d\n", len(stringValueJSONBytes))
+	fmt.Printf("string value escape json payload size: %d\n", len(stringValueEscapeJSONBytes))
+	fmt.Printf("any StringValue Escape WKT json payload size: %d\n", len(anyStringValueEscapeWKTJSONBytes))
 	fmt.Printf("empty string value json payload size: %d\n", len(emptyStringValueJSONBytes))
 	fmt.Printf("bytes value json payload size: %d\n", len(bytesValueJSONBytes))
 	fmt.Printf("bytes value URL json payload size: %d\n", len(bytesValueURLJSONBytes))
@@ -1905,6 +1909,8 @@ func main() {
 	runProtoJSONPair("FalseBoolValue", iterations, falseBoolValueJSONBytes, falseBoolValue, func() *wrapperspb.BoolValue { return &wrapperspb.BoolValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FalseBoolValue WKT", iterations, anyFalseBoolValueWKTJSONBytes, anyFalseBoolValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("StringValue", iterations, stringValueJSONBytes, stringValue, func() *wrapperspb.StringValue { return &wrapperspb.StringValue{} }, jsonUnmarshalOptions)
+	runProtoJSONParseOnly("StringValue Escape", iterations, stringValueEscapeJSONBytes, func() *wrapperspb.StringValue { return &wrapperspb.StringValue{} }, jsonUnmarshalOptions)
+	runProtoJSONParseOnly("Any StringValue Escape WKT", iterations, anyStringValueEscapeWKTJSONBytes, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("EmptyStringValue", iterations, emptyStringValueJSONBytes, emptyStringValue, func() *wrapperspb.StringValue { return &wrapperspb.StringValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any EmptyStringValue WKT", iterations, anyEmptyStringValueWKTJSONBytes, anyEmptyStringValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BytesValue", iterations, bytesValueJSONBytes, bytesValue, func() *wrapperspb.BytesValue { return &wrapperspb.BytesValue{} }, jsonUnmarshalOptions)
