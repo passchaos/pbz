@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 170
+EXPECTED_WORKLOAD_COUNT = 174
 
 
 @dataclass(frozen=True)
@@ -97,6 +97,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any FractionalNegativeDuration WKT", 74, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any MaxDuration WKT", 80, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any MinDuration WKT", 81, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
+    ("Any ZeroDuration WKT", 69, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any FieldMask WKT", 87, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any Timestamp WKT", 92, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any PreEpoch Timestamp WKT", 88, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
@@ -126,6 +127,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("FractionalNegativeDuration", 9, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("MaxDuration", 15, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("MinDuration", 16, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
+    ("ZeroDuration", 4, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("FieldMask", 21, (40.0, 230.0, 270.0), (45.0, 240.0, 280.0)),
     ("Timestamp", 28, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
     ("PreEpoch Timestamp", 22, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
@@ -451,6 +453,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any FractionalNegativeDuration WKT"),
     *json_workload_pair("Any MaxDuration WKT"),
     *json_workload_pair("Any MinDuration WKT"),
+    *json_workload_pair("Any ZeroDuration WKT"),
     *json_workload_pair("Any FieldMask WKT"),
     *json_workload_pair("Any Timestamp WKT"),
     *json_workload_pair("Any PreEpoch Timestamp WKT"),
@@ -480,6 +483,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("FractionalNegativeDuration"),
     *json_workload_pair("MaxDuration"),
     *json_workload_pair("MinDuration"),
+    *json_workload_pair("ZeroDuration"),
     *json_workload_pair("FieldMask"),
     *json_workload_pair("Timestamp"),
     *json_workload_pair("PreEpoch Timestamp"),
