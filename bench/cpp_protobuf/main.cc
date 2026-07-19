@@ -426,6 +426,22 @@ int main() {
                                                    &duration_json)
            .ok())
     std::abort();
+  google::protobuf::Duration micro_duration;
+  micro_duration.set_seconds(1);
+  micro_duration.set_nanos(120000);
+  const std::string micro_duration_json = JsonStringFor(micro_duration);
+  google::protobuf::Any any_micro_duration_wkt;
+  any_micro_duration_wkt.PackFrom(micro_duration);
+  const std::string any_micro_duration_wkt_json =
+      JsonStringFor(any_micro_duration_wkt);
+  google::protobuf::Duration nano_duration;
+  nano_duration.set_seconds(1);
+  nano_duration.set_nanos(123456789);
+  const std::string nano_duration_json = JsonStringFor(nano_duration);
+  google::protobuf::Any any_nano_duration_wkt;
+  any_nano_duration_wkt.PackFrom(nano_duration);
+  const std::string any_nano_duration_wkt_json =
+      JsonStringFor(any_nano_duration_wkt);
   google::protobuf::Duration negative_duration;
   negative_duration.set_seconds(-1);
   negative_duration.set_nanos(-500000000);
@@ -491,6 +507,22 @@ int main() {
   google::protobuf::Any any_timestamp_wkt;
   any_timestamp_wkt.PackFrom(timestamp);
   const std::string any_timestamp_wkt_json = JsonStringFor(any_timestamp_wkt);
+  google::protobuf::Timestamp micro_timestamp;
+  micro_timestamp.set_seconds(1577836800);
+  micro_timestamp.set_nanos(123456000);
+  const std::string micro_timestamp_json = JsonStringFor(micro_timestamp);
+  google::protobuf::Any any_micro_timestamp_wkt;
+  any_micro_timestamp_wkt.PackFrom(micro_timestamp);
+  const std::string any_micro_timestamp_wkt_json =
+      JsonStringFor(any_micro_timestamp_wkt);
+  google::protobuf::Timestamp nano_timestamp;
+  nano_timestamp.set_seconds(1577836800);
+  nano_timestamp.set_nanos(123456789);
+  const std::string nano_timestamp_json = JsonStringFor(nano_timestamp);
+  google::protobuf::Any any_nano_timestamp_wkt;
+  any_nano_timestamp_wkt.PackFrom(nano_timestamp);
+  const std::string any_nano_timestamp_wkt_json =
+      JsonStringFor(any_nano_timestamp_wkt);
   google::protobuf::Timestamp pre_epoch_timestamp;
   pre_epoch_timestamp.set_seconds(-1);
   const std::string pre_epoch_timestamp_json =
@@ -927,6 +959,14 @@ int main() {
             << "\n";
   std::cout << "any Timestamp WKT json payload size: "
             << any_timestamp_wkt_json.size() << "\n";
+  std::cout << "micro timestamp json payload size: "
+            << micro_timestamp_json.size() << "\n";
+  std::cout << "any Micro Timestamp WKT json payload size: "
+            << any_micro_timestamp_wkt_json.size() << "\n";
+  std::cout << "nano timestamp json payload size: "
+            << nano_timestamp_json.size() << "\n";
+  std::cout << "any Nano Timestamp WKT json payload size: "
+            << any_nano_timestamp_wkt_json.size() << "\n";
   std::cout << "pre-epoch timestamp json payload size: "
             << pre_epoch_timestamp_json.size() << "\n";
   std::cout << "any PreEpoch Timestamp WKT json payload size: "
@@ -940,6 +980,10 @@ int main() {
   std::cout << "any Min Timestamp WKT json payload size: "
             << any_min_timestamp_wkt_json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
+  std::cout << "micro duration json payload size: "
+            << micro_duration_json.size() << "\n";
+  std::cout << "nano duration json payload size: "
+            << nano_duration_json.size() << "\n";
   std::cout << "negative duration json payload size: "
             << negative_duration_json.size() << "\n";
   std::cout << "fractional negative duration json payload size: "
@@ -952,6 +996,10 @@ int main() {
             << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
             << "\n";
+  std::cout << "any MicroDuration WKT json payload size: "
+            << any_micro_duration_wkt_json.size() << "\n";
+  std::cout << "any NanoDuration WKT json payload size: "
+            << any_nano_duration_wkt_json.size() << "\n";
   std::cout << "any NegativeDuration WKT json payload size: "
             << any_negative_duration_wkt_json.size() << "\n";
   std::cout << "any FractionalNegativeDuration WKT json payload size: "
@@ -1710,6 +1758,10 @@ int main() {
   json_parse_reuse.Print();
 
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any MicroDuration WKT", any_micro_duration_wkt,
+                      any_micro_duration_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any NanoDuration WKT", any_nano_duration_wkt,
+                      any_nano_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any NegativeDuration WKT", any_negative_duration_wkt,
                       any_negative_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any FractionalNegativeDuration WKT",
@@ -1727,6 +1779,10 @@ int main() {
                       any_empty_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
                       any_timestamp_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any Micro Timestamp WKT", any_micro_timestamp_wkt,
+                      any_micro_timestamp_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any Nano Timestamp WKT", any_nano_timestamp_wkt,
+                      any_nano_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any PreEpoch Timestamp WKT",
                       any_pre_epoch_timestamp_wkt,
                       any_pre_epoch_timestamp_wkt_json, kIterations);
@@ -1775,6 +1831,10 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
                       kIterations);
+  RunWktJsonBenchPair("MicroDuration", micro_duration, micro_duration_json,
+                      kIterations);
+  RunWktJsonBenchPair("NanoDuration", nano_duration, nano_duration_json,
+                      kIterations);
   RunWktJsonBenchPair("NegativeDuration", negative_duration,
                       negative_duration_json, kIterations);
   RunWktJsonBenchPair("FractionalNegativeDuration",
@@ -1790,6 +1850,10 @@ int main() {
   RunWktJsonBenchPair("EmptyFieldMask", empty_field_mask,
                       empty_field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
+  RunWktJsonBenchPair("Micro Timestamp", micro_timestamp, micro_timestamp_json,
+                      kIterations);
+  RunWktJsonBenchPair("Nano Timestamp", nano_timestamp, nano_timestamp_json,
+                      kIterations);
   RunWktJsonBenchPair("PreEpoch Timestamp", pre_epoch_timestamp,
                       pre_epoch_timestamp_json, kIterations);
   RunWktJsonBenchPair("Max Timestamp", max_timestamp, max_timestamp_json,

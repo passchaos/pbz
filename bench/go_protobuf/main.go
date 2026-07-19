@@ -371,6 +371,32 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	microDuration := &durationpb.Duration{Seconds: 1, Nanos: 120_000}
+	microDurationJSONBytes, err := protojson.Marshal(microDuration)
+	if err != nil {
+		panic(err)
+	}
+	anyMicroDurationWKT, err := anypb.New(microDuration)
+	if err != nil {
+		panic(err)
+	}
+	anyMicroDurationWKTJSONBytes, err := protojson.Marshal(anyMicroDurationWKT)
+	if err != nil {
+		panic(err)
+	}
+	nanoDuration := &durationpb.Duration{Seconds: 1, Nanos: 123_456_789}
+	nanoDurationJSONBytes, err := protojson.Marshal(nanoDuration)
+	if err != nil {
+		panic(err)
+	}
+	anyNanoDurationWKT, err := anypb.New(nanoDuration)
+	if err != nil {
+		panic(err)
+	}
+	anyNanoDurationWKTJSONBytes, err := protojson.Marshal(anyNanoDurationWKT)
+	if err != nil {
+		panic(err)
+	}
 	negativeDuration := &durationpb.Duration{Seconds: -1, Nanos: -500_000_000}
 	negativeDurationJSONBytes, err := protojson.Marshal(negativeDuration)
 	if err != nil {
@@ -472,6 +498,32 @@ func main() {
 		panic(err)
 	}
 	anyTimestampWKTJSONBytes, err := protojson.Marshal(anyTimestampWKT)
+	if err != nil {
+		panic(err)
+	}
+	microTimestamp := &timestamppb.Timestamp{Seconds: 1_577_836_800, Nanos: 123_456_000}
+	microTimestampJSONBytes, err := protojson.Marshal(microTimestamp)
+	if err != nil {
+		panic(err)
+	}
+	anyMicroTimestampWKT, err := anypb.New(microTimestamp)
+	if err != nil {
+		panic(err)
+	}
+	anyMicroTimestampWKTJSONBytes, err := protojson.Marshal(anyMicroTimestampWKT)
+	if err != nil {
+		panic(err)
+	}
+	nanoTimestamp := &timestamppb.Timestamp{Seconds: 1_577_836_800, Nanos: 123_456_789}
+	nanoTimestampJSONBytes, err := protojson.Marshal(nanoTimestamp)
+	if err != nil {
+		panic(err)
+	}
+	anyNanoTimestampWKT, err := anypb.New(nanoTimestamp)
+	if err != nil {
+		panic(err)
+	}
+	anyNanoTimestampWKTJSONBytes, err := protojson.Marshal(anyNanoTimestampWKT)
 	if err != nil {
 		panic(err)
 	}
@@ -1259,6 +1311,10 @@ func main() {
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
+	fmt.Printf("micro timestamp json payload size: %d\n", len(microTimestampJSONBytes))
+	fmt.Printf("any Micro Timestamp WKT json payload size: %d\n", len(anyMicroTimestampWKTJSONBytes))
+	fmt.Printf("nano timestamp json payload size: %d\n", len(nanoTimestampJSONBytes))
+	fmt.Printf("any Nano Timestamp WKT json payload size: %d\n", len(anyNanoTimestampWKTJSONBytes))
 	fmt.Printf("pre-epoch timestamp json payload size: %d\n", len(preEpochTimestampJSONBytes))
 	fmt.Printf("any PreEpoch Timestamp WKT json payload size: %d\n", len(anyPreEpochTimestampWKTJSONBytes))
 	fmt.Printf("max timestamp json payload size: %d\n", len(maxTimestampJSONBytes))
@@ -1266,12 +1322,16 @@ func main() {
 	fmt.Printf("min timestamp json payload size: %d\n", len(minTimestampJSONBytes))
 	fmt.Printf("any Min Timestamp WKT json payload size: %d\n", len(anyMinTimestampWKTJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
+	fmt.Printf("micro duration json payload size: %d\n", len(microDurationJSONBytes))
+	fmt.Printf("nano duration json payload size: %d\n", len(nanoDurationJSONBytes))
 	fmt.Printf("negative duration json payload size: %d\n", len(negativeDurationJSONBytes))
 	fmt.Printf("fractional negative duration json payload size: %d\n", len(fractionalNegativeDurationJSONBytes))
 	fmt.Printf("max duration json payload size: %d\n", len(maxDurationJSONBytes))
 	fmt.Printf("min duration json payload size: %d\n", len(minDurationJSONBytes))
 	fmt.Printf("zero duration json payload size: %d\n", len(zeroDurationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
+	fmt.Printf("any MicroDuration WKT json payload size: %d\n", len(anyMicroDurationWKTJSONBytes))
+	fmt.Printf("any NanoDuration WKT json payload size: %d\n", len(anyNanoDurationWKTJSONBytes))
 	fmt.Printf("any NegativeDuration WKT json payload size: %d\n", len(anyNegativeDurationWKTJSONBytes))
 	fmt.Printf("any FractionalNegativeDuration WKT json payload size: %d\n", len(anyFractionalNegativeDurationWKTJSONBytes))
 	fmt.Printf("any MaxDuration WKT json payload size: %d\n", len(anyMaxDurationWKTJSONBytes))
@@ -1617,6 +1677,8 @@ func main() {
 	}).print()
 
 	runProtoJSONPair("Any WKT", iterations, anyWKTJSONBytes, anyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any MicroDuration WKT", iterations, anyMicroDurationWKTJSONBytes, anyMicroDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any NanoDuration WKT", iterations, anyNanoDurationWKTJSONBytes, anyNanoDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NegativeDuration WKT", iterations, anyNegativeDurationWKTJSONBytes, anyNegativeDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FractionalNegativeDuration WKT", iterations, anyFractionalNegativeDurationWKTJSONBytes, anyFractionalNegativeDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any MaxDuration WKT", iterations, anyMaxDurationWKTJSONBytes, anyMaxDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1625,6 +1687,8 @@ func main() {
 	runProtoJSONPair("Any FieldMask WKT", iterations, anyFieldMaskWKTJSONBytes, anyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any EmptyFieldMask WKT", iterations, anyEmptyFieldMaskWKTJSONBytes, anyEmptyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Timestamp WKT", iterations, anyTimestampWKTJSONBytes, anyTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any Micro Timestamp WKT", iterations, anyMicroTimestampWKTJSONBytes, anyMicroTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any Nano Timestamp WKT", iterations, anyNanoTimestampWKTJSONBytes, anyNanoTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any PreEpoch Timestamp WKT", iterations, anyPreEpochTimestampWKTJSONBytes, anyPreEpochTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Max Timestamp WKT", iterations, anyMaxTimestampWKTJSONBytes, anyMaxTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Min Timestamp WKT", iterations, anyMinTimestampWKTJSONBytes, anyMinTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1646,6 +1710,8 @@ func main() {
 	runProtoJSONPair("Any BytesValue WKT", iterations, anyBytesValueWKTJSONBytes, anyBytesValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Nested Any WKT", iterations, nestedAnyWKTJSONBytes, nestedAnyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Duration", iterations, durationJSONBytes, duration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("MicroDuration", iterations, microDurationJSONBytes, microDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("NanoDuration", iterations, nanoDurationJSONBytes, nanoDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NegativeDuration", iterations, negativeDurationJSONBytes, negativeDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FractionalNegativeDuration", iterations, fractionalNegativeDurationJSONBytes, fractionalNegativeDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("MaxDuration", iterations, maxDurationJSONBytes, maxDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
@@ -1654,6 +1720,8 @@ func main() {
 	runProtoJSONPair("FieldMask", iterations, fieldMaskJSONBytes, fieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("EmptyFieldMask", iterations, emptyFieldMaskJSONBytes, emptyFieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Timestamp", iterations, timestampJSONBytes, timestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Micro Timestamp", iterations, microTimestampJSONBytes, microTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Nano Timestamp", iterations, nanoTimestampJSONBytes, nanoTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("PreEpoch Timestamp", iterations, preEpochTimestampJSONBytes, preEpochTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Max Timestamp", iterations, maxTimestampJSONBytes, maxTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Min Timestamp", iterations, minTimestampJSONBytes, minTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
