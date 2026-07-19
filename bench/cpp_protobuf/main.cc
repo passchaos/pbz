@@ -536,6 +536,32 @@ int main() {
   google::protobuf::Any any_value_wkt;
   any_value_wkt.PackFrom(value_value);
   const std::string any_value_wkt_json = JsonStringFor(any_value_wkt);
+  google::protobuf::Value null_value_value;
+  null_value_value.set_null_value(google::protobuf::NULL_VALUE);
+  const std::string null_value_json = JsonStringFor(null_value_value);
+  google::protobuf::Any any_null_value_wkt;
+  any_null_value_wkt.PackFrom(null_value_value);
+  const std::string any_null_value_wkt_json = JsonStringFor(any_null_value_wkt);
+  google::protobuf::Value string_scalar_value;
+  string_scalar_value.set_string_value("zig");
+  const std::string string_scalar_value_json = JsonStringFor(string_scalar_value);
+  google::protobuf::Any any_string_scalar_value_wkt;
+  any_string_scalar_value_wkt.PackFrom(string_scalar_value);
+  const std::string any_string_scalar_value_wkt_json =
+      JsonStringFor(any_string_scalar_value_wkt);
+  google::protobuf::Value number_value;
+  number_value.set_number_value(1.5);
+  const std::string number_value_json = JsonStringFor(number_value);
+  google::protobuf::Any any_number_value_wkt;
+  any_number_value_wkt.PackFrom(number_value);
+  const std::string any_number_value_wkt_json = JsonStringFor(any_number_value_wkt);
+  google::protobuf::Value bool_scalar_value;
+  bool_scalar_value.set_bool_value(true);
+  const std::string bool_scalar_value_json = JsonStringFor(bool_scalar_value);
+  google::protobuf::Any any_bool_scalar_value_wkt;
+  any_bool_scalar_value_wkt.PackFrom(bool_scalar_value);
+  const std::string any_bool_scalar_value_wkt_json =
+      JsonStringFor(any_bool_scalar_value_wkt);
   google::protobuf::ListValue list_value;
   list_value.add_values()->set_null_value(google::protobuf::NULL_VALUE);
   list_value.add_values()->set_string_value("zig");
@@ -899,6 +925,22 @@ int main() {
             << any_struct_wkt_json.size() << "\n";
   std::cout << "any Value WKT json payload size: " << any_value_wkt_json.size()
             << "\n";
+  std::cout << "null value json payload size: " << null_value_json.size()
+            << "\n";
+  std::cout << "any NullValue WKT json payload size: "
+            << any_null_value_wkt_json.size() << "\n";
+  std::cout << "string scalar value json payload size: "
+            << string_scalar_value_json.size() << "\n";
+  std::cout << "any StringScalarValue WKT json payload size: "
+            << any_string_scalar_value_wkt_json.size() << "\n";
+  std::cout << "number value json payload size: " << number_value_json.size()
+            << "\n";
+  std::cout << "any NumberValue WKT json payload size: "
+            << any_number_value_wkt_json.size() << "\n";
+  std::cout << "bool scalar value json payload size: "
+            << bool_scalar_value_json.size() << "\n";
+  std::cout << "any BoolScalarValue WKT json payload size: "
+            << any_bool_scalar_value_wkt_json.size() << "\n";
   std::cout << "any StringValue WKT json payload size: "
             << any_string_value_wkt_json.size() << "\n";
   std::cout << "any BytesValue WKT json payload size: "
@@ -1614,6 +1656,15 @@ int main() {
                       any_struct_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Value WKT", any_value_wkt, any_value_wkt_json,
                       kIterations);
+  RunWktJsonBenchPair("Any NullValue WKT", any_null_value_wkt,
+                      any_null_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any StringScalarValue WKT",
+                      any_string_scalar_value_wkt,
+                      any_string_scalar_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any NumberValue WKT", any_number_value_wkt,
+                      any_number_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any BoolScalarValue WKT", any_bool_scalar_value_wkt,
+                      any_bool_scalar_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any StringValue WKT", any_string_value_wkt,
                       any_string_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BytesValue WKT", any_bytes_value_wkt,
@@ -1647,6 +1698,14 @@ int main() {
   RunWktJsonBenchPair("Empty", empty_value, empty_json, kIterations);
   RunWktJsonBenchPair("Struct", struct_value, struct_json, kIterations);
   RunWktJsonBenchPair("Value", value_value, value_json, kIterations);
+  RunWktJsonBenchPair("NullValue", null_value_value, null_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("StringScalarValue", string_scalar_value,
+                      string_scalar_value_json, kIterations);
+  RunWktJsonBenchPair("NumberValue", number_value, number_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("BoolScalarValue", bool_scalar_value,
+                      bool_scalar_value_json, kIterations);
   RunWktJsonBenchPair("ListValue", list_value, list_value_json, kIterations);
   RunWktJsonBenchPair("DoubleValue", double_value, double_value_json,
                       kIterations);
