@@ -24,6 +24,9 @@ const AnyFieldMaskWktJson =
 const AnyTimestampWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"2020-01-01T00:00:00.123Z"}
 ;
+const AnyPreEpochTimestampWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"1969-12-31T23:59:59Z"}
+;
 const AnyEmptyWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Empty"}
 ;
@@ -82,6 +85,7 @@ const NestedAnyWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Any","value":{"@type":"type.googleapis.com/google.protobuf.StringValue","value":"hello"}}
 ;
 const TimestampJson = "\"2020-01-01T00:00:00.123Z\"";
+const PreEpochTimestampJson = "\"1969-12-31T23:59:59Z\"";
 const DurationJson = "\"1.500s\"";
 const NegativeDurationJson = "\"-1.500s\"";
 const FieldMaskJson = "\"fooBar,nested.value\"";
@@ -2452,6 +2456,15 @@ pub fn main() !void {
     const any_timestamp_wkt_json = try any_timestamp_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_timestamp_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_timestamp_wkt_json, AnyTimestampWktJson));
+    const pre_epoch_timestamp_value = pbz.Timestamp{ .seconds = -1 };
+    const pre_epoch_timestamp_json = try pre_epoch_timestamp_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(pre_epoch_timestamp_json);
+    std.debug.assert(std.mem.eql(u8, pre_epoch_timestamp_json, PreEpochTimestampJson));
+    var any_pre_epoch_timestamp_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Timestamp", pre_epoch_timestamp_value);
+    defer any_pre_epoch_timestamp_wkt.deinit(allocator);
+    const any_pre_epoch_timestamp_wkt_json = try any_pre_epoch_timestamp_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_pre_epoch_timestamp_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_pre_epoch_timestamp_wkt_json, AnyPreEpochTimestampWktJson));
     var empty_json_out: std.Io.Writer.Allocating = .init(allocator);
     defer empty_json_out.deinit();
     try pbz.Empty.jsonStringify(&empty_json_out.writer);
@@ -2653,9 +2666,9 @@ pub fn main() !void {
     // inventory split into thematic groups so adding future WKT edge-case rows
     // does not silently push any single diagnostic over the compiler-enforced
     // limit again.
-    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} negative_duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, negative_duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len });
+    std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} pre_epoch_timestamp_json={d} duration_json={d} negative_duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, pre_epoch_timestamp_json.len, duration_json.len, negative_duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len });
     std.debug.print("payload sizes direct WKT wrappers: double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} double_value_neg_inf_json={d} float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} float_value_neg_inf_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} text={d}\n", .{ double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, double_value_neg_inf_json.len, float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, float_value_neg_inf_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, generated_text.len });
-    std.debug.print("payload sizes Any WKT wrappers: any_wkt_json={d} any_negative_duration_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_double_value_wkt_json={d} any_double_value_nan_wkt_json={d} any_double_value_inf_wkt_json={d} any_double_value_neg_inf_wkt_json={d} any_float_value_wkt_json={d} any_float_value_nan_wkt_json={d} any_float_value_inf_wkt_json={d} any_float_value_neg_inf_wkt_json={d} any_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_int32_value_wkt_json={d} any_uint32_value_wkt_json={d} any_bool_value_wkt_json={d} any_string_value_wkt_json={d} any_bytes_value_wkt_json={d} nested_any_wkt_json={d}\n", .{ any_wkt_json.len, any_negative_duration_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_double_value_wkt_json.len, any_double_value_nan_wkt_json.len, any_double_value_inf_wkt_json.len, any_double_value_neg_inf_wkt_json.len, any_float_value_wkt_json.len, any_float_value_nan_wkt_json.len, any_float_value_inf_wkt_json.len, any_float_value_neg_inf_wkt_json.len, any_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_int32_value_wkt_json.len, any_uint32_value_wkt_json.len, any_bool_value_wkt_json.len, any_string_value_wkt_json.len, any_bytes_value_wkt_json.len, nested_any_wkt_json.len });
+    std.debug.print("payload sizes Any WKT wrappers: any_wkt_json={d} any_negative_duration_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_pre_epoch_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_double_value_wkt_json={d} any_double_value_nan_wkt_json={d} any_double_value_inf_wkt_json={d} any_double_value_neg_inf_wkt_json={d} any_float_value_wkt_json={d} any_float_value_nan_wkt_json={d} any_float_value_inf_wkt_json={d} any_float_value_neg_inf_wkt_json={d} any_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_int32_value_wkt_json={d} any_uint32_value_wkt_json={d} any_bool_value_wkt_json={d} any_string_value_wkt_json={d} any_bytes_value_wkt_json={d} nested_any_wkt_json={d}\n", .{ any_wkt_json.len, any_negative_duration_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_pre_epoch_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_double_value_wkt_json.len, any_double_value_nan_wkt_json.len, any_double_value_inf_wkt_json.len, any_double_value_neg_inf_wkt_json.len, any_float_value_wkt_json.len, any_float_value_nan_wkt_json.len, any_float_value_inf_wkt_json.len, any_float_value_neg_inf_wkt_json.len, any_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_int32_value_wkt_json.len, any_uint32_value_wkt_json.len, any_bool_value_wkt_json.len, any_string_value_wkt_json.len, any_bytes_value_wkt_json.len, nested_any_wkt_json.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2849,6 +2862,8 @@ pub fn main() !void {
         try runTimed(io, "pbz Any FieldMask WKT JSON parse", iters.json, any_field_mask_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_field_mask_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any Timestamp WKT JSON stringify", iters.json, any_timestamp_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_timestamp_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any Timestamp WKT JSON parse", iters.json, any_timestamp_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_timestamp_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any PreEpoch Timestamp WKT JSON stringify", iters.json, any_pre_epoch_timestamp_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_pre_epoch_timestamp_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any PreEpoch Timestamp WKT JSON parse", iters.json, any_pre_epoch_timestamp_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_pre_epoch_timestamp_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any Empty WKT JSON stringify", iters.json, any_empty_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_empty_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any Empty WKT JSON parse", iters.json, any_empty_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_empty_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any Struct WKT JSON stringify", iters.json, any_struct_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_struct_wkt }, anyWktJsonStringify),
@@ -2895,6 +2910,8 @@ pub fn main() !void {
         try runTimed(io, "pbz FieldMask JSON parse", iters.json, field_mask_json.len, FieldMaskJsonParseCtx{ .allocator = allocator, .json = field_mask_json }, fieldMaskJsonParse),
         try runTimed(io, "pbz Timestamp JSON stringify", iters.json, timestamp_json.len, TimestampJsonStringifyCtx{ .allocator = allocator, .timestamp = timestamp_value }, timestampJsonStringify),
         try runTimed(io, "pbz Timestamp JSON parse", iters.json, timestamp_json.len, TimestampJsonParseCtx{ .json = timestamp_json }, timestampJsonParse),
+        try runTimed(io, "pbz PreEpoch Timestamp JSON stringify", iters.json, pre_epoch_timestamp_json.len, TimestampJsonStringifyCtx{ .allocator = allocator, .timestamp = pre_epoch_timestamp_value }, timestampJsonStringify),
+        try runTimed(io, "pbz PreEpoch Timestamp JSON parse", iters.json, pre_epoch_timestamp_json.len, TimestampJsonParseCtx{ .json = pre_epoch_timestamp_json }, timestampJsonParse),
         try runTimed(io, "pbz Empty JSON stringify", iters.json, empty_json.len, EmptyJsonStringifyCtx{ .allocator = allocator }, emptyJsonStringify),
         try runTimed(io, "pbz Empty JSON parse", iters.json, empty_json.len, EmptyJsonParseCtx{ .allocator = allocator, .json = empty_json }, emptyJsonParse),
         try runTimed(io, "pbz Struct JSON stringify", iters.json, struct_json.len, WktJsonStringifyCtx(pbz.Struct){ .allocator = allocator, .value = struct_value }, wktJsonStringify),

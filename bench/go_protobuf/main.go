@@ -410,6 +410,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	preEpochTimestamp := &timestamppb.Timestamp{Seconds: -1}
+	preEpochTimestampJSONBytes, err := protojson.Marshal(preEpochTimestamp)
+	if err != nil {
+		panic(err)
+	}
+	anyPreEpochTimestampWKT, err := anypb.New(preEpochTimestamp)
+	if err != nil {
+		panic(err)
+	}
+	anyPreEpochTimestampWKTJSONBytes, err := protojson.Marshal(anyPreEpochTimestampWKT)
+	if err != nil {
+		panic(err)
+	}
 	emptyValue := &emptypb.Empty{}
 	emptyJSONBytes, err := protojson.Marshal(emptyValue)
 	if err != nil {
@@ -760,6 +773,8 @@ func main() {
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
+	fmt.Printf("pre-epoch timestamp json payload size: %d\n", len(preEpochTimestampJSONBytes))
+	fmt.Printf("any PreEpoch Timestamp WKT json payload size: %d\n", len(anyPreEpochTimestampWKTJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("negative duration json payload size: %d\n", len(negativeDurationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
@@ -1044,6 +1059,7 @@ func main() {
 	runProtoJSONPair("Any NegativeDuration WKT", iterations, anyNegativeDurationWKTJSONBytes, anyNegativeDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FieldMask WKT", iterations, anyFieldMaskWKTJSONBytes, anyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Timestamp WKT", iterations, anyTimestampWKTJSONBytes, anyTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any PreEpoch Timestamp WKT", iterations, anyPreEpochTimestampWKTJSONBytes, anyPreEpochTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Empty WKT", iterations, anyEmptyWKTJSONBytes, anyEmptyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Struct WKT", iterations, anyStructWKTJSONBytes, anyStructWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Value WKT", iterations, anyValueWKTJSONBytes, anyValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1054,6 +1070,7 @@ func main() {
 	runProtoJSONPair("NegativeDuration", iterations, negativeDurationJSONBytes, negativeDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FieldMask", iterations, fieldMaskJSONBytes, fieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Timestamp", iterations, timestampJSONBytes, timestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("PreEpoch Timestamp", iterations, preEpochTimestampJSONBytes, preEpochTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Empty", iterations, emptyJSONBytes, emptyValue, func() *emptypb.Empty { return &emptypb.Empty{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Struct", iterations, structJSONBytes, structValue, func() *structpb.Struct { return &structpb.Struct{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Value", iterations, valueJSONBytes, valueValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)

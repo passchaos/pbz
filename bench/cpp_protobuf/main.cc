@@ -456,6 +456,14 @@ int main() {
   google::protobuf::Any any_timestamp_wkt;
   any_timestamp_wkt.PackFrom(timestamp);
   const std::string any_timestamp_wkt_json = JsonStringFor(any_timestamp_wkt);
+  google::protobuf::Timestamp pre_epoch_timestamp;
+  pre_epoch_timestamp.set_seconds(-1);
+  const std::string pre_epoch_timestamp_json =
+      JsonStringFor(pre_epoch_timestamp);
+  google::protobuf::Any any_pre_epoch_timestamp_wkt;
+  any_pre_epoch_timestamp_wkt.PackFrom(pre_epoch_timestamp);
+  const std::string any_pre_epoch_timestamp_wkt_json =
+      JsonStringFor(any_pre_epoch_timestamp_wkt);
   google::protobuf::Empty empty_value;
   const std::string empty_json = JsonStringFor(empty_value);
   google::protobuf::Any any_empty_wkt;
@@ -653,6 +661,10 @@ int main() {
             << "\n";
   std::cout << "any Timestamp WKT json payload size: "
             << any_timestamp_wkt_json.size() << "\n";
+  std::cout << "pre-epoch timestamp json payload size: "
+            << pre_epoch_timestamp_json.size() << "\n";
+  std::cout << "any PreEpoch Timestamp WKT json payload size: "
+            << any_pre_epoch_timestamp_wkt_json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
   std::cout << "negative duration json payload size: "
             << negative_duration_json.size() << "\n";
@@ -1288,6 +1300,9 @@ int main() {
                       any_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
                       any_timestamp_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any PreEpoch Timestamp WKT",
+                      any_pre_epoch_timestamp_wkt,
+                      any_pre_epoch_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Empty WKT", any_empty_wkt, any_empty_wkt_json,
                       kIterations);
   RunWktJsonBenchPair("Any Struct WKT", any_struct_wkt,
@@ -1306,6 +1321,8 @@ int main() {
                       negative_duration_json, kIterations);
   RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
+  RunWktJsonBenchPair("PreEpoch Timestamp", pre_epoch_timestamp,
+                      pre_epoch_timestamp_json, kIterations);
 
   RunWktJsonBenchPair("Empty", empty_value, empty_json, kIterations);
   RunWktJsonBenchPair("Struct", struct_value, struct_json, kIterations);
