@@ -484,6 +484,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	doubleValueInf := wrapperspb.Double(math.Inf(1))
+	doubleValueInfJSONBytes, err := protojson.Marshal(doubleValueInf)
+	if err != nil {
+		panic(err)
+	}
+	anyDoubleValueInfWKT, err := anypb.New(doubleValueInf)
+	if err != nil {
+		panic(err)
+	}
+	anyDoubleValueInfWKTJSONBytes, err := protojson.Marshal(anyDoubleValueInfWKT)
+	if err != nil {
+		panic(err)
+	}
 	floatValue := wrapperspb.Float(1.5)
 	floatValueJSONBytes, err := protojson.Marshal(floatValue)
 	if err != nil {
@@ -507,6 +520,19 @@ func main() {
 		panic(err)
 	}
 	anyFloatValueNaNWKTJSONBytes, err := protojson.Marshal(anyFloatValueNaNWKT)
+	if err != nil {
+		panic(err)
+	}
+	floatValueInf := wrapperspb.Float(float32(math.Inf(1)))
+	floatValueInfJSONBytes, err := protojson.Marshal(floatValueInf)
+	if err != nil {
+		panic(err)
+	}
+	anyFloatValueInfWKT, err := anypb.New(floatValueInf)
+	if err != nil {
+		panic(err)
+	}
+	anyFloatValueInfWKTJSONBytes, err := protojson.Marshal(anyFloatValueInfWKT)
 	if err != nil {
 		panic(err)
 	}
@@ -712,10 +738,14 @@ func main() {
 	fmt.Printf("any DoubleValue WKT json payload size: %d\n", len(anyDoubleValueWKTJSONBytes))
 	fmt.Printf("double value NaN json payload size: %d\n", len(doubleValueNaNJSONBytes))
 	fmt.Printf("any DoubleValue NaN WKT json payload size: %d\n", len(anyDoubleValueNaNWKTJSONBytes))
+	fmt.Printf("double value Infinity json payload size: %d\n", len(doubleValueInfJSONBytes))
+	fmt.Printf("any DoubleValue Infinity WKT json payload size: %d\n", len(anyDoubleValueInfWKTJSONBytes))
 	fmt.Printf("float value json payload size: %d\n", len(floatValueJSONBytes))
 	fmt.Printf("any FloatValue WKT json payload size: %d\n", len(anyFloatValueWKTJSONBytes))
 	fmt.Printf("float value NaN json payload size: %d\n", len(floatValueNaNJSONBytes))
 	fmt.Printf("any FloatValue NaN WKT json payload size: %d\n", len(anyFloatValueNaNWKTJSONBytes))
+	fmt.Printf("float value Infinity json payload size: %d\n", len(floatValueInfJSONBytes))
+	fmt.Printf("any FloatValue Infinity WKT json payload size: %d\n", len(anyFloatValueInfWKTJSONBytes))
 	fmt.Printf("int64 value json payload size: %d\n", len(int64ValueJSONBytes))
 	fmt.Printf("any Int64Value WKT json payload size: %d\n", len(anyInt64ValueWKTJSONBytes))
 	fmt.Printf("uint64 value json payload size: %d\n", len(uint64ValueJSONBytes))
@@ -985,10 +1015,14 @@ func main() {
 	runProtoJSONPair("Any DoubleValue WKT", iterations, anyDoubleValueWKTJSONBytes, anyDoubleValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("DoubleValue NaN", iterations, doubleValueNaNJSONBytes, doubleValueNaN, func() *wrapperspb.DoubleValue { return &wrapperspb.DoubleValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any DoubleValue NaN WKT", iterations, anyDoubleValueNaNWKTJSONBytes, anyDoubleValueNaNWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("DoubleValue Infinity", iterations, doubleValueInfJSONBytes, doubleValueInf, func() *wrapperspb.DoubleValue { return &wrapperspb.DoubleValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any DoubleValue Infinity WKT", iterations, anyDoubleValueInfWKTJSONBytes, anyDoubleValueInfWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FloatValue", iterations, floatValueJSONBytes, floatValue, func() *wrapperspb.FloatValue { return &wrapperspb.FloatValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FloatValue WKT", iterations, anyFloatValueWKTJSONBytes, anyFloatValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FloatValue NaN", iterations, floatValueNaNJSONBytes, floatValueNaN, func() *wrapperspb.FloatValue { return &wrapperspb.FloatValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FloatValue NaN WKT", iterations, anyFloatValueNaNWKTJSONBytes, anyFloatValueNaNWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("FloatValue Infinity", iterations, floatValueInfJSONBytes, floatValueInf, func() *wrapperspb.FloatValue { return &wrapperspb.FloatValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any FloatValue Infinity WKT", iterations, anyFloatValueInfWKTJSONBytes, anyFloatValueInfWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Int64Value", iterations, int64ValueJSONBytes, int64Value, func() *wrapperspb.Int64Value { return &wrapperspb.Int64Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Int64Value WKT", iterations, anyInt64ValueWKTJSONBytes, anyInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("UInt64Value", iterations, uint64ValueJSONBytes, uint64Value, func() *wrapperspb.UInt64Value { return &wrapperspb.UInt64Value{} }, jsonUnmarshalOptions)

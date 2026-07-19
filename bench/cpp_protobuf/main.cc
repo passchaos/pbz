@@ -492,6 +492,13 @@ int main() {
   any_double_value_nan_wkt.PackFrom(double_value_nan);
   const std::string any_double_value_nan_wkt_json =
       JsonStringFor(any_double_value_nan_wkt);
+  google::protobuf::DoubleValue double_value_inf;
+  double_value_inf.set_value(std::numeric_limits<double>::infinity());
+  const std::string double_value_inf_json = JsonStringFor(double_value_inf);
+  google::protobuf::Any any_double_value_inf_wkt;
+  any_double_value_inf_wkt.PackFrom(double_value_inf);
+  const std::string any_double_value_inf_wkt_json =
+      JsonStringFor(any_double_value_inf_wkt);
   google::protobuf::FloatValue float_value;
   float_value.set_value(1.5f);
   const std::string float_value_json = JsonStringFor(float_value);
@@ -506,6 +513,13 @@ int main() {
   any_float_value_nan_wkt.PackFrom(float_value_nan);
   const std::string any_float_value_nan_wkt_json =
       JsonStringFor(any_float_value_nan_wkt);
+  google::protobuf::FloatValue float_value_inf;
+  float_value_inf.set_value(std::numeric_limits<float>::infinity());
+  const std::string float_value_inf_json = JsonStringFor(float_value_inf);
+  google::protobuf::Any any_float_value_inf_wkt;
+  any_float_value_inf_wkt.PackFrom(float_value_inf);
+  const std::string any_float_value_inf_wkt_json =
+      JsonStringFor(any_float_value_inf_wkt);
   google::protobuf::Int64Value int64_value;
   int64_value.set_value(9007199254740993LL);
   const std::string int64_value_json = JsonStringFor(int64_value);
@@ -645,6 +659,10 @@ int main() {
             << double_value_nan_json.size() << "\n";
   std::cout << "any DoubleValue NaN WKT json payload size: "
             << any_double_value_nan_wkt_json.size() << "\n";
+  std::cout << "double value Infinity json payload size: "
+            << double_value_inf_json.size() << "\n";
+  std::cout << "any DoubleValue Infinity WKT json payload size: "
+            << any_double_value_inf_wkt_json.size() << "\n";
   std::cout << "float value json payload size: " << float_value_json.size()
             << "\n";
   std::cout << "any FloatValue WKT json payload size: "
@@ -653,6 +671,10 @@ int main() {
             << float_value_nan_json.size() << "\n";
   std::cout << "any FloatValue NaN WKT json payload size: "
             << any_float_value_nan_wkt_json.size() << "\n";
+  std::cout << "float value Infinity json payload size: "
+            << float_value_inf_json.size() << "\n";
+  std::cout << "any FloatValue Infinity WKT json payload size: "
+            << any_float_value_inf_wkt_json.size() << "\n";
   std::cout << "int64 value json payload size: " << int64_value_json.size()
             << "\n";
   std::cout << "any Int64Value WKT json payload size: "
@@ -1257,6 +1279,11 @@ int main() {
                       double_value_nan_json, kIterations);
   RunWktJsonBenchPair("Any DoubleValue NaN WKT", any_double_value_nan_wkt,
                       any_double_value_nan_wkt_json, kIterations);
+  RunWktJsonBenchPair("DoubleValue Infinity", double_value_inf,
+                      double_value_inf_json, kIterations);
+  RunWktJsonBenchPair("Any DoubleValue Infinity WKT",
+                      any_double_value_inf_wkt, any_double_value_inf_wkt_json,
+                      kIterations);
   RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue WKT", any_float_value_wkt,
                       any_float_value_wkt_json, kIterations);
@@ -1264,6 +1291,10 @@ int main() {
                       float_value_nan_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue NaN WKT", any_float_value_nan_wkt,
                       any_float_value_nan_wkt_json, kIterations);
+  RunWktJsonBenchPair("FloatValue Infinity", float_value_inf,
+                      float_value_inf_json, kIterations);
+  RunWktJsonBenchPair("Any FloatValue Infinity WKT", any_float_value_inf_wkt,
+                      any_float_value_inf_wkt_json, kIterations);
   RunWktJsonBenchPair("Int64Value", int64_value, int64_value_json, kIterations);
   RunWktJsonBenchPair("Any Int64Value WKT", any_int64_value_wkt,
                       any_int64_value_wkt_json, kIterations);
