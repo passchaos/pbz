@@ -42,7 +42,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - proto3 optional presence plus oneof encode/decode
 - complex nested message / oneof / map-message encode/decode, deterministic encode, plus JSON/TextFormat stringify/parse
 - `google.protobuf.Any` with embedded well-known-type JSON values, including
-  `Duration`, camel-case `FieldMask`, instant `Timestamp`, canonical `Empty`, object-subtree `Struct`, object-valued `Value`, 64-bit `Int64Value`, floating `DoubleValue`, `FloatValue`, unsigned `UInt64Value`, boolean `BoolValue`, scalar-wrapper `StringValue`, base64 `BytesValue`, and recursive nested `Any`, stringify/parse
+  `Duration`, camel-case `FieldMask`, instant `Timestamp`, canonical `Empty`, object-subtree `Struct`, object-valued `Value`, 64-bit `Int64Value`, floating `DoubleValue`, `FloatValue`, `Int32Value`, unsigned `UInt64Value`, boolean `BoolValue`, scalar-wrapper `StringValue`, base64 `BytesValue`, and recursive nested `Any`, stringify/parse
 - direct `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
 - direct `google.protobuf.Timestamp` JSON stringify/parse

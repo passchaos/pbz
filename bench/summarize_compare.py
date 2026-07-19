@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 114
+EXPECTED_WORKLOAD_COUNT = 116
 
 
 @dataclass(frozen=True)
@@ -102,6 +102,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any FloatValue WKT", 70, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any Int64Value WKT", 85, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any UInt64Value WKT", 86, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
+    ("Any Int32Value WKT", 72, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any BoolValue WKT", 70, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any StringValue WKT", 75, (90.0, 500.0, 450.0), (120.0, 700.0, 650.0)),
     ("Any BytesValue WKT", 73, (90.0, 500.0, 450.0), (140.0, 750.0, 700.0)),
@@ -428,6 +429,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any FloatValue WKT"),
     *json_workload_pair("Any Int64Value WKT"),
     *json_workload_pair("Any UInt64Value WKT"),
+    *json_workload_pair("Any Int32Value WKT"),
     *json_workload_pair("Any BoolValue WKT"),
     *json_workload_pair("Any StringValue WKT"),
     *json_workload_pair("Any BytesValue WKT"),
