@@ -583,8 +583,24 @@ int main() {
   any_list_kind_value_wkt.PackFrom(list_kind_value);
   const std::string any_list_kind_value_wkt_json =
       JsonStringFor(any_list_kind_value_wkt);
+  google::protobuf::Value empty_struct_kind_value;
+  empty_struct_kind_value.mutable_struct_value()->CopyFrom(empty_struct_value);
+  const std::string empty_struct_kind_value_json =
+      JsonStringFor(empty_struct_kind_value);
+  google::protobuf::Any any_empty_struct_kind_value_wkt;
+  any_empty_struct_kind_value_wkt.PackFrom(empty_struct_kind_value);
+  const std::string any_empty_struct_kind_value_wkt_json =
+      JsonStringFor(any_empty_struct_kind_value_wkt);
   google::protobuf::ListValue empty_list_value;
   const std::string empty_list_value_json = JsonStringFor(empty_list_value);
+  google::protobuf::Value empty_list_kind_value;
+  empty_list_kind_value.mutable_list_value()->CopyFrom(empty_list_value);
+  const std::string empty_list_kind_value_json =
+      JsonStringFor(empty_list_kind_value);
+  google::protobuf::Any any_empty_list_kind_value_wkt;
+  any_empty_list_kind_value_wkt.PackFrom(empty_list_kind_value);
+  const std::string any_empty_list_kind_value_wkt_json =
+      JsonStringFor(any_empty_list_kind_value_wkt);
   google::protobuf::DoubleValue double_value;
   double_value.set_value(3.25);
   const std::string double_value_json = JsonStringFor(double_value);
@@ -966,6 +982,14 @@ int main() {
             << list_kind_value_json.size() << "\n";
   std::cout << "any ListKindValue WKT json payload size: "
             << any_list_kind_value_wkt_json.size() << "\n";
+  std::cout << "empty struct-kind value json payload size: "
+            << empty_struct_kind_value_json.size() << "\n";
+  std::cout << "any EmptyStructKindValue WKT json payload size: "
+            << any_empty_struct_kind_value_wkt_json.size() << "\n";
+  std::cout << "empty list-kind value json payload size: "
+            << empty_list_kind_value_json.size() << "\n";
+  std::cout << "any EmptyListKindValue WKT json payload size: "
+            << any_empty_list_kind_value_wkt_json.size() << "\n";
   std::cout << "any StringValue WKT json payload size: "
             << any_string_value_wkt_json.size() << "\n";
   std::cout << "any BytesValue WKT json payload size: "
@@ -1694,6 +1718,12 @@ int main() {
                       any_bool_scalar_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any ListKindValue WKT", any_list_kind_value_wkt,
                       any_list_kind_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any EmptyStructKindValue WKT",
+                      any_empty_struct_kind_value_wkt,
+                      any_empty_struct_kind_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any EmptyListKindValue WKT",
+                      any_empty_list_kind_value_wkt,
+                      any_empty_list_kind_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any StringValue WKT", any_string_value_wkt,
                       any_string_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BytesValue WKT", any_bytes_value_wkt,
@@ -1739,6 +1769,10 @@ int main() {
                       bool_scalar_value_json, kIterations);
   RunWktJsonBenchPair("ListKindValue", list_kind_value,
                       list_kind_value_json, kIterations);
+  RunWktJsonBenchPair("EmptyStructKindValue", empty_struct_kind_value,
+                      empty_struct_kind_value_json, kIterations);
+  RunWktJsonBenchPair("EmptyListKindValue", empty_list_kind_value,
+                      empty_list_kind_value_json, kIterations);
   RunWktJsonBenchPair("ListValue", list_value, list_value_json, kIterations);
   RunWktJsonBenchPair("EmptyListValue", empty_list_value,
                       empty_list_value_json, kIterations);
