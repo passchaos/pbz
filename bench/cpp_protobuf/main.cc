@@ -515,6 +515,10 @@ int main() {
   google::protobuf::UInt32Value uint32_value;
   uint32_value.set_value(12345);
   const std::string uint32_value_json = JsonStringFor(uint32_value);
+  google::protobuf::Any any_uint32_value_wkt;
+  any_uint32_value_wkt.PackFrom(uint32_value);
+  const std::string any_uint32_value_wkt_json =
+      JsonStringFor(any_uint32_value_wkt);
   google::protobuf::BoolValue bool_value;
   bool_value.set_value(true);
   const std::string bool_value_json = JsonStringFor(bool_value);
@@ -640,6 +644,8 @@ int main() {
             << any_int32_value_wkt_json.size() << "\n";
   std::cout << "uint32 value json payload size: " << uint32_value_json.size()
             << "\n";
+  std::cout << "any UInt32Value WKT json payload size: "
+            << any_uint32_value_wkt_json.size() << "\n";
   std::cout << "bool value json payload size: " << bool_value_json.size()
             << "\n";
   std::cout << "any BoolValue WKT json payload size: "
@@ -1239,6 +1245,8 @@ int main() {
                       any_int32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("UInt32Value", uint32_value, uint32_value_json,
                       kIterations);
+  RunWktJsonBenchPair("Any UInt32Value WKT", any_uint32_value_wkt,
+                      any_uint32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("BoolValue", bool_value, bool_value_json, kIterations);
   RunWktJsonBenchPair("Any BoolValue WKT", any_bool_value_wkt,
                       any_bool_value_wkt_json, kIterations);
