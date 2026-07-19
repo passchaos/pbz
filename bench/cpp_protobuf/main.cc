@@ -617,6 +617,13 @@ int main() {
   any_uint64_value_wkt.PackFrom(uint64_value);
   const std::string any_uint64_value_wkt_json =
       JsonStringFor(any_uint64_value_wkt);
+  google::protobuf::UInt64Value max_uint64_value;
+  max_uint64_value.set_value(std::numeric_limits<uint64_t>::max());
+  const std::string max_uint64_value_json = JsonStringFor(max_uint64_value);
+  google::protobuf::Any any_max_uint64_value_wkt;
+  any_max_uint64_value_wkt.PackFrom(max_uint64_value);
+  const std::string any_max_uint64_value_wkt_json =
+      JsonStringFor(any_max_uint64_value_wkt);
   google::protobuf::Int32Value int32_value;
   int32_value.set_value(12345);
   const std::string int32_value_json = JsonStringFor(int32_value);
@@ -639,6 +646,13 @@ int main() {
   any_uint32_value_wkt.PackFrom(uint32_value);
   const std::string any_uint32_value_wkt_json =
       JsonStringFor(any_uint32_value_wkt);
+  google::protobuf::UInt32Value max_uint32_value;
+  max_uint32_value.set_value(std::numeric_limits<uint32_t>::max());
+  const std::string max_uint32_value_json = JsonStringFor(max_uint32_value);
+  google::protobuf::Any any_max_uint32_value_wkt;
+  any_max_uint32_value_wkt.PackFrom(max_uint32_value);
+  const std::string any_max_uint32_value_wkt_json =
+      JsonStringFor(any_max_uint32_value_wkt);
   google::protobuf::BoolValue bool_value;
   bool_value.set_value(true);
   const std::string bool_value_json = JsonStringFor(bool_value);
@@ -818,6 +832,10 @@ int main() {
             << "\n";
   std::cout << "any UInt64Value WKT json payload size: "
             << any_uint64_value_wkt_json.size() << "\n";
+  std::cout << "max uint64 value json payload size: "
+            << max_uint64_value_json.size() << "\n";
+  std::cout << "any MaxUInt64Value WKT json payload size: "
+            << any_max_uint64_value_wkt_json.size() << "\n";
   std::cout << "int32 value json payload size: " << int32_value_json.size()
             << "\n";
   std::cout << "any Int32Value WKT json payload size: "
@@ -830,6 +848,10 @@ int main() {
             << "\n";
   std::cout << "any UInt32Value WKT json payload size: "
             << any_uint32_value_wkt_json.size() << "\n";
+  std::cout << "max uint32 value json payload size: "
+            << max_uint32_value_json.size() << "\n";
+  std::cout << "any MaxUInt32Value WKT json payload size: "
+            << any_max_uint32_value_wkt_json.size() << "\n";
   std::cout << "bool value json payload size: " << bool_value_json.size()
             << "\n";
   std::cout << "any BoolValue WKT json payload size: "
@@ -1491,6 +1513,10 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any UInt64Value WKT", any_uint64_value_wkt,
                       any_uint64_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("MaxUInt64Value", max_uint64_value,
+                      max_uint64_value_json, kIterations);
+  RunWktJsonBenchPair("Any MaxUInt64Value WKT", any_max_uint64_value_wkt,
+                      any_max_uint64_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Int32Value", int32_value, int32_value_json, kIterations);
   RunWktJsonBenchPair("Any Int32Value WKT", any_int32_value_wkt,
                       any_int32_value_wkt_json, kIterations);
@@ -1503,6 +1529,10 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any UInt32Value WKT", any_uint32_value_wkt,
                       any_uint32_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("MaxUInt32Value", max_uint32_value,
+                      max_uint32_value_json, kIterations);
+  RunWktJsonBenchPair("Any MaxUInt32Value WKT", any_max_uint32_value_wkt,
+                      any_max_uint32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("BoolValue", bool_value, bool_value_json, kIterations);
   RunWktJsonBenchPair("Any BoolValue WKT", any_bool_value_wkt,
                       any_bool_value_wkt_json, kIterations);
