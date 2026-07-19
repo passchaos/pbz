@@ -449,6 +449,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	emptyFieldMask := &fieldmaskpb.FieldMask{}
+	emptyFieldMaskJSONBytes, err := protojson.Marshal(emptyFieldMask)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyFieldMaskWKT, err := anypb.New(emptyFieldMask)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyFieldMaskWKTJSONBytes, err := protojson.Marshal(anyEmptyFieldMaskWKT)
+	if err != nil {
+		panic(err)
+	}
 	timestamp := &timestamppb.Timestamp{Seconds: 1_577_836_800, Nanos: 123_000_000}
 	timestampJSONBytes, err := protojson.Marshal(timestamp)
 	if err != nil {
@@ -1117,6 +1130,8 @@ func main() {
 	fmt.Printf("any MinDuration WKT json payload size: %d\n", len(anyMinDurationWKTJSONBytes))
 	fmt.Printf("any ZeroDuration WKT json payload size: %d\n", len(anyZeroDurationWKTJSONBytes))
 	fmt.Printf("any FieldMask WKT json payload size: %d\n", len(anyFieldMaskWKTJSONBytes))
+	fmt.Printf("empty field mask json payload size: %d\n", len(emptyFieldMaskJSONBytes))
+	fmt.Printf("any EmptyFieldMask WKT json payload size: %d\n", len(anyEmptyFieldMaskWKTJSONBytes))
 	fmt.Printf("empty json payload size: %d\n", len(emptyJSONBytes))
 	fmt.Printf("any Empty WKT json payload size: %d\n", len(anyEmptyWKTJSONBytes))
 	fmt.Printf("struct json payload size: %d\n", len(structJSONBytes))
@@ -1437,6 +1452,7 @@ func main() {
 	runProtoJSONPair("Any MinDuration WKT", iterations, anyMinDurationWKTJSONBytes, anyMinDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any ZeroDuration WKT", iterations, anyZeroDurationWKTJSONBytes, anyZeroDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FieldMask WKT", iterations, anyFieldMaskWKTJSONBytes, anyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any EmptyFieldMask WKT", iterations, anyEmptyFieldMaskWKTJSONBytes, anyEmptyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Timestamp WKT", iterations, anyTimestampWKTJSONBytes, anyTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any PreEpoch Timestamp WKT", iterations, anyPreEpochTimestampWKTJSONBytes, anyPreEpochTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Max Timestamp WKT", iterations, anyMaxTimestampWKTJSONBytes, anyMaxTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1454,6 +1470,7 @@ func main() {
 	runProtoJSONPair("MinDuration", iterations, minDurationJSONBytes, minDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("ZeroDuration", iterations, zeroDurationJSONBytes, zeroDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FieldMask", iterations, fieldMaskJSONBytes, fieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("EmptyFieldMask", iterations, emptyFieldMaskJSONBytes, emptyFieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Timestamp", iterations, timestampJSONBytes, timestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("PreEpoch Timestamp", iterations, preEpochTimestampJSONBytes, preEpochTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Max Timestamp", iterations, maxTimestampJSONBytes, maxTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)

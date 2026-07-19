@@ -474,6 +474,13 @@ int main() {
   any_field_mask_wkt.PackFrom(field_mask);
   const std::string any_field_mask_wkt_json =
       JsonStringFor(any_field_mask_wkt);
+  google::protobuf::FieldMask empty_field_mask;
+  const std::string empty_field_mask_json = JsonStringFor(empty_field_mask);
+  google::protobuf::Any any_empty_field_mask_wkt;
+  any_empty_field_mask_wkt.PackFrom(empty_field_mask);
+  const std::string any_empty_field_mask_wkt_json =
+      JsonStringFor(any_empty_field_mask_wkt);
+      JsonStringFor(any_field_mask_wkt);
   google::protobuf::Timestamp timestamp;
   timestamp.set_seconds(1577836800);
   timestamp.set_nanos(123000000);
@@ -877,6 +884,10 @@ int main() {
             << any_zero_duration_wkt_json.size() << "\n";
   std::cout << "any FieldMask WKT json payload size: "
             << any_field_mask_wkt_json.size() << "\n";
+  std::cout << "empty field mask json payload size: "
+            << empty_field_mask_json.size() << "\n";
+  std::cout << "any EmptyFieldMask WKT json payload size: "
+            << any_empty_field_mask_wkt_json.size() << "\n";
   std::cout << "empty json payload size: " << empty_json.size() << "\n";
   std::cout << "any Empty WKT json payload size: "
             << any_empty_wkt_json.size() << "\n";
@@ -1586,6 +1597,8 @@ int main() {
                       any_zero_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any FieldMask WKT", any_field_mask_wkt,
                       any_field_mask_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any EmptyFieldMask WKT", any_empty_field_mask_wkt,
+                      any_empty_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
                       any_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any PreEpoch Timestamp WKT",
@@ -1621,6 +1634,8 @@ int main() {
   RunWktJsonBenchPair("ZeroDuration", zero_duration, zero_duration_json,
                       kIterations);
   RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
+  RunWktJsonBenchPair("EmptyFieldMask", empty_field_mask,
+                      empty_field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
   RunWktJsonBenchPair("PreEpoch Timestamp", pre_epoch_timestamp,
                       pre_epoch_timestamp_json, kIterations);

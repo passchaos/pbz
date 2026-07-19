@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 250
+EXPECTED_WORKLOAD_COUNT = 254
 
 
 @dataclass(frozen=True)
@@ -99,6 +99,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any MinDuration WKT", 81, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any ZeroDuration WKT", 69, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any FieldMask WKT", 87, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
+    ("Any EmptyFieldMask WKT", 68, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any Timestamp WKT", 92, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any PreEpoch Timestamp WKT", 88, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any Max Timestamp WKT", 98, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
@@ -148,6 +149,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("MinDuration", 16, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("ZeroDuration", 4, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("FieldMask", 21, (40.0, 230.0, 270.0), (45.0, 240.0, 280.0)),
+    ("EmptyFieldMask", 2, (30.0, 210.0, 240.0), (35.0, 220.0, 260.0)),
     ("Timestamp", 28, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
     ("PreEpoch Timestamp", 22, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
     ("Max Timestamp", 32, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
@@ -493,6 +495,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any MinDuration WKT"),
     *json_workload_pair("Any ZeroDuration WKT"),
     *json_workload_pair("Any FieldMask WKT"),
+    *json_workload_pair("Any EmptyFieldMask WKT"),
     *json_workload_pair("Any Timestamp WKT"),
     *json_workload_pair("Any PreEpoch Timestamp WKT"),
     *json_workload_pair("Any Max Timestamp WKT"),
@@ -542,6 +545,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("MinDuration"),
     *json_workload_pair("ZeroDuration"),
     *json_workload_pair("FieldMask"),
+    *json_workload_pair("EmptyFieldMask"),
     *json_workload_pair("Timestamp"),
     *json_workload_pair("PreEpoch Timestamp"),
     *json_workload_pair("Max Timestamp"),
