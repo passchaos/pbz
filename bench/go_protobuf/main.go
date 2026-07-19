@@ -384,6 +384,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fractionalNegativeDuration := &durationpb.Duration{Nanos: -250_000_000}
+	fractionalNegativeDurationJSONBytes, err := protojson.Marshal(fractionalNegativeDuration)
+	if err != nil {
+		panic(err)
+	}
+	anyFractionalNegativeDurationWKT, err := anypb.New(fractionalNegativeDuration)
+	if err != nil {
+		panic(err)
+	}
+	anyFractionalNegativeDurationWKTJSONBytes, err := protojson.Marshal(anyFractionalNegativeDurationWKT)
+	if err != nil {
+		panic(err)
+	}
 	fieldMask := &fieldmaskpb.FieldMask{Paths: []string{"foo_bar", "nested.value"}}
 	fieldMaskJSONBytes, err := protojson.Marshal(fieldMask)
 	if err != nil {
@@ -807,8 +820,10 @@ func main() {
 	fmt.Printf("any Min Timestamp WKT json payload size: %d\n", len(anyMinTimestampWKTJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
 	fmt.Printf("negative duration json payload size: %d\n", len(negativeDurationJSONBytes))
+	fmt.Printf("fractional negative duration json payload size: %d\n", len(fractionalNegativeDurationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
 	fmt.Printf("any NegativeDuration WKT json payload size: %d\n", len(anyNegativeDurationWKTJSONBytes))
+	fmt.Printf("any FractionalNegativeDuration WKT json payload size: %d\n", len(anyFractionalNegativeDurationWKTJSONBytes))
 	fmt.Printf("any FieldMask WKT json payload size: %d\n", len(anyFieldMaskWKTJSONBytes))
 	fmt.Printf("empty json payload size: %d\n", len(emptyJSONBytes))
 	fmt.Printf("any Empty WKT json payload size: %d\n", len(anyEmptyWKTJSONBytes))
@@ -1087,6 +1102,7 @@ func main() {
 
 	runProtoJSONPair("Any WKT", iterations, anyWKTJSONBytes, anyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NegativeDuration WKT", iterations, anyNegativeDurationWKTJSONBytes, anyNegativeDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any FractionalNegativeDuration WKT", iterations, anyFractionalNegativeDurationWKTJSONBytes, anyFractionalNegativeDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FieldMask WKT", iterations, anyFieldMaskWKTJSONBytes, anyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Timestamp WKT", iterations, anyTimestampWKTJSONBytes, anyTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any PreEpoch Timestamp WKT", iterations, anyPreEpochTimestampWKTJSONBytes, anyPreEpochTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1100,6 +1116,7 @@ func main() {
 	runProtoJSONPair("Nested Any WKT", iterations, nestedAnyWKTJSONBytes, nestedAnyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Duration", iterations, durationJSONBytes, duration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NegativeDuration", iterations, negativeDurationJSONBytes, negativeDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("FractionalNegativeDuration", iterations, fractionalNegativeDurationJSONBytes, fractionalNegativeDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FieldMask", iterations, fieldMaskJSONBytes, fieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Timestamp", iterations, timestampJSONBytes, timestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("PreEpoch Timestamp", iterations, preEpochTimestampJSONBytes, preEpochTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)

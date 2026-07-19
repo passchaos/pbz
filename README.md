@@ -81,8 +81,8 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
-Latest accepted comparison (`/tmp/pbz-compare-after-min-timestamp-json-isolated.log`,
-summarized in `/tmp/pbz-summary-after-min-timestamp-json-isolated.txt`) ended with:
+Latest accepted comparison (`/tmp/pbz-compare-after-fractional-negative-duration-json-isolated.log`,
+summarized in `/tmp/pbz-summary-after-fractional-negative-duration-json-isolated.txt`) ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
@@ -92,129 +92,133 @@ Representative rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |
 |---|---:|---:|---:|---:|---:|
-| binary encode | 23.38 | 128.08 (5.48x) | 66.25 (2.83x) | 131.05 (5.61x) | 949.58 (40.62x) |
-| binary decode | 129.21 | 309.09 (2.39x) | 308.05 (2.38x) | 270.17 (2.09x) | 984.17 (7.62x) |
-| unknown count by number | 5.02 | — | — | 175.71 (35.00x) | — |
-| scalarmix encode | 26.82 | 116.06 (4.33x) | 68.68 (2.56x) | 45.31 (1.69x) | 237.27 (8.85x) |
-| scalarmix decode | 50.71 | 167.04 (3.29x) | 231.30 (4.56x) | 112.61 (2.22x) | 360.38 (7.11x) |
-| textbytes encode | 13.53 | 93.46 (6.91x) | 44.55 (3.29x) | 152.27 (11.25x) | 173.11 (12.79x) |
-| complex decode | 225.77 | 468.75 (2.08x) | 437.89 (1.94x) | 496.13 (2.20x) | 1622.00 (7.18x) |
-| complex JSON parse | 2744.45 | — | — | 16815.60 (6.13x) | 10425.95 (3.80x) |
-| Any WKT JSON stringify | 176.73 | — | — | 3048.14 (17.25x) | 1333.22 (7.54x) |
-| Any WKT JSON parse | 563.97 | — | — | 4573.01 (8.11x) | 2085.97 (3.70x) |
-| Any NegativeDuration WKT JSON stringify | 187.60 | — | — | 3059.36 (16.31x) | 1392.76 (7.42x) |
-| Any NegativeDuration WKT JSON parse | 566.75 | — | — | 4695.49 (8.28x) | 2191.56 (3.87x) |
-| Any FieldMask WKT JSON stringify | 283.43 | — | — | 2420.82 (8.54x) | 1748.43 (6.17x) |
-| Any FieldMask WKT JSON parse | 783.93 | — | — | 4865.99 (6.21x) | 2909.94 (3.71x) |
-| Any Timestamp WKT JSON stringify | 246.98 | — | — | 2967.27 (12.01x) | 1359.63 (5.51x) |
-| Any Timestamp WKT JSON parse | 628.37 | — | — | 4716.84 (7.51x) | 2246.87 (3.58x) |
-| Any PreEpoch Timestamp WKT JSON stringify | 197.63 | — | — | 2862.20 (14.48x) | 1294.72 (6.55x) |
-| Any PreEpoch Timestamp WKT JSON parse | 618.58 | — | — | 4675.10 (7.56x) | 2210.11 (3.57x) |
-| Any Max Timestamp WKT JSON stringify | 223.03 | — | — | 3028.97 (13.58x) | 1345.07 (6.03x) |
-| Any Max Timestamp WKT JSON parse | 647.55 | — | — | 4760.40 (7.35x) | 2277.98 (3.52x) |
-| Any Min Timestamp WKT JSON stringify | 234.86 | — | — | 2870.19 (12.22x) | 1286.89 (5.48x) |
-| Any Min Timestamp WKT JSON parse | 621.59 | — | — | 4654.82 (7.49x) | 2174.50 (3.50x) |
-| Any Empty WKT JSON stringify | 125.59 | — | — | 1310.00 (10.43x) | 661.20 (5.26x) |
-| Any Empty WKT JSON parse | 376.30 | — | — | 3153.99 (8.38x) | 1647.29 (4.38x) |
-| Any Struct WKT JSON stringify | 800.91 | — | — | 9003.99 (11.24x) | 9044.59 (11.29x) |
-| Any Struct WKT JSON parse | 1953.53 | — | — | 16543.00 (8.47x) | 12778.55 (6.54x) |
-| Any Value WKT JSON stringify | 813.51 | — | — | 9069.74 (11.15x) | 9560.55 (11.75x) |
-| Any Value WKT JSON parse | 2012.04 | — | — | 17194.90 (8.55x) | 13228.74 (6.57x) |
-| Any DoubleValue WKT JSON stringify | 253.53 | — | — | 2827.32 (11.15x) | 1144.60 (4.51x) |
-| Any DoubleValue WKT JSON parse | 567.94 | — | — | 4446.71 (7.83x) | 2131.43 (3.75x) |
-| Any DoubleValue NaN WKT JSON stringify | 199.75 | — | — | 2327.59 (11.65x) | 909.10 (4.55x) |
-| Any DoubleValue NaN WKT JSON parse | 559.78 | — | — | 4070.51 (7.27x) | 2012.62 (3.60x) |
-| Any DoubleValue Infinity WKT JSON stringify | 205.84 | — | — | 2270.22 (11.03x) | 874.71 (4.25x) |
-| Any DoubleValue Infinity WKT JSON parse | 571.83 | — | — | 4038.71 (7.06x) | 2087.28 (3.65x) |
-| Any DoubleValue NegativeInfinity WKT JSON stringify | 209.98 | — | — | 2239.73 (10.67x) | 897.83 (4.28x) |
-| Any DoubleValue NegativeInfinity WKT JSON parse | 570.13 | — | — | 4042.11 (7.09x) | 2073.05 (3.64x) |
-| Any FloatValue WKT JSON stringify | 260.83 | — | — | 2800.80 (10.74x) | 1052.10 (4.03x) |
-| Any FloatValue WKT JSON parse | 569.75 | — | — | 4325.31 (7.59x) | 2088.44 (3.67x) |
-| Any FloatValue NaN WKT JSON stringify | 203.50 | — | — | 2211.43 (10.87x) | 884.06 (4.34x) |
-| Any FloatValue NaN WKT JSON parse | 571.23 | — | — | 4031.98 (7.06x) | 2017.52 (3.53x) |
-| Any FloatValue Infinity WKT JSON stringify | 213.75 | — | — | 2223.46 (10.40x) | 896.43 (4.19x) |
-| Any FloatValue Infinity WKT JSON parse | 571.00 | — | — | 4046.69 (7.09x) | 2081.38 (3.65x) |
-| Any FloatValue NegativeInfinity WKT JSON stringify | 212.41 | — | — | 2220.05 (10.45x) | 898.07 (4.23x) |
-| Any FloatValue NegativeInfinity WKT JSON parse | 575.13 | — | — | 4049.94 (7.04x) | 2079.88 (3.62x) |
-| Any Int64Value WKT JSON stringify | 208.99 | — | — | 2227.44 (10.66x) | 1236.65 (5.92x) |
-| Any Int64Value WKT JSON parse | 616.94 | — | — | 4336.98 (7.03x) | 2433.76 (3.94x) |
-| Any UInt64Value WKT JSON stringify | 217.75 | — | — | 2183.13 (10.03x) | 1255.42 (5.77x) |
-| Any UInt64Value WKT JSON parse | 623.42 | — | — | 4257.36 (6.83x) | 2360.13 (3.79x) |
-| Any Int32Value WKT JSON stringify | 213.80 | — | — | 2215.70 (10.36x) | 825.45 (3.86x) |
-| Any Int32Value WKT JSON parse | 589.86 | — | — | 4170.56 (7.07x) | 2065.22 (3.50x) |
-| Any UInt32Value WKT JSON stringify | 221.71 | — | — | 2177.45 (9.82x) | 887.57 (4.00x) |
-| Any UInt32Value WKT JSON parse | 605.83 | — | — | 4162.35 (6.87x) | 2088.04 (3.45x) |
-| Any BoolValue WKT JSON stringify | 214.28 | — | — | 2164.63 (10.10x) | 863.20 (4.03x) |
-| Any BoolValue WKT JSON parse | 547.03 | — | — | 4016.90 (7.34x) | 1843.08 (3.37x) |
-| Any StringValue WKT JSON stringify | 251.00 | — | — | 2246.21 (8.95x) | 901.63 (3.59x) |
-| Any StringValue WKT JSON parse | 607.20 | — | — | 4073.64 (6.71x) | 1946.97 (3.21x) |
-| Any BytesValue WKT JSON stringify | 229.71 | — | — | 2258.21 (9.83x) | 944.79 (4.11x) |
-| Any BytesValue WKT JSON parse | 616.50 | — | — | 4227.67 (6.86x) | 2005.97 (3.25x) |
-| Nested Any WKT JSON stringify | 396.63 | — | — | 3370.59 (8.50x) | 1676.53 (4.23x) |
-| Nested Any WKT JSON parse | 999.16 | — | — | 6199.59 (6.20x) | 3731.45 (3.73x) |
-| Duration JSON stringify | 65.78 | — | — | 1533.82 (23.32x) | 454.82 (6.91x) |
-| Duration JSON parse | 12.32 | — | — | 2250.85 (182.70x) | 523.81 (42.52x) |
-| NegativeDuration JSON stringify | 66.44 | — | — | 1592.44 (23.97x) | 514.84 (7.75x) |
-| NegativeDuration JSON parse | 12.59 | — | — | 2368.49 (188.12x) | 499.19 (39.65x) |
-| FieldMask JSON stringify | 91.87 | — | — | 1364.41 (14.85x) | 806.66 (8.78x) |
-| FieldMask JSON parse | 183.50 | — | — | 2667.30 (14.54x) | 1193.12 (6.50x) |
-| Timestamp JSON stringify | 131.22 | — | — | 1732.61 (13.20x) | 540.11 (4.12x) |
-| Timestamp JSON parse | 57.08 | — | — | 2298.46 (40.27x) | 557.96 (9.78x) |
-| PreEpoch Timestamp JSON stringify | 89.41 | — | — | 1619.95 (18.12x) | 507.74 (5.68x) |
-| PreEpoch Timestamp JSON parse | 55.14 | — | — | 2293.68 (41.60x) | 543.48 (9.86x) |
-| Max Timestamp JSON stringify | 105.88 | — | — | 1786.80 (16.88x) | 544.24 (5.14x) |
-| Max Timestamp JSON parse | 64.61 | — | — | 2368.56 (36.66x) | 578.19 (8.95x) |
-| Min Timestamp JSON stringify | 119.43 | — | — | 1610.22 (13.48x) | 519.38 (4.35x) |
-| Min Timestamp JSON parse | 53.12 | — | — | 2276.07 (42.85x) | 534.63 (10.06x) |
-| Empty JSON stringify | 23.86 | — | — | 699.38 (29.31x) | 112.06 (4.70x) |
-| Empty JSON parse | 76.38 | — | — | 1100.22 (14.40x) | 434.20 (5.68x) |
-| Struct JSON stringify | 281.69 | — | — | 8887.16 (31.55x) | 4537.75 (16.11x) |
-| Struct JSON parse | 962.38 | — | — | 16750.00 (17.40x) | 6982.22 (7.26x) |
-| Value JSON stringify | 285.98 | — | — | 9814.13 (34.32x) | 4715.76 (16.49x) |
-| Value JSON parse | 977.75 | — | — | 18023.70 (18.43x) | 7832.28 (8.01x) |
-| ListValue JSON stringify | 204.20 | — | — | 7594.35 (37.19x) | 3032.70 (14.85x) |
-| ListValue JSON parse | 742.72 | — | — | 13515.20 (18.20x) | 6091.56 (8.20x) |
-| DoubleValue JSON stringify | 97.06 | — | — | 1479.08 (15.24x) | 229.35 (2.36x) |
-| DoubleValue JSON parse | 115.19 | — | — | 2129.51 (18.49x) | 395.16 (3.43x) |
-| DoubleValue NaN JSON stringify | 53.15 | — | — | 1006.81 (18.94x) | 158.46 (2.98x) |
-| DoubleValue NaN JSON parse | 103.67 | — | — | 1730.66 (16.69x) | 370.78 (3.58x) |
-| DoubleValue Infinity JSON stringify | 56.69 | — | — | 973.07 (17.16x) | 152.07 (2.68x) |
-| DoubleValue Infinity JSON parse | 105.03 | — | — | 1708.76 (16.27x) | 367.93 (3.50x) |
-| DoubleValue NegativeInfinity JSON stringify | 58.28 | — | — | 967.36 (16.60x) | 158.70 (2.72x) |
-| DoubleValue NegativeInfinity JSON parse | 108.26 | — | — | 1730.55 (15.99x) | 373.49 (3.45x) |
-| FloatValue JSON stringify | 101.80 | — | — | 1409.76 (13.85x) | 212.40 (2.09x) |
-| FloatValue JSON parse | 113.15 | — | — | 2127.06 (18.80x) | 359.74 (3.18x) |
-| FloatValue NaN JSON stringify | 53.26 | — | — | 977.60 (18.36x) | 154.51 (2.90x) |
-| FloatValue NaN JSON parse | 101.76 | — | — | 1714.99 (16.85x) | 349.05 (3.43x) |
-| FloatValue Infinity JSON stringify | 57.16 | — | — | 975.53 (17.07x) | 162.46 (2.84x) |
-| FloatValue Infinity JSON parse | 104.47 | — | — | 1738.27 (16.64x) | 342.46 (3.28x) |
-| FloatValue NegativeInfinity JSON stringify | 57.98 | — | — | 962.91 (16.61x) | 165.26 (2.85x) |
-| FloatValue NegativeInfinity JSON parse | 106.93 | — | — | 1741.64 (16.29x) | 383.30 (3.58x) |
-| Int64Value JSON stringify | 45.52 | — | — | 990.92 (21.77x) | 331.40 (7.28x) |
-| Int64Value JSON parse | 138.19 | — | — | 1995.19 (14.44x) | 559.50 (4.05x) |
-| UInt64Value JSON stringify | 46.21 | — | — | 1017.11 (22.01x) | 329.31 (7.13x) |
-| UInt64Value JSON parse | 139.14 | — | — | 1957.22 (14.07x) | 557.56 (4.01x) |
-| Int32Value JSON stringify | 46.44 | — | — | 966.65 (20.82x) | 146.59 (3.16x) |
-| Int32Value JSON parse | 136.47 | — | — | 1923.21 (14.09x) | 345.63 (2.53x) |
-| UInt32Value JSON stringify | 47.32 | — | — | 928.78 (19.63x) | 162.92 (3.44x) |
-| UInt32Value JSON parse | 136.64 | — | — | 1904.61 (13.94x) | 381.34 (2.79x) |
-| BoolValue JSON stringify | 43.26 | — | — | 904.06 (20.90x) | 146.16 (3.38x) |
-| BoolValue JSON parse | 59.46 | — | — | 1732.54 (29.14x) | 284.27 (4.78x) |
-| StringValue JSON stringify | 54.64 | — | — | 1023.26 (18.73x) | 197.89 (3.62x) |
-| StringValue JSON parse | 132.19 | — | — | 1814.25 (13.72x) | 381.84 (2.89x) |
-| BytesValue JSON stringify | 45.89 | — | — | 951.47 (20.73x) | 234.68 (5.11x) |
-| BytesValue JSON parse | 142.81 | — | — | 1970.33 (13.80x) | 396.96 (2.78x) |
-| TextFormat parse | 848.54 | — | — | 5545.91 (6.54x) | 8158.11 (9.61x) |
-| packed int32 decode | 1029.96 | 3049.72 (2.96x) | 4241.65 (4.12x) | 1341.70 (1.30x) | 4759.25 (4.62x) |
-| packed bool encode | 2.51 | 2081.38 (829.24x) | 554.63 (220.97x) | 22.43 (8.94x) | 4386.45 (1747.59x) |
-| packed bool decode | 271.41 | 2057.80 (7.58x) | 4483.00 (16.52x) | 1107.76 (4.08x) | 2670.44 (9.84x) |
-| largebytes decode | 155.06 | 8475.95 (54.66x) | 4517.29 (29.13x) | 4106.68 (26.48x) | 23777.37 (153.34x) |
-| large map decode | 37325.30 | 125778.55 (3.37x) | 121531.62 (3.26x) | 118884.00 (3.19x) | 303064.93 (8.12x) |
-| shuffled large map deterministic binary encode | 37493.37 | — | — | 110185.00 (2.94x) | 458084.97 (12.22x) |
+| binary encode | 27.89 | 125.26 (4.49x) | 62.12 (2.23x) | 135.96 (4.88x) | 954.10 (34.21x) |
+| binary decode | 132.94 | 296.77 (2.23x) | 298.55 (2.25x) | 266.39 (2.00x) | 1017.46 (7.65x) |
+| unknown count by number | 5.22 | — | — | 212.49 (40.71x) | — |
+| scalarmix encode | 26.32 | 113.43 (4.31x) | 69.33 (2.63x) | 45.21 (1.72x) | 237.95 (9.04x) |
+| scalarmix decode | 56.08 | 163.09 (2.91x) | 227.91 (4.06x) | 108.42 (1.93x) | 365.98 (6.53x) |
+| textbytes encode | 11.78 | 91.44 (7.76x) | 43.34 (3.68x) | 147.47 (12.52x) | 172.81 (14.67x) |
+| complex decode | 222.83 | 470.37 (2.11x) | 442.02 (1.98x) | 478.73 (2.15x) | 1625.07 (7.29x) |
+| complex JSON parse | 2753.99 | — | — | 16673.20 (6.05x) | 10585.71 (3.84x) |
+| Any WKT JSON stringify | 168.48 | — | — | 3091.41 (18.35x) | 1372.15 (8.14x) |
+| Any WKT JSON parse | 564.68 | — | — | 4543.03 (8.05x) | 2098.87 (3.72x) |
+| Any NegativeDuration WKT JSON stringify | 175.39 | — | — | 3093.01 (17.64x) | 1422.75 (8.11x) |
+| Any NegativeDuration WKT JSON parse | 569.77 | — | — | 4653.02 (8.17x) | 2177.53 (3.82x) |
+| Any FractionalNegativeDuration WKT JSON stringify | 165.09 | — | — | 3049.04 (18.47x) | 1376.70 (8.34x) |
+| Any FractionalNegativeDuration WKT JSON parse | 562.74 | — | — | 4634.41 (8.24x) | 2086.81 (3.71x) |
+| Any FieldMask WKT JSON stringify | 273.37 | — | — | 2444.00 (8.94x) | 1753.65 (6.41x) |
+| Any FieldMask WKT JSON parse | 781.55 | — | — | 4876.47 (6.24x) | 2935.11 (3.76x) |
+| Any Timestamp WKT JSON stringify | 236.94 | — | — | 3014.30 (12.72x) | 1365.09 (5.76x) |
+| Any Timestamp WKT JSON parse | 635.51 | — | — | 4610.79 (7.26x) | 2242.86 (3.53x) |
+| Any PreEpoch Timestamp WKT JSON stringify | 187.13 | — | — | 2876.71 (15.37x) | 1290.92 (6.90x) |
+| Any PreEpoch Timestamp WKT JSON parse | 627.04 | — | — | 4724.99 (7.54x) | 2191.61 (3.50x) |
+| Any Max Timestamp WKT JSON stringify | 214.43 | — | — | 3032.54 (14.14x) | 1337.80 (6.24x) |
+| Any Max Timestamp WKT JSON parse | 659.88 | — | — | 4770.68 (7.23x) | 2292.18 (3.47x) |
+| Any Min Timestamp WKT JSON stringify | 220.43 | — | — | 2897.13 (13.14x) | 1270.54 (5.76x) |
+| Any Min Timestamp WKT JSON parse | 624.03 | — | — | 4703.04 (7.54x) | 2198.88 (3.52x) |
+| Any Empty WKT JSON stringify | 115.33 | — | — | 1301.06 (11.28x) | 722.79 (6.27x) |
+| Any Empty WKT JSON parse | 377.24 | — | — | 3135.66 (8.31x) | 1639.50 (4.35x) |
+| Any Struct WKT JSON stringify | 790.90 | — | — | 8982.32 (11.36x) | 8938.89 (11.30x) |
+| Any Struct WKT JSON parse | 1975.22 | — | — | 17252.20 (8.73x) | 12552.27 (6.35x) |
+| Any Value WKT JSON stringify | 799.41 | — | — | 9128.00 (11.42x) | 9989.09 (12.50x) |
+| Any Value WKT JSON parse | 2018.94 | — | — | 16757.30 (8.30x) | 14419.61 (7.14x) |
+| Any DoubleValue WKT JSON stringify | 241.58 | — | — | 2804.94 (11.61x) | 949.45 (3.93x) |
+| Any DoubleValue WKT JSON parse | 565.17 | — | — | 4382.70 (7.75x) | 2096.93 (3.71x) |
+| Any DoubleValue NaN WKT JSON stringify | 184.67 | — | — | 2274.34 (12.32x) | 917.61 (4.97x) |
+| Any DoubleValue NaN WKT JSON parse | 563.49 | — | — | 4035.02 (7.16x) | 2027.51 (3.60x) |
+| Any DoubleValue Infinity WKT JSON stringify | 189.95 | — | — | 2270.45 (11.95x) | 890.74 (4.69x) |
+| Any DoubleValue Infinity WKT JSON parse | 568.39 | — | — | 4087.00 (7.19x) | 2052.83 (3.61x) |
+| Any DoubleValue NegativeInfinity WKT JSON stringify | 190.18 | — | — | 2324.49 (12.22x) | 900.37 (4.73x) |
+| Any DoubleValue NegativeInfinity WKT JSON parse | 571.98 | — | — | 4151.88 (7.26x) | 2079.88 (3.64x) |
+| Any FloatValue WKT JSON stringify | 247.33 | — | — | 2796.74 (11.31x) | 924.64 (3.74x) |
+| Any FloatValue WKT JSON parse | 565.52 | — | — | 4335.77 (7.67x) | 1987.46 (3.51x) |
+| Any FloatValue NaN WKT JSON stringify | 187.22 | — | — | 2221.56 (11.87x) | 811.13 (4.33x) |
+| Any FloatValue NaN WKT JSON parse | 562.54 | — | — | 4021.20 (7.15x) | 1981.86 (3.52x) |
+| Any FloatValue Infinity WKT JSON stringify | 192.01 | — | — | 2155.67 (11.23x) | 861.93 (4.49x) |
+| Any FloatValue Infinity WKT JSON parse | 567.63 | — | — | 4020.46 (7.08x) | 1937.06 (3.41x) |
+| Any FloatValue NegativeInfinity WKT JSON stringify | 193.40 | — | — | 2178.09 (11.26x) | 822.00 (4.25x) |
+| Any FloatValue NegativeInfinity WKT JSON parse | 573.62 | — | — | 4061.48 (7.08x) | 1913.41 (3.34x) |
+| Any Int64Value WKT JSON stringify | 200.79 | — | — | 2269.95 (11.31x) | 1145.97 (5.71x) |
+| Any Int64Value WKT JSON parse | 616.82 | — | — | 4500.83 (7.30x) | 2383.53 (3.86x) |
+| Any UInt64Value WKT JSON stringify | 209.85 | — | — | 2257.18 (10.76x) | 1131.30 (5.39x) |
+| Any UInt64Value WKT JSON parse | 633.32 | — | — | 4462.43 (7.05x) | 2239.68 (3.54x) |
+| Any Int32Value WKT JSON stringify | 207.38 | — | — | 2392.37 (11.54x) | 882.20 (4.25x) |
+| Any Int32Value WKT JSON parse | 591.79 | — | — | 4407.60 (7.45x) | 1969.54 (3.33x) |
+| Any UInt32Value WKT JSON stringify | 211.93 | — | — | 2284.32 (10.78x) | 886.59 (4.18x) |
+| Any UInt32Value WKT JSON parse | 596.59 | — | — | 4178.14 (7.00x) | 1981.07 (3.32x) |
+| Any BoolValue WKT JSON stringify | 206.64 | — | — | 2154.09 (10.42x) | 815.91 (3.95x) |
+| Any BoolValue WKT JSON parse | 540.44 | — | — | 4007.80 (7.42x) | 1766.09 (3.27x) |
+| Any StringValue WKT JSON stringify | 233.56 | — | — | 2205.09 (9.44x) | 1021.99 (4.38x) |
+| Any StringValue WKT JSON parse | 605.49 | — | — | 4069.43 (6.72x) | 2399.84 (3.96x) |
+| Any BytesValue WKT JSON stringify | 222.00 | — | — | 2291.30 (10.32x) | 1023.24 (4.61x) |
+| Any BytesValue WKT JSON parse | 611.38 | — | — | 4223.58 (6.91x) | 2210.11 (3.61x) |
+| Nested Any WKT JSON stringify | 352.10 | — | — | 3459.67 (9.83x) | 2081.57 (5.91x) |
+| Nested Any WKT JSON parse | 986.41 | — | — | 6032.84 (6.12x) | 4144.35 (4.20x) |
+| Duration JSON stringify | 65.06 | — | — | 1535.13 (23.60x) | 467.33 (7.18x) |
+| Duration JSON parse | 11.95 | — | — | 2313.41 (193.59x) | 504.31 (42.20x) |
+| NegativeDuration JSON stringify | 66.06 | — | — | 1593.11 (24.12x) | 500.40 (7.57x) |
+| NegativeDuration JSON parse | 12.30 | — | — | 2372.41 (192.88x) | 520.46 (42.31x) |
+| FractionalNegativeDuration JSON stringify | 65.78 | — | — | 1546.61 (23.51x) | 507.95 (7.72x) |
+| FractionalNegativeDuration JSON parse | 12.29 | — | — | 2286.47 (186.04x) | 478.56 (38.94x) |
+| FieldMask JSON stringify | 94.06 | — | — | 1294.99 (13.77x) | 824.91 (8.77x) |
+| FieldMask JSON parse | 175.69 | — | — | 2642.81 (15.04x) | 1210.38 (6.89x) |
+| Timestamp JSON stringify | 129.66 | — | — | 1707.95 (13.17x) | 515.66 (3.98x) |
+| Timestamp JSON parse | 57.31 | — | — | 2321.01 (40.50x) | 545.89 (9.53x) |
+| PreEpoch Timestamp JSON stringify | 86.75 | — | — | 1569.83 (18.10x) | 502.69 (5.79x) |
+| PreEpoch Timestamp JSON parse | 54.75 | — | — | 2262.88 (41.33x) | 494.82 (9.04x) |
+| Max Timestamp JSON stringify | 104.26 | — | — | 1761.50 (16.90x) | 523.75 (5.02x) |
+| Max Timestamp JSON parse | 65.27 | — | — | 2314.66 (35.46x) | 556.93 (8.53x) |
+| Min Timestamp JSON stringify | 119.94 | — | — | 1572.10 (13.11x) | 504.31 (4.20x) |
+| Min Timestamp JSON parse | 52.71 | — | — | 2265.34 (42.98x) | 518.33 (9.83x) |
+| Empty JSON stringify | 22.76 | — | — | 699.74 (30.74x) | 121.86 (5.35x) |
+| Empty JSON parse | 74.35 | — | — | 1107.24 (14.89x) | 288.87 (3.89x) |
+| Struct JSON stringify | 259.39 | — | — | 8826.07 (34.03x) | 4356.10 (16.79x) |
+| Struct JSON parse | 976.00 | — | — | 16700.90 (17.11x) | 6661.63 (6.83x) |
+| Value JSON stringify | 262.77 | — | — | 9954.97 (37.88x) | 4466.04 (17.00x) |
+| Value JSON parse | 949.43 | — | — | 17617.40 (18.56x) | 7042.97 (7.42x) |
+| ListValue JSON stringify | 195.53 | — | — | 7550.92 (38.62x) | 2948.14 (15.08x) |
+| ListValue JSON parse | 769.18 | — | — | 13543.70 (17.61x) | 5512.69 (7.17x) |
+| DoubleValue JSON stringify | 98.77 | — | — | 1489.98 (15.09x) | 196.38 (1.99x) |
+| DoubleValue JSON parse | 114.06 | — | — | 2100.31 (18.41x) | 324.80 (2.85x) |
+| DoubleValue NaN JSON stringify | 52.74 | — | — | 964.99 (18.30x) | 171.94 (3.26x) |
+| DoubleValue NaN JSON parse | 102.20 | — | — | 1729.00 (16.92x) | 380.23 (3.72x) |
+| DoubleValue Infinity JSON stringify | 56.45 | — | — | 980.32 (17.37x) | 158.07 (2.80x) |
+| DoubleValue Infinity JSON parse | 104.73 | — | — | 1735.18 (16.57x) | 372.21 (3.55x) |
+| DoubleValue NegativeInfinity JSON stringify | 58.04 | — | — | 992.95 (17.11x) | 147.01 (2.53x) |
+| DoubleValue NegativeInfinity JSON parse | 107.57 | — | — | 1774.44 (16.50x) | 351.40 (3.27x) |
+| FloatValue JSON stringify | 102.70 | — | — | 1430.39 (13.93x) | 210.15 (2.05x) |
+| FloatValue JSON parse | 114.09 | — | — | 2145.97 (18.81x) | 340.84 (2.99x) |
+| FloatValue NaN JSON stringify | 52.73 | — | — | 989.10 (18.76x) | 149.76 (2.84x) |
+| FloatValue NaN JSON parse | 103.09 | — | — | 1687.53 (16.37x) | 328.92 (3.19x) |
+| FloatValue Infinity JSON stringify | 56.60 | — | — | 966.39 (17.07x) | 154.85 (2.74x) |
+| FloatValue Infinity JSON parse | 105.04 | — | — | 1708.66 (16.27x) | 338.00 (3.22x) |
+| FloatValue NegativeInfinity JSON stringify | 57.76 | — | — | 968.42 (16.77x) | 151.15 (2.62x) |
+| FloatValue NegativeInfinity JSON parse | 108.58 | — | — | 1683.43 (15.50x) | 335.39 (3.09x) |
+| Int64Value JSON stringify | 42.76 | — | — | 1015.07 (23.74x) | 302.89 (7.08x) |
+| Int64Value JSON parse | 139.07 | — | — | 1969.96 (14.17x) | 539.22 (3.88x) |
+| UInt64Value JSON stringify | 41.95 | — | — | 1027.84 (24.50x) | 309.66 (7.38x) |
+| UInt64Value JSON parse | 139.65 | — | — | 2100.54 (15.04x) | 520.73 (3.73x) |
+| Int32Value JSON stringify | 45.85 | — | — | 1746.60 (38.09x) | 153.99 (3.36x) |
+| Int32Value JSON parse | 133.15 | — | — | 2779.05 (20.87x) | 354.15 (2.66x) |
+| UInt32Value JSON stringify | 45.70 | — | — | 983.44 (21.52x) | 153.37 (3.36x) |
+| UInt32Value JSON parse | 133.04 | — | — | 1998.61 (15.02x) | 352.08 (2.65x) |
+| BoolValue JSON stringify | 43.17 | — | — | 916.62 (21.23x) | 132.03 (3.06x) |
+| BoolValue JSON parse | 54.87 | — | — | 1699.87 (30.98x) | 250.14 (4.56x) |
+| StringValue JSON stringify | 53.72 | — | — | 1029.73 (19.17x) | 206.72 (3.85x) |
+| StringValue JSON parse | 132.09 | — | — | 1819.40 (13.77x) | 357.51 (2.71x) |
+| BytesValue JSON stringify | 48.43 | — | — | 981.66 (20.27x) | 218.68 (4.52x) |
+| BytesValue JSON parse | 137.94 | — | — | 1966.15 (14.25x) | 389.79 (2.83x) |
+| TextFormat parse | 851.43 | — | — | 5461.14 (6.41x) | 8042.48 (9.45x) |
+| packed int32 decode | 995.47 | 2983.58 (3.00x) | 5502.81 (5.53x) | 1341.75 (1.35x) | 4386.91 (4.41x) |
+| packed bool encode | 2.51 | 2080.40 (828.84x) | 539.80 (215.06x) | 22.78 (9.08x) | 4385.40 (1747.17x) |
+| packed bool decode | 271.63 | 2061.18 (7.59x) | 3851.34 (14.18x) | 1108.35 (4.08x) | 2675.75 (9.85x) |
+| largebytes decode | 128.20 | 8529.42 (66.53x) | 4555.81 (35.54x) | 4008.57 (31.27x) | 24077.65 (187.81x) |
+| large map decode | 38727.26 | 121450.54 (3.14x) | 130037.55 (3.36x) | 117626.00 (3.04x) | 296670.83 (7.66x) |
+| shuffled large map deterministic binary encode | 36621.50 | — | — | 117857.00 (3.22x) | 452757.66 (12.36x) |
 
 The matrix covers binary encode/decode, unknown-field count-by-number, deterministic
-encode, JSON, Any/WKT JSON (including embedded positive/negative `Duration`, `Struct`, `Value`,
-`FieldMask`, min/pre/post/max-bound `Timestamp`, `Empty`, `Int64Value`, `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), `UInt64Value`, `Int32Value`, `UInt32Value`, `BoolValue`, `StringValue`, `BytesValue`, and recursive nested `Any` payloads), direct positive/negative Duration and min/pre/post/max-bound Timestamp WKT JSON plus other direct WKT JSON, TextFormat, packed scalars, large bytes,
+encode, JSON, Any/WKT JSON (including embedded positive/integer-negative/fractional-negative `Duration`, `Struct`, `Value`,
+`FieldMask`, min/pre/post/max-bound `Timestamp`, `Empty`, `Int64Value`, `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), `UInt64Value`, `Int32Value`, `UInt32Value`, `BoolValue`, `StringValue`, `BytesValue`, and recursive nested `Any` payloads), direct positive/integer-negative/fractional-negative Duration and min/pre/post/max-bound Timestamp WKT JSON plus other direct WKT JSON, TextFormat, packed scalars, large bytes,
 maps, oneof/optional workloads, and complex nested messages. Benchmark results are hardware-sensitive; compare full same-machine
 runs rather than individual copied rows.
 
