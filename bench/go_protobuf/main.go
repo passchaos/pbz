@@ -527,6 +527,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	offsetTimestampJSONBytes := []byte(`"2020-01-01T03:00:00.123456+03:00"`)
+	anyOffsetTimestampWKTJSONBytes := []byte(`{"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"2020-01-01T03:00:00.123456+03:00"}`)
 	preEpochTimestamp := &timestamppb.Timestamp{Seconds: -1}
 	preEpochTimestampJSONBytes, err := protojson.Marshal(preEpochTimestamp)
 	if err != nil {
@@ -1315,6 +1317,8 @@ func main() {
 	fmt.Printf("any Micro Timestamp WKT json payload size: %d\n", len(anyMicroTimestampWKTJSONBytes))
 	fmt.Printf("nano timestamp json payload size: %d\n", len(nanoTimestampJSONBytes))
 	fmt.Printf("any Nano Timestamp WKT json payload size: %d\n", len(anyNanoTimestampWKTJSONBytes))
+	fmt.Printf("offset timestamp json payload size: %d\n", len(offsetTimestampJSONBytes))
+	fmt.Printf("any Offset Timestamp WKT json payload size: %d\n", len(anyOffsetTimestampWKTJSONBytes))
 	fmt.Printf("pre-epoch timestamp json payload size: %d\n", len(preEpochTimestampJSONBytes))
 	fmt.Printf("any PreEpoch Timestamp WKT json payload size: %d\n", len(anyPreEpochTimestampWKTJSONBytes))
 	fmt.Printf("max timestamp json payload size: %d\n", len(maxTimestampJSONBytes))
@@ -1689,6 +1693,12 @@ func main() {
 	runProtoJSONPair("Any Timestamp WKT", iterations, anyTimestampWKTJSONBytes, anyTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Micro Timestamp WKT", iterations, anyMicroTimestampWKTJSONBytes, anyMicroTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Nano Timestamp WKT", iterations, anyNanoTimestampWKTJSONBytes, anyNanoTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runTimed("go protobuf Any Offset Timestamp WKT JSON parse", iterations, len(anyOffsetTimestampWKTJSONBytes), func() {
+		var decoded anypb.Any
+		if err := jsonUnmarshalOptions.Unmarshal(anyOffsetTimestampWKTJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
 	runProtoJSONPair("Any PreEpoch Timestamp WKT", iterations, anyPreEpochTimestampWKTJSONBytes, anyPreEpochTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Max Timestamp WKT", iterations, anyMaxTimestampWKTJSONBytes, anyMaxTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Min Timestamp WKT", iterations, anyMinTimestampWKTJSONBytes, anyMinTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1722,6 +1732,12 @@ func main() {
 	runProtoJSONPair("Timestamp", iterations, timestampJSONBytes, timestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Micro Timestamp", iterations, microTimestampJSONBytes, microTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Nano Timestamp", iterations, nanoTimestampJSONBytes, nanoTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
+	runTimed("go protobuf Offset Timestamp JSON parse", iterations, len(offsetTimestampJSONBytes), func() {
+		var decoded timestamppb.Timestamp
+		if err := jsonUnmarshalOptions.Unmarshal(offsetTimestampJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
 	runProtoJSONPair("PreEpoch Timestamp", iterations, preEpochTimestampJSONBytes, preEpochTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Max Timestamp", iterations, maxTimestampJSONBytes, maxTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Min Timestamp", iterations, minTimestampJSONBytes, minTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)

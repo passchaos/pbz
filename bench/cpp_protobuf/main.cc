@@ -523,6 +523,10 @@ int main() {
   any_nano_timestamp_wkt.PackFrom(nano_timestamp);
   const std::string any_nano_timestamp_wkt_json =
       JsonStringFor(any_nano_timestamp_wkt);
+  const std::string offset_timestamp_json =
+      R"("2020-01-01T03:00:00.123456+03:00")";
+  const std::string any_offset_timestamp_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"2020-01-01T03:00:00.123456+03:00"})";
   google::protobuf::Timestamp pre_epoch_timestamp;
   pre_epoch_timestamp.set_seconds(-1);
   const std::string pre_epoch_timestamp_json =
@@ -967,6 +971,10 @@ int main() {
             << nano_timestamp_json.size() << "\n";
   std::cout << "any Nano Timestamp WKT json payload size: "
             << any_nano_timestamp_wkt_json.size() << "\n";
+  std::cout << "offset timestamp json payload size: "
+            << offset_timestamp_json.size() << "\n";
+  std::cout << "any Offset Timestamp WKT json payload size: "
+            << any_offset_timestamp_wkt_json.size() << "\n";
   std::cout << "pre-epoch timestamp json payload size: "
             << pre_epoch_timestamp_json.size() << "\n";
   std::cout << "any PreEpoch Timestamp WKT json payload size: "
@@ -1783,6 +1791,20 @@ int main() {
                       any_micro_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Nano Timestamp WKT", any_nano_timestamp_wkt,
                       any_nano_timestamp_wkt_json, kIterations);
+  {
+    const std::string parse_name =
+        "c++ protobuf Any Offset Timestamp WKT JSON parse";
+    auto parse = RunTimed(parse_name.c_str(), kIterations,
+                          any_offset_timestamp_wkt_json.size(), [&]() {
+                            google::protobuf::Any decoded;
+                            if (!google::protobuf::util::JsonStringToMessage(
+                                     any_offset_timestamp_wkt_json, &decoded)
+                                     .ok())
+                              std::abort();
+                            asm volatile("" : : "g"(&decoded) : "memory");
+                          });
+    parse.Print();
+  }
   RunWktJsonBenchPair("Any PreEpoch Timestamp WKT",
                       any_pre_epoch_timestamp_wkt,
                       any_pre_epoch_timestamp_wkt_json, kIterations);
@@ -1854,6 +1876,19 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Nano Timestamp", nano_timestamp, nano_timestamp_json,
                       kIterations);
+  {
+    const std::string parse_name = "c++ protobuf Offset Timestamp JSON parse";
+    auto parse = RunTimed(parse_name.c_str(), kIterations,
+                          offset_timestamp_json.size(), [&]() {
+                            google::protobuf::Timestamp decoded;
+                            if (!google::protobuf::util::JsonStringToMessage(
+                                     offset_timestamp_json, &decoded)
+                                     .ok())
+                              std::abort();
+                            asm volatile("" : : "g"(&decoded) : "memory");
+                          });
+    parse.Print();
+  }
   RunWktJsonBenchPair("PreEpoch Timestamp", pre_epoch_timestamp,
                       pre_epoch_timestamp_json, kIterations);
   RunWktJsonBenchPair("Max Timestamp", max_timestamp, max_timestamp_json,

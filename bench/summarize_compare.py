@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 316
+EXPECTED_WORKLOAD_COUNT = 318
 
 
 @dataclass(frozen=True)
@@ -61,6 +61,25 @@ def json_workload_pair(label: str) -> tuple[Workload, Workload]:
                 "go protobuf": (f"go protobuf {label} JSON parse",),
             },
         ),
+    )
+
+
+def json_parse_workload(label: str) -> Workload:
+    """Return a parse-only JSON workload for legal non-canonical inputs.
+
+    Some protobuf JSON forms are accepted on input but canonicalized on output
+    (for example Timestamp timezone offsets). These should not be represented as
+    stringify/parse pairs because the stringify side cannot preserve the
+    non-canonical spelling being tested.
+    """
+
+    return Workload(
+        f"{label} JSON parse",
+        (f"pbz {label} JSON parse",),
+        {
+            "c++ protobuf": (f"c++ protobuf {label} JSON parse",),
+            "go protobuf": (f"go protobuf {label} JSON parse",),
+        },
     )
 
 
@@ -532,6 +551,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any Timestamp WKT"),
     *json_workload_pair("Any Micro Timestamp WKT"),
     *json_workload_pair("Any Nano Timestamp WKT"),
+    json_parse_workload("Any Offset Timestamp WKT"),
     *json_workload_pair("Any PreEpoch Timestamp WKT"),
     *json_workload_pair("Any Max Timestamp WKT"),
     *json_workload_pair("Any Min Timestamp WKT"),
@@ -597,6 +617,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Timestamp"),
     *json_workload_pair("Micro Timestamp"),
     *json_workload_pair("Nano Timestamp"),
+    json_parse_workload("Offset Timestamp"),
     *json_workload_pair("PreEpoch Timestamp"),
     *json_workload_pair("Max Timestamp"),
     *json_workload_pair("Min Timestamp"),
