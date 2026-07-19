@@ -508,6 +508,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	anyBoolValueWKT, err := anypb.New(boolValue)
+	if err != nil {
+		panic(err)
+	}
+	anyBoolValueWKTJSONBytes, err := protojson.Marshal(anyBoolValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	stringValue := wrapperspb.String("hello")
 	stringValueJSONBytes, err := protojson.Marshal(stringValue)
 	if err != nil {
@@ -650,6 +658,7 @@ func main() {
 	fmt.Printf("int32 value json payload size: %d\n", len(int32ValueJSONBytes))
 	fmt.Printf("uint32 value json payload size: %d\n", len(uint32ValueJSONBytes))
 	fmt.Printf("bool value json payload size: %d\n", len(boolValueJSONBytes))
+	fmt.Printf("any BoolValue WKT json payload size: %d\n", len(anyBoolValueWKTJSONBytes))
 	fmt.Printf("string value json payload size: %d\n", len(stringValueJSONBytes))
 	fmt.Printf("bytes value json payload size: %d\n", len(bytesValueJSONBytes))
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
@@ -914,6 +923,7 @@ func main() {
 	runProtoJSONPair("Int32Value", iterations, int32ValueJSONBytes, int32Value, func() *wrapperspb.Int32Value { return &wrapperspb.Int32Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("UInt32Value", iterations, uint32ValueJSONBytes, uint32Value, func() *wrapperspb.UInt32Value { return &wrapperspb.UInt32Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BoolValue", iterations, boolValueJSONBytes, boolValue, func() *wrapperspb.BoolValue { return &wrapperspb.BoolValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any BoolValue WKT", iterations, anyBoolValueWKTJSONBytes, anyBoolValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("StringValue", iterations, stringValueJSONBytes, stringValue, func() *wrapperspb.StringValue { return &wrapperspb.StringValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BytesValue", iterations, bytesValueJSONBytes, bytesValue, func() *wrapperspb.BytesValue { return &wrapperspb.BytesValue{} }, jsonUnmarshalOptions)
 
