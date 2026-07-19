@@ -631,6 +631,20 @@ int main() {
   any_negative_int64_value_wkt.PackFrom(negative_int64_value);
   const std::string any_negative_int64_value_wkt_json =
       JsonStringFor(any_negative_int64_value_wkt);
+  google::protobuf::Int64Value min_int64_value;
+  min_int64_value.set_value(std::numeric_limits<int64_t>::min());
+  const std::string min_int64_value_json = JsonStringFor(min_int64_value);
+  google::protobuf::Any any_min_int64_value_wkt;
+  any_min_int64_value_wkt.PackFrom(min_int64_value);
+  const std::string any_min_int64_value_wkt_json =
+      JsonStringFor(any_min_int64_value_wkt);
+  google::protobuf::Int64Value max_int64_value;
+  max_int64_value.set_value(std::numeric_limits<int64_t>::max());
+  const std::string max_int64_value_json = JsonStringFor(max_int64_value);
+  google::protobuf::Any any_max_int64_value_wkt;
+  any_max_int64_value_wkt.PackFrom(max_int64_value);
+  const std::string any_max_int64_value_wkt_json =
+      JsonStringFor(any_max_int64_value_wkt);
   google::protobuf::UInt64Value uint64_value;
   uint64_value.set_value(9007199254740993ULL);
   const std::string uint64_value_json = JsonStringFor(uint64_value);
@@ -674,6 +688,20 @@ int main() {
   any_negative_int32_value_wkt.PackFrom(negative_int32_value);
   const std::string any_negative_int32_value_wkt_json =
       JsonStringFor(any_negative_int32_value_wkt);
+  google::protobuf::Int32Value min_int32_value;
+  min_int32_value.set_value(std::numeric_limits<int32_t>::min());
+  const std::string min_int32_value_json = JsonStringFor(min_int32_value);
+  google::protobuf::Any any_min_int32_value_wkt;
+  any_min_int32_value_wkt.PackFrom(min_int32_value);
+  const std::string any_min_int32_value_wkt_json =
+      JsonStringFor(any_min_int32_value_wkt);
+  google::protobuf::Int32Value max_int32_value;
+  max_int32_value.set_value(std::numeric_limits<int32_t>::max());
+  const std::string max_int32_value_json = JsonStringFor(max_int32_value);
+  google::protobuf::Any any_max_int32_value_wkt;
+  any_max_int32_value_wkt.PackFrom(max_int32_value);
+  const std::string any_max_int32_value_wkt_json =
+      JsonStringFor(any_max_int32_value_wkt);
   google::protobuf::UInt32Value uint32_value;
   uint32_value.set_value(12345);
   const std::string uint32_value_json = JsonStringFor(uint32_value);
@@ -903,6 +931,14 @@ int main() {
             << negative_int64_value_json.size() << "\n";
   std::cout << "any NegativeInt64Value WKT json payload size: "
             << any_negative_int64_value_wkt_json.size() << "\n";
+  std::cout << "min int64 value json payload size: "
+            << min_int64_value_json.size() << "\n";
+  std::cout << "any MinInt64Value WKT json payload size: "
+            << any_min_int64_value_wkt_json.size() << "\n";
+  std::cout << "max int64 value json payload size: "
+            << max_int64_value_json.size() << "\n";
+  std::cout << "any MaxInt64Value WKT json payload size: "
+            << any_max_int64_value_wkt_json.size() << "\n";
   std::cout << "uint64 value json payload size: " << uint64_value_json.size()
             << "\n";
   std::cout << "any UInt64Value WKT json payload size: "
@@ -927,6 +963,14 @@ int main() {
             << negative_int32_value_json.size() << "\n";
   std::cout << "any NegativeInt32Value WKT json payload size: "
             << any_negative_int32_value_wkt_json.size() << "\n";
+  std::cout << "min int32 value json payload size: "
+            << min_int32_value_json.size() << "\n";
+  std::cout << "any MinInt32Value WKT json payload size: "
+            << any_min_int32_value_wkt_json.size() << "\n";
+  std::cout << "max int32 value json payload size: "
+            << max_int32_value_json.size() << "\n";
+  std::cout << "any MaxInt32Value WKT json payload size: "
+            << any_max_int32_value_wkt_json.size() << "\n";
   std::cout << "uint32 value json payload size: " << uint32_value_json.size()
             << "\n";
   std::cout << "any UInt32Value WKT json payload size: "
@@ -1620,6 +1664,14 @@ int main() {
   RunWktJsonBenchPair("Any NegativeInt64Value WKT",
                       any_negative_int64_value_wkt,
                       any_negative_int64_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("MinInt64Value", min_int64_value, min_int64_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("Any MinInt64Value WKT", any_min_int64_value_wkt,
+                      any_min_int64_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("MaxInt64Value", max_int64_value, max_int64_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("Any MaxInt64Value WKT", any_max_int64_value_wkt,
+                      any_max_int64_value_wkt_json, kIterations);
   RunWktJsonBenchPair("UInt64Value", uint64_value, uint64_value_json,
                       kIterations);
   RunWktJsonBenchPair("Any UInt64Value WKT", any_uint64_value_wkt,
@@ -1644,6 +1696,14 @@ int main() {
   RunWktJsonBenchPair("Any NegativeInt32Value WKT",
                       any_negative_int32_value_wkt,
                       any_negative_int32_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("MinInt32Value", min_int32_value, min_int32_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("Any MinInt32Value WKT", any_min_int32_value_wkt,
+                      any_min_int32_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("MaxInt32Value", max_int32_value, max_int32_value_json,
+                      kIterations);
+  RunWktJsonBenchPair("Any MaxInt32Value WKT", any_max_int32_value_wkt,
+                      any_max_int32_value_wkt_json, kIterations);
   RunWktJsonBenchPair("UInt32Value", uint32_value, uint32_value_json,
                       kIterations);
   RunWktJsonBenchPair("Any UInt32Value WKT", any_uint32_value_wkt,

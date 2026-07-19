@@ -731,6 +731,32 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	minInt64Value := wrapperspb.Int64(-9_223_372_036_854_775_808)
+	minInt64ValueJSONBytes, err := protojson.Marshal(minInt64Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMinInt64ValueWKT, err := anypb.New(minInt64Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMinInt64ValueWKTJSONBytes, err := protojson.Marshal(anyMinInt64ValueWKT)
+	if err != nil {
+		panic(err)
+	}
+	maxInt64Value := wrapperspb.Int64(9_223_372_036_854_775_807)
+	maxInt64ValueJSONBytes, err := protojson.Marshal(maxInt64Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMaxInt64ValueWKT, err := anypb.New(maxInt64Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMaxInt64ValueWKTJSONBytes, err := protojson.Marshal(anyMaxInt64ValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	uint64Value := wrapperspb.UInt64(9_007_199_254_740_993)
 	uint64ValueJSONBytes, err := protojson.Marshal(uint64Value)
 	if err != nil {
@@ -806,6 +832,32 @@ func main() {
 		panic(err)
 	}
 	anyNegativeInt32ValueWKTJSONBytes, err := protojson.Marshal(anyNegativeInt32ValueWKT)
+	if err != nil {
+		panic(err)
+	}
+	minInt32Value := wrapperspb.Int32(-2_147_483_648)
+	minInt32ValueJSONBytes, err := protojson.Marshal(minInt32Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMinInt32ValueWKT, err := anypb.New(minInt32Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMinInt32ValueWKTJSONBytes, err := protojson.Marshal(anyMinInt32ValueWKT)
+	if err != nil {
+		panic(err)
+	}
+	maxInt32Value := wrapperspb.Int32(2_147_483_647)
+	maxInt32ValueJSONBytes, err := protojson.Marshal(maxInt32Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMaxInt32ValueWKT, err := anypb.New(maxInt32Value)
+	if err != nil {
+		panic(err)
+	}
+	anyMaxInt32ValueWKTJSONBytes, err := protojson.Marshal(anyMaxInt32ValueWKT)
 	if err != nil {
 		panic(err)
 	}
@@ -1077,6 +1129,10 @@ func main() {
 	fmt.Printf("any ZeroInt64Value WKT json payload size: %d\n", len(anyZeroInt64ValueWKTJSONBytes))
 	fmt.Printf("negative int64 value json payload size: %d\n", len(negativeInt64ValueJSONBytes))
 	fmt.Printf("any NegativeInt64Value WKT json payload size: %d\n", len(anyNegativeInt64ValueWKTJSONBytes))
+	fmt.Printf("min int64 value json payload size: %d\n", len(minInt64ValueJSONBytes))
+	fmt.Printf("any MinInt64Value WKT json payload size: %d\n", len(anyMinInt64ValueWKTJSONBytes))
+	fmt.Printf("max int64 value json payload size: %d\n", len(maxInt64ValueJSONBytes))
+	fmt.Printf("any MaxInt64Value WKT json payload size: %d\n", len(anyMaxInt64ValueWKTJSONBytes))
 	fmt.Printf("uint64 value json payload size: %d\n", len(uint64ValueJSONBytes))
 	fmt.Printf("any UInt64Value WKT json payload size: %d\n", len(anyUInt64ValueWKTJSONBytes))
 	fmt.Printf("zero uint64 value json payload size: %d\n", len(zeroUInt64ValueJSONBytes))
@@ -1089,6 +1145,10 @@ func main() {
 	fmt.Printf("any ZeroInt32Value WKT json payload size: %d\n", len(anyZeroInt32ValueWKTJSONBytes))
 	fmt.Printf("negative int32 value json payload size: %d\n", len(negativeInt32ValueJSONBytes))
 	fmt.Printf("any NegativeInt32Value WKT json payload size: %d\n", len(anyNegativeInt32ValueWKTJSONBytes))
+	fmt.Printf("min int32 value json payload size: %d\n", len(minInt32ValueJSONBytes))
+	fmt.Printf("any MinInt32Value WKT json payload size: %d\n", len(anyMinInt32ValueWKTJSONBytes))
+	fmt.Printf("max int32 value json payload size: %d\n", len(maxInt32ValueJSONBytes))
+	fmt.Printf("any MaxInt32Value WKT json payload size: %d\n", len(anyMaxInt32ValueWKTJSONBytes))
 	fmt.Printf("uint32 value json payload size: %d\n", len(uint32ValueJSONBytes))
 	fmt.Printf("any UInt32Value WKT json payload size: %d\n", len(anyUInt32ValueWKTJSONBytes))
 	fmt.Printf("zero uint32 value json payload size: %d\n", len(zeroUInt32ValueJSONBytes))
@@ -1398,6 +1458,10 @@ func main() {
 	runProtoJSONPair("Any ZeroInt64Value WKT", iterations, anyZeroInt64ValueWKTJSONBytes, anyZeroInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NegativeInt64Value", iterations, negativeInt64ValueJSONBytes, negativeInt64Value, func() *wrapperspb.Int64Value { return &wrapperspb.Int64Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NegativeInt64Value WKT", iterations, anyNegativeInt64ValueWKTJSONBytes, anyNegativeInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("MinInt64Value", iterations, minInt64ValueJSONBytes, minInt64Value, func() *wrapperspb.Int64Value { return &wrapperspb.Int64Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any MinInt64Value WKT", iterations, anyMinInt64ValueWKTJSONBytes, anyMinInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("MaxInt64Value", iterations, maxInt64ValueJSONBytes, maxInt64Value, func() *wrapperspb.Int64Value { return &wrapperspb.Int64Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any MaxInt64Value WKT", iterations, anyMaxInt64ValueWKTJSONBytes, anyMaxInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("UInt64Value", iterations, uint64ValueJSONBytes, uint64Value, func() *wrapperspb.UInt64Value { return &wrapperspb.UInt64Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any UInt64Value WKT", iterations, anyUInt64ValueWKTJSONBytes, anyUInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("ZeroUInt64Value", iterations, zeroUInt64ValueJSONBytes, zeroUInt64Value, func() *wrapperspb.UInt64Value { return &wrapperspb.UInt64Value{} }, jsonUnmarshalOptions)
@@ -1410,6 +1474,10 @@ func main() {
 	runProtoJSONPair("Any ZeroInt32Value WKT", iterations, anyZeroInt32ValueWKTJSONBytes, anyZeroInt32ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NegativeInt32Value", iterations, negativeInt32ValueJSONBytes, negativeInt32Value, func() *wrapperspb.Int32Value { return &wrapperspb.Int32Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NegativeInt32Value WKT", iterations, anyNegativeInt32ValueWKTJSONBytes, anyNegativeInt32ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("MinInt32Value", iterations, minInt32ValueJSONBytes, minInt32Value, func() *wrapperspb.Int32Value { return &wrapperspb.Int32Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any MinInt32Value WKT", iterations, anyMinInt32ValueWKTJSONBytes, anyMinInt32ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("MaxInt32Value", iterations, maxInt32ValueJSONBytes, maxInt32Value, func() *wrapperspb.Int32Value { return &wrapperspb.Int32Value{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any MaxInt32Value WKT", iterations, anyMaxInt32ValueWKTJSONBytes, anyMaxInt32ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("UInt32Value", iterations, uint32ValueJSONBytes, uint32Value, func() *wrapperspb.UInt32Value { return &wrapperspb.UInt32Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any UInt32Value WKT", iterations, anyUInt32ValueWKTJSONBytes, anyUInt32ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("ZeroUInt32Value", iterations, zeroUInt32ValueJSONBytes, zeroUInt32Value, func() *wrapperspb.UInt32Value { return &wrapperspb.UInt32Value{} }, jsonUnmarshalOptions)

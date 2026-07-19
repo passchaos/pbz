@@ -93,6 +93,12 @@ const AnyZeroInt64ValueWktJson =
 const AnyNegativeInt64ValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Int64Value","value":"-9007199254740993"}
 ;
+const AnyMinInt64ValueWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.Int64Value","value":"-9223372036854775808"}
+;
+const AnyMaxInt64ValueWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.Int64Value","value":"9223372036854775807"}
+;
 const AnyUInt64ValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.UInt64Value","value":"9007199254740993"}
 ;
@@ -110,6 +116,12 @@ const AnyZeroInt32ValueWktJson =
 ;
 const AnyNegativeInt32ValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Int32Value","value":-12345}
+;
+const AnyMinInt32ValueWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.Int32Value","value":-2147483648}
+;
+const AnyMaxInt32ValueWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.Int32Value","value":2147483647}
 ;
 const AnyUInt32ValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.UInt32Value","value":12345}
@@ -169,12 +181,16 @@ const FloatValueNegInfJson = "\"-Infinity\"";
 const Int64ValueJson = "\"9007199254740993\"";
 const ZeroInt64ValueJson = "\"0\"";
 const NegativeInt64ValueJson = "\"-9007199254740993\"";
+const MinInt64ValueJson = "\"-9223372036854775808\"";
+const MaxInt64ValueJson = "\"9223372036854775807\"";
 const UInt64ValueJson = "\"9007199254740993\"";
 const ZeroUInt64ValueJson = "\"0\"";
 const MaxUInt64ValueJson = "\"18446744073709551615\"";
 const Int32ValueJson = "12345";
 const ZeroInt32ValueJson = "0";
 const NegativeInt32ValueJson = "-12345";
+const MinInt32ValueJson = "-2147483648";
+const MaxInt32ValueJson = "2147483647";
 const UInt32ValueJson = "12345";
 const ZeroUInt32ValueJson = "0";
 const MaxUInt32ValueJson = "4294967295";
@@ -2762,6 +2778,24 @@ pub fn main() !void {
     const any_negative_int64_value_wkt_json = try any_negative_int64_value_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_negative_int64_value_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_negative_int64_value_wkt_json, AnyNegativeInt64ValueWktJson));
+    const min_int64_value = pbz.Int64Value{ .value = std.math.minInt(i64) };
+    const min_int64_value_json = try min_int64_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(min_int64_value_json);
+    std.debug.assert(std.mem.eql(u8, min_int64_value_json, MinInt64ValueJson));
+    var any_min_int64_value_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Int64Value", min_int64_value);
+    defer any_min_int64_value_wkt.deinit(allocator);
+    const any_min_int64_value_wkt_json = try any_min_int64_value_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_min_int64_value_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_min_int64_value_wkt_json, AnyMinInt64ValueWktJson));
+    const max_int64_value = pbz.Int64Value{ .value = std.math.maxInt(i64) };
+    const max_int64_value_json = try max_int64_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(max_int64_value_json);
+    std.debug.assert(std.mem.eql(u8, max_int64_value_json, MaxInt64ValueJson));
+    var any_max_int64_value_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Int64Value", max_int64_value);
+    defer any_max_int64_value_wkt.deinit(allocator);
+    const any_max_int64_value_wkt_json = try any_max_int64_value_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_max_int64_value_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_max_int64_value_wkt_json, AnyMaxInt64ValueWktJson));
     const uint64_value = pbz.UInt64Value{ .value = 9007199254740993 };
     const uint64_value_json = try uint64_value.jsonStringifyAlloc(allocator);
     defer allocator.free(uint64_value_json);
@@ -2816,6 +2850,24 @@ pub fn main() !void {
     const any_negative_int32_value_wkt_json = try any_negative_int32_value_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_negative_int32_value_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_negative_int32_value_wkt_json, AnyNegativeInt32ValueWktJson));
+    const min_int32_value = pbz.Int32Value{ .value = std.math.minInt(i32) };
+    const min_int32_value_json = try min_int32_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(min_int32_value_json);
+    std.debug.assert(std.mem.eql(u8, min_int32_value_json, MinInt32ValueJson));
+    var any_min_int32_value_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Int32Value", min_int32_value);
+    defer any_min_int32_value_wkt.deinit(allocator);
+    const any_min_int32_value_wkt_json = try any_min_int32_value_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_min_int32_value_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_min_int32_value_wkt_json, AnyMinInt32ValueWktJson));
+    const max_int32_value = pbz.Int32Value{ .value = std.math.maxInt(i32) };
+    const max_int32_value_json = try max_int32_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(max_int32_value_json);
+    std.debug.assert(std.mem.eql(u8, max_int32_value_json, MaxInt32ValueJson));
+    var any_max_int32_value_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.Int32Value", max_int32_value);
+    defer any_max_int32_value_wkt.deinit(allocator);
+    const any_max_int32_value_wkt_json = try any_max_int32_value_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_max_int32_value_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_max_int32_value_wkt_json, AnyMaxInt32ValueWktJson));
     const uint32_value = pbz.UInt32Value{ .value = 12345 };
     const uint32_value_json = try uint32_value.jsonStringifyAlloc(allocator);
     defer allocator.free(uint32_value_json);
@@ -2914,9 +2966,11 @@ pub fn main() !void {
     // does not silently push any single diagnostic over the compiler-enforced
     // limit again.
     std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} pre_epoch_timestamp_json={d} max_timestamp_json={d} min_timestamp_json={d} duration_json={d} negative_duration_json={d} fractional_negative_duration_json={d} max_duration_json={d} min_duration_json={d} zero_duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, pre_epoch_timestamp_json.len, max_timestamp_json.len, min_timestamp_json.len, duration_json.len, negative_duration_json.len, fractional_negative_duration_json.len, max_duration_json.len, min_duration_json.len, zero_duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len });
-    std.debug.print("payload sizes direct WKT wrappers: double_value_json={d} zero_double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} double_value_neg_inf_json={d} float_value_json={d} zero_float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} float_value_neg_inf_json={d} int64_value_json={d} zero_int64_value_json={d} negative_int64_value_json={d} uint64_value_json={d} zero_uint64_value_json={d} max_uint64_value_json={d} int32_value_json={d} zero_int32_value_json={d} negative_int32_value_json={d} uint32_value_json={d} zero_uint32_value_json={d} max_uint32_value_json={d} bool_value_json={d} false_bool_value_json={d} string_value_json={d} empty_string_value_json={d} bytes_value_json={d} empty_bytes_value_json={d} text={d}\n", .{ double_value_json.len, zero_double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, double_value_neg_inf_json.len, float_value_json.len, zero_float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, float_value_neg_inf_json.len, int64_value_json.len, zero_int64_value_json.len, negative_int64_value_json.len, uint64_value_json.len, zero_uint64_value_json.len, max_uint64_value_json.len, int32_value_json.len, zero_int32_value_json.len, negative_int32_value_json.len, uint32_value_json.len, zero_uint32_value_json.len, max_uint32_value_json.len, bool_value_json.len, false_bool_value_json.len, string_value_json.len, empty_string_value_json.len, bytes_value_json.len, empty_bytes_value_json.len, generated_text.len });
+    std.debug.print("payload sizes direct numeric WKT wrappers: double_value_json={d} zero_double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} double_value_neg_inf_json={d} float_value_json={d} zero_float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} float_value_neg_inf_json={d} int64_value_json={d} zero_int64_value_json={d} negative_int64_value_json={d} min_int64_value_json={d} max_int64_value_json={d} uint64_value_json={d} zero_uint64_value_json={d} max_uint64_value_json={d} int32_value_json={d} zero_int32_value_json={d} negative_int32_value_json={d} min_int32_value_json={d} max_int32_value_json={d} uint32_value_json={d} zero_uint32_value_json={d} max_uint32_value_json={d}\n", .{ double_value_json.len, zero_double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, double_value_neg_inf_json.len, float_value_json.len, zero_float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, float_value_neg_inf_json.len, int64_value_json.len, zero_int64_value_json.len, negative_int64_value_json.len, min_int64_value_json.len, max_int64_value_json.len, uint64_value_json.len, zero_uint64_value_json.len, max_uint64_value_json.len, int32_value_json.len, zero_int32_value_json.len, negative_int32_value_json.len, min_int32_value_json.len, max_int32_value_json.len, uint32_value_json.len, zero_uint32_value_json.len, max_uint32_value_json.len });
+    std.debug.print("payload sizes direct text/bool WKT wrappers: bool_value_json={d} false_bool_value_json={d} string_value_json={d} empty_string_value_json={d} bytes_value_json={d} empty_bytes_value_json={d} text={d}\n", .{ bool_value_json.len, false_bool_value_json.len, string_value_json.len, empty_string_value_json.len, bytes_value_json.len, empty_bytes_value_json.len, generated_text.len });
     std.debug.print("payload sizes Any WKT temporal/object wrappers: any_wkt_json={d} any_negative_duration_wkt_json={d} any_fractional_negative_duration_wkt_json={d} any_max_duration_wkt_json={d} any_min_duration_wkt_json={d} any_zero_duration_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_pre_epoch_timestamp_wkt_json={d} any_max_timestamp_wkt_json={d} any_min_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} nested_any_wkt_json={d}\n", .{ any_wkt_json.len, any_negative_duration_wkt_json.len, any_fractional_negative_duration_wkt_json.len, any_max_duration_wkt_json.len, any_min_duration_wkt_json.len, any_zero_duration_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_pre_epoch_timestamp_wkt_json.len, any_max_timestamp_wkt_json.len, any_min_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, nested_any_wkt_json.len });
-    std.debug.print("payload sizes Any WKT scalar wrappers: any_double_value_wkt_json={d} any_zero_double_value_wkt_json={d} any_double_value_nan_wkt_json={d} any_double_value_inf_wkt_json={d} any_double_value_neg_inf_wkt_json={d} any_float_value_wkt_json={d} any_zero_float_value_wkt_json={d} any_float_value_nan_wkt_json={d} any_float_value_inf_wkt_json={d} any_float_value_neg_inf_wkt_json={d} any_int64_value_wkt_json={d} any_zero_int64_value_wkt_json={d} any_negative_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_zero_uint64_value_wkt_json={d} any_max_uint64_value_wkt_json={d} any_int32_value_wkt_json={d} any_zero_int32_value_wkt_json={d} any_negative_int32_value_wkt_json={d} any_uint32_value_wkt_json={d} any_zero_uint32_value_wkt_json={d} any_max_uint32_value_wkt_json={d} any_bool_value_wkt_json={d} any_false_bool_value_wkt_json={d} any_string_value_wkt_json={d} any_empty_string_value_wkt_json={d} any_bytes_value_wkt_json={d} any_empty_bytes_value_wkt_json={d}\n", .{ any_double_value_wkt_json.len, any_zero_double_value_wkt_json.len, any_double_value_nan_wkt_json.len, any_double_value_inf_wkt_json.len, any_double_value_neg_inf_wkt_json.len, any_float_value_wkt_json.len, any_zero_float_value_wkt_json.len, any_float_value_nan_wkt_json.len, any_float_value_inf_wkt_json.len, any_float_value_neg_inf_wkt_json.len, any_int64_value_wkt_json.len, any_zero_int64_value_wkt_json.len, any_negative_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_zero_uint64_value_wkt_json.len, any_max_uint64_value_wkt_json.len, any_int32_value_wkt_json.len, any_zero_int32_value_wkt_json.len, any_negative_int32_value_wkt_json.len, any_uint32_value_wkt_json.len, any_zero_uint32_value_wkt_json.len, any_max_uint32_value_wkt_json.len, any_bool_value_wkt_json.len, any_false_bool_value_wkt_json.len, any_string_value_wkt_json.len, any_empty_string_value_wkt_json.len, any_bytes_value_wkt_json.len, any_empty_bytes_value_wkt_json.len });
+    std.debug.print("payload sizes Any WKT numeric wrappers: any_double_value_wkt_json={d} any_zero_double_value_wkt_json={d} any_double_value_nan_wkt_json={d} any_double_value_inf_wkt_json={d} any_double_value_neg_inf_wkt_json={d} any_float_value_wkt_json={d} any_zero_float_value_wkt_json={d} any_float_value_nan_wkt_json={d} any_float_value_inf_wkt_json={d} any_float_value_neg_inf_wkt_json={d} any_int64_value_wkt_json={d} any_zero_int64_value_wkt_json={d} any_negative_int64_value_wkt_json={d} any_min_int64_value_wkt_json={d} any_max_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_zero_uint64_value_wkt_json={d} any_max_uint64_value_wkt_json={d} any_int32_value_wkt_json={d} any_zero_int32_value_wkt_json={d} any_negative_int32_value_wkt_json={d} any_min_int32_value_wkt_json={d} any_max_int32_value_wkt_json={d} any_uint32_value_wkt_json={d} any_zero_uint32_value_wkt_json={d} any_max_uint32_value_wkt_json={d}\n", .{ any_double_value_wkt_json.len, any_zero_double_value_wkt_json.len, any_double_value_nan_wkt_json.len, any_double_value_inf_wkt_json.len, any_double_value_neg_inf_wkt_json.len, any_float_value_wkt_json.len, any_zero_float_value_wkt_json.len, any_float_value_nan_wkt_json.len, any_float_value_inf_wkt_json.len, any_float_value_neg_inf_wkt_json.len, any_int64_value_wkt_json.len, any_zero_int64_value_wkt_json.len, any_negative_int64_value_wkt_json.len, any_min_int64_value_wkt_json.len, any_max_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_zero_uint64_value_wkt_json.len, any_max_uint64_value_wkt_json.len, any_int32_value_wkt_json.len, any_zero_int32_value_wkt_json.len, any_negative_int32_value_wkt_json.len, any_min_int32_value_wkt_json.len, any_max_int32_value_wkt_json.len, any_uint32_value_wkt_json.len, any_zero_uint32_value_wkt_json.len, any_max_uint32_value_wkt_json.len });
+    std.debug.print("payload sizes Any WKT text/bool wrappers: any_bool_value_wkt_json={d} any_false_bool_value_wkt_json={d} any_string_value_wkt_json={d} any_empty_string_value_wkt_json={d} any_bytes_value_wkt_json={d} any_empty_bytes_value_wkt_json={d}\n", .{ any_bool_value_wkt_json.len, any_false_bool_value_wkt_json.len, any_string_value_wkt_json.len, any_empty_string_value_wkt_json.len, any_bytes_value_wkt_json.len, any_empty_bytes_value_wkt_json.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -3156,6 +3210,10 @@ pub fn main() !void {
         try runTimed(io, "pbz Any ZeroInt64Value WKT JSON parse", iters.json, any_zero_int64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_zero_int64_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any NegativeInt64Value WKT JSON stringify", iters.json, any_negative_int64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_negative_int64_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any NegativeInt64Value WKT JSON parse", iters.json, any_negative_int64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_negative_int64_value_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any MinInt64Value WKT JSON stringify", iters.json, any_min_int64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_min_int64_value_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any MinInt64Value WKT JSON parse", iters.json, any_min_int64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_min_int64_value_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any MaxInt64Value WKT JSON stringify", iters.json, any_max_int64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_max_int64_value_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any MaxInt64Value WKT JSON parse", iters.json, any_max_int64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_max_int64_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any UInt64Value WKT JSON stringify", iters.json, any_uint64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_uint64_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any UInt64Value WKT JSON parse", iters.json, any_uint64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_uint64_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any ZeroUInt64Value WKT JSON stringify", iters.json, any_zero_uint64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_zero_uint64_value_wkt }, anyWktJsonStringify),
@@ -3168,6 +3226,10 @@ pub fn main() !void {
         try runTimed(io, "pbz Any ZeroInt32Value WKT JSON parse", iters.json, any_zero_int32_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_zero_int32_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any NegativeInt32Value WKT JSON stringify", iters.json, any_negative_int32_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_negative_int32_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any NegativeInt32Value WKT JSON parse", iters.json, any_negative_int32_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_negative_int32_value_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any MinInt32Value WKT JSON stringify", iters.json, any_min_int32_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_min_int32_value_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any MinInt32Value WKT JSON parse", iters.json, any_min_int32_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_min_int32_value_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any MaxInt32Value WKT JSON stringify", iters.json, any_max_int32_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_max_int32_value_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any MaxInt32Value WKT JSON parse", iters.json, any_max_int32_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_max_int32_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any UInt32Value WKT JSON stringify", iters.json, any_uint32_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_uint32_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any UInt32Value WKT JSON parse", iters.json, any_uint32_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_uint32_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any ZeroUInt32Value WKT JSON stringify", iters.json, any_zero_uint32_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_zero_uint32_value_wkt }, anyWktJsonStringify),
@@ -3244,6 +3306,10 @@ pub fn main() !void {
         try runTimed(io, "pbz ZeroInt64Value JSON parse", iters.json, zero_int64_value_json.len, WktJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = zero_int64_value_json }, wktJsonParse),
         try runTimed(io, "pbz NegativeInt64Value JSON stringify", iters.json, negative_int64_value_json.len, WktJsonStringifyCtx(pbz.Int64Value){ .allocator = allocator, .value = negative_int64_value }, wktJsonStringify),
         try runTimed(io, "pbz NegativeInt64Value JSON parse", iters.json, negative_int64_value_json.len, WktJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = negative_int64_value_json }, wktJsonParse),
+        try runTimed(io, "pbz MinInt64Value JSON stringify", iters.json, min_int64_value_json.len, WktJsonStringifyCtx(pbz.Int64Value){ .allocator = allocator, .value = min_int64_value }, wktJsonStringify),
+        try runTimed(io, "pbz MinInt64Value JSON parse", iters.json, min_int64_value_json.len, WktJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = min_int64_value_json }, wktJsonParse),
+        try runTimed(io, "pbz MaxInt64Value JSON stringify", iters.json, max_int64_value_json.len, WktJsonStringifyCtx(pbz.Int64Value){ .allocator = allocator, .value = max_int64_value }, wktJsonStringify),
+        try runTimed(io, "pbz MaxInt64Value JSON parse", iters.json, max_int64_value_json.len, WktJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = max_int64_value_json }, wktJsonParse),
         try runTimed(io, "pbz UInt64Value JSON stringify", iters.json, uint64_value_json.len, WktJsonStringifyCtx(pbz.UInt64Value){ .allocator = allocator, .value = uint64_value }, wktJsonStringify),
         try runTimed(io, "pbz UInt64Value JSON parse", iters.json, uint64_value_json.len, WktJsonParseCtx(pbz.UInt64Value){ .allocator = allocator, .json = uint64_value_json }, wktJsonParse),
         try runTimed(io, "pbz ZeroUInt64Value JSON stringify", iters.json, zero_uint64_value_json.len, WktJsonStringifyCtx(pbz.UInt64Value){ .allocator = allocator, .value = zero_uint64_value }, wktJsonStringify),
@@ -3256,6 +3322,10 @@ pub fn main() !void {
         try runTimed(io, "pbz ZeroInt32Value JSON parse", iters.json, zero_int32_value_json.len, WktJsonParseCtx(pbz.Int32Value){ .allocator = allocator, .json = zero_int32_value_json }, wktJsonParse),
         try runTimed(io, "pbz NegativeInt32Value JSON stringify", iters.json, negative_int32_value_json.len, WktJsonStringifyCtx(pbz.Int32Value){ .allocator = allocator, .value = negative_int32_value }, wktJsonStringify),
         try runTimed(io, "pbz NegativeInt32Value JSON parse", iters.json, negative_int32_value_json.len, WktJsonParseCtx(pbz.Int32Value){ .allocator = allocator, .json = negative_int32_value_json }, wktJsonParse),
+        try runTimed(io, "pbz MinInt32Value JSON stringify", iters.json, min_int32_value_json.len, WktJsonStringifyCtx(pbz.Int32Value){ .allocator = allocator, .value = min_int32_value }, wktJsonStringify),
+        try runTimed(io, "pbz MinInt32Value JSON parse", iters.json, min_int32_value_json.len, WktJsonParseCtx(pbz.Int32Value){ .allocator = allocator, .json = min_int32_value_json }, wktJsonParse),
+        try runTimed(io, "pbz MaxInt32Value JSON stringify", iters.json, max_int32_value_json.len, WktJsonStringifyCtx(pbz.Int32Value){ .allocator = allocator, .value = max_int32_value }, wktJsonStringify),
+        try runTimed(io, "pbz MaxInt32Value JSON parse", iters.json, max_int32_value_json.len, WktJsonParseCtx(pbz.Int32Value){ .allocator = allocator, .json = max_int32_value_json }, wktJsonParse),
         try runTimed(io, "pbz UInt32Value JSON stringify", iters.json, uint32_value_json.len, WktJsonStringifyCtx(pbz.UInt32Value){ .allocator = allocator, .value = uint32_value }, wktJsonStringify),
         try runTimed(io, "pbz UInt32Value JSON parse", iters.json, uint32_value_json.len, WktJsonParseCtx(pbz.UInt32Value){ .allocator = allocator, .json = uint32_value_json }, wktJsonParse),
         try runTimed(io, "pbz ZeroUInt32Value JSON stringify", iters.json, zero_uint32_value_json.len, WktJsonStringifyCtx(pbz.UInt32Value){ .allocator = allocator, .value = zero_uint32_value }, wktJsonStringify),
