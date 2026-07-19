@@ -442,6 +442,13 @@ int main() {
       JsonStringFor(any_fractional_negative_duration_wkt);
   const std::string fractional_negative_duration_json =
       JsonStringFor(fractional_negative_duration);
+  google::protobuf::Duration max_duration;
+  max_duration.set_seconds(315576000000LL);
+  google::protobuf::Any any_max_duration_wkt;
+  any_max_duration_wkt.PackFrom(max_duration);
+  const std::string any_max_duration_wkt_json =
+      JsonStringFor(any_max_duration_wkt);
+  const std::string max_duration_json = JsonStringFor(max_duration);
   google::protobuf::FieldMask field_mask;
   field_mask.add_paths("foo_bar");
   field_mask.add_paths("nested.value");
@@ -701,12 +708,16 @@ int main() {
             << negative_duration_json.size() << "\n";
   std::cout << "fractional negative duration json payload size: "
             << fractional_negative_duration_json.size() << "\n";
+  std::cout << "max duration json payload size: " << max_duration_json.size()
+            << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
             << "\n";
   std::cout << "any NegativeDuration WKT json payload size: "
             << any_negative_duration_wkt_json.size() << "\n";
   std::cout << "any FractionalNegativeDuration WKT json payload size: "
             << any_fractional_negative_duration_wkt_json.size() << "\n";
+  std::cout << "any MaxDuration WKT json payload size: "
+            << any_max_duration_wkt_json.size() << "\n";
   std::cout << "any FieldMask WKT json payload size: "
             << any_field_mask_wkt_json.size() << "\n";
   std::cout << "empty json payload size: " << empty_json.size() << "\n";
@@ -1334,6 +1345,8 @@ int main() {
   RunWktJsonBenchPair("Any FractionalNegativeDuration WKT",
                       any_fractional_negative_duration_wkt,
                       any_fractional_negative_duration_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any MaxDuration WKT", any_max_duration_wkt,
+                      any_max_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any FieldMask WKT", any_field_mask_wkt,
                       any_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
@@ -1364,6 +1377,8 @@ int main() {
   RunWktJsonBenchPair("FractionalNegativeDuration",
                       fractional_negative_duration,
                       fractional_negative_duration_json, kIterations);
+  RunWktJsonBenchPair("MaxDuration", max_duration, max_duration_json,
+                      kIterations);
   RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
   RunWktJsonBenchPair("PreEpoch Timestamp", pre_epoch_timestamp,

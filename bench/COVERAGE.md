@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-after-fractional-negative-duration-json-isolated.log` summarized by
-`/tmp/pbz-summary-after-fractional-negative-duration-json-isolated.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-after-max-duration-json-isolated.log` summarized by
+`/tmp/pbz-summary-after-max-duration-json-isolated.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-after-fractional-negative-duration-json-isolated.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-after-max-duration-json-isolated.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 162 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 166 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -86,8 +86,8 @@ The matrix includes:
 - complex nested message / oneof / map-message encode/decode
 - complex JSON stringify/parse
 - `google.protobuf.Any` containing a well-known-type JSON value stringify/parse,
-  including embedded positive/integer-negative/fractional-negative `Duration`, `Struct`, `Value`, camel-case `FieldMask`, min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit `Int64Value`, floating `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), `Int32Value`, unsigned `UInt32Value`, unsigned `UInt64Value`, boolean `BoolValue`, scalar-wrapper `StringValue`, base64 `BytesValue`, and recursive nested `Any` payloads
-- direct positive, integer-negative, and fractional-negative `google.protobuf.Duration` JSON stringify/parse
+  including embedded positive/integer-negative/fractional-negative/max-bound `Duration`, `Struct`, `Value`, camel-case `FieldMask`, min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit `Int64Value`, floating `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), `Int32Value`, unsigned `UInt32Value`, unsigned `UInt64Value`, boolean `BoolValue`, scalar-wrapper `StringValue`, base64 `BytesValue`, and recursive nested `Any` payloads
+- direct positive, integer-negative, fractional-negative, and max-bound `google.protobuf.Duration` JSON stringify/parse
 - direct `google.protobuf.FieldMask` JSON stringify/parse
 - direct min-bound, pre-epoch, post-epoch, and max-bound `google.protobuf.Timestamp` JSON stringify/parse
 - direct `google.protobuf.Empty`, `Struct`, `Value`, and `ListValue` JSON stringify/parse
