@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 142
+EXPECTED_WORKLOAD_COUNT = 146
 
 
 @dataclass(frozen=True)
@@ -93,6 +93,7 @@ def benchmark_line(name: str, bytes_per_iter: int, ns: float) -> str:
 # require one extra tuple here plus the production workload declaration.
 JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[float, float, float]], ...] = (
     ("Any WKT", 73, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
+    ("Any NegativeDuration WKT", 74, (60.0, 300.0, 350.0), (80.0, 400.0, 500.0)),
     ("Any FieldMask WKT", 87, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any Timestamp WKT", 92, (100.0, 600.0, 550.0), (150.0, 850.0, 800.0)),
     ("Any Empty WKT", 53, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
@@ -115,6 +116,7 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any BytesValue WKT", 73, (90.0, 500.0, 450.0), (140.0, 750.0, 700.0)),
     ("Nested Any WKT", 135, (140.0, 1500.0, 900.0), (200.0, 2200.0, 1400.0)),
     ("Duration", 8, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
+    ("NegativeDuration", 9, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("FieldMask", 21, (40.0, 230.0, 270.0), (45.0, 240.0, 280.0)),
     ("Timestamp", 28, (55.0, 250.0, 300.0), (65.0, 260.0, 320.0)),
     ("Empty", 2, (20.0, 200.0, 180.0), (30.0, 210.0, 190.0)),
@@ -433,6 +435,7 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     *json_workload_pair("Any WKT"),
+    *json_workload_pair("Any NegativeDuration WKT"),
     *json_workload_pair("Any FieldMask WKT"),
     *json_workload_pair("Any Timestamp WKT"),
     *json_workload_pair("Any Empty WKT"),
@@ -455,6 +458,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any BytesValue WKT"),
     *json_workload_pair("Nested Any WKT"),
     *json_workload_pair("Duration"),
+    *json_workload_pair("NegativeDuration"),
     *json_workload_pair("FieldMask"),
     *json_workload_pair("Timestamp"),
     *json_workload_pair("Empty"),

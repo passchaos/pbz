@@ -426,6 +426,14 @@ int main() {
                                                    &duration_json)
            .ok())
     std::abort();
+  google::protobuf::Duration negative_duration;
+  negative_duration.set_seconds(-1);
+  negative_duration.set_nanos(-500000000);
+  google::protobuf::Any any_negative_duration_wkt;
+  any_negative_duration_wkt.PackFrom(negative_duration);
+  const std::string any_negative_duration_wkt_json =
+      JsonStringFor(any_negative_duration_wkt);
+  const std::string negative_duration_json = JsonStringFor(negative_duration);
   google::protobuf::FieldMask field_mask;
   field_mask.add_paths("foo_bar");
   field_mask.add_paths("nested.value");
@@ -646,8 +654,12 @@ int main() {
   std::cout << "any Timestamp WKT json payload size: "
             << any_timestamp_wkt_json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
+  std::cout << "negative duration json payload size: "
+            << negative_duration_json.size() << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
             << "\n";
+  std::cout << "any NegativeDuration WKT json payload size: "
+            << any_negative_duration_wkt_json.size() << "\n";
   std::cout << "any FieldMask WKT json payload size: "
             << any_field_mask_wkt_json.size() << "\n";
   std::cout << "empty json payload size: " << empty_json.size() << "\n";
@@ -1270,6 +1282,8 @@ int main() {
   json_parse_reuse.Print();
 
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any NegativeDuration WKT", any_negative_duration_wkt,
+                      any_negative_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any FieldMask WKT", any_field_mask_wkt,
                       any_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
@@ -1288,6 +1302,8 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
                       kIterations);
+  RunWktJsonBenchPair("NegativeDuration", negative_duration,
+                      negative_duration_json, kIterations);
   RunWktJsonBenchPair("FieldMask", field_mask, field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
 
