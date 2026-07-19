@@ -426,6 +426,9 @@ int main() {
                                                    &duration_json)
            .ok())
     std::abort();
+  const std::string plus_duration_json = R"("+1.500s")";
+  const std::string any_plus_duration_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Duration","value":"+1.500s"})";
   google::protobuf::Duration micro_duration;
   micro_duration.set_seconds(1);
   micro_duration.set_nanos(120000);
@@ -988,6 +991,8 @@ int main() {
   std::cout << "any Min Timestamp WKT json payload size: "
             << any_min_timestamp_wkt_json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
+  std::cout << "plus duration json payload size: "
+            << plus_duration_json.size() << "\n";
   std::cout << "micro duration json payload size: "
             << micro_duration_json.size() << "\n";
   std::cout << "nano duration json payload size: "
@@ -1004,6 +1009,8 @@ int main() {
             << "\n";
   std::cout << "field mask json payload size: " << field_mask_json.size()
             << "\n";
+  std::cout << "any PlusDuration WKT json payload size: "
+            << any_plus_duration_wkt_json.size() << "\n";
   std::cout << "any MicroDuration WKT json payload size: "
             << any_micro_duration_wkt_json.size() << "\n";
   std::cout << "any NanoDuration WKT json payload size: "
@@ -1766,6 +1773,19 @@ int main() {
   json_parse_reuse.Print();
 
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
+  {
+    const std::string parse_name = "c++ protobuf Any PlusDuration WKT JSON parse";
+    auto parse = RunTimed(parse_name.c_str(), kIterations,
+                          any_plus_duration_wkt_json.size(), [&]() {
+                            google::protobuf::Any decoded;
+                            if (!google::protobuf::util::JsonStringToMessage(
+                                     any_plus_duration_wkt_json, &decoded)
+                                     .ok())
+                              std::abort();
+                            asm volatile("" : : "g"(&decoded) : "memory");
+                          });
+    parse.Print();
+  }
   RunWktJsonBenchPair("Any MicroDuration WKT", any_micro_duration_wkt,
                       any_micro_duration_wkt_json, kIterations);
   RunWktJsonBenchPair("Any NanoDuration WKT", any_nano_duration_wkt,
@@ -1853,6 +1873,19 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
                       kIterations);
+  {
+    const std::string parse_name = "c++ protobuf PlusDuration JSON parse";
+    auto parse = RunTimed(parse_name.c_str(), kIterations,
+                          plus_duration_json.size(), [&]() {
+                            google::protobuf::Duration decoded;
+                            if (!google::protobuf::util::JsonStringToMessage(
+                                     plus_duration_json, &decoded)
+                                     .ok())
+                              std::abort();
+                            asm volatile("" : : "g"(&decoded) : "memory");
+                          });
+    parse.Print();
+  }
   RunWktJsonBenchPair("MicroDuration", micro_duration, micro_duration_json,
                       kIterations);
   RunWktJsonBenchPair("NanoDuration", nano_duration, nano_duration_json,

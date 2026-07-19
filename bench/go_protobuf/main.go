@@ -371,6 +371,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	plusDurationJSONBytes := []byte(`"+1.500s"`)
+	anyPlusDurationWKTJSONBytes := []byte(`{"@type":"type.googleapis.com/google.protobuf.Duration","value":"+1.500s"}`)
 	microDuration := &durationpb.Duration{Seconds: 1, Nanos: 120_000}
 	microDurationJSONBytes, err := protojson.Marshal(microDuration)
 	if err != nil {
@@ -1326,6 +1328,7 @@ func main() {
 	fmt.Printf("min timestamp json payload size: %d\n", len(minTimestampJSONBytes))
 	fmt.Printf("any Min Timestamp WKT json payload size: %d\n", len(anyMinTimestampWKTJSONBytes))
 	fmt.Printf("duration json payload size: %d\n", len(durationJSONBytes))
+	fmt.Printf("plus duration json payload size: %d\n", len(plusDurationJSONBytes))
 	fmt.Printf("micro duration json payload size: %d\n", len(microDurationJSONBytes))
 	fmt.Printf("nano duration json payload size: %d\n", len(nanoDurationJSONBytes))
 	fmt.Printf("negative duration json payload size: %d\n", len(negativeDurationJSONBytes))
@@ -1334,6 +1337,7 @@ func main() {
 	fmt.Printf("min duration json payload size: %d\n", len(minDurationJSONBytes))
 	fmt.Printf("zero duration json payload size: %d\n", len(zeroDurationJSONBytes))
 	fmt.Printf("field mask json payload size: %d\n", len(fieldMaskJSONBytes))
+	fmt.Printf("any PlusDuration WKT json payload size: %d\n", len(anyPlusDurationWKTJSONBytes))
 	fmt.Printf("any MicroDuration WKT json payload size: %d\n", len(anyMicroDurationWKTJSONBytes))
 	fmt.Printf("any NanoDuration WKT json payload size: %d\n", len(anyNanoDurationWKTJSONBytes))
 	fmt.Printf("any NegativeDuration WKT json payload size: %d\n", len(anyNegativeDurationWKTJSONBytes))
@@ -1681,6 +1685,12 @@ func main() {
 	}).print()
 
 	runProtoJSONPair("Any WKT", iterations, anyWKTJSONBytes, anyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runTimed("go protobuf Any PlusDuration WKT JSON parse", iterations, len(anyPlusDurationWKTJSONBytes), func() {
+		var decoded anypb.Any
+		if err := jsonUnmarshalOptions.Unmarshal(anyPlusDurationWKTJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
 	runProtoJSONPair("Any MicroDuration WKT", iterations, anyMicroDurationWKTJSONBytes, anyMicroDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NanoDuration WKT", iterations, anyNanoDurationWKTJSONBytes, anyNanoDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NegativeDuration WKT", iterations, anyNegativeDurationWKTJSONBytes, anyNegativeDurationWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1720,6 +1730,12 @@ func main() {
 	runProtoJSONPair("Any BytesValue WKT", iterations, anyBytesValueWKTJSONBytes, anyBytesValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Nested Any WKT", iterations, nestedAnyWKTJSONBytes, nestedAnyWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Duration", iterations, durationJSONBytes, duration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
+	runTimed("go protobuf PlusDuration JSON parse", iterations, len(plusDurationJSONBytes), func() {
+		var decoded durationpb.Duration
+		if err := jsonUnmarshalOptions.Unmarshal(plusDurationJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
 	runProtoJSONPair("MicroDuration", iterations, microDurationJSONBytes, microDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NanoDuration", iterations, nanoDurationJSONBytes, nanoDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NegativeDuration", iterations, negativeDurationJSONBytes, negativeDuration, func() *durationpb.Duration { return &durationpb.Duration{} }, jsonUnmarshalOptions)
