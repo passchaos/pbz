@@ -440,6 +440,9 @@ int main() {
                                                    &duration_json)
            .ok())
     std::abort();
+  const std::string duration_escape_json = R"("1\u002e500s")";
+  const std::string any_duration_escape_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Duration","value":"1\u002e500s"})";
   const std::string plus_duration_json = R"("+1.500s")";
   const std::string any_plus_duration_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.Duration","value":"+1.500s"})";
@@ -531,6 +534,10 @@ int main() {
   google::protobuf::Any any_timestamp_wkt;
   any_timestamp_wkt.PackFrom(timestamp);
   const std::string any_timestamp_wkt_json = JsonStringFor(any_timestamp_wkt);
+  const std::string timestamp_escape_json =
+      R"("2020-01-01T00:00:00\u002e123Z")";
+  const std::string any_timestamp_escape_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"2020-01-01T00:00:00\u002e123Z"})";
   const std::string short_fraction_timestamp_json =
       R"("2020-01-01T00:00:00.1Z")";
   const std::string any_short_fraction_timestamp_wkt_json =
@@ -1015,6 +1022,10 @@ int main() {
             << "\n";
   std::cout << "any Timestamp WKT json payload size: "
             << any_timestamp_wkt_json.size() << "\n";
+  std::cout << "timestamp escape json payload size: "
+            << timestamp_escape_json.size() << "\n";
+  std::cout << "any Timestamp Escape WKT json payload size: "
+            << any_timestamp_escape_wkt_json.size() << "\n";
   std::cout << "short fraction timestamp json payload size: "
             << short_fraction_timestamp_json.size() << "\n";
   std::cout << "any ShortFraction Timestamp WKT json payload size: "
@@ -1044,6 +1055,10 @@ int main() {
   std::cout << "any Min Timestamp WKT json payload size: "
             << any_min_timestamp_wkt_json.size() << "\n";
   std::cout << "duration json payload size: " << duration_json.size() << "\n";
+  std::cout << "duration escape json payload size: "
+            << duration_escape_json.size() << "\n";
+  std::cout << "any Duration Escape WKT json payload size: "
+            << any_duration_escape_wkt_json.size() << "\n";
   std::cout << "plus duration json payload size: "
             << plus_duration_json.size() << "\n";
   std::cout << "short fraction duration json payload size: "
@@ -1866,6 +1881,8 @@ int main() {
   json_parse_reuse.Print();
 
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any Duration Escape WKT", any_duration_escape_wkt_json, kIterations);
   {
     const std::string parse_name = "c++ protobuf Any PlusDuration WKT JSON parse";
     auto parse = RunTimed(parse_name.c_str(), kIterations,
@@ -1918,6 +1935,8 @@ int main() {
                       any_empty_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
                       any_timestamp_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any Timestamp Escape WKT", any_timestamp_escape_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any ShortFraction Timestamp WKT",
       any_short_fraction_timestamp_wkt_json, kIterations);
@@ -1987,6 +2006,8 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Duration", any_wkt_duration, duration_json,
                       kIterations);
+  RunWktJsonParseOnly<google::protobuf::Duration>(
+      "Duration Escape", duration_escape_json, kIterations);
   {
     const std::string parse_name = "c++ protobuf PlusDuration JSON parse";
     auto parse = RunTimed(parse_name.c_str(), kIterations,
@@ -2036,6 +2057,8 @@ int main() {
   RunWktJsonBenchPair("EmptyFieldMask", empty_field_mask,
                       empty_field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Timestamp>(
+      "Timestamp Escape", timestamp_escape_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Timestamp>(
       "ShortFraction Timestamp", short_fraction_timestamp_json, kIterations);
   RunWktJsonBenchPair("Micro Timestamp", micro_timestamp, micro_timestamp_json,

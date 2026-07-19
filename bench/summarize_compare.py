@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 342
+EXPECTED_WORKLOAD_COUNT = 346
 
 
 @dataclass(frozen=True)
@@ -539,6 +539,7 @@ WORKLOADS: tuple[Workload, ...] = (
         },
     ),
     *json_workload_pair("Any WKT"),
+    json_parse_workload("Any Duration Escape WKT"),
     json_parse_workload("Any PlusDuration WKT"),
     json_parse_workload("Any ShortFractionDuration WKT"),
     *json_workload_pair("Any MicroDuration WKT"),
@@ -552,6 +553,7 @@ WORKLOADS: tuple[Workload, ...] = (
     json_parse_workload("Any FieldMask Escape WKT"),
     *json_workload_pair("Any EmptyFieldMask WKT"),
     *json_workload_pair("Any Timestamp WKT"),
+    json_parse_workload("Any Timestamp Escape WKT"),
     json_parse_workload("Any ShortFraction Timestamp WKT"),
     *json_workload_pair("Any Micro Timestamp WKT"),
     *json_workload_pair("Any Nano Timestamp WKT"),
@@ -617,6 +619,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any EmptyBytesValue WKT"),
     *json_workload_pair("Nested Any WKT"),
     *json_workload_pair("Duration"),
+    json_parse_workload("Duration Escape"),
     json_parse_workload("PlusDuration"),
     json_parse_workload("ShortFractionDuration"),
     *json_workload_pair("MicroDuration"),
@@ -630,6 +633,7 @@ WORKLOADS: tuple[Workload, ...] = (
     json_parse_workload("FieldMask Escape"),
     *json_workload_pair("EmptyFieldMask"),
     *json_workload_pair("Timestamp"),
+    json_parse_workload("Timestamp Escape"),
     json_parse_workload("ShortFraction Timestamp"),
     *json_workload_pair("Micro Timestamp"),
     *json_workload_pair("Nano Timestamp"),

@@ -68,7 +68,11 @@ pub const Timestamp = struct {
     }
 
     pub fn jsonParse(text: []const u8) !Timestamp {
-        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
+        var stack_fallback = std.heap.stackFallback(512, std.heap.page_allocator);
+        const json_allocator = stack_fallback.get();
+        var payload = try jsonStringPayload(json_allocator, text, error.InvalidTimestamp);
+        defer payload.deinit();
+        const unquoted = payload.text;
         if (unquoted.len < 20 or unquoted[4] != '-' or unquoted[7] != '-' or
             unquoted[10] != 'T' or
             unquoted[13] != ':' or unquoted[16] != ':') return error.InvalidTimestamp;
@@ -178,6 +182,10 @@ test "timestamp wire and json roundtrip" {
     const parsed = try Timestamp.jsonParse(json);
     try std.testing.expectEqual(ts.seconds, parsed.seconds);
     try std.testing.expectEqual(ts.nanos, parsed.nanos);
+
+    const escaped = try Timestamp.jsonParse("\"2020-01-01T00:00:00\\u002e123Z\"");
+    try std.testing.expectEqual(ts.seconds, escaped.seconds);
+    try std.testing.expectEqual(ts.nanos, escaped.nanos);
 }
 
 test "timestamp json handles pre epoch times" {
@@ -289,7 +297,11 @@ pub const Duration = struct {
     }
 
     pub fn jsonParse(text: []const u8) !Duration {
-        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') text[1 .. text.len - 1] else text;
+        var stack_fallback = std.heap.stackFallback(512, std.heap.page_allocator);
+        const json_allocator = stack_fallback.get();
+        var payload = try jsonStringPayload(json_allocator, text, error.InvalidDuration);
+        defer payload.deinit();
+        const unquoted = payload.text;
         if (unquoted.len < 2 or unquoted[unquoted.len - 1] != 's') return error.InvalidDuration;
         var body = unquoted[0 .. unquoted.len - 1];
         var negative = false;
@@ -344,6 +356,9 @@ test "duration json parses plus sign and validates input" {
     const positive = try Duration.jsonParse("\"+3.250s\"");
     try std.testing.expectEqual(@as(i64, 3), positive.seconds);
     try std.testing.expectEqual(@as(i32, 250_000_000), positive.nanos);
+    const escaped = try Duration.jsonParse("\"1\\u002e500s\"");
+    try std.testing.expectEqual(@as(i64, 1), escaped.seconds);
+    try std.testing.expectEqual(@as(i32, 500_000_000), escaped.nanos);
     const negative_fraction = try (Duration{ .seconds = 0, .nanos = -250_000_000 }).jsonStringifyAlloc(std.testing.allocator);
     defer std.testing.allocator.free(negative_fraction);
     try std.testing.expectEqualSlices(u8, "\"-0.250s\"", negative_fraction);
@@ -437,19 +452,9 @@ pub const FieldMask = struct {
     }
 
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) ![][]const u8 {
-        var parsed: ?std.json.Parsed(std.json.Value) = null;
-        defer if (parsed) |*value| value.deinit();
-        const unquoted = if (text.len >= 2 and text[0] == '"' and text[text.len - 1] == '"') blk: {
-            // FieldMask's JSON form is a string.  Parse quoted input through
-            // the JSON parser instead of trimming quotes by hand so legal JSON
-            // spellings such as "\u006eested.value" are normalized before the
-            // lowerCamel-to-snake conversion and validation logic runs.
-            parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
-            break :blk switch (parsed.?.value) {
-                .string => |value| value,
-                else => return error.InvalidFieldMask,
-            };
-        } else text;
+        var payload = try jsonStringPayload(allocator, text, error.InvalidFieldMask);
+        defer payload.deinit();
+        const unquoted = payload.text;
         if (unquoted.len == 0) return try allocator.alloc([]const u8, 0);
         var paths: std.ArrayList([]const u8) = .empty;
         errdefer {
@@ -471,6 +476,103 @@ pub const FieldMask = struct {
         return .{ .paths = try jsonParse(allocator, text) };
     }
 };
+
+const JsonStringPayload = struct {
+    text: []const u8,
+    owned_allocator: ?std.mem.Allocator = null,
+
+    fn deinit(self: *JsonStringPayload) void {
+        if (self.owned_allocator) |allocator| allocator.free(self.text);
+        self.* = undefined;
+    }
+};
+
+fn jsonStringPayload(allocator: std.mem.Allocator, text: []const u8, comptime invalid_error: anyerror) !JsonStringPayload {
+    if (text.len < 2 or text[0] != '"' or text[text.len - 1] != '"') return .{ .text = text };
+
+    // Timestamp, Duration, and FieldMask all use a JSON string as their
+    // surface representation. The common canonical spelling has no escapes, so
+    // borrow its payload directly. When escapes are present, normalize only the
+    // scalar string payload instead of building a full dynamic JSON value; WKT
+    // parsers are hot paths and only need the decoded string bytes.
+    if (std.mem.indexOfScalar(u8, text, '\\') == null) return .{ .text = text[1 .. text.len - 1] };
+
+    const owned = try unescapeJsonStringPayload(allocator, text[1 .. text.len - 1], invalid_error);
+    errdefer allocator.free(owned);
+    return .{
+        .text = owned,
+        .owned_allocator = allocator,
+    };
+}
+
+fn unescapeJsonStringPayload(allocator: std.mem.Allocator, text: []const u8, comptime invalid_error: anyerror) ![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+
+    var index: usize = 0;
+    while (index < text.len) {
+        const byte = text[index];
+        if (byte < 0x20) return invalid_error;
+        if (byte != '\\') {
+            try out.append(allocator, byte);
+            index += 1;
+            continue;
+        }
+
+        index += 1;
+        if (index >= text.len) return invalid_error;
+        switch (text[index]) {
+            '"', '\\', '/' => |escaped| {
+                try out.append(allocator, escaped);
+                index += 1;
+            },
+            'b' => {
+                try out.append(allocator, 0x08);
+                index += 1;
+            },
+            'f' => {
+                try out.append(allocator, 0x0c);
+                index += 1;
+            },
+            'n' => {
+                try out.append(allocator, '\n');
+                index += 1;
+            },
+            'r' => {
+                try out.append(allocator, '\r');
+                index += 1;
+            },
+            't' => {
+                try out.append(allocator, '\t');
+                index += 1;
+            },
+            'u' => {
+                index += 1;
+                var codepoint = try parseJsonHexCodeUnit(text, &index, invalid_error);
+                if (codepoint >= 0xd800 and codepoint <= 0xdbff) {
+                    if (index + 6 > text.len or text[index] != '\\' or text[index + 1] != 'u') return invalid_error;
+                    index += 2;
+                    const low = try parseJsonHexCodeUnit(text, &index, invalid_error);
+                    if (low < 0xdc00 or low > 0xdfff) return invalid_error;
+                    codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (low - 0xdc00);
+                } else if (codepoint >= 0xdc00 and codepoint <= 0xdfff) return invalid_error;
+
+                var encoded: [4]u8 = undefined;
+                const len = std.unicode.utf8Encode(@intCast(codepoint), &encoded) catch return invalid_error;
+                try out.appendSlice(allocator, encoded[0..len]);
+            },
+            else => return invalid_error,
+        }
+    }
+    return try out.toOwnedSlice(allocator);
+}
+
+fn parseJsonHexCodeUnit(text: []const u8, index: *usize, comptime invalid_error: anyerror) !u21 {
+    if (index.* + 4 > text.len) return invalid_error;
+    const value = std.fmt.parseInt(u16, text[index.* .. index.* + 4], 16) catch return invalid_error;
+    index.* += 4;
+    return value;
+}
 
 fn cloneStringList(allocator: std.mem.Allocator, values: []const []const u8) ![][]const u8 {
     var list: std.ArrayList([]const u8) = .empty;
