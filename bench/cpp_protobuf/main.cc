@@ -941,6 +941,9 @@ int main() {
   any_bytes_value_wkt.PackFrom(bytes_value);
   const std::string any_bytes_value_wkt_json =
       JsonStringFor(any_bytes_value_wkt);
+  const std::string bytes_value_url_json = R"("-_8")";
+  const std::string any_bytes_value_url_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.BytesValue","value":"-_8"})";
   google::protobuf::BytesValue empty_bytes_value;
   empty_bytes_value.set_value("");
   const std::string empty_bytes_value_json = JsonStringFor(empty_bytes_value);
@@ -1293,6 +1296,10 @@ int main() {
             << any_empty_string_value_wkt_json.size() << "\n";
   std::cout << "bytes value json payload size: " << bytes_value_json.size()
             << "\n";
+  std::cout << "bytes value URL json payload size: "
+            << bytes_value_url_json.size() << "\n";
+  std::cout << "any BytesValue URL WKT json payload size: "
+            << any_bytes_value_url_wkt_json.size() << "\n";
   std::cout << "empty bytes value json payload size: "
             << empty_bytes_value_json.size() << "\n";
   std::cout << "any EmptyBytesValue WKT json payload size: "
@@ -2223,6 +2230,10 @@ int main() {
   RunWktJsonBenchPair("Any EmptyStringValue WKT", any_empty_string_value_wkt,
                       any_empty_string_value_wkt_json, kIterations);
   RunWktJsonBenchPair("BytesValue", bytes_value, bytes_value_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::BytesValue>(
+      "BytesValue URL", bytes_value_url_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any BytesValue URL WKT", any_bytes_value_url_wkt_json, kIterations);
   RunWktJsonBenchPair("EmptyBytesValue", empty_bytes_value,
                       empty_bytes_value_json, kIterations);
   RunWktJsonBenchPair("Any EmptyBytesValue WKT", any_empty_bytes_value_wkt,

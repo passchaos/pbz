@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 336
+EXPECTED_WORKLOAD_COUNT = 338
 
 
 @dataclass(frozen=True)
@@ -611,6 +611,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any StringValue WKT"),
     *json_workload_pair("Any EmptyStringValue WKT"),
     *json_workload_pair("Any BytesValue WKT"),
+    json_parse_workload("Any BytesValue URL WKT"),
     *json_workload_pair("Any EmptyBytesValue WKT"),
     *json_workload_pair("Nested Any WKT"),
     *json_workload_pair("Duration"),
@@ -688,6 +689,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("StringValue"),
     *json_workload_pair("EmptyStringValue"),
     *json_workload_pair("BytesValue"),
+    json_parse_workload("BytesValue URL"),
     *json_workload_pair("EmptyBytesValue"),
     Workload(
         "TextFormat format",
