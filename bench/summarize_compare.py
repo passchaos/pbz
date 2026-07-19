@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 190
+EXPECTED_WORKLOAD_COUNT = 202
 
 
 @dataclass(frozen=True)
@@ -123,8 +123,11 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("Any UInt32Value WKT", 73, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any MaxUInt32Value WKT", 78, (90.0, 500.0, 450.0), (140.0, 800.0, 750.0)),
     ("Any BoolValue WKT", 70, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
+    ("Any FalseBoolValue WKT", 71, (80.0, 450.0, 400.0), (110.0, 700.0, 650.0)),
     ("Any StringValue WKT", 75, (90.0, 500.0, 450.0), (120.0, 700.0, 650.0)),
+    ("Any EmptyStringValue WKT", 70, (90.0, 500.0, 450.0), (120.0, 700.0, 650.0)),
     ("Any BytesValue WKT", 73, (90.0, 500.0, 450.0), (140.0, 750.0, 700.0)),
+    ("Any EmptyBytesValue WKT", 69, (90.0, 500.0, 450.0), (140.0, 750.0, 700.0)),
     ("Nested Any WKT", 135, (140.0, 1500.0, 900.0), (200.0, 2200.0, 1400.0)),
     ("Duration", 8, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
     ("NegativeDuration", 9, (30.0, 200.0, 250.0), (35.0, 220.0, 260.0)),
@@ -158,8 +161,11 @@ JSON_SELF_TEST_SPECS: tuple[tuple[str, int, tuple[float, float, float], tuple[fl
     ("UInt32Value", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("MaxUInt32Value", 10, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("BoolValue", 4, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("FalseBoolValue", 5, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("StringValue", 7, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
+    ("EmptyStringValue", 2, (25.0, 210.0, 240.0), (55.0, 220.0, 260.0)),
     ("BytesValue", 6, (35.0, 230.0, 250.0), (70.0, 240.0, 280.0)),
+    ("EmptyBytesValue", 2, (35.0, 230.0, 250.0), (70.0, 240.0, 280.0)),
 )
 
 
@@ -487,8 +493,11 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any UInt32Value WKT"),
     *json_workload_pair("Any MaxUInt32Value WKT"),
     *json_workload_pair("Any BoolValue WKT"),
+    *json_workload_pair("Any FalseBoolValue WKT"),
     *json_workload_pair("Any StringValue WKT"),
+    *json_workload_pair("Any EmptyStringValue WKT"),
     *json_workload_pair("Any BytesValue WKT"),
+    *json_workload_pair("Any EmptyBytesValue WKT"),
     *json_workload_pair("Nested Any WKT"),
     *json_workload_pair("Duration"),
     *json_workload_pair("NegativeDuration"),
@@ -522,8 +531,11 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("UInt32Value"),
     *json_workload_pair("MaxUInt32Value"),
     *json_workload_pair("BoolValue"),
+    *json_workload_pair("FalseBoolValue"),
     *json_workload_pair("StringValue"),
+    *json_workload_pair("EmptyStringValue"),
     *json_workload_pair("BytesValue"),
+    *json_workload_pair("EmptyBytesValue"),
     Workload(
         "TextFormat format",
         ("generated TextFormat format",),

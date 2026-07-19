@@ -660,6 +660,13 @@ int main() {
   any_bool_value_wkt.PackFrom(bool_value);
   const std::string any_bool_value_wkt_json =
       JsonStringFor(any_bool_value_wkt);
+  google::protobuf::BoolValue false_bool_value;
+  false_bool_value.set_value(false);
+  const std::string false_bool_value_json = JsonStringFor(false_bool_value);
+  google::protobuf::Any any_false_bool_value_wkt;
+  any_false_bool_value_wkt.PackFrom(false_bool_value);
+  const std::string any_false_bool_value_wkt_json =
+      JsonStringFor(any_false_bool_value_wkt);
   google::protobuf::StringValue string_value;
   string_value.set_value("hello");
   const std::string string_value_json = JsonStringFor(string_value);
@@ -667,6 +674,13 @@ int main() {
   any_string_value_wkt.PackFrom(string_value);
   const std::string any_string_value_wkt_json =
       JsonStringFor(any_string_value_wkt);
+  google::protobuf::StringValue empty_string_value;
+  empty_string_value.set_value("");
+  const std::string empty_string_value_json = JsonStringFor(empty_string_value);
+  google::protobuf::Any any_empty_string_value_wkt;
+  any_empty_string_value_wkt.PackFrom(empty_string_value);
+  const std::string any_empty_string_value_wkt_json =
+      JsonStringFor(any_empty_string_value_wkt);
   google::protobuf::Any nested_any_wkt;
   nested_any_wkt.PackFrom(any_string_value_wkt);
   const std::string nested_any_wkt_json = JsonStringFor(nested_any_wkt);
@@ -677,6 +691,13 @@ int main() {
   any_bytes_value_wkt.PackFrom(bytes_value);
   const std::string any_bytes_value_wkt_json =
       JsonStringFor(any_bytes_value_wkt);
+  google::protobuf::BytesValue empty_bytes_value;
+  empty_bytes_value.set_value("");
+  const std::string empty_bytes_value_json = JsonStringFor(empty_bytes_value);
+  google::protobuf::Any any_empty_bytes_value_wkt;
+  any_empty_bytes_value_wkt.PackFrom(empty_bytes_value);
+  const std::string any_empty_bytes_value_wkt_json =
+      JsonStringFor(any_empty_bytes_value_wkt);
   const demo::Packed packed = MakePacked();
   std::string packed_bytes;
   packed.SerializeToString(&packed_bytes);
@@ -856,10 +877,22 @@ int main() {
             << "\n";
   std::cout << "any BoolValue WKT json payload size: "
             << any_bool_value_wkt_json.size() << "\n";
+  std::cout << "false bool value json payload size: "
+            << false_bool_value_json.size() << "\n";
+  std::cout << "any FalseBoolValue WKT json payload size: "
+            << any_false_bool_value_wkt_json.size() << "\n";
   std::cout << "string value json payload size: " << string_value_json.size()
             << "\n";
+  std::cout << "empty string value json payload size: "
+            << empty_string_value_json.size() << "\n";
+  std::cout << "any EmptyStringValue WKT json payload size: "
+            << any_empty_string_value_wkt_json.size() << "\n";
   std::cout << "bytes value json payload size: " << bytes_value_json.size()
             << "\n";
+  std::cout << "empty bytes value json payload size: "
+            << empty_bytes_value_json.size() << "\n";
+  std::cout << "any EmptyBytesValue WKT json payload size: "
+            << any_empty_bytes_value_wkt_json.size() << "\n";
   std::cout << "any WKT json payload size: " << any_wkt_json.size() << "\n";
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
@@ -1536,9 +1569,21 @@ int main() {
   RunWktJsonBenchPair("BoolValue", bool_value, bool_value_json, kIterations);
   RunWktJsonBenchPair("Any BoolValue WKT", any_bool_value_wkt,
                       any_bool_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("FalseBoolValue", false_bool_value,
+                      false_bool_value_json, kIterations);
+  RunWktJsonBenchPair("Any FalseBoolValue WKT", any_false_bool_value_wkt,
+                      any_false_bool_value_wkt_json, kIterations);
   RunWktJsonBenchPair("StringValue", string_value, string_value_json,
                       kIterations);
+  RunWktJsonBenchPair("EmptyStringValue", empty_string_value,
+                      empty_string_value_json, kIterations);
+  RunWktJsonBenchPair("Any EmptyStringValue WKT", any_empty_string_value_wkt,
+                      any_empty_string_value_wkt_json, kIterations);
   RunWktJsonBenchPair("BytesValue", bytes_value, bytes_value_json, kIterations);
+  RunWktJsonBenchPair("EmptyBytesValue", empty_bytes_value,
+                      empty_bytes_value_json, kIterations);
+  RunWktJsonBenchPair("Any EmptyBytesValue WKT", any_empty_bytes_value_wkt,
+                      any_empty_bytes_value_wkt_json, kIterations);
 
   auto text_format = RunTimed(
       "c++ protobuf TextFormat format", kIterations, text.size(), [&]() {

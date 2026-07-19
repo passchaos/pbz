@@ -783,6 +783,19 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	falseBoolValue := wrapperspb.Bool(false)
+	falseBoolValueJSONBytes, err := protojson.Marshal(falseBoolValue)
+	if err != nil {
+		panic(err)
+	}
+	anyFalseBoolValueWKT, err := anypb.New(falseBoolValue)
+	if err != nil {
+		panic(err)
+	}
+	anyFalseBoolValueWKTJSONBytes, err := protojson.Marshal(anyFalseBoolValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	stringValue := wrapperspb.String("hello")
 	stringValueJSONBytes, err := protojson.Marshal(stringValue)
 	if err != nil {
@@ -793,6 +806,19 @@ func main() {
 		panic(err)
 	}
 	anyStringValueWKTJSONBytes, err := protojson.Marshal(anyStringValueWKT)
+	if err != nil {
+		panic(err)
+	}
+	emptyStringValue := wrapperspb.String("")
+	emptyStringValueJSONBytes, err := protojson.Marshal(emptyStringValue)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyStringValueWKT, err := anypb.New(emptyStringValue)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyStringValueWKTJSONBytes, err := protojson.Marshal(anyEmptyStringValueWKT)
 	if err != nil {
 		panic(err)
 	}
@@ -814,6 +840,19 @@ func main() {
 		panic(err)
 	}
 	anyBytesValueWKTJSONBytes, err := protojson.Marshal(anyBytesValueWKT)
+	if err != nil {
+		panic(err)
+	}
+	emptyBytesValue := wrapperspb.Bytes([]byte{})
+	emptyBytesValueJSONBytes, err := protojson.Marshal(emptyBytesValue)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyBytesValueWKT, err := anypb.New(emptyBytesValue)
+	if err != nil {
+		panic(err)
+	}
+	anyEmptyBytesValueWKTJSONBytes, err := protojson.Marshal(anyEmptyBytesValueWKT)
 	if err != nil {
 		panic(err)
 	}
@@ -930,7 +969,9 @@ func main() {
 	fmt.Printf("any Struct WKT json payload size: %d\n", len(anyStructWKTJSONBytes))
 	fmt.Printf("any Value WKT json payload size: %d\n", len(anyValueWKTJSONBytes))
 	fmt.Printf("any StringValue WKT json payload size: %d\n", len(anyStringValueWKTJSONBytes))
+	fmt.Printf("any EmptyStringValue WKT json payload size: %d\n", len(anyEmptyStringValueWKTJSONBytes))
 	fmt.Printf("any BytesValue WKT json payload size: %d\n", len(anyBytesValueWKTJSONBytes))
+	fmt.Printf("any EmptyBytesValue WKT json payload size: %d\n", len(anyEmptyBytesValueWKTJSONBytes))
 	fmt.Printf("nested Any WKT json payload size: %d\n", len(nestedAnyWKTJSONBytes))
 	fmt.Printf("double value json payload size: %d\n", len(doubleValueJSONBytes))
 	fmt.Printf("any DoubleValue WKT json payload size: %d\n", len(anyDoubleValueWKTJSONBytes))
@@ -966,8 +1007,12 @@ func main() {
 	fmt.Printf("any MaxUInt32Value WKT json payload size: %d\n", len(anyMaxUInt32ValueWKTJSONBytes))
 	fmt.Printf("bool value json payload size: %d\n", len(boolValueJSONBytes))
 	fmt.Printf("any BoolValue WKT json payload size: %d\n", len(anyBoolValueWKTJSONBytes))
+	fmt.Printf("false bool value json payload size: %d\n", len(falseBoolValueJSONBytes))
+	fmt.Printf("any FalseBoolValue WKT json payload size: %d\n", len(anyFalseBoolValueWKTJSONBytes))
 	fmt.Printf("string value json payload size: %d\n", len(stringValueJSONBytes))
+	fmt.Printf("empty string value json payload size: %d\n", len(emptyStringValueJSONBytes))
 	fmt.Printf("bytes value json payload size: %d\n", len(bytesValueJSONBytes))
+	fmt.Printf("empty bytes value json payload size: %d\n", len(emptyBytesValueJSONBytes))
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
@@ -1271,8 +1316,14 @@ func main() {
 	runProtoJSONPair("Any MaxUInt32Value WKT", iterations, anyMaxUInt32ValueWKTJSONBytes, anyMaxUInt32ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BoolValue", iterations, boolValueJSONBytes, boolValue, func() *wrapperspb.BoolValue { return &wrapperspb.BoolValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any BoolValue WKT", iterations, anyBoolValueWKTJSONBytes, anyBoolValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("FalseBoolValue", iterations, falseBoolValueJSONBytes, falseBoolValue, func() *wrapperspb.BoolValue { return &wrapperspb.BoolValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any FalseBoolValue WKT", iterations, anyFalseBoolValueWKTJSONBytes, anyFalseBoolValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("StringValue", iterations, stringValueJSONBytes, stringValue, func() *wrapperspb.StringValue { return &wrapperspb.StringValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("EmptyStringValue", iterations, emptyStringValueJSONBytes, emptyStringValue, func() *wrapperspb.StringValue { return &wrapperspb.StringValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any EmptyStringValue WKT", iterations, anyEmptyStringValueWKTJSONBytes, anyEmptyStringValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BytesValue", iterations, bytesValueJSONBytes, bytesValue, func() *wrapperspb.BytesValue { return &wrapperspb.BytesValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("EmptyBytesValue", iterations, emptyBytesValueJSONBytes, emptyBytesValue, func() *wrapperspb.BytesValue { return &wrapperspb.BytesValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any EmptyBytesValue WKT", iterations, anyEmptyBytesValueWKTJSONBytes, anyEmptyBytesValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 
 	runTimed("go protobuf TextFormat format", iterations, len(textBytes), func() {
 		out, err := prototext.Marshal(person)
