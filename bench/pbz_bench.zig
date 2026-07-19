@@ -39,6 +39,9 @@ const AnyDoubleValueNanWktJson =
 const AnyDoubleValueInfWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.DoubleValue","value":"Infinity"}
 ;
+const AnyDoubleValueNegInfWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.DoubleValue","value":"-Infinity"}
+;
 const AnyFloatValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.FloatValue","value":1.5}
 ;
@@ -47,6 +50,9 @@ const AnyFloatValueNanWktJson =
 ;
 const AnyFloatValueInfWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.FloatValue","value":"Infinity"}
+;
+const AnyFloatValueNegInfWktJson =
+    \\{"@type":"type.googleapis.com/google.protobuf.FloatValue","value":"-Infinity"}
 ;
 const AnyInt64ValueWktJson =
     \\{"@type":"type.googleapis.com/google.protobuf.Int64Value","value":"9007199254740993"}
@@ -82,9 +88,11 @@ const ListValueJson = "[null,\"zig\",1.5,true,{\"nested\":\"value\"}]";
 const DoubleValueJson = "3.25";
 const DoubleValueNanJson = "\"NaN\"";
 const DoubleValueInfJson = "\"Infinity\"";
+const DoubleValueNegInfJson = "\"-Infinity\"";
 const FloatValueJson = "1.5";
 const FloatValueNanJson = "\"NaN\"";
 const FloatValueInfJson = "\"Infinity\"";
+const FloatValueNegInfJson = "\"-Infinity\"";
 const Int64ValueJson = "\"9007199254740993\"";
 const UInt64ValueJson = "\"9007199254740993\"";
 const Int32ValueJson = "12345";
@@ -2508,6 +2516,15 @@ pub fn main() !void {
     const any_double_value_inf_wkt_json = try any_double_value_inf_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_double_value_inf_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_double_value_inf_wkt_json, AnyDoubleValueInfWktJson));
+    const double_value_neg_inf = pbz.DoubleValue{ .value = -std.math.inf(f64) };
+    const double_value_neg_inf_json = try double_value_neg_inf.jsonStringifyAlloc(allocator);
+    defer allocator.free(double_value_neg_inf_json);
+    std.debug.assert(std.mem.eql(u8, double_value_neg_inf_json, DoubleValueNegInfJson));
+    var any_double_value_neg_inf_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.DoubleValue", double_value_neg_inf);
+    defer any_double_value_neg_inf_wkt.deinit(allocator);
+    const any_double_value_neg_inf_wkt_json = try any_double_value_neg_inf_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_double_value_neg_inf_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_double_value_neg_inf_wkt_json, AnyDoubleValueNegInfWktJson));
     const float_value = pbz.FloatValue{ .value = 1.5 };
     const float_value_json = try float_value.jsonStringifyAlloc(allocator);
     defer allocator.free(float_value_json);
@@ -2535,6 +2552,15 @@ pub fn main() !void {
     const any_float_value_inf_wkt_json = try any_float_value_inf_wkt.jsonStringifyAlloc(allocator);
     defer allocator.free(any_float_value_inf_wkt_json);
     std.debug.assert(std.mem.eql(u8, any_float_value_inf_wkt_json, AnyFloatValueInfWktJson));
+    const float_value_neg_inf = pbz.FloatValue{ .value = -std.math.inf(f32) };
+    const float_value_neg_inf_json = try float_value_neg_inf.jsonStringifyAlloc(allocator);
+    defer allocator.free(float_value_neg_inf_json);
+    std.debug.assert(std.mem.eql(u8, float_value_neg_inf_json, FloatValueNegInfJson));
+    var any_float_value_neg_inf_wkt = try pbz.Any.packEncoded(allocator, "google.protobuf.FloatValue", float_value_neg_inf);
+    defer any_float_value_neg_inf_wkt.deinit(allocator);
+    const any_float_value_neg_inf_wkt_json = try any_float_value_neg_inf_wkt.jsonStringifyAlloc(allocator);
+    defer allocator.free(any_float_value_neg_inf_wkt_json);
+    std.debug.assert(std.mem.eql(u8, any_float_value_neg_inf_wkt_json, AnyFloatValueNegInfWktJson));
     const int64_value = pbz.Int64Value{ .value = 9007199254740993 };
     const int64_value_json = try int64_value.jsonStringifyAlloc(allocator);
     defer allocator.free(int64_value_json);
@@ -2615,8 +2641,8 @@ pub fn main() !void {
     // does not silently push any single diagnostic over the compiler-enforced
     // limit again.
     std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} timestamp_json={d} duration_json={d} field_mask_json={d} empty_json={d} struct_json={d} value_json={d} list_value_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, timestamp_json.len, duration_json.len, field_mask_json.len, empty_json.len, struct_json.len, value_json.len, list_value_json.len });
-    std.debug.print("payload sizes direct WKT wrappers: double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} text={d}\n", .{ double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, generated_text.len });
-    std.debug.print("payload sizes Any WKT wrappers: any_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_double_value_wkt_json={d} any_double_value_nan_wkt_json={d} any_double_value_inf_wkt_json={d} any_float_value_wkt_json={d} any_float_value_nan_wkt_json={d} any_float_value_inf_wkt_json={d} any_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_int32_value_wkt_json={d} any_uint32_value_wkt_json={d} any_bool_value_wkt_json={d} any_string_value_wkt_json={d} any_bytes_value_wkt_json={d} nested_any_wkt_json={d}\n", .{ any_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_double_value_wkt_json.len, any_double_value_nan_wkt_json.len, any_double_value_inf_wkt_json.len, any_float_value_wkt_json.len, any_float_value_nan_wkt_json.len, any_float_value_inf_wkt_json.len, any_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_int32_value_wkt_json.len, any_uint32_value_wkt_json.len, any_bool_value_wkt_json.len, any_string_value_wkt_json.len, any_bytes_value_wkt_json.len, nested_any_wkt_json.len });
+    std.debug.print("payload sizes direct WKT wrappers: double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} double_value_neg_inf_json={d} float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} float_value_neg_inf_json={d} int64_value_json={d} uint64_value_json={d} int32_value_json={d} uint32_value_json={d} bool_value_json={d} string_value_json={d} bytes_value_json={d} text={d}\n", .{ double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, double_value_neg_inf_json.len, float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, float_value_neg_inf_json.len, int64_value_json.len, uint64_value_json.len, int32_value_json.len, uint32_value_json.len, bool_value_json.len, string_value_json.len, bytes_value_json.len, generated_text.len });
+    std.debug.print("payload sizes Any WKT wrappers: any_wkt_json={d} any_field_mask_wkt_json={d} any_timestamp_wkt_json={d} any_empty_wkt_json={d} any_struct_wkt_json={d} any_value_wkt_json={d} any_double_value_wkt_json={d} any_double_value_nan_wkt_json={d} any_double_value_inf_wkt_json={d} any_double_value_neg_inf_wkt_json={d} any_float_value_wkt_json={d} any_float_value_nan_wkt_json={d} any_float_value_inf_wkt_json={d} any_float_value_neg_inf_wkt_json={d} any_int64_value_wkt_json={d} any_uint64_value_wkt_json={d} any_int32_value_wkt_json={d} any_uint32_value_wkt_json={d} any_bool_value_wkt_json={d} any_string_value_wkt_json={d} any_bytes_value_wkt_json={d} nested_any_wkt_json={d}\n", .{ any_wkt_json.len, any_field_mask_wkt_json.len, any_timestamp_wkt_json.len, any_empty_wkt_json.len, any_struct_wkt_json.len, any_value_wkt_json.len, any_double_value_wkt_json.len, any_double_value_nan_wkt_json.len, any_double_value_inf_wkt_json.len, any_double_value_neg_inf_wkt_json.len, any_float_value_wkt_json.len, any_float_value_nan_wkt_json.len, any_float_value_inf_wkt_json.len, any_float_value_neg_inf_wkt_json.len, any_int64_value_wkt_json.len, any_uint64_value_wkt_json.len, any_int32_value_wkt_json.len, any_uint32_value_wkt_json.len, any_bool_value_wkt_json.len, any_string_value_wkt_json.len, any_bytes_value_wkt_json.len, nested_any_wkt_json.len });
 
     const results = [_]BenchResult{
         try runTimed(io, "generated binary encode", iters.generated_binary, generated_bytes.len, GeneratedEncodeCtx{ .allocator = allocator, .person = &generated_person }, generatedEncode),
@@ -2820,12 +2846,16 @@ pub fn main() !void {
         try runTimed(io, "pbz Any DoubleValue NaN WKT JSON parse", iters.json, any_double_value_nan_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_double_value_nan_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any DoubleValue Infinity WKT JSON stringify", iters.json, any_double_value_inf_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_double_value_inf_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any DoubleValue Infinity WKT JSON parse", iters.json, any_double_value_inf_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_double_value_inf_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any DoubleValue NegativeInfinity WKT JSON stringify", iters.json, any_double_value_neg_inf_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_double_value_neg_inf_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any DoubleValue NegativeInfinity WKT JSON parse", iters.json, any_double_value_neg_inf_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_double_value_neg_inf_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any FloatValue WKT JSON stringify", iters.json, any_float_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_float_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any FloatValue WKT JSON parse", iters.json, any_float_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_float_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any FloatValue NaN WKT JSON stringify", iters.json, any_float_value_nan_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_float_value_nan_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any FloatValue NaN WKT JSON parse", iters.json, any_float_value_nan_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_float_value_nan_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any FloatValue Infinity WKT JSON stringify", iters.json, any_float_value_inf_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_float_value_inf_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any FloatValue Infinity WKT JSON parse", iters.json, any_float_value_inf_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_float_value_inf_wkt_json }, anyWktJsonParse),
+        try runTimed(io, "pbz Any FloatValue NegativeInfinity WKT JSON stringify", iters.json, any_float_value_neg_inf_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_float_value_neg_inf_wkt }, anyWktJsonStringify),
+        try runTimed(io, "pbz Any FloatValue NegativeInfinity WKT JSON parse", iters.json, any_float_value_neg_inf_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_float_value_neg_inf_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any Int64Value WKT JSON stringify", iters.json, any_int64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_int64_value_wkt }, anyWktJsonStringify),
         try runTimed(io, "pbz Any Int64Value WKT JSON parse", iters.json, any_int64_value_wkt_json.len, AnyWktJsonParseCtx{ .allocator = allocator, .json = any_int64_value_wkt_json }, anyWktJsonParse),
         try runTimed(io, "pbz Any UInt64Value WKT JSON stringify", iters.json, any_uint64_value_wkt_json.len, AnyWktJsonStringifyCtx{ .allocator = allocator, .any = &any_uint64_value_wkt }, anyWktJsonStringify),
@@ -2862,12 +2892,16 @@ pub fn main() !void {
         try runTimed(io, "pbz DoubleValue NaN JSON parse", iters.json, double_value_nan_json.len, WktJsonParseCtx(pbz.DoubleValue){ .allocator = allocator, .json = double_value_nan_json }, wktJsonParse),
         try runTimed(io, "pbz DoubleValue Infinity JSON stringify", iters.json, double_value_inf_json.len, WktJsonStringifyCtx(pbz.DoubleValue){ .allocator = allocator, .value = double_value_inf }, wktJsonStringify),
         try runTimed(io, "pbz DoubleValue Infinity JSON parse", iters.json, double_value_inf_json.len, WktJsonParseCtx(pbz.DoubleValue){ .allocator = allocator, .json = double_value_inf_json }, wktJsonParse),
+        try runTimed(io, "pbz DoubleValue NegativeInfinity JSON stringify", iters.json, double_value_neg_inf_json.len, WktJsonStringifyCtx(pbz.DoubleValue){ .allocator = allocator, .value = double_value_neg_inf }, wktJsonStringify),
+        try runTimed(io, "pbz DoubleValue NegativeInfinity JSON parse", iters.json, double_value_neg_inf_json.len, WktJsonParseCtx(pbz.DoubleValue){ .allocator = allocator, .json = double_value_neg_inf_json }, wktJsonParse),
         try runTimed(io, "pbz FloatValue JSON stringify", iters.json, float_value_json.len, WktJsonStringifyCtx(pbz.FloatValue){ .allocator = allocator, .value = float_value }, wktJsonStringify),
         try runTimed(io, "pbz FloatValue JSON parse", iters.json, float_value_json.len, WktJsonParseCtx(pbz.FloatValue){ .allocator = allocator, .json = float_value_json }, wktJsonParse),
         try runTimed(io, "pbz FloatValue NaN JSON stringify", iters.json, float_value_nan_json.len, WktJsonStringifyCtx(pbz.FloatValue){ .allocator = allocator, .value = float_value_nan }, wktJsonStringify),
         try runTimed(io, "pbz FloatValue NaN JSON parse", iters.json, float_value_nan_json.len, WktJsonParseCtx(pbz.FloatValue){ .allocator = allocator, .json = float_value_nan_json }, wktJsonParse),
         try runTimed(io, "pbz FloatValue Infinity JSON stringify", iters.json, float_value_inf_json.len, WktJsonStringifyCtx(pbz.FloatValue){ .allocator = allocator, .value = float_value_inf }, wktJsonStringify),
         try runTimed(io, "pbz FloatValue Infinity JSON parse", iters.json, float_value_inf_json.len, WktJsonParseCtx(pbz.FloatValue){ .allocator = allocator, .json = float_value_inf_json }, wktJsonParse),
+        try runTimed(io, "pbz FloatValue NegativeInfinity JSON stringify", iters.json, float_value_neg_inf_json.len, WktJsonStringifyCtx(pbz.FloatValue){ .allocator = allocator, .value = float_value_neg_inf }, wktJsonStringify),
+        try runTimed(io, "pbz FloatValue NegativeInfinity JSON parse", iters.json, float_value_neg_inf_json.len, WktJsonParseCtx(pbz.FloatValue){ .allocator = allocator, .json = float_value_neg_inf_json }, wktJsonParse),
         try runTimed(io, "pbz Int64Value JSON stringify", iters.json, int64_value_json.len, WktJsonStringifyCtx(pbz.Int64Value){ .allocator = allocator, .value = int64_value }, wktJsonStringify),
         try runTimed(io, "pbz Int64Value JSON parse", iters.json, int64_value_json.len, WktJsonParseCtx(pbz.Int64Value){ .allocator = allocator, .json = int64_value_json }, wktJsonParse),
         try runTimed(io, "pbz UInt64Value JSON stringify", iters.json, uint64_value_json.len, WktJsonStringifyCtx(pbz.UInt64Value){ .allocator = allocator, .value = uint64_value }, wktJsonStringify),
