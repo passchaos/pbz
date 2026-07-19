@@ -576,6 +576,13 @@ int main() {
   auto *list_nested = list_value.add_values()->mutable_struct_value();
   (*list_nested->mutable_fields())["nested"].set_string_value("value");
   const std::string list_value_json = JsonStringFor(list_value);
+  google::protobuf::Value list_kind_value;
+  list_kind_value.mutable_list_value()->CopyFrom(list_value);
+  const std::string list_kind_value_json = JsonStringFor(list_kind_value);
+  google::protobuf::Any any_list_kind_value_wkt;
+  any_list_kind_value_wkt.PackFrom(list_kind_value);
+  const std::string any_list_kind_value_wkt_json =
+      JsonStringFor(any_list_kind_value_wkt);
   google::protobuf::ListValue empty_list_value;
   const std::string empty_list_value_json = JsonStringFor(empty_list_value);
   google::protobuf::DoubleValue double_value;
@@ -955,6 +962,10 @@ int main() {
             << bool_scalar_value_json.size() << "\n";
   std::cout << "any BoolScalarValue WKT json payload size: "
             << any_bool_scalar_value_wkt_json.size() << "\n";
+  std::cout << "list-kind value json payload size: "
+            << list_kind_value_json.size() << "\n";
+  std::cout << "any ListKindValue WKT json payload size: "
+            << any_list_kind_value_wkt_json.size() << "\n";
   std::cout << "any StringValue WKT json payload size: "
             << any_string_value_wkt_json.size() << "\n";
   std::cout << "any BytesValue WKT json payload size: "
@@ -1681,6 +1692,8 @@ int main() {
                       any_number_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BoolScalarValue WKT", any_bool_scalar_value_wkt,
                       any_bool_scalar_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any ListKindValue WKT", any_list_kind_value_wkt,
+                      any_list_kind_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any StringValue WKT", any_string_value_wkt,
                       any_string_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BytesValue WKT", any_bytes_value_wkt,
@@ -1724,6 +1737,8 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("BoolScalarValue", bool_scalar_value,
                       bool_scalar_value_json, kIterations);
+  RunWktJsonBenchPair("ListKindValue", list_kind_value,
+                      list_kind_value_json, kIterations);
   RunWktJsonBenchPair("ListValue", list_value, list_value_json, kIterations);
   RunWktJsonBenchPair("EmptyListValue", empty_list_value,
                       empty_list_value_json, kIterations);
