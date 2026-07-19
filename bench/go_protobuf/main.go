@@ -462,6 +462,14 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	anyDoubleValueWKT, err := anypb.New(doubleValue)
+	if err != nil {
+		panic(err)
+	}
+	anyDoubleValueWKTJSONBytes, err := protojson.Marshal(anyDoubleValueWKT)
+	if err != nil {
+		panic(err)
+	}
 	floatValue := wrapperspb.Float(1.5)
 	floatValueJSONBytes, err := protojson.Marshal(floatValue)
 	if err != nil {
@@ -650,6 +658,7 @@ func main() {
 	fmt.Printf("any BytesValue WKT json payload size: %d\n", len(anyBytesValueWKTJSONBytes))
 	fmt.Printf("nested Any WKT json payload size: %d\n", len(nestedAnyWKTJSONBytes))
 	fmt.Printf("double value json payload size: %d\n", len(doubleValueJSONBytes))
+	fmt.Printf("any DoubleValue WKT json payload size: %d\n", len(anyDoubleValueWKTJSONBytes))
 	fmt.Printf("float value json payload size: %d\n", len(floatValueJSONBytes))
 	fmt.Printf("int64 value json payload size: %d\n", len(int64ValueJSONBytes))
 	fmt.Printf("any Int64Value WKT json payload size: %d\n", len(anyInt64ValueWKTJSONBytes))
@@ -915,6 +924,7 @@ func main() {
 	runProtoJSONPair("Value", iterations, valueJSONBytes, valueValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("ListValue", iterations, listValueJSONBytes, listValue, func() *structpb.ListValue { return &structpb.ListValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("DoubleValue", iterations, doubleValueJSONBytes, doubleValue, func() *wrapperspb.DoubleValue { return &wrapperspb.DoubleValue{} }, jsonUnmarshalOptions)
+	runProtoJSONPair("Any DoubleValue WKT", iterations, anyDoubleValueWKTJSONBytes, anyDoubleValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FloatValue", iterations, floatValueJSONBytes, floatValue, func() *wrapperspb.FloatValue { return &wrapperspb.FloatValue{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Int64Value", iterations, int64ValueJSONBytes, int64Value, func() *wrapperspb.Int64Value { return &wrapperspb.Int64Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Int64Value WKT", iterations, anyInt64ValueWKTJSONBytes, anyInt64ValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
