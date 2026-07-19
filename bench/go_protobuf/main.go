@@ -700,6 +700,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	numberValueExponentJSONBytes := []byte(`1.5e0`)
 	anyNumberValueWKT, err := anypb.New(numberValue)
 	if err != nil {
 		panic(err)
@@ -708,6 +709,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	anyNumberValueExponentWKTJSONBytes := []byte(`{"@type":"type.googleapis.com/google.protobuf.Value","value":1.5e0}`)
 	zeroNumberValue := structpb.NewNumberValue(0)
 	zeroNumberValueJSONBytes, err := protojson.Marshal(zeroNumberValue)
 	if err != nil {
@@ -1812,6 +1814,7 @@ func main() {
 	runProtoJSONParseOnly("Any StringScalarValue Escape WKT", iterations, anyStringScalarValueEscapeWKTJSONBytes, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any EmptyStringScalarValue WKT", iterations, anyEmptyStringScalarValueWKTJSONBytes, anyEmptyStringScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any NumberValue WKT", iterations, anyNumberValueWKTJSONBytes, anyNumberValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONParseOnly("Any NumberValue Exponent WKT", iterations, anyNumberValueExponentWKTJSONBytes, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any ZeroNumberValue WKT", iterations, anyZeroNumberValueWKTJSONBytes, anyZeroNumberValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any BoolScalarValue WKT", iterations, anyBoolScalarValueWKTJSONBytes, anyBoolScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any FalseBoolScalarValue WKT", iterations, anyFalseBoolScalarValueWKTJSONBytes, anyFalseBoolScalarValueWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
@@ -1871,6 +1874,7 @@ func main() {
 	runProtoJSONParseOnly("StringScalarValue Escape", iterations, stringScalarValueEscapeJSONBytes, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("EmptyStringScalarValue", iterations, emptyStringScalarValueJSONBytes, emptyStringScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("NumberValue", iterations, numberValueJSONBytes, numberValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
+	runProtoJSONParseOnly("NumberValue Exponent", iterations, numberValueExponentJSONBytes, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("ZeroNumberValue", iterations, zeroNumberValueJSONBytes, zeroNumberValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("BoolScalarValue", iterations, boolScalarValueJSONBytes, boolScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("FalseBoolScalarValue", iterations, falseBoolScalarValueJSONBytes, falseBoolScalarValue, func() *structpb.Value { return &structpb.Value{} }, jsonUnmarshalOptions)

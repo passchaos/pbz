@@ -647,9 +647,12 @@ int main() {
   google::protobuf::Value number_value;
   number_value.set_number_value(1.5);
   const std::string number_value_json = JsonStringFor(number_value);
+  const std::string number_value_exponent_json = R"(1.5e0)";
   google::protobuf::Any any_number_value_wkt;
   any_number_value_wkt.PackFrom(number_value);
   const std::string any_number_value_wkt_json = JsonStringFor(any_number_value_wkt);
+  const std::string any_number_value_exponent_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Value","value":1.5e0})";
   google::protobuf::Value zero_number_value;
   zero_number_value.set_number_value(0);
   const std::string zero_number_value_json = JsonStringFor(zero_number_value);
@@ -2023,6 +2026,9 @@ int main() {
                       any_empty_string_scalar_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any NumberValue WKT", any_number_value_wkt,
                       any_number_value_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any NumberValue Exponent WKT",
+      any_number_value_exponent_wkt_json, kIterations);
   RunWktJsonBenchPair("Any ZeroNumberValue WKT", any_zero_number_value_wkt,
                       any_zero_number_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BoolScalarValue WKT", any_bool_scalar_value_wkt,
@@ -2148,6 +2154,8 @@ int main() {
                       empty_string_scalar_value_json, kIterations);
   RunWktJsonBenchPair("NumberValue", number_value, number_value_json,
                       kIterations);
+  RunWktJsonParseOnly<google::protobuf::Value>(
+      "NumberValue Exponent", number_value_exponent_json, kIterations);
   RunWktJsonBenchPair("ZeroNumberValue", zero_number_value,
                       zero_number_value_json, kIterations);
   RunWktJsonBenchPair("BoolScalarValue", bool_scalar_value,

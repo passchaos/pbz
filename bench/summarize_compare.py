@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 355
+EXPECTED_WORKLOAD_COUNT = 357
 
 
 @dataclass(frozen=True)
@@ -572,6 +572,7 @@ WORKLOADS: tuple[Workload, ...] = (
     json_parse_workload("Any StringScalarValue Escape WKT"),
     *json_workload_pair("Any EmptyStringScalarValue WKT"),
     *json_workload_pair("Any NumberValue WKT"),
+    json_parse_workload("Any NumberValue Exponent WKT"),
     *json_workload_pair("Any ZeroNumberValue WKT"),
     *json_workload_pair("Any BoolScalarValue WKT"),
     *json_workload_pair("Any FalseBoolScalarValue WKT"),
@@ -656,6 +657,7 @@ WORKLOADS: tuple[Workload, ...] = (
     json_parse_workload("StringScalarValue Escape"),
     *json_workload_pair("EmptyStringScalarValue"),
     *json_workload_pair("NumberValue"),
+    json_parse_workload("NumberValue Exponent"),
     *json_workload_pair("ZeroNumberValue"),
     *json_workload_pair("BoolScalarValue"),
     *json_workload_pair("FalseBoolScalarValue"),
@@ -1360,6 +1362,8 @@ def self_test() -> None:
         ("Struct Escape", 67),
         ("Value Escape", 67),
         ("StringScalarValue Escape", 10),
+        ("Any NumberValue Exponent WKT", 67),
+        ("NumberValue Exponent", 5),
         ("ListKindValue Escape", 50),
         ("ListValue Escape", 50),
     ):
