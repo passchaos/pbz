@@ -544,6 +544,14 @@ int main() {
   any_double_value_wkt.PackFrom(double_value);
   const std::string any_double_value_wkt_json =
       JsonStringFor(any_double_value_wkt);
+  google::protobuf::DoubleValue negative_double_value;
+  negative_double_value.set_value(-3.25);
+  const std::string negative_double_value_json =
+      JsonStringFor(negative_double_value);
+  google::protobuf::Any any_negative_double_value_wkt;
+  any_negative_double_value_wkt.PackFrom(negative_double_value);
+  const std::string any_negative_double_value_wkt_json =
+      JsonStringFor(any_negative_double_value_wkt);
   google::protobuf::DoubleValue zero_double_value;
   zero_double_value.set_value(0.0);
   const std::string zero_double_value_json = JsonStringFor(zero_double_value);
@@ -580,6 +588,13 @@ int main() {
   any_float_value_wkt.PackFrom(float_value);
   const std::string any_float_value_wkt_json =
       JsonStringFor(any_float_value_wkt);
+  google::protobuf::FloatValue negative_float_value;
+  negative_float_value.set_value(-1.5f);
+  const std::string negative_float_value_json = JsonStringFor(negative_float_value);
+  google::protobuf::Any any_negative_float_value_wkt;
+  any_negative_float_value_wkt.PackFrom(negative_float_value);
+  const std::string any_negative_float_value_wkt_json =
+      JsonStringFor(any_negative_float_value_wkt);
   google::protobuf::FloatValue zero_float_value;
   zero_float_value.set_value(0.0f);
   const std::string zero_float_value_json = JsonStringFor(zero_float_value);
@@ -883,6 +898,10 @@ int main() {
             << "\n";
   std::cout << "any DoubleValue WKT json payload size: "
             << any_double_value_wkt_json.size() << "\n";
+  std::cout << "negative double value json payload size: "
+            << negative_double_value_json.size() << "\n";
+  std::cout << "any NegativeDoubleValue WKT json payload size: "
+            << any_negative_double_value_wkt_json.size() << "\n";
   std::cout << "zero double value json payload size: "
             << zero_double_value_json.size() << "\n";
   std::cout << "any ZeroDoubleValue WKT json payload size: "
@@ -903,6 +922,10 @@ int main() {
             << "\n";
   std::cout << "any FloatValue WKT json payload size: "
             << any_float_value_wkt_json.size() << "\n";
+  std::cout << "negative float value json payload size: "
+            << negative_float_value_json.size() << "\n";
+  std::cout << "any NegativeFloatValue WKT json payload size: "
+            << any_negative_float_value_wkt_json.size() << "\n";
   std::cout << "zero float value json payload size: "
             << zero_float_value_json.size() << "\n";
   std::cout << "any ZeroFloatValue WKT json payload size: "
@@ -1614,6 +1637,11 @@ int main() {
                       kIterations);
   RunWktJsonBenchPair("Any DoubleValue WKT", any_double_value_wkt,
                       any_double_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("NegativeDoubleValue", negative_double_value,
+                      negative_double_value_json, kIterations);
+  RunWktJsonBenchPair("Any NegativeDoubleValue WKT",
+                      any_negative_double_value_wkt,
+                      any_negative_double_value_wkt_json, kIterations);
   RunWktJsonBenchPair("ZeroDoubleValue", zero_double_value,
                       zero_double_value_json, kIterations);
   RunWktJsonBenchPair("Any ZeroDoubleValue WKT", any_zero_double_value_wkt,
@@ -1635,6 +1663,11 @@ int main() {
   RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue WKT", any_float_value_wkt,
                       any_float_value_wkt_json, kIterations);
+  RunWktJsonBenchPair("NegativeFloatValue", negative_float_value,
+                      negative_float_value_json, kIterations);
+  RunWktJsonBenchPair("Any NegativeFloatValue WKT",
+                      any_negative_float_value_wkt,
+                      any_negative_float_value_wkt_json, kIterations);
   RunWktJsonBenchPair("ZeroFloatValue", zero_float_value,
                       zero_float_value_json, kIterations);
   RunWktJsonBenchPair("Any ZeroFloatValue WKT", any_zero_float_value_wkt,
