@@ -680,13 +680,18 @@ int main() {
   auto *list_nested = list_value.add_values()->mutable_struct_value();
   (*list_nested->mutable_fields())["nested"].set_string_value("value");
   const std::string list_value_json = JsonStringFor(list_value);
+  const std::string list_value_escape_json =
+      R"([null,"\u007aig",1.5,true,{"\u006eested":"value"}])";
   google::protobuf::Value list_kind_value;
   list_kind_value.mutable_list_value()->CopyFrom(list_value);
   const std::string list_kind_value_json = JsonStringFor(list_kind_value);
+  const std::string list_kind_value_escape_json = list_value_escape_json;
   google::protobuf::Any any_list_kind_value_wkt;
   any_list_kind_value_wkt.PackFrom(list_kind_value);
   const std::string any_list_kind_value_wkt_json =
       JsonStringFor(any_list_kind_value_wkt);
+  const std::string any_list_kind_value_escape_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Value","value":[null,"\u007aig",1.5,true,{"\u006eested":"value"}]})";
   google::protobuf::Value empty_struct_kind_value;
   empty_struct_kind_value.mutable_struct_value()->CopyFrom(empty_struct_value);
   const std::string empty_struct_kind_value_json =
@@ -1128,6 +1133,8 @@ int main() {
             << value_escape_json.size() << "\n";
   std::cout << "list value json payload size: " << list_value_json.size()
             << "\n";
+  std::cout << "list value escape json payload size: "
+            << list_value_escape_json.size() << "\n";
   std::cout << "empty list value json payload size: "
             << empty_list_value_json.size() << "\n";
   std::cout << "any Struct WKT json payload size: "
@@ -1176,8 +1183,12 @@ int main() {
             << any_false_bool_scalar_value_wkt_json.size() << "\n";
   std::cout << "list-kind value json payload size: "
             << list_kind_value_json.size() << "\n";
+  std::cout << "list-kind value escape json payload size: "
+            << list_kind_value_escape_json.size() << "\n";
   std::cout << "any ListKindValue WKT json payload size: "
             << any_list_kind_value_wkt_json.size() << "\n";
+  std::cout << "any ListKindValue Escape WKT json payload size: "
+            << any_list_kind_value_escape_wkt_json.size() << "\n";
   std::cout << "empty struct-kind value json payload size: "
             << empty_struct_kind_value_json.size() << "\n";
   std::cout << "any EmptyStructKindValue WKT json payload size: "
@@ -2021,6 +2032,9 @@ int main() {
                       any_false_bool_scalar_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any ListKindValue WKT", any_list_kind_value_wkt,
                       any_list_kind_value_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any ListKindValue Escape WKT",
+      any_list_kind_value_escape_wkt_json, kIterations);
   RunWktJsonBenchPair("Any EmptyStructKindValue WKT",
                       any_empty_struct_kind_value_wkt,
                       any_empty_struct_kind_value_wkt_json, kIterations);
@@ -2142,11 +2156,15 @@ int main() {
                       false_bool_scalar_value_json, kIterations);
   RunWktJsonBenchPair("ListKindValue", list_kind_value,
                       list_kind_value_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Value>(
+      "ListKindValue Escape", list_kind_value_escape_json, kIterations);
   RunWktJsonBenchPair("EmptyStructKindValue", empty_struct_kind_value,
                       empty_struct_kind_value_json, kIterations);
   RunWktJsonBenchPair("EmptyListKindValue", empty_list_kind_value,
                       empty_list_kind_value_json, kIterations);
   RunWktJsonBenchPair("ListValue", list_value, list_value_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::ListValue>(
+      "ListValue Escape", list_value_escape_json, kIterations);
   RunWktJsonBenchPair("EmptyListValue", empty_list_value,
                       empty_list_value_json, kIterations);
   RunWktJsonBenchPair("DoubleValue", double_value, double_value_json,

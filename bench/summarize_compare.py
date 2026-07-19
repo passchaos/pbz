@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 352
+EXPECTED_WORKLOAD_COUNT = 355
 
 
 @dataclass(frozen=True)
@@ -576,6 +576,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any BoolScalarValue WKT"),
     *json_workload_pair("Any FalseBoolScalarValue WKT"),
     *json_workload_pair("Any ListKindValue WKT"),
+    json_parse_workload("Any ListKindValue Escape WKT"),
     *json_workload_pair("Any EmptyStructKindValue WKT"),
     *json_workload_pair("Any EmptyListKindValue WKT"),
     *json_workload_pair("Any DoubleValue WKT"),
@@ -659,9 +660,11 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("BoolScalarValue"),
     *json_workload_pair("FalseBoolScalarValue"),
     *json_workload_pair("ListKindValue"),
+    json_parse_workload("ListKindValue Escape"),
     *json_workload_pair("EmptyStructKindValue"),
     *json_workload_pair("EmptyListKindValue"),
     *json_workload_pair("ListValue"),
+    json_parse_workload("ListValue Escape"),
     *json_workload_pair("EmptyListValue"),
     *json_workload_pair("DoubleValue"),
     json_parse_workload("DoubleValue String"),
@@ -1353,9 +1356,12 @@ def self_test() -> None:
         ("Any Struct Escape WKT", 130),
         ("Any Value Escape WKT", 129),
         ("Any StringScalarValue Escape WKT", 72),
+        ("Any ListKindValue Escape WKT", 112),
         ("Struct Escape", 67),
         ("Value Escape", 67),
         ("StringScalarValue Escape", 10),
+        ("ListKindValue Escape", 50),
+        ("ListValue Escape", 50),
     ):
         sample_lines.extend(
             (
