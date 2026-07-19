@@ -527,6 +527,10 @@ int main() {
   google::protobuf::Any any_timestamp_wkt;
   any_timestamp_wkt.PackFrom(timestamp);
   const std::string any_timestamp_wkt_json = JsonStringFor(any_timestamp_wkt);
+  const std::string short_fraction_timestamp_json =
+      R"("2020-01-01T00:00:00.1Z")";
+  const std::string any_short_fraction_timestamp_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"2020-01-01T00:00:00.1Z"})";
   google::protobuf::Timestamp micro_timestamp;
   micro_timestamp.set_seconds(1577836800);
   micro_timestamp.set_nanos(123456000);
@@ -1001,6 +1005,10 @@ int main() {
             << "\n";
   std::cout << "any Timestamp WKT json payload size: "
             << any_timestamp_wkt_json.size() << "\n";
+  std::cout << "short fraction timestamp json payload size: "
+            << short_fraction_timestamp_json.size() << "\n";
+  std::cout << "any ShortFraction Timestamp WKT json payload size: "
+            << any_short_fraction_timestamp_wkt_json.size() << "\n";
   std::cout << "micro timestamp json payload size: "
             << micro_timestamp_json.size() << "\n";
   std::cout << "any Micro Timestamp WKT json payload size: "
@@ -1885,6 +1893,9 @@ int main() {
                       any_empty_field_mask_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Timestamp WKT", any_timestamp_wkt,
                       any_timestamp_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any ShortFraction Timestamp WKT",
+      any_short_fraction_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Micro Timestamp WKT", any_micro_timestamp_wkt,
                       any_micro_timestamp_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Nano Timestamp WKT", any_nano_timestamp_wkt,
@@ -1998,6 +2009,8 @@ int main() {
   RunWktJsonBenchPair("EmptyFieldMask", empty_field_mask,
                       empty_field_mask_json, kIterations);
   RunWktJsonBenchPair("Timestamp", timestamp, timestamp_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Timestamp>(
+      "ShortFraction Timestamp", short_fraction_timestamp_json, kIterations);
   RunWktJsonBenchPair("Micro Timestamp", micro_timestamp, micro_timestamp_json,
                       kIterations);
   RunWktJsonBenchPair("Nano Timestamp", nano_timestamp, nano_timestamp_json,

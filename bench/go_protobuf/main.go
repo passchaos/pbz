@@ -514,6 +514,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	shortFractionTimestampJSONBytes := []byte(`"2020-01-01T00:00:00.1Z"`)
+	anyShortFractionTimestampWKTJSONBytes := []byte(`{"@type":"type.googleapis.com/google.protobuf.Timestamp","value":"2020-01-01T00:00:00.1Z"}`)
 	microTimestamp := &timestamppb.Timestamp{Seconds: 1_577_836_800, Nanos: 123_456_000}
 	microTimestampJSONBytes, err := protojson.Marshal(microTimestamp)
 	if err != nil {
@@ -1338,6 +1340,8 @@ func main() {
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
+	fmt.Printf("short fraction timestamp json payload size: %d\n", len(shortFractionTimestampJSONBytes))
+	fmt.Printf("any ShortFraction Timestamp WKT json payload size: %d\n", len(anyShortFractionTimestampWKTJSONBytes))
 	fmt.Printf("micro timestamp json payload size: %d\n", len(microTimestampJSONBytes))
 	fmt.Printf("any Micro Timestamp WKT json payload size: %d\n", len(anyMicroTimestampWKTJSONBytes))
 	fmt.Printf("nano timestamp json payload size: %d\n", len(nanoTimestampJSONBytes))
@@ -1744,6 +1748,7 @@ func main() {
 	runProtoJSONPair("Any FieldMask WKT", iterations, anyFieldMaskWKTJSONBytes, anyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any EmptyFieldMask WKT", iterations, anyEmptyFieldMaskWKTJSONBytes, anyEmptyFieldMaskWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Timestamp WKT", iterations, anyTimestampWKTJSONBytes, anyTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
+	runProtoJSONParseOnly("Any ShortFraction Timestamp WKT", iterations, anyShortFractionTimestampWKTJSONBytes, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Micro Timestamp WKT", iterations, anyMicroTimestampWKTJSONBytes, anyMicroTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Any Nano Timestamp WKT", iterations, anyNanoTimestampWKTJSONBytes, anyNanoTimestampWKT, func() *anypb.Any { return &anypb.Any{} }, jsonUnmarshalOptions)
 	runTimed("go protobuf Any Offset Timestamp WKT JSON parse", iterations, len(anyOffsetTimestampWKTJSONBytes), func() {
@@ -1795,6 +1800,7 @@ func main() {
 	runProtoJSONPair("FieldMask", iterations, fieldMaskJSONBytes, fieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("EmptyFieldMask", iterations, emptyFieldMaskJSONBytes, emptyFieldMask, func() *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Timestamp", iterations, timestampJSONBytes, timestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
+	runProtoJSONParseOnly("ShortFraction Timestamp", iterations, shortFractionTimestampJSONBytes, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Micro Timestamp", iterations, microTimestampJSONBytes, microTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runProtoJSONPair("Nano Timestamp", iterations, nanoTimestampJSONBytes, nanoTimestamp, func() *timestamppb.Timestamp { return &timestamppb.Timestamp{} }, jsonUnmarshalOptions)
 	runTimed("go protobuf Offset Timestamp JSON parse", iterations, len(offsetTimestampJSONBytes), func() {
