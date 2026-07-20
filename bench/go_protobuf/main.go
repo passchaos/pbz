@@ -368,6 +368,31 @@ func main() {
 		bytespkg.Contains(enumNumberStringifyJSONBytes, []byte(`BENCH_KIND_BETA`)) {
 		panic("unexpected EnumNumber JSON stringify result")
 	}
+	presenceMixJSONBytes, err := protojson.Marshal(presencemix)
+	if err != nil {
+		panic(err)
+	}
+	if !bytespkg.Contains(presenceMixJSONBytes, []byte(`"count":0`)) ||
+		!bytespkg.Contains(presenceMixJSONBytes, []byte(`"note":""`)) ||
+		!bytespkg.Contains(presenceMixJSONBytes, []byte(`"raw":"cHJlc2VuY2UtcmF3"`)) ||
+		!bytespkg.Contains(presenceMixJSONBytes, []byte(`"child"`)) ||
+		!bytespkg.Contains(presenceMixJSONBytes, []byte(`"nested"`)) ||
+		bytespkg.Contains(presenceMixJSONBytes, []byte(`"name"`)) {
+		panic("unexpected PresenceMix JSON stringify result")
+	}
+	{
+		var decoded personpb.PresenceMix
+		if err := protojson.Unmarshal(presenceMixJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Count == nil || decoded.GetCount() != 0 ||
+			decoded.Note == nil || decoded.GetNote() != "" ||
+			string(decoded.GetRaw()) != "presence-raw" ||
+			decoded.GetChild() == nil || decoded.GetChild().GetId() != 7 || decoded.GetChild().GetLabel() != "child" ||
+			decoded.GetNested() == nil || decoded.GetNested().GetId() != 11 || decoded.GetNested().GetLabel() != "nested" {
+			panic("unexpected PresenceMix JSON parse result")
+		}
+	}
 	mapKeySurrogateJSONBytes := []byte(`{"counts":{"\ud83d\ude00":9}}`)
 	nullFieldsJSONBytes := []byte(`{"id":null,"name":null,"scores":null,"counts":null}`)
 	{
@@ -1510,6 +1535,7 @@ func main() {
 	fmt.Printf("always-print stringify json payload size: %d\n", len(alwaysPrintStringifyJSONBytes))
 	fmt.Printf("proto name stringify json payload size: %d\n", len(protoNameStringifyJSONBytes))
 	fmt.Printf("enum number stringify json payload size: %d\n", len(enumNumberStringifyJSONBytes))
+	fmt.Printf("presencemix json payload size: %d\n", len(presenceMixJSONBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
 	fmt.Printf("ignore unknown json payload size: %d\n", len(ignoreUnknownJSONBytes))
@@ -1778,6 +1804,8 @@ func main() {
 	}).print()
 
 	unmarshalOptions := proto.UnmarshalOptions{}
+	jsonUnmarshalOptions := protojson.UnmarshalOptions{}
+	textUnmarshalOptions := prototext.UnmarshalOptions{}
 	runTimed("go protobuf binary decode", iterations, len(bytes), func() {
 		var decoded personpb.Person
 		if err := unmarshalOptions.Unmarshal(bytes, &decoded); err != nil {
@@ -1879,6 +1907,20 @@ func main() {
 		}
 	}).print()
 
+	runTimed("go protobuf PresenceMix JSON stringify", iterations, len(presenceMixJSONBytes), func() {
+		out, err := protojson.Marshal(presencemix)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf PresenceMix JSON parse", iterations, len(presenceMixJSONBytes), func() {
+		var decoded personpb.PresenceMix
+		if err := jsonUnmarshalOptions.Unmarshal(presenceMixJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
 	runTimed("go protobuf complex encode", iterations, len(complexBytes), func() {
 		out, err := proto.Marshal(complex)
 		if err != nil {
@@ -1911,9 +1953,6 @@ func main() {
 			panic(err)
 		}
 	}).print()
-
-	jsonUnmarshalOptions := protojson.UnmarshalOptions{}
-	textUnmarshalOptions := prototext.UnmarshalOptions{}
 
 	runTimed("go protobuf complex JSON stringify", iterations, len(complexJSONBytes), func() {
 		out, err := protojson.Marshal(complex)

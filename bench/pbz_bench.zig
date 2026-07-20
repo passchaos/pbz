@@ -1136,6 +1136,20 @@ fn generatedPresenceMixDecodeReuse(ctx: GeneratedPresenceMixDecodeReuseCtx) !voi
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+const GeneratedPresenceMixJsonStringifyCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.PresenceMix };
+fn generatedPresenceMixJsonStringify(ctx: GeneratedPresenceMixJsonStringifyCtx) !void {
+    const json = try ctx.message.jsonStringifyAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(json.ptr);
+    ctx.allocator.free(json);
+}
+
+const GeneratedPresenceMixJsonParseCtx = struct { allocator: std.mem.Allocator, json: []const u8 };
+fn generatedPresenceMixJsonParse(ctx: GeneratedPresenceMixJsonParseCtx) !void {
+    var decoded = try person_pb.demo.PresenceMix.jsonParse(ctx.allocator, ctx.json);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
 const LargeBytesBorrowedViewCtx = struct { bytes: []const u8 };
 fn largeBytesBorrowedViewDecode(ctx: LargeBytesBorrowedViewCtx) !void {
     const payload = (try person_pb.demo.LargeBytes.payloadBytesView(ctx.bytes)) orelse return error.InvalidWireType;
@@ -2623,6 +2637,25 @@ pub fn main() !void {
     defer generated_large_bytes_decode_reuse.deinit(allocator);
     const generated_presence_mix_bytes = try generated_presence_mix.encode(allocator);
     defer allocator.free(generated_presence_mix_bytes);
+    const generated_presence_mix_json = try generated_presence_mix.jsonStringifyAlloc(allocator);
+    defer allocator.free(generated_presence_mix_json);
+    std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"count\":0") != null);
+    std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"note\":\"\"") != null);
+    std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"raw\":\"cHJlc2VuY2UtcmF3\"") != null);
+    std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"child\":") != null);
+    std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"nested\":") != null);
+    std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"name\":") == null);
+    var generated_presence_mix_from_json = try person_pb.demo.PresenceMix.jsonParse(allocator, generated_presence_mix_json);
+    defer generated_presence_mix_from_json.deinit(allocator);
+    std.debug.assert(generated_presence_mix_from_json._count == .count and generated_presence_mix_from_json._count.count == 0);
+    std.debug.assert(generated_presence_mix_from_json._note == .note and generated_presence_mix_from_json._note.note.len == 0);
+    std.debug.assert(generated_presence_mix_from_json._raw == .raw and std.mem.eql(u8, generated_presence_mix_from_json._raw.raw, "presence-raw"));
+    std.debug.assert(generated_presence_mix_from_json.child != null);
+    std.debug.assert(generated_presence_mix_from_json.child.?.id == 7);
+    std.debug.assert(std.mem.eql(u8, generated_presence_mix_from_json.child.?.label, "child"));
+    std.debug.assert(generated_presence_mix_from_json.pick == .nested);
+    std.debug.assert(generated_presence_mix_from_json.pick.nested.id == 11);
+    std.debug.assert(std.mem.eql(u8, generated_presence_mix_from_json.pick.nested.label, "nested"));
     var reusable_presence_mix_writer = pbz.Writer.init(allocator);
     defer reusable_presence_mix_writer.deinit();
     try reusable_presence_mix_writer.bytes.ensureTotalCapacity(allocator, generated_presence_mix_bytes.len);
@@ -3734,7 +3767,7 @@ pub fn main() !void {
     // does not silently push any single diagnostic over the compiler-enforced
     // limit again.
     std.debug.print("payload sizes detail: scalar_mix={d} text_bytes={d} large_bytes={d} presence_mix={d} complex={d} complex_json={d} complex_text={d} unknown_fields={d} shuffled_large_map={d} json={d} map_key_surrogate_json={d} timestamp_json={d} short_fraction_timestamp_json={d} micro_timestamp_json={d} nano_timestamp_json={d} offset_timestamp_json={d} pre_epoch_timestamp_json={d} max_timestamp_json={d} min_timestamp_json={d} duration_json={d} plus_duration_json={d} short_fraction_duration_json={d} micro_duration_json={d} nano_duration_json={d} negative_duration_json={d} fractional_negative_duration_json={d} max_duration_json={d} min_duration_json={d} zero_duration_json={d} field_mask_json={d} field_mask_escape_json={d} empty_field_mask_json={d}\n", .{ generated_scalar_mix_bytes.len, generated_text_bytes_bytes.len, generated_large_bytes_bytes.len, generated_presence_mix_bytes.len, generated_complex_bytes.len, generated_complex_json.len, generated_complex_text.len, generated_unknown_bytes.len, generated_shuffled_large_map_bytes.len, generated_json.len, GeneratedMapKeySurrogateJson.len, timestamp_json.len, ShortFractionTimestampJson.len, micro_timestamp_json.len, nano_timestamp_json.len, OffsetTimestampJson.len, pre_epoch_timestamp_json.len, max_timestamp_json.len, min_timestamp_json.len, duration_json.len, PlusDurationJson.len, ShortFractionDurationJson.len, micro_duration_json.len, nano_duration_json.len, negative_duration_json.len, fractional_negative_duration_json.len, max_duration_json.len, min_duration_json.len, zero_duration_json.len, field_mask_json.len, FieldMaskEscapeJson.len, empty_field_mask_json.len });
-    std.debug.print("payload sizes generated JSON edge cases: null_fields_json={d} ignore_unknown_json={d} open_enum_json={d} enum_name_json={d} proto_name_parse_json={d} proto_name_stringify_json={d} enum_number_stringify_json={d} always_print_stringify_json={d} int_exponent_json={d}\n", .{ GeneratedNullFieldsJson.len, GeneratedIgnoreUnknownJson.len, GeneratedOpenEnumJson.len, GeneratedEnumNameJson.len, GeneratedProtoNameJson.len, generated_proto_name_json.len, generated_enum_number_json.len, generated_always_print_json.len, GeneratedIntExponentJson.len });
+    std.debug.print("payload sizes generated JSON extras: presence_mix_json={d} null_fields_json={d} ignore_unknown_json={d} open_enum_json={d} enum_name_json={d} proto_name_parse_json={d} proto_name_stringify_json={d} enum_number_stringify_json={d} always_print_stringify_json={d} int_exponent_json={d}\n", .{ generated_presence_mix_json.len, GeneratedNullFieldsJson.len, GeneratedIgnoreUnknownJson.len, GeneratedOpenEnumJson.len, GeneratedEnumNameJson.len, GeneratedProtoNameJson.len, generated_proto_name_json.len, generated_enum_number_json.len, generated_always_print_json.len, GeneratedIntExponentJson.len });
     std.debug.print("payload sizes escaped temporal WKT JSON: duration_escape_json={d} timestamp_escape_json={d} any_duration_escape_wkt_json={d} any_timestamp_escape_wkt_json={d}\n", .{ DurationEscapeJson.len, TimestampEscapeJson.len, AnyDurationEscapeWktJson.len, AnyTimestampEscapeWktJson.len });
     std.debug.print("payload sizes direct object/value WKTs: empty_json={d} struct_json={d} struct_escape_json={d} struct_number_exponent_json={d} struct_surrogate_json={d} struct_key_surrogate_json={d} empty_struct_json={d} value_json={d} value_escape_json={d} value_number_exponent_json={d} value_surrogate_json={d} value_key_surrogate_json={d} null_value_json={d} string_scalar_value_json={d} string_scalar_value_escape_json={d} string_scalar_value_surrogate_json={d} empty_string_scalar_value_json={d} number_value_json={d} number_value_exponent_json={d} negative_number_value_json={d} zero_number_value_json={d} bool_scalar_value_json={d} false_bool_scalar_value_json={d} list_kind_value_json={d} list_kind_value_escape_json={d} list_kind_value_surrogate_json={d} empty_struct_kind_value_json={d} empty_list_kind_value_json={d} list_value_json={d} list_value_escape_json={d} list_value_surrogate_json={d} empty_list_value_json={d}\n", .{ empty_json.len, struct_json.len, StructEscapeJson.len, StructNumberExponentJson.len, StructSurrogateJson.len, StructKeySurrogateJson.len, empty_struct_json.len, value_json.len, ValueEscapeJson.len, ValueNumberExponentJson.len, ValueSurrogateJson.len, ValueKeySurrogateJson.len, null_value_json.len, string_scalar_value_json.len, StringScalarValueEscapeJson.len, StringScalarValueSurrogateJson.len, empty_string_scalar_value_json.len, number_value_json.len, NumberValueExponentJson.len, negative_number_value_json.len, zero_number_value_json.len, bool_scalar_value_json.len, false_bool_scalar_value_json.len, list_kind_value_json.len, ListKindValueEscapeJson.len, ListKindValueSurrogateJson.len, empty_struct_kind_value_json.len, empty_list_kind_value_json.len, list_value_json.len, ListValueEscapeJson.len, ListValueSurrogateJson.len, empty_list_value_json.len });
     std.debug.print("payload sizes direct float WKT wrappers: double_value_json={d} double_value_string_json={d} double_value_exponent_json={d} negative_double_value_json={d} zero_double_value_json={d} double_value_nan_json={d} double_value_inf_json={d} double_value_neg_inf_json={d} float_value_json={d} float_value_string_json={d} float_value_exponent_json={d} negative_float_value_json={d} zero_float_value_json={d} float_value_nan_json={d} float_value_inf_json={d} float_value_neg_inf_json={d}\n", .{ double_value_json.len, DoubleValueStringJson.len, DoubleValueExponentJson.len, negative_double_value_json.len, zero_double_value_json.len, double_value_nan_json.len, double_value_inf_json.len, double_value_neg_inf_json.len, float_value_json.len, FloatValueStringJson.len, FloatValueExponentJson.len, negative_float_value_json.len, zero_float_value_json.len, float_value_nan_json.len, float_value_inf_json.len, float_value_neg_inf_json.len });
@@ -3786,6 +3819,8 @@ pub fn main() !void {
         try runTimed(io, "generated presencemix trusted UTF-8 encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeIntoCtx{ .buffer = generated_presence_mix_buffer, .message = &generated_presence_mix }, generatedPresenceMixTrustedUtf8EncodeIntoReuse),
         try runTimed(io, "generated presencemix decode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes }, generatedPresenceMixDecode),
         try runTimed(io, "generated presencemix decode reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeReuseCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes, .message = &generated_presence_mix_decode_reuse }, generatedPresenceMixDecodeReuse),
+        try runTimed(io, "generated PresenceMix JSON stringify", iters.json, generated_presence_mix_json.len, GeneratedPresenceMixJsonStringifyCtx{ .allocator = allocator, .message = &generated_presence_mix }, generatedPresenceMixJsonStringify),
+        try runTimed(io, "generated PresenceMix JSON parse", iters.json, generated_presence_mix_json.len, GeneratedPresenceMixJsonParseCtx{ .allocator = allocator, .json = generated_presence_mix_json }, generatedPresenceMixJsonParse),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
         try runTimed(io, "generated complex writeToAssumeCapacity reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexWriteToCtx{ .writer = &reusable_complex_writer, .message = &generated_complex }, generatedComplexWriteToReuse),
         try runTimed(io, "generated complex encodeIntoAssumeCapacity buffer reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeIntoCtx{ .buffer = generated_complex_buffer, .message = &generated_complex }, generatedComplexEncodeIntoReuse),

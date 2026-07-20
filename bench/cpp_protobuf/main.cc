@@ -448,6 +448,33 @@ int main() {
   if (enum_number_stringify_json.find("\"kind\":2") == std::string::npos ||
       enum_number_stringify_json.find("BENCH_KIND_BETA") != std::string::npos)
     std::abort();
+  std::string presencemix_json;
+  if (!google::protobuf::util::MessageToJsonString(presencemix,
+                                                   &presencemix_json)
+           .ok())
+    std::abort();
+  if (presencemix_json.find("\"count\":0") == std::string::npos ||
+      presencemix_json.find("\"note\":\"\"") == std::string::npos ||
+      presencemix_json.find("\"raw\":\"cHJlc2VuY2UtcmF3\"") ==
+          std::string::npos ||
+      presencemix_json.find("\"child\"") == std::string::npos ||
+      presencemix_json.find("\"nested\"") == std::string::npos ||
+      presencemix_json.find("\"name\"") != std::string::npos)
+    std::abort();
+  {
+    demo::PresenceMix decoded;
+    if (!google::protobuf::util::JsonStringToMessage(presencemix_json,
+                                                     &decoded)
+             .ok())
+      std::abort();
+    if (!decoded.has_count() || decoded.count() != 0 ||
+        !decoded.has_note() || !decoded.note().empty() ||
+        decoded.raw() != "presence-raw" || !decoded.has_child() ||
+        decoded.child().id() != 7 || decoded.child().label() != "child" ||
+        !decoded.has_nested() || decoded.nested().id() != 11 ||
+        decoded.nested().label() != "nested")
+      std::abort();
+  }
   const std::string map_key_surrogate_json =
       R"({"counts":{"\ud83d\ude00":9}})";
   const std::string null_fields_json =
@@ -1223,6 +1250,8 @@ int main() {
             << proto_name_stringify_json.size() << "\n";
   std::cout << "enum number stringify json payload size: "
             << enum_number_stringify_json.size() << "\n";
+  std::cout << "presencemix json payload size: " << presencemix_json.size()
+            << "\n";
   std::cout << "map key-surrogate json payload size: "
             << map_key_surrogate_json.size() << "\n";
   std::cout << "null fields json payload size: " << null_fields_json.size()
@@ -1980,6 +2009,29 @@ int main() {
                  asm volatile("" : : "g"(&reused_presencemix_decoded) : "memory");
                });
   presencemix_decode_reuse.Print();
+
+  auto presencemix_json_stringify = RunTimed(
+      "c++ protobuf PresenceMix JSON stringify", kIterations,
+      presencemix_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(presencemix, &out)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  presencemix_json_stringify.Print();
+
+  auto presencemix_json_parse =
+      RunTimed("c++ protobuf PresenceMix JSON parse", kIterations,
+               presencemix_json.size(), [&]() {
+                 demo::PresenceMix decoded;
+                 if (!google::protobuf::util::JsonStringToMessage(
+                          presencemix_json, &decoded)
+                          .ok())
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  presencemix_json_parse.Print();
 
   auto complex_encode = RunTimed(
       "c++ protobuf complex encode", kIterations, complex_bytes.size(), [&]() {

@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-enum-number-json-final.log` summarized by
-`/tmp/pbz-summary-enum-number-json-final.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-presencemix-json-final.log` summarized by
+`/tmp/pbz-summary-presencemix-json-final.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-enum-number-json-final.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-presencemix-json-final.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 406 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 408 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -82,7 +82,7 @@ The matrix includes:
 - string/bytes and repeated string/bytes encode/decode, including borrowed
   length-delimited output slices
 - large bytes and repeated large bytes encode/decode
-- proto3 optional presence plus oneof encode/decode
+- proto3 optional presence plus oneof encode/decode and JSON stringify/parse
 - complex nested message / oneof / map-message encode/decode
 - complex JSON stringify/parse
 - `google.protobuf.Any` containing a well-known-type JSON value stringify/parse,
