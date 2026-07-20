@@ -408,6 +408,8 @@ int main() {
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok())
     std::abort();
+  const std::string map_key_surrogate_json =
+      R"({"counts":{"\ud83d\ude00":9}})";
   std::string text;
   if (!google::protobuf::TextFormat::PrintToString(person, &text))
     std::abort();
@@ -1097,6 +1099,8 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "map key-surrogate json payload size: "
+            << map_key_surrogate_json.size() << "\n";
   std::cout << "timestamp json payload size: " << timestamp_json.size()
             << "\n";
   std::cout << "any Timestamp WKT json payload size: "
@@ -2050,6 +2054,18 @@ int main() {
         asm volatile("" : : "g"(&reused_json_decoded) : "memory");
       });
   json_parse_reuse.Print();
+
+  auto map_key_surrogate_json_parse =
+      RunTimed("c++ protobuf MapKeySurrogate JSON parse", kIterations,
+               map_key_surrogate_json.size(), [&]() {
+                 demo::Person decoded;
+                 if (!google::protobuf::util::JsonStringToMessage(
+                          map_key_surrogate_json, &decoded)
+                          .ok())
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  map_key_surrogate_json_parse.Print();
 
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(

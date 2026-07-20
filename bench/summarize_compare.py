@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 396
+EXPECTED_WORKLOAD_COUNT = 397
 
 
 @dataclass(frozen=True)
@@ -538,6 +538,14 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf JSON parse", "c++ protobuf JSON parse reuse"),
             "go protobuf": ("go protobuf JSON parse",),
+        },
+    ),
+    Workload(
+        "MapKeySurrogate JSON parse",
+        ("generated MapKeySurrogate JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf MapKeySurrogate JSON parse",),
+            "go protobuf": ("go protobuf MapKeySurrogate JSON parse",),
         },
     ),
     *json_workload_pair("Any WKT"),
@@ -1390,6 +1398,9 @@ def self_test() -> None:
         benchmark_line("c++ protobuf unknown fields count by number", 4016, 100.0),
         benchmark_line("generated textbytes borrowed slices encode", 134, 20.0),
         benchmark_line("quick-protobuf textbytes encode reuse", 134, 30.0),
+        benchmark_line("generated MapKeySurrogate JSON parse", 29, 70.0),
+        benchmark_line("c++ protobuf MapKeySurrogate JSON parse", 29, 400.0),
+        benchmark_line("go protobuf MapKeySurrogate JSON parse", 29, 250.0),
     ]
     for label, bytes_per_iter, stringify_ns, parse_ns in JSON_SELF_TEST_SPECS:
         sample_lines.extend(json_sample_pair(label, bytes_per_iter, stringify_ns, parse_ns))

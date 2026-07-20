@@ -64,7 +64,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - generated typed iterators for packed varint fields
 - generated known-schema decode reuse for trusted same-schema hot paths,
   including packed repeated scalar and open-enum messages with reusable destination storage
-- JSON stringify/parse
+- JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse
 - TextFormat format/parse
 
 The unknown-field stress rows are pbz regression signals. Generated messages

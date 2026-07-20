@@ -335,6 +335,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	mapKeySurrogateJSONBytes := []byte(`{"counts":{"\ud83d\ude00":9}}`)
 	textBytes, err := prototext.Marshal(person)
 	if err != nil {
 		panic(err)
@@ -1407,6 +1408,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
+	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
 	fmt.Printf("timestamp escape json payload size: %d\n", len(timestampEscapeJSONBytes))
@@ -1846,6 +1848,12 @@ func main() {
 	runTimed("go protobuf JSON parse", iterations, len(jsonBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(jsonBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf MapKeySurrogate JSON parse", iterations, len(mapKeySurrogateJSONBytes), func() {
+		var decoded personpb.Person
+		if err := jsonUnmarshalOptions.Unmarshal(mapKeySurrogateJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
