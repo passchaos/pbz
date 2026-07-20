@@ -1,6 +1,7 @@
 package main
 
 import (
+	bytespkg "bytes"
 	"fmt"
 	"math"
 	"time"
@@ -334,6 +335,17 @@ func main() {
 	jsonBytes, err := protojson.Marshal(person)
 	if err != nil {
 		panic(err)
+	}
+	protoNameMarshalOptions := protojson.MarshalOptions{UseProtoNames: true}
+	protoNameStringifyJSONBytes, err := protoNameMarshalOptions.Marshal(scalarmix)
+	if err != nil {
+		panic(err)
+	}
+	if !bytespkg.Contains(protoNameStringifyJSONBytes, []byte(`"big_delta"`)) ||
+		!bytespkg.Contains(protoNameStringifyJSONBytes, []byte(`"signed_fixed"`)) ||
+		!bytespkg.Contains(protoNameStringifyJSONBytes, []byte(`"signed_big_fixed"`)) ||
+		bytespkg.Contains(protoNameStringifyJSONBytes, []byte(`"bigDelta"`)) {
+		panic("unexpected ProtoName JSON stringify result")
 	}
 	mapKeySurrogateJSONBytes := []byte(`{"counts":{"\ud83d\ude00":9}}`)
 	nullFieldsJSONBytes := []byte(`{"id":null,"name":null,"scores":null,"counts":null}`)
@@ -1462,6 +1474,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
+	fmt.Printf("proto name stringify json payload size: %d\n", len(protoNameStringifyJSONBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
 	fmt.Printf("open enum json payload size: %d\n", len(openEnumJSONBytes))
@@ -1898,6 +1911,13 @@ func main() {
 
 	runTimed("go protobuf JSON stringify", iterations, len(jsonBytes), func() {
 		out, err := protojson.Marshal(person)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf ProtoName JSON stringify", iterations, len(protoNameStringifyJSONBytes), func() {
+		out, err := protoNameMarshalOptions.Marshal(scalarmix)
 		if err != nil {
 			panic(err)
 		}

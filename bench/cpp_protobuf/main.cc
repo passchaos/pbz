@@ -408,6 +408,20 @@ int main() {
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok())
     std::abort();
+  google::protobuf::util::JsonPrintOptions proto_name_json_options;
+  proto_name_json_options.preserve_proto_field_names = true;
+  std::string proto_name_stringify_json;
+  if (!google::protobuf::util::MessageToJsonString(
+           scalarmix, &proto_name_stringify_json, proto_name_json_options)
+           .ok())
+    std::abort();
+  if (proto_name_stringify_json.find("\"big_delta\"") == std::string::npos ||
+      proto_name_stringify_json.find("\"signed_fixed\"") ==
+          std::string::npos ||
+      proto_name_stringify_json.find("\"signed_big_fixed\"") ==
+          std::string::npos ||
+      proto_name_stringify_json.find("\"bigDelta\"") != std::string::npos)
+    std::abort();
   const std::string map_key_surrogate_json =
       R"({"counts":{"\ud83d\ude00":9}})";
   const std::string null_fields_json =
@@ -1162,6 +1176,8 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "proto name stringify json payload size: "
+            << proto_name_stringify_json.size() << "\n";
   std::cout << "map key-surrogate json payload size: "
             << map_key_surrogate_json.size() << "\n";
   std::cout << "null fields json payload size: " << null_fields_json.size()
@@ -2094,6 +2110,18 @@ int main() {
         asm volatile("" : : "g"(out.data()) : "memory");
       });
   json_stringify.Print();
+
+  auto proto_name_json_stringify = RunTimed(
+      "c++ protobuf ProtoName JSON stringify", kIterations,
+      proto_name_stringify_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(
+                 scalarmix, &out, proto_name_json_options)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  proto_name_json_stringify.Print();
 
   std::string reused_json;
   reused_json.reserve(json.size());
