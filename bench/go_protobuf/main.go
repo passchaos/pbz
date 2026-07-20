@@ -359,6 +359,15 @@ func main() {
 		bytespkg.Contains(protoNameStringifyJSONBytes, []byte(`"bigDelta"`)) {
 		panic("unexpected ProtoName JSON stringify result")
 	}
+	enumNumberMarshalOptions := protojson.MarshalOptions{UseEnumNumbers: true}
+	enumNumberStringifyJSONBytes, err := enumNumberMarshalOptions.Marshal(scalarmix)
+	if err != nil {
+		panic(err)
+	}
+	if !bytespkg.Contains(enumNumberStringifyJSONBytes, []byte(`"kind":2`)) ||
+		bytespkg.Contains(enumNumberStringifyJSONBytes, []byte(`BENCH_KIND_BETA`)) {
+		panic("unexpected EnumNumber JSON stringify result")
+	}
 	mapKeySurrogateJSONBytes := []byte(`{"counts":{"\ud83d\ude00":9}}`)
 	nullFieldsJSONBytes := []byte(`{"id":null,"name":null,"scores":null,"counts":null}`)
 	{
@@ -1500,6 +1509,7 @@ func main() {
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("always-print stringify json payload size: %d\n", len(alwaysPrintStringifyJSONBytes))
 	fmt.Printf("proto name stringify json payload size: %d\n", len(protoNameStringifyJSONBytes))
+	fmt.Printf("enum number stringify json payload size: %d\n", len(enumNumberStringifyJSONBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
 	fmt.Printf("ignore unknown json payload size: %d\n", len(ignoreUnknownJSONBytes))
@@ -1951,6 +1961,13 @@ func main() {
 	}).print()
 	runTimed("go protobuf ProtoName JSON stringify", iterations, len(protoNameStringifyJSONBytes), func() {
 		out, err := protoNameMarshalOptions.Marshal(scalarmix)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf EnumNumber JSON stringify", iterations, len(enumNumberStringifyJSONBytes), func() {
+		out, err := enumNumberMarshalOptions.Marshal(scalarmix)
 		if err != nil {
 			panic(err)
 		}

@@ -438,6 +438,16 @@ int main() {
           std::string::npos ||
       proto_name_stringify_json.find("\"bigDelta\"") != std::string::npos)
     std::abort();
+  google::protobuf::util::JsonPrintOptions enum_number_json_options;
+  enum_number_json_options.always_print_enums_as_ints = true;
+  std::string enum_number_stringify_json;
+  if (!google::protobuf::util::MessageToJsonString(
+           scalarmix, &enum_number_stringify_json, enum_number_json_options)
+           .ok())
+    std::abort();
+  if (enum_number_stringify_json.find("\"kind\":2") == std::string::npos ||
+      enum_number_stringify_json.find("BENCH_KIND_BETA") != std::string::npos)
+    std::abort();
   const std::string map_key_surrogate_json =
       R"({"counts":{"\ud83d\ude00":9}})";
   const std::string null_fields_json =
@@ -1211,6 +1221,8 @@ int main() {
             << always_print_stringify_json.size() << "\n";
   std::cout << "proto name stringify json payload size: "
             << proto_name_stringify_json.size() << "\n";
+  std::cout << "enum number stringify json payload size: "
+            << enum_number_stringify_json.size() << "\n";
   std::cout << "map key-surrogate json payload size: "
             << map_key_surrogate_json.size() << "\n";
   std::cout << "null fields json payload size: " << null_fields_json.size()
@@ -2169,6 +2181,18 @@ int main() {
         asm volatile("" : : "g"(out.data()) : "memory");
       });
   proto_name_json_stringify.Print();
+
+  auto enum_number_json_stringify = RunTimed(
+      "c++ protobuf EnumNumber JSON stringify", kIterations,
+      enum_number_stringify_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(
+                 scalarmix, &out, enum_number_json_options)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  enum_number_json_stringify.Print();
 
   std::string reused_json;
   reused_json.reserve(json.size());

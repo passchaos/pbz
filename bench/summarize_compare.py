@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 405
+EXPECTED_WORKLOAD_COUNT = 406
 
 
 @dataclass(frozen=True)
@@ -546,6 +546,14 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf ProtoName JSON stringify",),
             "go protobuf": ("go protobuf ProtoName JSON stringify",),
+        },
+    ),
+    Workload(
+        "EnumNumber JSON stringify",
+        ("generated EnumNumber JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf EnumNumber JSON stringify",),
+            "go protobuf": ("go protobuf EnumNumber JSON stringify",),
         },
     ),
     Workload(
@@ -1468,6 +1476,9 @@ def self_test() -> None:
         benchmark_line("generated ProtoName JSON stringify", 180, 120.0),
         benchmark_line("c++ protobuf ProtoName JSON stringify", 180, 700.0),
         benchmark_line("go protobuf ProtoName JSON stringify", 180, 400.0),
+        benchmark_line("generated EnumNumber JSON stringify", 175, 115.0),
+        benchmark_line("c++ protobuf EnumNumber JSON stringify", 175, 680.0),
+        benchmark_line("go protobuf EnumNumber JSON stringify", 175, 390.0),
         benchmark_line("generated MapKeySurrogate JSON parse", 29, 70.0),
         benchmark_line("c++ protobuf MapKeySurrogate JSON parse", 29, 400.0),
         benchmark_line("go protobuf MapKeySurrogate JSON parse", 29, 250.0),
