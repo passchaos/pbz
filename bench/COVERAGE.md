@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-presencemix-json-final.log` summarized by
-`/tmp/pbz-summary-presencemix-json-final.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-complex-proto-name-json-final.log` summarized by
+`/tmp/pbz-summary-complex-proto-name-json-final.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-presencemix-json-final.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-complex-proto-name-json-final.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 408 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 410 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -84,7 +84,7 @@ The matrix includes:
 - large bytes and repeated large bytes encode/decode
 - proto3 optional presence plus oneof encode/decode and JSON stringify/parse
 - complex nested message / oneof / map-message encode/decode
-- complex JSON stringify/parse
+- complex JSON stringify/parse, including proto-name field-name output/input
 - `google.protobuf.Any` containing a well-known-type JSON value stringify/parse,
   including embedded zero/escaped-input parse/explicit-plus parse/short-fraction parse/positive/micro/nano/integer-negative/fractional-negative/min-max-bound `Duration`, non-empty/escaped-input parse/number-exponent parse/surrogate-pair value parse/surrogate-pair key parse and empty `Struct`, object/escaped-object parse/object-number-exponent/object-surrogate-pair value parse/object-surrogate-pair key parse/list/escaped-list/surrogate-list/string-scalar/escaped-string-scalar/surrogate-string-scalar/number-exponent/negative-number `Value` (including default-like scalar and empty object/list kinds), camel-case, escaped JSON parse input, and empty `FieldMask`, escaped-input parse/short-fraction parse/micro/nano/offset/min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit min/zero/positive/number-input parse/numeric-exponent parse/negative/max `Int64Value`, negative/zero/positive finite/string-input parse/numeric-exponent parse `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), negative/zero/positive finite/string-input parse/numeric-exponent parse `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), min/zero/positive/string-input parse/numeric-exponent parse/negative/max `Int32Value`, zero/normal/string-input parse/numeric-exponent parse/max unsigned `UInt32Value`, zero/normal/number-input parse/numeric-exponent parse/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/escape-input parse/surrogate-pair parse/empty `StringValue`, padded-standard/base64url/unpadded-base64 parse/empty `BytesValue`, and recursive nested `Any` payloads
 - direct zero, escaped-input parse, explicit-plus parse, short-fraction parse, positive, micro, nano, integer-negative, fractional-negative, min-bound, and max-bound `google.protobuf.Duration` JSON stringify/parse

@@ -488,6 +488,28 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	complexProtoNameJSONBytes, err := protoNameMarshalOptions.Marshal(complex)
+	if err != nil {
+		panic(err)
+	}
+	if !bytespkg.Contains(complexProtoNameJSONBytes, []byte(`"audit_subject"`)) ||
+		!bytespkg.Contains(complexProtoNameJSONBytes, []byte(`"at_unix"`)) ||
+		bytespkg.Contains(complexProtoNameJSONBytes, []byte(`"auditSubject"`)) ||
+		bytespkg.Contains(complexProtoNameJSONBytes, []byte(`"atUnix"`)) {
+		panic("unexpected Complex ProtoName JSON stringify result")
+	}
+	{
+		var decoded personpb.Complex
+		if err := protojson.Unmarshal(complexProtoNameJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.GetAuditSubject() == nil || decoded.GetAuditSubject().GetActor() != "subject" ||
+			decoded.GetAuditSubject().GetAtUnix() != 777 ||
+			decoded.GetAudit() == nil || decoded.GetAudit().GetAtUnix() != 12345 ||
+			len(decoded.GetAudits()) != 2 || decoded.GetAudits()["latest"].GetAtUnix() != 67890 {
+			panic("unexpected Complex ProtoName JSON parse result")
+		}
+	}
 	complexTextBytes, err := prototext.Marshal(complex)
 	if err != nil {
 		panic(err)
@@ -1757,6 +1779,7 @@ func main() {
 	fmt.Printf("presencemix payload size: %d\n", len(presencemixBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
 	fmt.Printf("complex json payload size: %d\n", len(complexJSONBytes))
+	fmt.Printf("complex proto-name json payload size: %d\n", len(complexProtoNameJSONBytes))
 	fmt.Printf("complex text payload size: %d\n", len(complexTextBytes))
 	fmt.Printf("packed payload size: %d\n", len(packedBytes))
 	fmt.Printf("fixed32 packed payload size: %d\n", len(fixedPackedBytes))
@@ -1965,6 +1988,19 @@ func main() {
 	runTimed("go protobuf complex JSON parse", iterations, len(complexJSONBytes), func() {
 		var decoded personpb.Complex
 		if err := jsonUnmarshalOptions.Unmarshal(complexJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf Complex ProtoName JSON stringify", iterations, len(complexProtoNameJSONBytes), func() {
+		out, err := protoNameMarshalOptions.Marshal(complex)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf Complex ProtoName JSON parse", iterations, len(complexProtoNameJSONBytes), func() {
+		var decoded personpb.Complex
+		if err := jsonUnmarshalOptions.Unmarshal(complexProtoNameJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

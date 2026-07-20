@@ -571,6 +571,29 @@ int main() {
   std::string complex_json;
   if (!google::protobuf::util::MessageToJsonString(complex, &complex_json).ok())
     std::abort();
+  std::string complex_proto_name_json;
+  if (!google::protobuf::util::MessageToJsonString(
+           complex, &complex_proto_name_json, proto_name_json_options)
+           .ok())
+    std::abort();
+  if (complex_proto_name_json.find("\"audit_subject\"") == std::string::npos ||
+      complex_proto_name_json.find("\"at_unix\"") == std::string::npos ||
+      complex_proto_name_json.find("\"auditSubject\"") != std::string::npos ||
+      complex_proto_name_json.find("\"atUnix\"") != std::string::npos)
+    std::abort();
+  {
+    demo::Complex decoded;
+    if (!google::protobuf::util::JsonStringToMessage(complex_proto_name_json,
+                                                     &decoded)
+             .ok())
+      std::abort();
+    if (!decoded.has_audit_subject() ||
+        decoded.audit_subject().actor() != "subject" ||
+        decoded.audit_subject().at_unix() != 777 || !decoded.has_audit() ||
+        decoded.audit().at_unix() != 12345 || decoded.audits_size() != 2 ||
+        decoded.audits().at("latest").at_unix() != 67890)
+      std::abort();
+  }
   std::string complex_text;
   if (!google::protobuf::TextFormat::PrintToString(complex, &complex_text))
     std::abort();
@@ -1682,6 +1705,8 @@ int main() {
   std::cout << "presencemix payload size: " << presencemix_bytes.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
   std::cout << "complex json payload size: " << complex_json.size() << "\n";
+  std::cout << "complex proto-name json payload size: "
+            << complex_proto_name_json.size() << "\n";
   std::cout << "complex text payload size: " << complex_text.size() << "\n";
   std::cout << "packed payload size: " << packed_bytes.size() << "\n";
   std::cout << "fixed32 packed payload size: " << fixed_packed_bytes.size()
@@ -2154,6 +2179,30 @@ int main() {
         asm volatile("" : : "g"(&reused_complex_json_decoded) : "memory");
       });
   complex_json_parse_reuse.Print();
+
+  auto complex_proto_name_json_stringify = RunTimed(
+      "c++ protobuf Complex ProtoName JSON stringify", kIterations,
+      complex_proto_name_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(
+                 complex, &out, proto_name_json_options)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  complex_proto_name_json_stringify.Print();
+
+  auto complex_proto_name_json_parse = RunTimed(
+      "c++ protobuf Complex ProtoName JSON parse", kIterations,
+      complex_proto_name_json.size(), [&]() {
+        demo::Complex decoded;
+        if (!google::protobuf::util::JsonStringToMessage(
+                 complex_proto_name_json, &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  complex_proto_name_json_parse.Print();
 
   auto complex_text_format = RunTimed(
       "c++ protobuf complex TextFormat format", kIterations,

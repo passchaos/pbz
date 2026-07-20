@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 408
+EXPECTED_WORKLOAD_COUNT = 410
 
 
 @dataclass(frozen=True)
@@ -490,6 +490,22 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf complex JSON parse", "c++ protobuf complex JSON parse reuse"),
             "go protobuf": ("go protobuf complex JSON parse",),
+        },
+    ),
+    Workload(
+        "Complex ProtoName JSON stringify",
+        ("generated Complex ProtoName JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf Complex ProtoName JSON stringify",),
+            "go protobuf": ("go protobuf Complex ProtoName JSON stringify",),
+        },
+    ),
+    Workload(
+        "Complex ProtoName JSON parse",
+        ("generated Complex ProtoName JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf Complex ProtoName JSON parse",),
+            "go protobuf": ("go protobuf Complex ProtoName JSON parse",),
         },
     ),
     Workload(
@@ -1492,6 +1508,12 @@ def self_test() -> None:
         benchmark_line("generated PresenceMix JSON parse", 128, 180.0),
         benchmark_line("c++ protobuf PresenceMix JSON parse", 128, 1000.0),
         benchmark_line("go protobuf PresenceMix JSON parse", 128, 700.0),
+        benchmark_line("generated Complex ProtoName JSON stringify", 300, 150.0),
+        benchmark_line("c++ protobuf Complex ProtoName JSON stringify", 300, 1200.0),
+        benchmark_line("go protobuf Complex ProtoName JSON stringify", 300, 850.0),
+        benchmark_line("generated Complex ProtoName JSON parse", 300, 250.0),
+        benchmark_line("c++ protobuf Complex ProtoName JSON parse", 300, 1400.0),
+        benchmark_line("go protobuf Complex ProtoName JSON parse", 300, 900.0),
         benchmark_line("generated AlwaysPrint JSON stringify", 32, 90.0),
         benchmark_line("c++ protobuf AlwaysPrint JSON stringify", 32, 650.0),
         benchmark_line("go protobuf AlwaysPrint JSON stringify", 32, 350.0),
