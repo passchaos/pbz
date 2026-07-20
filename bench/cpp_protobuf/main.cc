@@ -637,12 +637,15 @@ int main() {
   string_scalar_value.set_string_value("zig");
   const std::string string_scalar_value_json = JsonStringFor(string_scalar_value);
   const std::string string_scalar_value_escape_json = R"("\u007aig")";
+  const std::string string_scalar_value_surrogate_json = R"("\ud83d\ude00")";
   google::protobuf::Any any_string_scalar_value_wkt;
   any_string_scalar_value_wkt.PackFrom(string_scalar_value);
   const std::string any_string_scalar_value_wkt_json =
       JsonStringFor(any_string_scalar_value_wkt);
   const std::string any_string_scalar_value_escape_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.Value","value":"\u007aig"})";
+  const std::string any_string_scalar_value_surrogate_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Value","value":"\ud83d\ude00"})";
   google::protobuf::Value empty_string_scalar_value;
   empty_string_scalar_value.set_string_value("");
   const std::string empty_string_scalar_value_json =
@@ -1209,10 +1212,14 @@ int main() {
             << string_scalar_value_json.size() << "\n";
   std::cout << "string scalar value escape json payload size: "
             << string_scalar_value_escape_json.size() << "\n";
+  std::cout << "string scalar value surrogate json payload size: "
+            << string_scalar_value_surrogate_json.size() << "\n";
   std::cout << "any StringScalarValue WKT json payload size: "
             << any_string_scalar_value_wkt_json.size() << "\n";
   std::cout << "any StringScalarValue Escape WKT json payload size: "
             << any_string_scalar_value_escape_wkt_json.size() << "\n";
+  std::cout << "any StringScalarValue Surrogate WKT json payload size: "
+            << any_string_scalar_value_surrogate_wkt_json.size() << "\n";
   std::cout << "empty string scalar value json payload size: "
             << empty_string_scalar_value_json.size() << "\n";
   std::cout << "any EmptyStringScalarValue WKT json payload size: "
@@ -2116,6 +2123,9 @@ int main() {
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any StringScalarValue Escape WKT",
       any_string_scalar_value_escape_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any StringScalarValue Surrogate WKT",
+      any_string_scalar_value_surrogate_wkt_json, kIterations);
   RunWktJsonBenchPair("Any EmptyStringScalarValue WKT",
                       any_empty_string_scalar_value_wkt,
                       any_empty_string_scalar_value_wkt_json, kIterations);
@@ -2251,6 +2261,9 @@ int main() {
                       string_scalar_value_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Value>(
       "StringScalarValue Escape", string_scalar_value_escape_json,
+      kIterations);
+  RunWktJsonParseOnly<google::protobuf::Value>(
+      "StringScalarValue Surrogate", string_scalar_value_surrogate_json,
       kIterations);
   RunWktJsonBenchPair("EmptyStringScalarValue", empty_string_scalar_value,
                       empty_string_scalar_value_json, kIterations);
