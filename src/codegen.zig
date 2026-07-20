@@ -9615,11 +9615,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll(
         \\fn jsonInt(comptime T: type, value: std.json.Value) !T {
-        \\    return switch (value) {
-        \\        .integer => |v| std.math.cast(T, v) orelse error.Overflow,
-        \\        .number_string, .string => |text| try std.fmt.parseInt(T, text, 10),
-        \\        else => error.TypeMismatch,
-        \\    };
+        \\    return try pbz.json.intValue(T, value);
         \\}
         \\
         \\fn jsonFloat(comptime T: type, value: std.json.Value) !T {

@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-map-key-surrogate-json-final.log` summarized by
-`/tmp/pbz-summary-map-key-surrogate-json-final.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-int-exponent-json-final.log` summarized by
+`/tmp/pbz-summary-int-exponent-json-final.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-map-key-surrogate-json-final.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-int-exponent-json-final.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 397 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 398 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -95,7 +95,7 @@ The matrix includes:
   min/zero/positive/number-input parse/numeric-exponent parse/negative/max `Int64Value`, zero/normal/number-input parse/numeric-exponent parse/max `UInt64Value`, min/zero/positive/string-input parse/numeric-exponent parse/negative/max `Int32Value`, zero/normal/string-input parse/numeric-exponent parse/max `UInt32Value`, true/false `BoolValue`, plus negative/zero/positive finite, finite string-input parse, numeric-exponent parse, and non-finite `DoubleValue` and `FloatValue` (`NaN`, `Infinity`, `-Infinity`),
   non-empty/escape-input parse/surrogate-pair parse/empty `StringValue`, and padded-standard/base64url/unpadded-base64 parse/empty `BytesValue`
 - complex TextFormat format/parse
-- simple JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse
+- simple JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse and generated integer numeric-exponent token parse
 - simple TextFormat format/parse
 - packed int32 encode/decode
 - packed fixed32/fixed64/sfixed32/sfixed64/float/double encode/decode

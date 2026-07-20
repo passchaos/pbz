@@ -336,6 +336,20 @@ func main() {
 		panic(err)
 	}
 	mapKeySurrogateJSONBytes := []byte(`{"counts":{"\ud83d\ude00":9}}`)
+	intExponentJSONBytes := []byte(`{"count":1.2345e4,"total":9.87654321e9,"delta":-3.21e2,"bigDelta":-9.876543e6,"checksum":3.21e2,"token":4.096e3,"signedFixed":-1.23456e5,"signedBigFixed":-9.876543e6,"ids":[1e0,1.27e2,1.28e2]}`)
+	{
+		var decoded personpb.ScalarMix
+		if err := protojson.Unmarshal(intExponentJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Count != 12345 || decoded.Total != 9_876_543_210 ||
+			decoded.Delta != -321 || decoded.BigDelta != -9_876_543 ||
+			decoded.Checksum != 321 || decoded.Token != 4096 ||
+			decoded.SignedFixed != -123456 || decoded.SignedBigFixed != -9_876_543 ||
+			len(decoded.Ids) != 3 || decoded.Ids[0] != 1 || decoded.Ids[1] != 127 || decoded.Ids[2] != 128 {
+			panic("unexpected IntExponent JSON parse result")
+		}
+	}
 	textBytes, err := prototext.Marshal(person)
 	if err != nil {
 		panic(err)
@@ -1409,6 +1423,7 @@ func main() {
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
+	fmt.Printf("int exponent json payload size: %d\n", len(intExponentJSONBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
 	fmt.Printf("timestamp escape json payload size: %d\n", len(timestampEscapeJSONBytes))
@@ -1854,6 +1869,12 @@ func main() {
 	runTimed("go protobuf MapKeySurrogate JSON parse", iterations, len(mapKeySurrogateJSONBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(mapKeySurrogateJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf IntExponent JSON parse", iterations, len(intExponentJSONBytes), func() {
+		var decoded personpb.ScalarMix
+		if err := jsonUnmarshalOptions.Unmarshal(intExponentJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

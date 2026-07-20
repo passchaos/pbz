@@ -15,6 +15,35 @@ pub const Options = struct {
     validate_any_payloads: bool = false,
 };
 
+/// Parse a protobuf JSON integer value with the same public compatibility
+/// contract used by generated messages and WKT wrappers.
+///
+/// C++/Go protobuf accept unquoted numeric tokens such as `1.2345e4` for
+/// integer fields when the represented value is integral and in range. Zig's
+/// JSON parser can surface those tokens as either `.float` or `.number_string`
+/// depending on parser options, while quoted strings are intentionally kept to
+/// decimal integer spelling. Exporting this helper keeps generated code and
+/// dynamic JSON parsing from drifting apart on that edge case.
+pub fn intValue(comptime T: type, json_value: std.json.Value) !T {
+    switch (json_value) {
+        .integer => |value| {
+            if (value < std.math.minInt(T) or value > std.math.maxInt(T)) return error.Overflow;
+            return @intCast(value);
+        },
+        .float => |value| return try floatAsInt(T, value),
+        .number_string => |value| return try intText(T, value),
+        .string => |value| return try std.fmt.parseInt(T, value, 10),
+        else => return error.TypeMismatch,
+    }
+}
+
+fn intText(comptime T: type, value: []const u8) !T {
+    return std.fmt.parseInt(T, value, 10) catch |int_err| switch (int_err) {
+        error.InvalidCharacter => try floatAsInt(T, try std.fmt.parseFloat(f64, value)),
+        error.Overflow => return error.Overflow,
+    };
+}
+
 pub fn stringifyAlloc(
     allocator: std.mem.Allocator,
     file: *const schema.FileDescriptor,
@@ -411,22 +440,7 @@ fn parseMapKey(allocator: std.mem.Allocator, scalar: schema.ScalarType, key: []c
 }
 
 fn numberAsInt(comptime T: type, json_value: std.json.Value) !T {
-    const info = @typeInfo(T).int;
-    switch (json_value) {
-        .integer => |value| {
-            if (value < std.math.minInt(T) or value > std.math.maxInt(T)) return error.Overflow;
-            return @intCast(value);
-        },
-        .float => |value| return try floatAsInt(T, value),
-        .number_string, .string => |value| return std.fmt.parseInt(T, value, 10) catch |int_err| switch (int_err) {
-            error.InvalidCharacter => try floatAsInt(T, try std.fmt.parseFloat(f64, value)),
-            error.Overflow => return error.Overflow,
-        },
-        else => {
-            _ = info;
-            return error.TypeMismatch;
-        },
-    }
+    return try intValue(T, json_value);
 }
 
 fn floatAsInt(comptime T: type, value: f64) !T {
@@ -2627,7 +2641,7 @@ test "json string escape scanner distinguishes fast and escaped paths" {
     try std.testing.expect(jsonStringNeedsEscape("line\n"));
 }
 
-test "json accepts integral float spellings for 32-bit integers" {
+test "json accepts unquoted integral float spellings for 32-bit integers" {
     const allocator = std.testing.allocator;
     const source =
         \\syntax = "proto3";
@@ -2642,9 +2656,10 @@ test "json accepts integral float spellings for 32-bit integers" {
     try std.testing.expectEqual(@as(i32, 100000), parsed.get("i32").?.values.items[0].int32);
     try std.testing.expectEqual(@as(u32, 4294967295), parsed.get("u32").?.values.items[0].uint32);
 
-    var quoted = try parseAlloc(allocator, &file, desc, "{\"i32\":\"1e5\"}", .{});
-    defer quoted.deinit();
-    try std.testing.expectEqual(@as(i32, 100000), quoted.get("i32").?.values.items[0].int32);
+    // Quoted integer fields intentionally remain decimal-only strings. This
+    // mirrors C++/Go protobuf JSON: numeric exponent compatibility applies to
+    // numeric tokens, not to arbitrary quoted strings.
+    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "{\"i32\":\"1e5\"}", .{}));
 
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, desc, "{\"i32\":1.5}", .{}));
 }

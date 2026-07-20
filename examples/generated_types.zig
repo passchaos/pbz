@@ -77,6 +77,19 @@ pub fn main() !void {
     defer allocator.free(json);
     std.debug.assert(std.mem.indexOf(u8, json, "\"scores\":[10,20]") != null);
 
+    // Protobuf JSON allows unquoted exponent spellings for integer tokens when
+    // the represented value is integral and in range. Keeping this in the
+    // public generated-type example guards the same compatibility surface that
+    // C++ and Go protobuf expose for generated messages.
+    var exponent_scalars = try person_pb.demo.ScalarMix.jsonParse(allocator,
+        \\{"count":1.2345e4,"total":9.87654321e9,"delta":-3.21e2,"ids":[1e0,1.27e2,1.28e2]}
+    );
+    defer exponent_scalars.deinit(allocator);
+    std.debug.assert(exponent_scalars.count == 12345);
+    std.debug.assert(exponent_scalars.total == 9_876_543_210);
+    std.debug.assert(exponent_scalars.delta == -321);
+    std.debug.assert(std.mem.eql(u64, exponent_scalars.ids, &.{ 1, 127, 128 }));
+
     var parsed = try person_pb.demo.Person.parseText(allocator,
         \\id: 8
         \\name: "Text"

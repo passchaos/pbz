@@ -949,11 +949,7 @@ pub const demo = struct {
             }
 
             fn jsonInt(comptime T: type, value: std.json.Value) !T {
-    return switch (value) {
-        .integer => |v| std.math.cast(T, v) orelse error.Overflow,
-        .number_string, .string => |text| try std.fmt.parseInt(T, text, 10),
-        else => error.TypeMismatch,
-    };
+    return try pbz.json.intValue(T, value);
 }
 
 fn jsonFloat(comptime T: type, value: std.json.Value) !T {
@@ -2046,11 +2042,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 fn jsonInt(comptime T: type, value: std.json.Value) !T {
-    return switch (value) {
-        .integer => |v| std.math.cast(T, v) orelse error.Overflow,
-        .number_string, .string => |text| try std.fmt.parseInt(T, text, 10),
-        else => error.TypeMismatch,
-    };
+    return try pbz.json.intValue(T, value);
 }
 
 fn jsonFloat(comptime T: type, value: std.json.Value) !T {
