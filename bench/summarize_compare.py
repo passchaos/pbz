@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 385
+EXPECTED_WORKLOAD_COUNT = 389
 
 
 @dataclass(frozen=True)
@@ -567,10 +567,12 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any Struct WKT"),
     json_parse_workload("Any Struct Escape WKT"),
     json_parse_workload("Any Struct NumberExponent WKT"),
+    json_parse_workload("Any Struct Surrogate WKT"),
     *json_workload_pair("Any EmptyStruct WKT"),
     *json_workload_pair("Any Value WKT"),
     json_parse_workload("Any Value Escape WKT"),
     json_parse_workload("Any Value NumberExponent WKT"),
+    json_parse_workload("Any Value Surrogate WKT"),
     *json_workload_pair("Any NullValue WKT"),
     *json_workload_pair("Any StringScalarValue WKT"),
     json_parse_workload("Any StringScalarValue Escape WKT"),
@@ -665,10 +667,12 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Struct"),
     json_parse_workload("Struct Escape"),
     json_parse_workload("Struct NumberExponent"),
+    json_parse_workload("Struct Surrogate"),
     *json_workload_pair("EmptyStruct"),
     *json_workload_pair("Value"),
     json_parse_workload("Value Escape"),
     json_parse_workload("Value NumberExponent"),
+    json_parse_workload("Value Surrogate"),
     *json_workload_pair("NullValue"),
     *json_workload_pair("StringScalarValue"),
     json_parse_workload("StringScalarValue Escape"),
@@ -1387,12 +1391,16 @@ def self_test() -> None:
         ("Any Value Escape WKT", 129),
         ("Any Struct NumberExponent WKT", 123),
         ("Any Value NumberExponent WKT", 122),
+        ("Any Struct Surrogate WKT", 87),
+        ("Any Value Surrogate WKT", 86),
         ("Any StringScalarValue Escape WKT", 72),
         ("Any ListKindValue Escape WKT", 112),
         ("Struct Escape", 67),
         ("Struct NumberExponent", 60),
+        ("Struct Surrogate", 24),
         ("Value Escape", 67),
         ("Value NumberExponent", 60),
+        ("Value Surrogate", 24),
         ("StringScalarValue Escape", 10),
         ("Any StringValue Surrogate WKT", 82),
         ("StringValue Surrogate", 14),
