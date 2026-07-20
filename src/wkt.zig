@@ -2394,9 +2394,47 @@ fn wrapperValueUsesAllocator(comptime scalar: WrapperScalar) bool {
 fn parseWrapperInt(comptime T: type, value: std.json.Value) !T {
     return switch (value) {
         .integer => |v| std.math.cast(T, v) orelse error.Overflow,
-        .number_string, .string => |v| try std.fmt.parseInt(T, v, 10),
+        // Protobuf JSON parsers accept numeric JSON tokens written with an
+        // exponent as long as the resulting value is an exact integer in range
+        // (for example Int32Value: 1.2345e4).  std.json exposes those tokens as
+        // floats (or number_string in some parser modes), so validate
+        // integrality before converting instead of treating every float
+        // spelling as a type error.  Quoted int-wrapper strings intentionally
+        // remain decimal integers only, matching C++ protobuf's accepted JSON
+        // wrapper forms.
+        .float => |v| try wrapperFloatAsInt(T, v),
+        .number_string => |v| try parseWrapperIntText(T, v),
+        .string => |v| try std.fmt.parseInt(T, v, 10),
         else => error.TypeMismatch,
     };
+}
+
+fn parseWrapperIntText(comptime T: type, value: []const u8) !T {
+    return std.fmt.parseInt(T, value, 10) catch |int_err| switch (int_err) {
+        error.InvalidCharacter => try wrapperFloatAsInt(T, try std.fmt.parseFloat(f64, value)),
+        else => int_err,
+    };
+}
+
+fn wrapperFloatAsInt(comptime T: type, value: f64) !T {
+    if (!std.math.isFinite(value)) return error.InvalidNumber;
+    if (@trunc(value) != value) return error.TypeMismatch;
+    const info = @typeInfo(T).int;
+    if (info.signedness == .unsigned and value < 0) return error.Overflow;
+    if (info.bits <= 53) {
+        if (value < @as(f64, @floatFromInt(std.math.minInt(T))) or
+            value > @as(f64, @floatFromInt(std.math.maxInt(T)))) return error.Overflow;
+        return @intFromFloat(value);
+    }
+    // f64 cannot distinguish every i64/u64 value above 2^53, but it can still
+    // safely reject out-of-range exponent spellings before converting values
+    // accepted by the public protobuf JSON compatibility surface.
+    if (info.signedness == .signed) {
+        if (value < -9223372036854775808.0 or value >= 9223372036854775808.0) return error.Overflow;
+    } else {
+        if (value < 0 or value >= 18446744073709551616.0) return error.Overflow;
+    }
+    return @intFromFloat(value);
 }
 
 fn parseWrapperFloat(comptime T: type, value: std.json.Value) !T {
@@ -2498,8 +2536,12 @@ test "wrapper json parse helpers" {
     const allocator = std.testing.allocator;
     try std.testing.expectEqual(@as(i64, 9007199254740993), (try Int64Value.jsonParse(allocator, "\"9007199254740993\"")).value);
     try std.testing.expectEqual(@as(u64, 9007199254740993), (try UInt64Value.jsonParse(allocator, "\"9007199254740993\"")).value);
+    try std.testing.expectEqual(@as(i32, 12345), (try Int32Value.jsonParse(allocator, "1.2345e4")).value);
+    try std.testing.expectEqual(@as(u32, 12345), (try UInt32Value.jsonParse(allocator, "1.2345e4")).value);
     try std.testing.expectError(error.Overflow, Int32Value.jsonParse(allocator, "2147483648"));
     try std.testing.expectError(error.Overflow, UInt32Value.jsonParse(allocator, "-1"));
+    try std.testing.expectError(error.TypeMismatch, Int32Value.jsonParse(allocator, "1.25e1"));
+    try std.testing.expectError(error.InvalidCharacter, Int32Value.jsonParse(allocator, "\"1.2345e4\""));
     try std.testing.expectError(error.Overflow, UInt64Value.jsonParse(allocator, "-1"));
     try std.testing.expectEqual(true, (try BoolValue.jsonParse(allocator, "true")).value);
     try std.testing.expectEqual(false, (try BoolValue.jsonParse(allocator, "null")).value);

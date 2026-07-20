@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-wrapper-exponent-json-final.log` summarized by
-`/tmp/pbz-summary-wrapper-exponent-json-final.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-int32-uint32-exponent-json-final.log` summarized by
+`/tmp/pbz-summary-int32-uint32-exponent-json-final.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-wrapper-exponent-json-final.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-int32-uint32-exponent-json-final.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 369 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 373 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -86,13 +86,13 @@ The matrix includes:
 - complex nested message / oneof / map-message encode/decode
 - complex JSON stringify/parse
 - `google.protobuf.Any` containing a well-known-type JSON value stringify/parse,
-  including embedded zero/escaped-input parse/explicit-plus parse/short-fraction parse/positive/micro/nano/integer-negative/fractional-negative/min-max-bound `Duration`, non-empty/escaped-input parse/number-exponent parse and empty `Struct`, object/escaped-object parse/object-number-exponent/list/escaped-list/string-scalar/escaped-string-scalar/number-exponent/negative-number `Value` (including default-like scalar and empty object/list kinds), camel-case, escaped JSON parse input, and empty `FieldMask`, escaped-input parse/short-fraction parse/micro/nano/offset/min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit min/zero/positive/number-input parse/negative/max `Int64Value`, negative/zero/positive finite/string-input parse/numeric-exponent parse `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), negative/zero/positive finite/string-input parse/numeric-exponent parse `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), min/zero/positive/string-input parse/negative/max `Int32Value`, zero/normal/string-input parse/max unsigned `UInt32Value`, zero/normal/number-input parse/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/escape-input parse/empty `StringValue`, base64/base64url parse/empty `BytesValue`, and recursive nested `Any` payloads
+  including embedded zero/escaped-input parse/explicit-plus parse/short-fraction parse/positive/micro/nano/integer-negative/fractional-negative/min-max-bound `Duration`, non-empty/escaped-input parse/number-exponent parse and empty `Struct`, object/escaped-object parse/object-number-exponent/list/escaped-list/string-scalar/escaped-string-scalar/number-exponent/negative-number `Value` (including default-like scalar and empty object/list kinds), camel-case, escaped JSON parse input, and empty `FieldMask`, escaped-input parse/short-fraction parse/micro/nano/offset/min/pre/post/max-bound `Timestamp`, canonical `Empty`, 64-bit min/zero/positive/number-input parse/negative/max `Int64Value`, negative/zero/positive finite/string-input parse/numeric-exponent parse `DoubleValue`, non-finite `DoubleValue` (`NaN`, `Infinity`, `-Infinity`), negative/zero/positive finite/string-input parse/numeric-exponent parse `FloatValue`, non-finite `FloatValue` (`NaN`, `Infinity`, `-Infinity`), min/zero/positive/string-input parse/numeric-exponent parse/negative/max `Int32Value`, zero/normal/string-input parse/numeric-exponent parse/max unsigned `UInt32Value`, zero/normal/number-input parse/max unsigned `UInt64Value`, true/false `BoolValue`, non-empty/escape-input parse/empty `StringValue`, base64/base64url parse/empty `BytesValue`, and recursive nested `Any` payloads
 - direct zero, escaped-input parse, explicit-plus parse, short-fraction parse, positive, micro, nano, integer-negative, fractional-negative, min-bound, and max-bound `google.protobuf.Duration` JSON stringify/parse
 - direct non-empty, escaped-input parse, and empty `google.protobuf.FieldMask` JSON stringify/parse
 - direct escaped-input parse, short-fraction parse, micro, nano, timezone-offset parse, min-bound, pre-epoch, post-epoch, and max-bound `google.protobuf.Timestamp` JSON stringify/parse
 - direct `google.protobuf.Empty`, non-empty/escaped-input parse/number-exponent parse/empty `Struct`, object/escaped-object parse/object-number-exponent/list/escaped-list/string-scalar/escaped-string-scalar/number-exponent/negative-number `Value` (including default-like scalar and empty object/list kinds), and escaped/non-empty/empty `ListValue` JSON stringify/parse
 - direct scalar wrapper JSON stringify/parse for `DoubleValue`, `FloatValue`,
-  min/zero/positive/number-input parse/negative/max `Int64Value`, zero/normal/number-input parse/max `UInt64Value`, min/zero/positive/string-input parse/negative/max `Int32Value`, zero/normal/string-input parse/max `UInt32Value`, true/false `BoolValue`, plus negative/zero/positive finite, finite string-input parse, numeric-exponent parse, and non-finite `DoubleValue` and `FloatValue` (`NaN`, `Infinity`, `-Infinity`),
+  min/zero/positive/number-input parse/negative/max `Int64Value`, zero/normal/number-input parse/max `UInt64Value`, min/zero/positive/string-input parse/numeric-exponent parse/negative/max `Int32Value`, zero/normal/string-input parse/numeric-exponent parse/max `UInt32Value`, true/false `BoolValue`, plus negative/zero/positive finite, finite string-input parse, numeric-exponent parse, and non-finite `DoubleValue` and `FloatValue` (`NaN`, `Infinity`, `-Infinity`),
   non-empty/escape-input parse/empty `StringValue`, and base64/base64url parse/empty `BytesValue`
 - complex TextFormat format/parse
 - simple JSON stringify/parse

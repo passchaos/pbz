@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 369
+EXPECTED_WORKLOAD_COUNT = 373
 
 
 @dataclass(frozen=True)
@@ -613,12 +613,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any MaxUInt64Value WKT"),
     *json_workload_pair("Any Int32Value WKT"),
     json_parse_workload("Any Int32Value String WKT"),
+    json_parse_workload("Any Int32Value Exponent WKT"),
     *json_workload_pair("Any ZeroInt32Value WKT"),
     *json_workload_pair("Any NegativeInt32Value WKT"),
     *json_workload_pair("Any MinInt32Value WKT"),
     *json_workload_pair("Any MaxInt32Value WKT"),
     *json_workload_pair("Any UInt32Value WKT"),
     json_parse_workload("Any UInt32Value String WKT"),
+    json_parse_workload("Any UInt32Value Exponent WKT"),
     *json_workload_pair("Any ZeroUInt32Value WKT"),
     *json_workload_pair("Any MaxUInt32Value WKT"),
     *json_workload_pair("Any BoolValue WKT"),
@@ -706,12 +708,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("MaxUInt64Value"),
     *json_workload_pair("Int32Value"),
     json_parse_workload("Int32Value String"),
+    json_parse_workload("Int32Value Exponent"),
     *json_workload_pair("ZeroInt32Value"),
     *json_workload_pair("NegativeInt32Value"),
     *json_workload_pair("MinInt32Value"),
     *json_workload_pair("MaxInt32Value"),
     *json_workload_pair("UInt32Value"),
     json_parse_workload("UInt32Value String"),
+    json_parse_workload("UInt32Value Exponent"),
     *json_workload_pair("ZeroUInt32Value"),
     *json_workload_pair("MaxUInt32Value"),
     *json_workload_pair("BoolValue"),
@@ -1384,6 +1388,10 @@ def self_test() -> None:
         ("DoubleValue Exponent", 6),
         ("Any FloatValue Exponent WKT", 72),
         ("FloatValue Exponent", 5),
+        ("Any Int32Value Exponent WKT", 75),
+        ("Int32Value Exponent", 8),
+        ("Any UInt32Value Exponent WKT", 76),
+        ("UInt32Value Exponent", 8),
         ("ListKindValue Escape", 50),
         ("ListValue Escape", 50),
     ):
