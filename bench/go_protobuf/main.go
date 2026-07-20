@@ -346,6 +346,16 @@ func main() {
 			panic("unexpected NullFields JSON parse result")
 		}
 	}
+	openEnumJSONBytes := []byte(`{"kind":123}`)
+	{
+		var decoded personpb.ScalarMix
+		if err := protojson.Unmarshal(openEnumJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Kind != 123 {
+			panic("unexpected OpenEnum JSON parse result")
+		}
+	}
 	intExponentJSONBytes := []byte(`{"count":1.2345e4,"total":9.87654321e9,"delta":-3.21e2,"bigDelta":-9.876543e6,"checksum":3.21e2,"token":4.096e3,"signedFixed":-1.23456e5,"signedBigFixed":-9.876543e6,"ids":[1e0,1.27e2,1.28e2]}`)
 	{
 		var decoded personpb.ScalarMix
@@ -1434,6 +1444,7 @@ func main() {
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
+	fmt.Printf("open enum json payload size: %d\n", len(openEnumJSONBytes))
 	fmt.Printf("int exponent json payload size: %d\n", len(intExponentJSONBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
@@ -1886,6 +1897,12 @@ func main() {
 	runTimed("go protobuf NullFields JSON parse", iterations, len(nullFieldsJSONBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(nullFieldsJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf OpenEnum JSON parse", iterations, len(openEnumJSONBytes), func() {
+		var decoded personpb.ScalarMix
+		if err := jsonUnmarshalOptions.Unmarshal(openEnumJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
