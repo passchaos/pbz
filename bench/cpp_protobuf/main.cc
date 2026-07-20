@@ -555,6 +555,23 @@ int main() {
         decoded.ids(2) != 128)
       std::abort();
   }
+  const std::string string_number_json =
+      R"({"count":"12345","total":"9876543210","delta":"-321","bigDelta":"-9876543","checksum":"321","token":"4096","signedFixed":"-123456","signedBigFixed":"-9876543","ids":["1","127","128"]})";
+  {
+    demo::ScalarMix decoded;
+    if (!google::protobuf::util::JsonStringToMessage(string_number_json,
+                                                     &decoded)
+             .ok())
+      std::abort();
+    if (decoded.count() != 12345 || decoded.total() != 9876543210ULL ||
+        decoded.delta() != -321 || decoded.big_delta() != -9876543 ||
+        decoded.checksum() != 321 || decoded.token() != 4096 ||
+        decoded.signed_fixed() != -123456 ||
+        decoded.signed_big_fixed() != -9876543 || decoded.ids_size() != 3 ||
+        decoded.ids(0) != 1 || decoded.ids(1) != 127 ||
+        decoded.ids(2) != 128)
+      std::abort();
+  }
   std::string text;
   if (!google::protobuf::TextFormat::PrintToString(person, &text))
     std::abort();
@@ -1289,6 +1306,8 @@ int main() {
             << "\n";
   std::cout << "int exponent json payload size: " << int_exponent_json.size()
             << "\n";
+  std::cout << "string number json payload size: "
+            << string_number_json.size() << "\n";
   std::cout << "timestamp json payload size: " << timestamp_json.size()
             << "\n";
   std::cout << "any Timestamp WKT json payload size: "
@@ -2412,6 +2431,18 @@ int main() {
                  asm volatile("" : : "g"(&decoded) : "memory");
                });
   int_exponent_json_parse.Print();
+
+  auto string_number_json_parse =
+      RunTimed("c++ protobuf StringNumber JSON parse", kIterations,
+               string_number_json.size(), [&]() {
+                 demo::ScalarMix decoded;
+                 if (!google::protobuf::util::JsonStringToMessage(
+                          string_number_json, &decoded)
+                          .ok())
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  string_number_json_parse.Print();
 
   RunWktJsonBenchPair("Any WKT", any_wkt, any_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
