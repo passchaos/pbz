@@ -603,6 +603,8 @@ int main() {
   const std::string struct_number_exponent_json =
       R"({"enabled":true,"items":[null,"zig"],"meta":{"score":1.5e0}})";
   const std::string struct_surrogate_json = R"({"emoji":"\ud83d\ude00"})";
+  const std::string struct_key_surrogate_json =
+      R"({"\ud83d\ude00":"ok"})";
   google::protobuf::Any any_struct_wkt;
   any_struct_wkt.PackFrom(struct_value);
   const std::string any_struct_wkt_json = JsonStringFor(any_struct_wkt);
@@ -612,6 +614,8 @@ int main() {
       R"({"@type":"type.googleapis.com/google.protobuf.Struct","value":{"enabled":true,"items":[null,"zig"],"meta":{"score":1.5e0}}})";
   const std::string any_struct_surrogate_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.Struct","value":{"emoji":"\ud83d\ude00"}})";
+  const std::string any_struct_key_surrogate_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Struct","value":{"\ud83d\ude00":"ok"}})";
   google::protobuf::Struct empty_struct_value;
   const std::string empty_struct_json = JsonStringFor(empty_struct_value);
   google::protobuf::Any any_empty_struct_wkt;
@@ -624,6 +628,7 @@ int main() {
   const std::string value_escape_json = struct_escape_json;
   const std::string value_number_exponent_json = struct_number_exponent_json;
   const std::string value_surrogate_json = struct_surrogate_json;
+  const std::string value_key_surrogate_json = struct_key_surrogate_json;
   google::protobuf::Any any_value_wkt;
   any_value_wkt.PackFrom(value_value);
   const std::string any_value_wkt_json = JsonStringFor(any_value_wkt);
@@ -633,6 +638,8 @@ int main() {
       R"({"@type":"type.googleapis.com/google.protobuf.Value","value":{"enabled":true,"items":[null,"zig"],"meta":{"score":1.5e0}}})";
   const std::string any_value_surrogate_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.Value","value":{"emoji":"\ud83d\ude00"}})";
+  const std::string any_value_key_surrogate_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.Value","value":{"\ud83d\ude00":"ok"}})";
   google::protobuf::Value null_value_value;
   null_value_value.set_null_value(google::protobuf::NULL_VALUE);
   const std::string null_value_json = JsonStringFor(null_value_value);
@@ -1189,6 +1196,8 @@ int main() {
             << struct_number_exponent_json.size() << "\n";
   std::cout << "struct surrogate json payload size: "
             << struct_surrogate_json.size() << "\n";
+  std::cout << "struct key-surrogate json payload size: "
+            << struct_key_surrogate_json.size() << "\n";
   std::cout << "value json payload size: " << value_json.size() << "\n";
   std::cout << "value escape json payload size: "
             << value_escape_json.size() << "\n";
@@ -1196,6 +1205,8 @@ int main() {
             << value_number_exponent_json.size() << "\n";
   std::cout << "value surrogate json payload size: "
             << value_surrogate_json.size() << "\n";
+  std::cout << "value key-surrogate json payload size: "
+            << value_key_surrogate_json.size() << "\n";
   std::cout << "list value json payload size: " << list_value_json.size()
             << "\n";
   std::cout << "list value escape json payload size: "
@@ -1210,6 +1221,8 @@ int main() {
             << any_struct_number_exponent_wkt_json.size() << "\n";
   std::cout << "any Struct Surrogate WKT json payload size: "
             << any_struct_surrogate_wkt_json.size() << "\n";
+  std::cout << "any Struct KeySurrogate WKT json payload size: "
+            << any_struct_key_surrogate_wkt_json.size() << "\n";
   std::cout << "empty struct json payload size: " << empty_struct_json.size()
             << "\n";
   std::cout << "any EmptyStruct WKT json payload size: "
@@ -1222,6 +1235,8 @@ int main() {
             << any_value_number_exponent_wkt_json.size() << "\n";
   std::cout << "any Value Surrogate WKT json payload size: "
             << any_value_surrogate_wkt_json.size() << "\n";
+  std::cout << "any Value KeySurrogate WKT json payload size: "
+            << any_value_key_surrogate_wkt_json.size() << "\n";
   std::cout << "null value json payload size: " << null_value_json.size()
             << "\n";
   std::cout << "any NullValue WKT json payload size: "
@@ -2132,6 +2147,9 @@ int main() {
       any_struct_number_exponent_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any Struct Surrogate WKT", any_struct_surrogate_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any Struct KeySurrogate WKT", any_struct_key_surrogate_wkt_json,
+      kIterations);
   RunWktJsonBenchPair("Any EmptyStruct WKT", any_empty_struct_wkt,
                       any_empty_struct_wkt_json, kIterations);
   RunWktJsonBenchPair("Any Value WKT", any_value_wkt, any_value_wkt_json,
@@ -2143,6 +2161,9 @@ int main() {
       any_value_number_exponent_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any Value Surrogate WKT", any_value_surrogate_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any Value KeySurrogate WKT", any_value_key_surrogate_wkt_json,
+      kIterations);
   RunWktJsonBenchPair("Any NullValue WKT", any_null_value_wkt,
                       any_null_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any StringScalarValue WKT",
@@ -2281,6 +2302,8 @@ int main() {
       "Struct NumberExponent", struct_number_exponent_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Struct>(
       "Struct Surrogate", struct_surrogate_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Struct>(
+      "Struct KeySurrogate", struct_key_surrogate_json, kIterations);
   RunWktJsonBenchPair("EmptyStruct", empty_struct_value, empty_struct_json,
                       kIterations);
   RunWktJsonBenchPair("Value", value_value, value_json, kIterations);
@@ -2290,6 +2313,8 @@ int main() {
       "Value NumberExponent", value_number_exponent_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Value>(
       "Value Surrogate", value_surrogate_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Value>(
+      "Value KeySurrogate", value_key_surrogate_json, kIterations);
   RunWktJsonBenchPair("NullValue", null_value_value, null_value_json,
                       kIterations);
   RunWktJsonBenchPair("StringScalarValue", string_scalar_value,
