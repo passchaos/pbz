@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 373
+EXPECTED_WORKLOAD_COUNT = 377
 
 
 @dataclass(frozen=True)
@@ -603,12 +603,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any FloatValue NegativeInfinity WKT"),
     *json_workload_pair("Any Int64Value WKT"),
     json_parse_workload("Any Int64Value Number WKT"),
+    json_parse_workload("Any Int64Value Exponent WKT"),
     *json_workload_pair("Any ZeroInt64Value WKT"),
     *json_workload_pair("Any NegativeInt64Value WKT"),
     *json_workload_pair("Any MinInt64Value WKT"),
     *json_workload_pair("Any MaxInt64Value WKT"),
     *json_workload_pair("Any UInt64Value WKT"),
     json_parse_workload("Any UInt64Value Number WKT"),
+    json_parse_workload("Any UInt64Value Exponent WKT"),
     *json_workload_pair("Any ZeroUInt64Value WKT"),
     *json_workload_pair("Any MaxUInt64Value WKT"),
     *json_workload_pair("Any Int32Value WKT"),
@@ -698,12 +700,14 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("FloatValue NegativeInfinity"),
     *json_workload_pair("Int64Value"),
     json_parse_workload("Int64Value Number"),
+    json_parse_workload("Int64Value Exponent"),
     *json_workload_pair("ZeroInt64Value"),
     *json_workload_pair("NegativeInt64Value"),
     *json_workload_pair("MinInt64Value"),
     *json_workload_pair("MaxInt64Value"),
     *json_workload_pair("UInt64Value"),
     json_parse_workload("UInt64Value Number"),
+    json_parse_workload("UInt64Value Exponent"),
     *json_workload_pair("ZeroUInt64Value"),
     *json_workload_pair("MaxUInt64Value"),
     *json_workload_pair("Int32Value"),
@@ -1388,6 +1392,10 @@ def self_test() -> None:
         ("DoubleValue Exponent", 6),
         ("Any FloatValue Exponent WKT", 72),
         ("FloatValue Exponent", 5),
+        ("Any Int64Value Exponent WKT", 75),
+        ("Int64Value Exponent", 8),
+        ("Any UInt64Value Exponent WKT", 76),
+        ("UInt64Value Exponent", 8),
         ("Any Int32Value Exponent WKT", 75),
         ("Int32Value Exponent", 8),
         ("Any UInt32Value Exponent WKT", 76),
