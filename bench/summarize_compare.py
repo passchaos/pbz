@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 401
+EXPECTED_WORKLOAD_COUNT = 402
 
 
 @dataclass(frozen=True)
@@ -570,6 +570,14 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf EnumName JSON parse",),
             "go protobuf": ("go protobuf EnumName JSON parse",),
+        },
+    ),
+    Workload(
+        "ProtoName JSON parse",
+        ("generated ProtoName JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf ProtoName JSON parse",),
+            "go protobuf": ("go protobuf ProtoName JSON parse",),
         },
     ),
     Workload(
@@ -1442,6 +1450,9 @@ def self_test() -> None:
         benchmark_line("generated EnumName JSON parse", 26, 85.0),
         benchmark_line("c++ protobuf EnumName JSON parse", 26, 475.0),
         benchmark_line("go protobuf EnumName JSON parse", 26, 290.0),
+        benchmark_line("generated ProtoName JSON parse", 62, 95.0),
+        benchmark_line("c++ protobuf ProtoName JSON parse", 62, 500.0),
+        benchmark_line("go protobuf ProtoName JSON parse", 62, 325.0),
         benchmark_line("generated IntExponent JSON parse", 203, 90.0),
         benchmark_line("c++ protobuf IntExponent JSON parse", 203, 500.0),
         benchmark_line("go protobuf IntExponent JSON parse", 203, 300.0),
