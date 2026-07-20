@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 379
+EXPECTED_WORKLOAD_COUNT = 381
 
 
 @dataclass(frozen=True)
@@ -632,6 +632,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any EmptyStringValue WKT"),
     *json_workload_pair("Any BytesValue WKT"),
     json_parse_workload("Any BytesValue URL WKT"),
+    json_parse_workload("Any BytesValue StandardBase64 WKT"),
     json_parse_workload("Any BytesValue Unpadded WKT"),
     *json_workload_pair("Any EmptyBytesValue WKT"),
     *json_workload_pair("Nested Any WKT"),
@@ -730,6 +731,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("EmptyStringValue"),
     *json_workload_pair("BytesValue"),
     json_parse_workload("BytesValue URL"),
+    json_parse_workload("BytesValue StandardBase64"),
     json_parse_workload("BytesValue Unpadded"),
     *json_workload_pair("EmptyBytesValue"),
     Workload(
@@ -1402,6 +1404,8 @@ def self_test() -> None:
         ("Int32Value Exponent", 8),
         ("Any UInt32Value Exponent WKT", 76),
         ("UInt32Value Exponent", 8),
+        ("Any BytesValue StandardBase64 WKT", 72),
+        ("BytesValue StandardBase64", 5),
         ("Any BytesValue Unpadded WKT", 72),
         ("BytesValue Unpadded", 5),
         ("ListKindValue Escape", 50),

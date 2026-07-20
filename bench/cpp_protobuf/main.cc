@@ -1006,9 +1006,12 @@ int main() {
   const std::string any_bytes_value_wkt_json =
       JsonStringFor(any_bytes_value_wkt);
   const std::string bytes_value_url_json = R"("-_8")";
+  const std::string bytes_value_standard_base64_json = R"("+/8")";
   const std::string bytes_value_unpadded_json = R"("aGk")";
   const std::string any_bytes_value_url_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.BytesValue","value":"-_8"})";
+  const std::string any_bytes_value_standard_base64_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.BytesValue","value":"+/8"})";
   const std::string any_bytes_value_unpadded_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.BytesValue","value":"aGk"})";
   google::protobuf::BytesValue empty_bytes_value;
@@ -1435,10 +1438,14 @@ int main() {
             << "\n";
   std::cout << "bytes value URL json payload size: "
             << bytes_value_url_json.size() << "\n";
+  std::cout << "bytes value StandardBase64 json payload size: "
+            << bytes_value_standard_base64_json.size() << "\n";
   std::cout << "bytes value unpadded json payload size: "
             << bytes_value_unpadded_json.size() << "\n";
   std::cout << "any BytesValue URL WKT json payload size: "
             << any_bytes_value_url_wkt_json.size() << "\n";
+  std::cout << "any BytesValue StandardBase64 WKT json payload size: "
+            << any_bytes_value_standard_base64_wkt_json.size() << "\n";
   std::cout << "any BytesValue Unpadded WKT json payload size: "
             << any_bytes_value_unpadded_wkt_json.size() << "\n";
   std::cout << "empty bytes value json payload size: "
@@ -2463,9 +2470,15 @@ int main() {
   RunWktJsonParseOnly<google::protobuf::BytesValue>(
       "BytesValue URL", bytes_value_url_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::BytesValue>(
+      "BytesValue StandardBase64", bytes_value_standard_base64_json,
+      kIterations);
+  RunWktJsonParseOnly<google::protobuf::BytesValue>(
       "BytesValue Unpadded", bytes_value_unpadded_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any BytesValue URL WKT", any_bytes_value_url_wkt_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any BytesValue StandardBase64 WKT",
+      any_bytes_value_standard_base64_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any BytesValue Unpadded WKT", any_bytes_value_unpadded_wkt_json,
       kIterations);
