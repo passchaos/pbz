@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 381
+EXPECTED_WORKLOAD_COUNT = 383
 
 
 @dataclass(frozen=True)
@@ -629,6 +629,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any FalseBoolValue WKT"),
     *json_workload_pair("Any StringValue WKT"),
     json_parse_workload("Any StringValue Escape WKT"),
+    json_parse_workload("Any StringValue Surrogate WKT"),
     *json_workload_pair("Any EmptyStringValue WKT"),
     *json_workload_pair("Any BytesValue WKT"),
     json_parse_workload("Any BytesValue URL WKT"),
@@ -728,6 +729,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("FalseBoolValue"),
     *json_workload_pair("StringValue"),
     json_parse_workload("StringValue Escape"),
+    json_parse_workload("StringValue Surrogate"),
     *json_workload_pair("EmptyStringValue"),
     *json_workload_pair("BytesValue"),
     json_parse_workload("BytesValue URL"),
@@ -1390,6 +1392,8 @@ def self_test() -> None:
         ("Value Escape", 67),
         ("Value NumberExponent", 60),
         ("StringScalarValue Escape", 10),
+        ("Any StringValue Surrogate WKT", 82),
+        ("StringValue Surrogate", 14),
         ("Any NumberValue Exponent WKT", 67),
         ("NumberValue Exponent", 5),
         ("Any DoubleValue Exponent WKT", 74),

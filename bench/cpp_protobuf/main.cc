@@ -986,8 +986,11 @@ int main() {
   const std::string any_string_value_wkt_json =
       JsonStringFor(any_string_value_wkt);
   const std::string string_value_escape_json = R"("\u0068ello")";
+  const std::string string_value_surrogate_json = R"("\ud83d\ude00")";
   const std::string any_string_value_escape_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.StringValue","value":"\u0068ello"})";
+  const std::string any_string_value_surrogate_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.StringValue","value":"\ud83d\ude00"})";
   google::protobuf::StringValue empty_string_value;
   empty_string_value.set_value("");
   const std::string empty_string_value_json = JsonStringFor(empty_string_value);
@@ -1428,8 +1431,12 @@ int main() {
             << "\n";
   std::cout << "string value escape json payload size: "
             << string_value_escape_json.size() << "\n";
+  std::cout << "string value surrogate json payload size: "
+            << string_value_surrogate_json.size() << "\n";
   std::cout << "any StringValue Escape WKT json payload size: "
             << any_string_value_escape_wkt_json.size() << "\n";
+  std::cout << "any StringValue Surrogate WKT json payload size: "
+            << any_string_value_surrogate_wkt_json.size() << "\n";
   std::cout << "empty string value json payload size: "
             << empty_string_value_json.size() << "\n";
   std::cout << "any EmptyStringValue WKT json payload size: "
@@ -2459,8 +2466,13 @@ int main() {
                       kIterations);
   RunWktJsonParseOnly<google::protobuf::StringValue>(
       "StringValue Escape", string_value_escape_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::StringValue>(
+      "StringValue Surrogate", string_value_surrogate_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any StringValue Escape WKT", any_string_value_escape_wkt_json,
+      kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any StringValue Surrogate WKT", any_string_value_surrogate_wkt_json,
       kIterations);
   RunWktJsonBenchPair("EmptyStringValue", empty_string_value,
                       empty_string_value_json, kIterations);
