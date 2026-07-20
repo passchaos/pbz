@@ -436,6 +436,15 @@ int main() {
     if (decoded.kind() != static_cast<demo::BenchKind>(123))
       std::abort();
   }
+  const std::string enum_name_json = R"({"kind":"BENCH_KIND_BETA"})";
+  {
+    demo::ScalarMix decoded;
+    if (!google::protobuf::util::JsonStringToMessage(enum_name_json, &decoded)
+             .ok())
+      std::abort();
+    if (decoded.kind() != demo::BENCH_KIND_BETA)
+      std::abort();
+  }
   const std::string int_exponent_json =
       R"({"count":1.2345e4,"total":9.87654321e9,"delta":-3.21e2,"bigDelta":-9.876543e6,"checksum":3.21e2,"token":4.096e3,"signedFixed":-1.23456e5,"signedBigFixed":-9.876543e6,"ids":[1e0,1.27e2,1.28e2]})";
   {
@@ -1147,6 +1156,8 @@ int main() {
   std::cout << "null fields json payload size: " << null_fields_json.size()
             << "\n";
   std::cout << "open enum json payload size: " << open_enum_json.size()
+            << "\n";
+  std::cout << "enum name json payload size: " << enum_name_json.size()
             << "\n";
   std::cout << "int exponent json payload size: " << int_exponent_json.size()
             << "\n";
@@ -2139,6 +2150,18 @@ int main() {
                  asm volatile("" : : "g"(&decoded) : "memory");
                });
   open_enum_json_parse.Print();
+
+  auto enum_name_json_parse =
+      RunTimed("c++ protobuf EnumName JSON parse", kIterations,
+               enum_name_json.size(), [&]() {
+                 demo::ScalarMix decoded;
+                 if (!google::protobuf::util::JsonStringToMessage(
+                          enum_name_json, &decoded)
+                          .ok())
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  enum_name_json_parse.Print();
 
   auto int_exponent_json_parse =
       RunTimed("c++ protobuf IntExponent JSON parse", kIterations,
