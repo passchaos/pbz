@@ -408,6 +408,22 @@ int main() {
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok())
     std::abort();
+  google::protobuf::util::JsonPrintOptions always_print_json_options;
+  always_print_json_options.always_print_primitive_fields = true;
+  const demo::Person empty_person;
+  std::string always_print_stringify_json;
+  if (!google::protobuf::util::MessageToJsonString(
+           empty_person, &always_print_stringify_json,
+           always_print_json_options)
+           .ok())
+    std::abort();
+  if (always_print_stringify_json.find("\"id\":0") == std::string::npos ||
+      always_print_stringify_json.find("\"name\":\"\"") ==
+          std::string::npos ||
+      always_print_stringify_json.find("\"scores\":[]") ==
+          std::string::npos ||
+      always_print_stringify_json.find("\"counts\":{}") == std::string::npos)
+    std::abort();
   google::protobuf::util::JsonPrintOptions proto_name_json_options;
   proto_name_json_options.preserve_proto_field_names = true;
   std::string proto_name_stringify_json;
@@ -1176,6 +1192,8 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "always-print stringify json payload size: "
+            << always_print_stringify_json.size() << "\n";
   std::cout << "proto name stringify json payload size: "
             << proto_name_stringify_json.size() << "\n";
   std::cout << "map key-surrogate json payload size: "
@@ -2110,6 +2128,18 @@ int main() {
         asm volatile("" : : "g"(out.data()) : "memory");
       });
   json_stringify.Print();
+
+  auto always_print_json_stringify = RunTimed(
+      "c++ protobuf AlwaysPrint JSON stringify", kIterations,
+      always_print_stringify_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(
+                 empty_person, &out, always_print_json_options)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  always_print_json_stringify.Print();
 
   auto proto_name_json_stringify = RunTimed(
       "c++ protobuf ProtoName JSON stringify", kIterations,

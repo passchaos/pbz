@@ -336,6 +336,18 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	alwaysPrintMarshalOptions := protojson.MarshalOptions{EmitDefaultValues: true}
+	emptyPerson := &personpb.Person{}
+	alwaysPrintStringifyJSONBytes, err := alwaysPrintMarshalOptions.Marshal(emptyPerson)
+	if err != nil {
+		panic(err)
+	}
+	if !bytespkg.Contains(alwaysPrintStringifyJSONBytes, []byte(`"id":0`)) ||
+		!bytespkg.Contains(alwaysPrintStringifyJSONBytes, []byte(`"name":""`)) ||
+		!bytespkg.Contains(alwaysPrintStringifyJSONBytes, []byte(`"scores":[]`)) ||
+		!bytespkg.Contains(alwaysPrintStringifyJSONBytes, []byte(`"counts":{}`)) {
+		panic("unexpected AlwaysPrint JSON stringify result")
+	}
 	protoNameMarshalOptions := protojson.MarshalOptions{UseProtoNames: true}
 	protoNameStringifyJSONBytes, err := protoNameMarshalOptions.Marshal(scalarmix)
 	if err != nil {
@@ -1474,6 +1486,7 @@ func main() {
 	fmt.Println("go protobuf benchmark baseline")
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
+	fmt.Printf("always-print stringify json payload size: %d\n", len(alwaysPrintStringifyJSONBytes))
 	fmt.Printf("proto name stringify json payload size: %d\n", len(protoNameStringifyJSONBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
@@ -1911,6 +1924,13 @@ func main() {
 
 	runTimed("go protobuf JSON stringify", iterations, len(jsonBytes), func() {
 		out, err := protojson.Marshal(person)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf AlwaysPrint JSON stringify", iterations, len(alwaysPrintStringifyJSONBytes), func() {
+		out, err := alwaysPrintMarshalOptions.Marshal(emptyPerson)
 		if err != nil {
 			panic(err)
 		}
