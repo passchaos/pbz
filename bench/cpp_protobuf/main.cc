@@ -660,6 +660,13 @@ int main() {
   const std::string any_number_value_wkt_json = JsonStringFor(any_number_value_wkt);
   const std::string any_number_value_exponent_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.Value","value":1.5e0})";
+  google::protobuf::Value negative_number_value;
+  negative_number_value.set_number_value(-1.5);
+  const std::string negative_number_value_json = JsonStringFor(negative_number_value);
+  google::protobuf::Any any_negative_number_value_wkt;
+  any_negative_number_value_wkt.PackFrom(negative_number_value);
+  const std::string any_negative_number_value_wkt_json =
+      JsonStringFor(any_negative_number_value_wkt);
   google::protobuf::Value zero_number_value;
   zero_number_value.set_number_value(0);
   const std::string zero_number_value_json = JsonStringFor(zero_number_value);
@@ -1187,6 +1194,10 @@ int main() {
             << "\n";
   std::cout << "any NumberValue WKT json payload size: "
             << any_number_value_wkt_json.size() << "\n";
+  std::cout << "negative number value json payload size: "
+            << negative_number_value_json.size() << "\n";
+  std::cout << "any NegativeNumberValue WKT json payload size: "
+            << any_negative_number_value_wkt_json.size() << "\n";
   std::cout << "zero number value json payload size: "
             << zero_number_value_json.size() << "\n";
   std::cout << "any ZeroNumberValue WKT json payload size: "
@@ -2050,6 +2061,9 @@ int main() {
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any NumberValue Exponent WKT",
       any_number_value_exponent_wkt_json, kIterations);
+  RunWktJsonBenchPair("Any NegativeNumberValue WKT",
+                      any_negative_number_value_wkt,
+                      any_negative_number_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any ZeroNumberValue WKT", any_zero_number_value_wkt,
                       any_zero_number_value_wkt_json, kIterations);
   RunWktJsonBenchPair("Any BoolScalarValue WKT", any_bool_scalar_value_wkt,
@@ -2181,6 +2195,8 @@ int main() {
                       kIterations);
   RunWktJsonParseOnly<google::protobuf::Value>(
       "NumberValue Exponent", number_value_exponent_json, kIterations);
+  RunWktJsonBenchPair("NegativeNumberValue", negative_number_value,
+                      negative_number_value_json, kIterations);
   RunWktJsonBenchPair("ZeroNumberValue", zero_number_value,
                       zero_number_value_json, kIterations);
   RunWktJsonBenchPair("BoolScalarValue", bool_scalar_value,
