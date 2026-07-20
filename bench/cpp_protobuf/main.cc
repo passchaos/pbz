@@ -410,6 +410,22 @@ int main() {
     std::abort();
   const std::string map_key_surrogate_json =
       R"({"counts":{"\ud83d\ude00":9}})";
+  const std::string null_fields_json =
+      R"({"id":null,"name":null,"scores":null,"counts":null})";
+  {
+    demo::Person decoded;
+    decoded.set_id(7);
+    decoded.set_name("x");
+    decoded.add_scores(1);
+    (*decoded.mutable_counts())["red"] = 2;
+    if (!google::protobuf::util::JsonStringToMessage(null_fields_json,
+                                                     &decoded)
+             .ok())
+      std::abort();
+    if (decoded.id() != 0 || !decoded.name().empty() ||
+        decoded.scores_size() != 0 || decoded.counts_size() != 0)
+      std::abort();
+  }
   const std::string int_exponent_json =
       R"({"count":1.2345e4,"total":9.87654321e9,"delta":-3.21e2,"bigDelta":-9.876543e6,"checksum":3.21e2,"token":4.096e3,"signedFixed":-1.23456e5,"signedBigFixed":-9.876543e6,"ids":[1e0,1.27e2,1.28e2]})";
   {
@@ -1118,6 +1134,8 @@ int main() {
   std::cout << "json payload size: " << json.size() << "\n";
   std::cout << "map key-surrogate json payload size: "
             << map_key_surrogate_json.size() << "\n";
+  std::cout << "null fields json payload size: " << null_fields_json.size()
+            << "\n";
   std::cout << "int exponent json payload size: " << int_exponent_json.size()
             << "\n";
   std::cout << "timestamp json payload size: " << timestamp_json.size()
@@ -2085,6 +2103,18 @@ int main() {
                  asm volatile("" : : "g"(&decoded) : "memory");
                });
   map_key_surrogate_json_parse.Print();
+
+  auto null_fields_json_parse =
+      RunTimed("c++ protobuf NullFields JSON parse", kIterations,
+               null_fields_json.size(), [&]() {
+                 demo::Person decoded;
+                 if (!google::protobuf::util::JsonStringToMessage(
+                          null_fields_json, &decoded)
+                          .ok())
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  null_fields_json_parse.Print();
 
   auto int_exponent_json_parse =
       RunTimed("c++ protobuf IntExponent JSON parse", kIterations,

@@ -336,6 +336,16 @@ func main() {
 		panic(err)
 	}
 	mapKeySurrogateJSONBytes := []byte(`{"counts":{"\ud83d\ude00":9}}`)
+	nullFieldsJSONBytes := []byte(`{"id":null,"name":null,"scores":null,"counts":null}`)
+	{
+		decoded := &personpb.Person{Id: 7, Name: "x", Scores: []int32{1}, Counts: map[string]int32{"red": 2}}
+		if err := protojson.Unmarshal(nullFieldsJSONBytes, decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Id != 0 || decoded.Name != "" || len(decoded.Scores) != 0 || len(decoded.Counts) != 0 {
+			panic("unexpected NullFields JSON parse result")
+		}
+	}
 	intExponentJSONBytes := []byte(`{"count":1.2345e4,"total":9.87654321e9,"delta":-3.21e2,"bigDelta":-9.876543e6,"checksum":3.21e2,"token":4.096e3,"signedFixed":-1.23456e5,"signedBigFixed":-9.876543e6,"ids":[1e0,1.27e2,1.28e2]}`)
 	{
 		var decoded personpb.ScalarMix
@@ -1423,6 +1433,7 @@ func main() {
 	fmt.Printf("payload size: %d\n", len(bytes))
 	fmt.Printf("json payload size: %d\n", len(jsonBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
+	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
 	fmt.Printf("int exponent json payload size: %d\n", len(intExponentJSONBytes))
 	fmt.Printf("timestamp json payload size: %d\n", len(timestampJSONBytes))
 	fmt.Printf("any Timestamp WKT json payload size: %d\n", len(anyTimestampWKTJSONBytes))
@@ -1869,6 +1880,12 @@ func main() {
 	runTimed("go protobuf MapKeySurrogate JSON parse", iterations, len(mapKeySurrogateJSONBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(mapKeySurrogateJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf NullFields JSON parse", iterations, len(nullFieldsJSONBytes), func() {
+		var decoded personpb.Person
+		if err := jsonUnmarshalOptions.Unmarshal(nullFieldsJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()
