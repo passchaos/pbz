@@ -731,12 +731,15 @@ int main() {
   double_value.set_value(3.25);
   const std::string double_value_json = JsonStringFor(double_value);
   const std::string double_value_string_json = R"("3.25")";
+  const std::string double_value_exponent_json = R"(3.25e0)";
   google::protobuf::Any any_double_value_wkt;
   any_double_value_wkt.PackFrom(double_value);
   const std::string any_double_value_wkt_json =
       JsonStringFor(any_double_value_wkt);
   const std::string any_double_value_string_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.DoubleValue","value":"3.25"})";
+  const std::string any_double_value_exponent_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.DoubleValue","value":3.25e0})";
   google::protobuf::DoubleValue negative_double_value;
   negative_double_value.set_value(-3.25);
   const std::string negative_double_value_json =
@@ -778,12 +781,15 @@ int main() {
   float_value.set_value(1.5f);
   const std::string float_value_json = JsonStringFor(float_value);
   const std::string float_value_string_json = R"("1.5")";
+  const std::string float_value_exponent_json = R"(1.5e0)";
   google::protobuf::Any any_float_value_wkt;
   any_float_value_wkt.PackFrom(float_value);
   const std::string any_float_value_wkt_json =
       JsonStringFor(any_float_value_wkt);
   const std::string any_float_value_string_wkt_json =
       R"({"@type":"type.googleapis.com/google.protobuf.FloatValue","value":"1.5"})";
+  const std::string any_float_value_exponent_wkt_json =
+      R"({"@type":"type.googleapis.com/google.protobuf.FloatValue","value":1.5e0})";
   google::protobuf::FloatValue negative_float_value;
   negative_float_value.set_value(-1.5f);
   const std::string negative_float_value_json = JsonStringFor(negative_float_value);
@@ -1236,10 +1242,14 @@ int main() {
             << "\n";
   std::cout << "double value string json payload size: "
             << double_value_string_json.size() << "\n";
+  std::cout << "double value exponent json payload size: "
+            << double_value_exponent_json.size() << "\n";
   std::cout << "any DoubleValue WKT json payload size: "
             << any_double_value_wkt_json.size() << "\n";
   std::cout << "any DoubleValue String WKT json payload size: "
             << any_double_value_string_wkt_json.size() << "\n";
+  std::cout << "any DoubleValue Exponent WKT json payload size: "
+            << any_double_value_exponent_wkt_json.size() << "\n";
   std::cout << "negative double value json payload size: "
             << negative_double_value_json.size() << "\n";
   std::cout << "any NegativeDoubleValue WKT json payload size: "
@@ -1264,10 +1274,14 @@ int main() {
             << "\n";
   std::cout << "float value string json payload size: "
             << float_value_string_json.size() << "\n";
+  std::cout << "float value exponent json payload size: "
+            << float_value_exponent_json.size() << "\n";
   std::cout << "any FloatValue WKT json payload size: "
             << any_float_value_wkt_json.size() << "\n";
   std::cout << "any FloatValue String WKT json payload size: "
             << any_float_value_string_wkt_json.size() << "\n";
+  std::cout << "any FloatValue Exponent WKT json payload size: "
+            << any_float_value_exponent_wkt_json.size() << "\n";
   std::cout << "negative float value json payload size: "
             << negative_float_value_json.size() << "\n";
   std::cout << "any NegativeFloatValue WKT json payload size: "
@@ -2220,10 +2234,15 @@ int main() {
                       kIterations);
   RunWktJsonParseOnly<google::protobuf::DoubleValue>(
       "DoubleValue String", double_value_string_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::DoubleValue>(
+      "DoubleValue Exponent", double_value_exponent_json, kIterations);
   RunWktJsonBenchPair("Any DoubleValue WKT", any_double_value_wkt,
                       any_double_value_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any DoubleValue String WKT", any_double_value_string_wkt_json,
+      kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any DoubleValue Exponent WKT", any_double_value_exponent_wkt_json,
       kIterations);
   RunWktJsonBenchPair("NegativeDoubleValue", negative_double_value,
                       negative_double_value_json, kIterations);
@@ -2251,10 +2270,15 @@ int main() {
   RunWktJsonBenchPair("FloatValue", float_value, float_value_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::FloatValue>(
       "FloatValue String", float_value_string_json, kIterations);
+  RunWktJsonParseOnly<google::protobuf::FloatValue>(
+      "FloatValue Exponent", float_value_exponent_json, kIterations);
   RunWktJsonBenchPair("Any FloatValue WKT", any_float_value_wkt,
                       any_float_value_wkt_json, kIterations);
   RunWktJsonParseOnly<google::protobuf::Any>(
       "Any FloatValue String WKT", any_float_value_string_wkt_json,
+      kIterations);
+  RunWktJsonParseOnly<google::protobuf::Any>(
+      "Any FloatValue Exponent WKT", any_float_value_exponent_wkt_json,
       kIterations);
   RunWktJsonBenchPair("NegativeFloatValue", negative_float_value,
                       negative_float_value_json, kIterations);

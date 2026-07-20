@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 365
+EXPECTED_WORKLOAD_COUNT = 369
 
 
 @dataclass(frozen=True)
@@ -587,6 +587,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any EmptyListKindValue WKT"),
     *json_workload_pair("Any DoubleValue WKT"),
     json_parse_workload("Any DoubleValue String WKT"),
+    json_parse_workload("Any DoubleValue Exponent WKT"),
     *json_workload_pair("Any NegativeDoubleValue WKT"),
     *json_workload_pair("Any ZeroDoubleValue WKT"),
     *json_workload_pair("Any DoubleValue NaN WKT"),
@@ -594,6 +595,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("Any DoubleValue NegativeInfinity WKT"),
     *json_workload_pair("Any FloatValue WKT"),
     json_parse_workload("Any FloatValue String WKT"),
+    json_parse_workload("Any FloatValue Exponent WKT"),
     *json_workload_pair("Any NegativeFloatValue WKT"),
     *json_workload_pair("Any ZeroFloatValue WKT"),
     *json_workload_pair("Any FloatValue NaN WKT"),
@@ -678,6 +680,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("EmptyListValue"),
     *json_workload_pair("DoubleValue"),
     json_parse_workload("DoubleValue String"),
+    json_parse_workload("DoubleValue Exponent"),
     *json_workload_pair("NegativeDoubleValue"),
     *json_workload_pair("ZeroDoubleValue"),
     *json_workload_pair("DoubleValue NaN"),
@@ -685,6 +688,7 @@ WORKLOADS: tuple[Workload, ...] = (
     *json_workload_pair("DoubleValue NegativeInfinity"),
     *json_workload_pair("FloatValue"),
     json_parse_workload("FloatValue String"),
+    json_parse_workload("FloatValue Exponent"),
     *json_workload_pair("NegativeFloatValue"),
     *json_workload_pair("ZeroFloatValue"),
     *json_workload_pair("FloatValue NaN"),
@@ -1376,6 +1380,10 @@ def self_test() -> None:
         ("StringScalarValue Escape", 10),
         ("Any NumberValue Exponent WKT", 67),
         ("NumberValue Exponent", 5),
+        ("Any DoubleValue Exponent WKT", 74),
+        ("DoubleValue Exponent", 6),
+        ("Any FloatValue Exponent WKT", 72),
+        ("FloatValue Exponent", 5),
         ("ListKindValue Escape", 50),
         ("ListValue Escape", 50),
     ):
