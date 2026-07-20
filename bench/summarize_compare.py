@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 404
+EXPECTED_WORKLOAD_COUNT = 405
 
 
 @dataclass(frozen=True)
@@ -570,6 +570,14 @@ WORKLOADS: tuple[Workload, ...] = (
         {
             "c++ protobuf": ("c++ protobuf NullFields JSON parse",),
             "go protobuf": ("go protobuf NullFields JSON parse",),
+        },
+    ),
+    Workload(
+        "IgnoreUnknown JSON parse",
+        ("generated IgnoreUnknown JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf IgnoreUnknown JSON parse",),
+            "go protobuf": ("go protobuf IgnoreUnknown JSON parse",),
         },
     ),
     Workload(
@@ -1466,6 +1474,9 @@ def self_test() -> None:
         benchmark_line("generated NullFields JSON parse", 51, 75.0),
         benchmark_line("c++ protobuf NullFields JSON parse", 51, 450.0),
         benchmark_line("go protobuf NullFields JSON parse", 51, 275.0),
+        benchmark_line("generated IgnoreUnknown JSON parse", 97, 95.0),
+        benchmark_line("c++ protobuf IgnoreUnknown JSON parse", 97, 600.0),
+        benchmark_line("go protobuf IgnoreUnknown JSON parse", 97, 350.0),
         benchmark_line("generated OpenEnum JSON parse", 12, 80.0),
         benchmark_line("c++ protobuf OpenEnum JSON parse", 12, 450.0),
         benchmark_line("go protobuf OpenEnum JSON parse", 12, 275.0),

@@ -370,6 +370,18 @@ func main() {
 			panic("unexpected NullFields JSON parse result")
 		}
 	}
+	ignoreUnknownJSONBytes := []byte(`{"id":7,"name":"zig","scores":[3],"counts":{"red":4},"unknownNested":{"x":1},"unknownList":[1,2]}`)
+	ignoreUnknownUnmarshalOptions := protojson.UnmarshalOptions{DiscardUnknown: true}
+	{
+		var decoded personpb.Person
+		if err := ignoreUnknownUnmarshalOptions.Unmarshal(ignoreUnknownJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Id != 7 || decoded.Name != "zig" || len(decoded.Scores) != 1 || decoded.Scores[0] != 3 ||
+			len(decoded.Counts) != 1 || decoded.Counts["red"] != 4 {
+			panic("unexpected IgnoreUnknown JSON parse result")
+		}
+	}
 	openEnumJSONBytes := []byte(`{"kind":123}`)
 	{
 		var decoded personpb.ScalarMix
@@ -1490,6 +1502,7 @@ func main() {
 	fmt.Printf("proto name stringify json payload size: %d\n", len(protoNameStringifyJSONBytes))
 	fmt.Printf("map key-surrogate json payload size: %d\n", len(mapKeySurrogateJSONBytes))
 	fmt.Printf("null fields json payload size: %d\n", len(nullFieldsJSONBytes))
+	fmt.Printf("ignore unknown json payload size: %d\n", len(ignoreUnknownJSONBytes))
 	fmt.Printf("open enum json payload size: %d\n", len(openEnumJSONBytes))
 	fmt.Printf("enum name json payload size: %d\n", len(enumNameJSONBytes))
 	fmt.Printf("proto name json payload size: %d\n", len(protoNameJSONBytes))
@@ -1959,6 +1972,12 @@ func main() {
 	runTimed("go protobuf NullFields JSON parse", iterations, len(nullFieldsJSONBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(nullFieldsJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf IgnoreUnknown JSON parse", iterations, len(ignoreUnknownJSONBytes), func() {
+		var decoded personpb.Person
+		if err := ignoreUnknownUnmarshalOptions.Unmarshal(ignoreUnknownJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

@@ -456,6 +456,21 @@ int main() {
         decoded.scores_size() != 0 || decoded.counts_size() != 0)
       std::abort();
   }
+  const std::string ignore_unknown_json =
+      R"({"id":7,"name":"zig","scores":[3],"counts":{"red":4},"unknownNested":{"x":1},"unknownList":[1,2]})";
+  google::protobuf::util::JsonParseOptions ignore_unknown_json_options;
+  ignore_unknown_json_options.ignore_unknown_fields = true;
+  {
+    demo::Person decoded;
+    if (!google::protobuf::util::JsonStringToMessage(
+             ignore_unknown_json, &decoded, ignore_unknown_json_options)
+             .ok())
+      std::abort();
+    if (decoded.id() != 7 || decoded.name() != "zig" ||
+        decoded.scores_size() != 1 || decoded.scores(0) != 3 ||
+        decoded.counts_size() != 1 || decoded.counts().at("red") != 4)
+      std::abort();
+  }
   const std::string open_enum_json = R"({"kind":123})";
   {
     demo::ScalarMix decoded;
@@ -1200,6 +1215,8 @@ int main() {
             << map_key_surrogate_json.size() << "\n";
   std::cout << "null fields json payload size: " << null_fields_json.size()
             << "\n";
+  std::cout << "ignore unknown json payload size: "
+            << ignore_unknown_json.size() << "\n";
   std::cout << "open enum json payload size: " << open_enum_json.size()
             << "\n";
   std::cout << "enum name json payload size: " << enum_name_json.size()
@@ -2209,6 +2226,19 @@ int main() {
                  asm volatile("" : : "g"(&decoded) : "memory");
                });
   null_fields_json_parse.Print();
+
+  auto ignore_unknown_json_parse =
+      RunTimed("c++ protobuf IgnoreUnknown JSON parse", kIterations,
+               ignore_unknown_json.size(), [&]() {
+                 demo::Person decoded;
+                 if (!google::protobuf::util::JsonStringToMessage(
+                          ignore_unknown_json, &decoded,
+                          ignore_unknown_json_options)
+                          .ok())
+                   std::abort();
+                 asm volatile("" : : "g"(&decoded) : "memory");
+               });
+  ignore_unknown_json_parse.Print();
 
   auto open_enum_json_parse =
       RunTimed("c++ protobuf OpenEnum JSON parse", kIterations,
