@@ -73,6 +73,10 @@ pub const Registry = struct {
                 const full_name = try qualifiedTypeName(self.allocator, file.package, enumeration.name);
                 _ = try self.putLoadedTypeName(&seen, &owned_names, full_name);
             }
+            for (file.services.items) |*service| {
+                const full_name = try qualifiedTypeName(self.allocator, file.package, service.name);
+                _ = try self.putLoadedTypeName(&seen, &owned_names, full_name);
+            }
         }
     }
 
@@ -127,6 +131,13 @@ pub const Registry = struct {
             const full_name = try qualifiedTypeName(self.allocator, file.package, enumeration.name);
             defer self.allocator.free(full_name);
             if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
+            if (self.findService(full_name, null) != null) return error.DuplicateSymbol;
+        }
+        for (file.services.items) |*service| {
+            const full_name = try qualifiedTypeName(self.allocator, file.package, service.name);
+            defer self.allocator.free(full_name);
+            if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
+            if (self.findService(full_name, null) != null) return error.DuplicateSymbol;
         }
     }
 
@@ -134,11 +145,13 @@ pub const Registry = struct {
         const full_name = try qualifiedTypeName(self.allocator, prefix, message.name);
         defer self.allocator.free(full_name);
         if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
+        if (self.findService(full_name, null) != null) return error.DuplicateSymbol;
         for (message.messages.items) |*nested| try self.validateMessageType(full_name, nested);
         for (message.enums.items) |*enumeration| {
             const enum_name = try qualifiedTypeName(self.allocator, full_name, enumeration.name);
             defer self.allocator.free(enum_name);
             if (self.findAbsolute(enum_name) != null) return error.DuplicateSymbol;
+            if (self.findService(enum_name, null) != null) return error.DuplicateSymbol;
         }
     }
 
@@ -1156,6 +1169,39 @@ test "registry rejects duplicate type symbols across files" {
     try registry.addFile(&first);
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_message));
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_nested));
+}
+
+test "registry rejects duplicate service symbols across files" {
+    const allocator = std.testing.allocator;
+    var first = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Req {}
+        \\service Same { rpc Get (Req) returns (Req); }
+    );
+    defer first.deinit();
+    first.name = "first.proto";
+    var duplicate_service = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Res {}
+        \\service Same { rpc Get (Res) returns (Res); }
+    );
+    defer duplicate_service.deinit();
+    duplicate_service.name = "duplicate-service.proto";
+    var duplicate_message = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Same {}
+    );
+    defer duplicate_message.deinit();
+    duplicate_message.name = "duplicate-message.proto";
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&first);
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_service));
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_message));
 }
 
 test "registry rejects duplicate extension symbols across files" {
