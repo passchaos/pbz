@@ -266,6 +266,10 @@ benchmark harness.
 - `examples/descriptors_codegen.zig` covers descriptor encode/decode,
   descriptor sets, source-code info, uninterpreted custom options, direct
   codegen, plugin request generation, and generated-code info annotations.
+- `examples/reflection_facade.zig` covers the public reflection facade over
+  registry descriptors and dynamic messages, including typed get/set/add/clear
+  helpers, repeated fields, map last-wins mutation, oneof inspection, imported
+  message fields, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff, and
   generated decode reuse.

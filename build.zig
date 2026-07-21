@@ -159,6 +159,7 @@ pub fn build(b: *std.Build) void {
         "dynamic_public_imports",
         "dynamic_weak_imports",
         "descriptors_codegen",
+        "reflection_facade",
         "generated_types",
         "generated_performance",
         "generated_advanced",
