@@ -52,7 +52,7 @@ pub const Tag = struct {
     }
 };
 
-pub fn zigZagEncode32(value: i32) u32 {
+pub inline fn zigZagEncode32(value: i32) u32 {
     return @as(u32, @bitCast((value << 1) ^ (value >> 31)));
 }
 
