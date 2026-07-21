@@ -8,6 +8,7 @@ const wire = @import("wire.zig");
 pub const Error = std.mem.Allocator.Error || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField, TypeMismatch };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
+const DefaultTag = std.meta.Tag(dynamic.DefaultValue);
 
 pub const Reflection = struct {
     allocator: std.mem.Allocator,
@@ -138,6 +139,15 @@ pub const Reflection = struct {
         return self.get(message_value, try self.fieldByName(message_value.descriptor, name));
     }
 
+    pub fn getOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) Error!dynamic.DefaultValue {
+        const owner_file = try self.fileOfMessage(message_value.descriptor);
+        return message_value.getOrDefaultWithRegistry(owner_file, self.registry, field);
+    }
+
+    pub fn getFieldOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!dynamic.DefaultValue {
+        return try self.getOrDefault(message_value, try self.fieldByName(message_value.descriptor, name));
+    }
+
     pub fn repeatedLen(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!usize {
         const field = try self.fieldByName(message_value.descriptor, name);
         return if (message_value.getByNumber(field.number)) |value| value.values.items.len else 0;
@@ -204,6 +214,12 @@ pub const Reflection = struct {
         return @field(value, @tagName(tag));
     }
 
+    fn getScalarOrDefault(self: Reflection, comptime T: type, message_value: *const dynamic.DynamicMessage, name: []const u8, comptime tag: DefaultTag) Error!T {
+        const value = try self.getFieldOrDefault(message_value, name);
+        if (std.meta.activeTag(value) != tag) return error.TypeMismatch;
+        return @field(value, @tagName(tag));
+    }
+
     pub fn setInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
         try self.setScalar(message_value, name, .int32, value);
     }
@@ -214,6 +230,10 @@ pub const Reflection = struct {
 
     pub fn getInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
         return try self.getScalar(i32, message_value, name, .int32);
+    }
+
+    pub fn getInt32OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
+        return try self.getScalarOrDefault(i32, message_value, name, .int32);
     }
 
     pub fn setInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
@@ -228,6 +248,10 @@ pub const Reflection = struct {
         return try self.getScalar(i64, message_value, name, .int64);
     }
 
+    pub fn getInt64OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i64 {
+        return try self.getScalarOrDefault(i64, message_value, name, .int64);
+    }
+
     pub fn setUInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u32) Error!void {
         try self.setScalar(message_value, name, .uint32, value);
     }
@@ -238,6 +262,10 @@ pub const Reflection = struct {
 
     pub fn getUInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u32 {
         return try self.getScalar(u32, message_value, name, .uint32);
+    }
+
+    pub fn getUInt32OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u32 {
+        return try self.getScalarOrDefault(u32, message_value, name, .uint32);
     }
 
     pub fn setUInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u64) Error!void {
@@ -252,6 +280,10 @@ pub const Reflection = struct {
         return try self.getScalar(u64, message_value, name, .uint64);
     }
 
+    pub fn getUInt64OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u64 {
+        return try self.getScalarOrDefault(u64, message_value, name, .uint64);
+    }
+
     pub fn setSInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
         try self.setScalar(message_value, name, .sint32, value);
     }
@@ -262,6 +294,10 @@ pub const Reflection = struct {
 
     pub fn getSInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
         return try self.getScalar(i32, message_value, name, .sint32);
+    }
+
+    pub fn getSInt32OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
+        return try self.getScalarOrDefault(i32, message_value, name, .sint32);
     }
 
     pub fn setSInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
@@ -276,6 +312,10 @@ pub const Reflection = struct {
         return try self.getScalar(i64, message_value, name, .sint64);
     }
 
+    pub fn getSInt64OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i64 {
+        return try self.getScalarOrDefault(i64, message_value, name, .sint64);
+    }
+
     pub fn setFixed32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u32) Error!void {
         try self.setScalar(message_value, name, .fixed32, value);
     }
@@ -286,6 +326,10 @@ pub const Reflection = struct {
 
     pub fn getFixed32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u32 {
         return try self.getScalar(u32, message_value, name, .fixed32);
+    }
+
+    pub fn getFixed32OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u32 {
+        return try self.getScalarOrDefault(u32, message_value, name, .fixed32);
     }
 
     pub fn setFixed64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u64) Error!void {
@@ -300,6 +344,10 @@ pub const Reflection = struct {
         return try self.getScalar(u64, message_value, name, .fixed64);
     }
 
+    pub fn getFixed64OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u64 {
+        return try self.getScalarOrDefault(u64, message_value, name, .fixed64);
+    }
+
     pub fn setSFixed32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
         try self.setScalar(message_value, name, .sfixed32, value);
     }
@@ -310,6 +358,10 @@ pub const Reflection = struct {
 
     pub fn getSFixed32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
         return try self.getScalar(i32, message_value, name, .sfixed32);
+    }
+
+    pub fn getSFixed32OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
+        return try self.getScalarOrDefault(i32, message_value, name, .sfixed32);
     }
 
     pub fn setSFixed64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
@@ -324,6 +376,10 @@ pub const Reflection = struct {
         return try self.getScalar(i64, message_value, name, .sfixed64);
     }
 
+    pub fn getSFixed64OrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i64 {
+        return try self.getScalarOrDefault(i64, message_value, name, .sfixed64);
+    }
+
     pub fn setFloat(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: f32) Error!void {
         try self.setScalar(message_value, name, .float, value);
     }
@@ -334,6 +390,10 @@ pub const Reflection = struct {
 
     pub fn getFloat(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!f32 {
         return try self.getScalar(f32, message_value, name, .float);
+    }
+
+    pub fn getFloatOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!f32 {
+        return try self.getScalarOrDefault(f32, message_value, name, .float);
     }
 
     pub fn setDouble(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: f64) Error!void {
@@ -348,6 +408,10 @@ pub const Reflection = struct {
         return try self.getScalar(f64, message_value, name, .double);
     }
 
+    pub fn getDoubleOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!f64 {
+        return try self.getScalarOrDefault(f64, message_value, name, .double);
+    }
+
     pub fn setBool(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: bool) Error!void {
         try self.setScalar(message_value, name, .boolean, value);
     }
@@ -358,6 +422,10 @@ pub const Reflection = struct {
 
     pub fn getBool(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!bool {
         return try self.getScalar(bool, message_value, name, .boolean);
+    }
+
+    pub fn getBoolOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!bool {
+        return try self.getScalarOrDefault(bool, message_value, name, .boolean);
     }
 
     pub fn setString(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: []const u8) Error!void {
@@ -382,6 +450,10 @@ pub const Reflection = struct {
         return try self.getScalar([]const u8, message_value, name, .string);
     }
 
+    pub fn getStringOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]const u8 {
+        return try self.getScalarOrDefault([]const u8, message_value, name, .string);
+    }
+
     pub fn setBytes(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: []const u8) Error!void {
         const field = try self.fieldByName(message_value.descriptor, name);
         const owned = try self.allocator.dupe(u8, value);
@@ -404,6 +476,10 @@ pub const Reflection = struct {
         return try self.getScalar([]const u8, message_value, name, .bytes);
     }
 
+    pub fn getBytesOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]const u8 {
+        return try self.getScalarOrDefault([]const u8, message_value, name, .bytes);
+    }
+
     pub fn setEnum(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
         try self.setScalar(message_value, name, .enumeration, value);
     }
@@ -416,9 +492,29 @@ pub const Reflection = struct {
         return try self.getScalar(i32, message_value, name, .enumeration);
     }
 
+    pub fn getEnumOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
+        return switch (try self.getFieldOrDefault(message_value, name)) {
+            .enumeration => |number| number,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn getEnumNameOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!?[]const u8 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const owner_file = try self.fileOfMessage(message_value.descriptor);
+        return message_value.getEnumNameOrDefaultWithRegistry(owner_file, self.registry, field);
+    }
+
     pub fn getEnumValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*const schema.EnumValueDescriptor {
         const field = try self.fieldByName(message_value.descriptor, name);
         const number = try self.getEnum(message_value, name);
+        const descriptor = try self.enumForField(message_value.descriptor, field);
+        return try self.enumValueByNumber(descriptor, number);
+    }
+
+    pub fn getEnumValueOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*const schema.EnumValueDescriptor {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const number = try self.getEnumOrDefault(message_value, name);
         const descriptor = try self.enumForField(message_value.descriptor, field);
         return try self.enumValueByNumber(descriptor, number);
     }

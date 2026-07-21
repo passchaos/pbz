@@ -66,6 +66,12 @@ pub fn main() !void {
     var user = try refl.newMessage("demo.reflect.User");
     defer user.deinit();
 
+    try std.testing.expectEqual(@as(i32, 0), try refl.getInt32OrDefault(&user, "id"));
+    try std.testing.expectEqualStrings("", try refl.getStringOrDefault(&user, "name"));
+    try std.testing.expectEqual(@as(i32, 0), try refl.getEnumOrDefault(&user, "role"));
+    try std.testing.expectEqualStrings("ROLE_UNKNOWN", (try refl.getEnumValueOrDefault(&user, "role")).name);
+    try std.testing.expectEqualStrings("ROLE_UNKNOWN", (try refl.getEnumNameOrDefault(&user, "role")).?);
+
     try refl.setInt32(&user, "id", 7);
     try refl.setString(&user, "name", "Ada");
     try refl.addString(&user, "tags", "zig");
@@ -110,8 +116,10 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&user, "tags"));
     try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 1)).string);
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "role"));
+    try std.testing.expectEqual(@as(i32, 1), try refl.getEnumOrDefault(&user, "role"));
     try std.testing.expect(role_desc == try refl.enumForField(user_desc, try refl.fieldByName(user_desc, "role")));
     try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.getEnumValue(&user, "role")).name);
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.getEnumValueOrDefault(&user, "role")).name);
     try std.testing.expectEqual(@as(u32, 42), try refl.getUInt32(&user, "quota"));
     try std.testing.expectEqual(@as(u64, 9_000_000_000), try refl.getUInt64(&user, "total"));
     try std.testing.expectEqual(@as(i32, -12), try refl.getSInt32(&user, "delta"));
