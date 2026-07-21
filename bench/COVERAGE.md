@@ -292,7 +292,8 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/clear
   helpers across all scalar families, repeated fields, map last-wins mutation,
-  oneof inspection, imported message fields, binary, and JSON round-trips.
+  oneof inspection, imported message fields, service descriptor lookup, binary,
+  and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff, and
   generated decode reuse.

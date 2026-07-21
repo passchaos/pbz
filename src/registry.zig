@@ -369,6 +369,15 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn fileContainingService(self: *const Registry, target: *const schema.ServiceDescriptor) ?*const schema.FileDescriptor {
+        for (self.files.items) |file| {
+            for (file.services.items) |*service| {
+                if (service == target) return file;
+            }
+        }
+        return null;
+    }
+
     pub fn validateAllFileReferences(self: *const Registry) Error!void {
         for (self.files.items) |file| try self.validateFileReferences(file);
     }

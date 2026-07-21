@@ -5,7 +5,7 @@ const registry_mod = @import("registry.zig");
 const dynamic = @import("dynamic.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.mem.Allocator.Error || error{ UnknownMessage, UnknownField, MissingField, TypeMismatch };
+pub const Error = std.mem.Allocator.Error || error{ UnknownMessage, UnknownService, UnknownField, MissingField, TypeMismatch };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 
@@ -23,6 +23,14 @@ pub const Reflection = struct {
 
     pub fn fileOfMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingMessage(descriptor) orelse error.UnknownMessage;
+    }
+
+    pub fn service(self: Reflection, name: []const u8) Error!*const schema.ServiceDescriptor {
+        return self.registry.findService(name, null) orelse error.UnknownService;
+    }
+
+    pub fn fileOfService(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
     }
 
     pub fn newMessage(self: Reflection, name: []const u8) Error!dynamic.DynamicMessage {

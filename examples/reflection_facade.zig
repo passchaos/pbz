@@ -42,6 +42,7 @@ pub fn main() !void {
         \\  repeated uint32 samples = 22;
         \\  repeated sint64 deltas = 23;
         \\}
+        \\service Users { rpc Get (User) returns (User); }
     );
 
     var loaded = try pbz.loadMemory(allocator, &tree, "app.proto");
@@ -51,6 +52,10 @@ pub fn main() !void {
     const user_desc = try refl.message(".demo.reflect.User");
     const app_file = try refl.fileOfMessage(user_desc);
     const profile_desc = try refl.message(".demo.reflect.Profile");
+    const users_service = try refl.service(".demo.reflect.Users");
+    const service_file = try refl.fileOfService(users_service);
+    try std.testing.expect(service_file == app_file);
+    try std.testing.expectEqualStrings("Get", users_service.methods.items[0].name);
 
     var user = try refl.newMessage("demo.reflect.User");
     defer user.deinit();
