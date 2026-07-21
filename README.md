@@ -666,6 +666,7 @@ Important examples:
 - `examples/generated_map_keys.zig` — generated non-string map keys
 - `examples/generated_nested_types.zig` — nested generated message/enum refs
 - `examples/generated_unpacked.zig` — unpacked repeated scalar fields
+- `examples/generated_public_imports.zig` — generated public import chains
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion

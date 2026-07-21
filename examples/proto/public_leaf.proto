@@ -1,0 +1,7 @@
+syntax = "proto3";
+package demo.publics.leaf;
+
+message Leaf {
+  int32 id = 1;
+  string name = 2;
+}

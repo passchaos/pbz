@@ -1,0 +1,9 @@
+syntax = "proto3";
+package demo.publics.app;
+
+import "public_mid.proto";
+
+message App {
+  demo.publics.leaf.Leaf direct_leaf = 1;
+  demo.publics.mid.Mid mid = 2;
+}
