@@ -74,6 +74,30 @@ pub const Reflection = struct {
         return try field.jsonName(self.allocator);
     }
 
+    pub fn fieldHasPresence(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
+        return field.hasPresence(try self.fileOfMessage(descriptor));
+    }
+
+    pub fn fieldIsRequired(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isRequired();
+    }
+
+    pub fn fieldIsMap(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isMap();
+    }
+
+    pub fn fieldIsRepeatedLike(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isRepeatedLike();
+    }
+
+    pub fn fieldIsPackable(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isPackable();
+    }
+
+    pub fn fieldIsPacked(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
+        return field.resolvedPacked(try self.fileOfMessage(descriptor));
+    }
+
     pub fn fieldByNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByNumber(number) orelse error.UnknownField;
     }

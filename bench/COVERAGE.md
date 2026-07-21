@@ -305,8 +305,9 @@ benchmark harness.
   registry descriptors and dynamic messages, including typed get/set/add/get-default
   and clear helpers across all scalar families, present-field listing, immediate
   type-checked writes, repeated fields, map last-wins mutation, map key lookup,
-  JSON-name field lookup/output, file/import-chain lookup, enum descriptor/value lookup,
-  oneof lookup/presence/inspection/clearing, imported message fields, service
+  JSON-name field lookup/output, field presence/packing metadata,
+  file/import-chain lookup, enum descriptor/value lookup, oneof
+  lookup/presence/inspection/clearing, imported message fields, service
   descriptor/method lookup, extension descriptor lookup, unknown-field
   query/mutation, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for

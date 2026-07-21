@@ -262,8 +262,25 @@ pub const FieldDescriptor = struct {
         return self.cardinality == .repeated and self.kind.packable();
     }
 
+    pub fn isMap(self: FieldDescriptor) bool {
+        return self.kind == .map;
+    }
+
     pub fn isRepeatedLike(self: FieldDescriptor) bool {
         return self.cardinality == .repeated or self.kind == .map;
+    }
+
+    pub fn isRequired(self: FieldDescriptor) bool {
+        if (self.cardinality == .required) return true;
+        if (self.features) |features| return features.field_presence == .legacy_required;
+        return false;
+    }
+
+    pub fn hasPresence(self: FieldDescriptor, file: *const FileDescriptor) bool {
+        if (self.isRequired() or self.proto3_optional or self.oneof_name != null or self.kind == .message or self.kind == .group) return true;
+        if (self.cardinality == .repeated or self.kind == .map) return false;
+        if (self.features) |features| return features.field_presence != .implicit;
+        return file.features.field_presence != .implicit;
     }
 
     pub fn jsonName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
