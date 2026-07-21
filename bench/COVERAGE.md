@@ -303,8 +303,8 @@ benchmark harness.
   oneof inspection, imported message fields, service descriptor/method lookup,
   binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
-  generated and dynamic messages, clone-to-long-lived-allocator handoff, and
-  generated decode reuse.
+  generated and dynamic messages, clone-to-long-lived-allocator handoff for
+  both generated and dynamic messages, and generated decode reuse.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
   range declarations/verification, repeated message extensions with recursive
   required-field validation, descriptor round-trips, JSON/TextFormat extension

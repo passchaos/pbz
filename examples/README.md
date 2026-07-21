@@ -78,7 +78,9 @@ library API.
   deprecated/idempotency options) plus client/handler adapters over an in-memory
   transport covering unary, client-streaming, server-streaming, and
   bidirectional-streaming RPC shapes from `proto/streaming.proto`.
-- `ownership_patterns.zig` — generated and dynamic arena-style ownership, clone-to-long-lived allocator, and generated decode reuse patterns.
+- `ownership_patterns.zig` — generated and dynamic arena-style ownership,
+  clone-to-long-lived allocator handoff for generated and dynamic messages, and
+  generated decode reuse patterns.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask, Empty,
   Struct/Value/ListValue, scalar wrappers, bytes wrappers, and Any including
   embedded WKT JSON values.

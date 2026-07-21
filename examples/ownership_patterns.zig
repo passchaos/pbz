@@ -66,31 +66,39 @@ pub fn main() !void {
     std.debug.assert(reusable.ids[3] == 65536);
 
     // The same arena pattern works for dynamic/reflection-oriented messages.
+    // Dynamic messages borrow their descriptors, so the schema/registry must
+    // outlive any cloned dynamic values.
+    var dynamic_file = try pbz.ProtoParser.parse(backing_allocator,
+        \\syntax = "proto3";
+        \\message Event {
+        \\  int32 id = 1;
+        \\  repeated string tags = 2;
+        \\  map<string, int32> counts = 3;
+        \\}
+    );
+    defer dynamic_file.deinit();
+    const dynamic_desc = dynamic_file.findMessage("Event").?;
+    var stable_event = pbz.DynamicMessage.init(backing_allocator, dynamic_desc);
+    defer stable_event.deinit();
     {
         var dynamic_arena = std.heap.ArenaAllocator.init(backing_allocator);
         defer dynamic_arena.deinit();
         const arena = dynamic_arena.allocator();
 
-        var file = try pbz.ProtoParser.parse(arena,
-            \\syntax = "proto3";
-            \\message Event {
-            \\  int32 id = 1;
-            \\  repeated string tags = 2;
-            \\  map<string, int32> counts = 3;
-            \\}
-        );
-        const desc = file.findMessage("Event").?;
-        var event = pbz.DynamicMessage.init(arena, desc);
-        try event.add(desc.findField("id").?, .{ .int32 = 99 });
-        try event.add(desc.findField("tags").?, .{ .string = try arena.dupe(u8, "arena") });
+        var event = pbz.DynamicMessage.init(arena, dynamic_desc);
+        try event.add(dynamic_desc.findField("id").?, .{ .int32 = 99 });
+        try event.add(dynamic_desc.findField("tags").?, .{ .string = try arena.dupe(u8, "arena") });
         const entry = try arena.create(pbz.dynamic.MapEntry);
         entry.* = .{ .key = .{ .string = try arena.dupe(u8, "hits") }, .value = .{ .int32 = 3 } };
-        try event.add(desc.findField("counts").?, .{ .map_entry = entry });
+        try event.add(dynamic_desc.findField("counts").?, .{ .map_entry = entry });
 
-        const event_wire = try event.encoded(&file);
-        var decoded_event = pbz.DynamicMessage.init(arena, desc);
-        try decoded_event.decode(&file, event_wire);
+        const event_wire = try event.encoded(&dynamic_file);
+        var decoded_event = pbz.DynamicMessage.init(arena, dynamic_desc);
+        try decoded_event.decode(&dynamic_file, event_wire);
         std.debug.assert(decoded_event.get("id").?.values.items[0].int32 == 99);
         std.debug.assert(decoded_event.get("counts").?.values.items[0].map_entry.value.int32 == 3);
+        stable_event = try decoded_event.cloneOwned(backing_allocator);
     }
+    std.debug.assert(stable_event.get("id").?.values.items[0].int32 == 99);
+    std.debug.assert(stable_event.get("counts").?.values.items[0].map_entry.value.int32 == 3);
 }

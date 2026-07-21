@@ -112,6 +112,18 @@ pub const DynamicMessage = struct {
         self.unknown_fields.clearRetainingCapacity();
     }
 
+    /// Deep-clone field values and unknown fields into `allocator`.
+    ///
+    /// Descriptors are intentionally not cloned: DynamicMessage values are
+    /// views over an existing schema graph. Callers moving a dynamic message out
+    /// of an arena must keep the registry/file descriptors alive for at least as
+    /// long as the cloned message.
+    pub fn cloneOwned(self: *const DynamicMessage, allocator: std.mem.Allocator) std.mem.Allocator.Error!DynamicMessage {
+        const cloned = try cloneDynamicMessage(allocator, self);
+        defer allocator.destroy(cloned);
+        return cloned.*;
+    }
+
     pub fn get(self: *const DynamicMessage, name: []const u8) ?*const FieldValue {
         for (self.fields.items) |*field| {
             if (std.mem.eql(u8, field.descriptor.name, name)) return field;
