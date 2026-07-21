@@ -17,6 +17,8 @@ library API.
 - `dynamic_json_options.zig` — dynamic JSON parse/stringify options:
   ignore-unknown, proto-name fields, always-print defaults, enum-number output,
   and proto-name input aliases.
+- `dynamic_text_options.zig` — dynamic TextFormat options: enum-number output,
+  custom indentation, unknown-field printing, and numeric enum input.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
   recursive imports, message/service registry lookup, and registry-backed
   dynamic JSON output.

@@ -155,6 +155,7 @@ pub fn build(b: *std.Build) void {
         "dynamic_message",
         "json_text",
         "dynamic_json_options",
+        "dynamic_text_options",
         "registry_loader",
         "dynamic_groups",
         "dynamic_editions_features",

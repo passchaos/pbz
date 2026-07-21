@@ -277,6 +277,9 @@ benchmark harness.
 - `examples/dynamic_json_options.zig` covers dynamic JSON parse/stringify
   options: ignore-unknown parsing, proto-name field output/input,
   always-print default values, and enum-number output.
+- `examples/dynamic_text_options.zig` covers dynamic TextFormat formatting
+  options: enum-number output, custom indentation, unknown-field printing, and
+  numeric enum input.
 - `examples/generated_closed_enum.zig` covers generated proto2 closed-enum
   unknown numeric preservation into raw unknown fields, including singular,
   repeated, and packed repeated inputs.
