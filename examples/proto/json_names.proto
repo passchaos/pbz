@@ -1,0 +1,8 @@
+syntax = "proto3";
+package demo.jsonnames;
+
+message JsonNames {
+  string display_name = 1 [json_name = "shownName"];
+  int32 legacy_count = 2 [json_name = "legacy-count"];
+  string same_name = 3 [json_name = "same_name"];
+}
