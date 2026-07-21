@@ -2766,7 +2766,8 @@ fn writeFastDirectPackedScalarPayload(value_expr: []const u8, scalar: schema.Sca
     switch (scalar) {
         .int32 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, {s}))));", .{value_expr}),
         .int64 => try writer.print("if ({s} < 0) pbz.wire.writeNegativeInt64VarintToSlice(buffer, &index, {s}) else pbz.wire.writeVarintToSlice(buffer, &index, @intCast({s}));", .{ value_expr, value_expr, value_expr }),
-        .uint32, .uint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, {s});", .{value_expr}),
+        .uint32 => try writer.print("pbz.wire.writeUInt32VarintToSlice(buffer, &index, {s});", .{value_expr}),
+        .uint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, {s});", .{value_expr}),
         .sint32 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode32({s}));", .{value_expr}),
         .sint64 => try writer.print("pbz.wire.writeVarintToSlice(buffer, &index, pbz.wire.zigZagEncode64({s}));", .{value_expr}),
         .bool => try writer.print("{{ buffer[index] = if ({s}) 1 else 0; index += 1; }}", .{value_expr}),
@@ -13143,6 +13144,7 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
         \\  repeated int32 ids = 1 [packed = true];
         \\  repeated Kind kinds = 2 [packed = true];
         \\  repeated fixed64 big_values = 3 [packed = true];
+        \\  repeated uint32 counts = 4 [packed = true];
         \\}
     );
     defer file.deinit();
@@ -13156,7 +13158,9 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.wire_type == .length_delimited)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedInt32(allocator, &ids_list, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedUInt32(allocator, &counts_list, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendPackedFixed64(allocator, &big_values_list, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pbz.wire.writeUInt32VarintToSlice(buffer, &index, item);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, 2, payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try ids_list.append(allocator, try r.readInt32())") != null);
@@ -13179,6 +13183,7 @@ test "codegen emits known-schema decode reuse for packed-only scalar and enum me
         \\  repeated Kind kinds = 4;
         \\  repeated fixed32 words = 5;
         \\  repeated double ratios = 6;
+        \\  repeated uint32 counts = 7;
         \\}
     );
     defer file.deinit();
@@ -13189,8 +13194,10 @@ test "codegen emits known-schema decode reuse for packed-only scalar and enum me
     try std.testing.expect(std.mem.indexOf(u8, content, "/// The caller must pre-size those buffers for the decoded element counts.") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const ids_buffer = @constCast(self.ids);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const deltas_buffer = @constCast(self.deltas);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const counts_buffer = @constCast(self.counts);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "ids_buffer[ids_len] = try pbz.wire.readInt32At(payload, &payload_index)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "deltas_buffer[deltas_len] = try pbz.wire.readSInt32At(payload, &payload_index)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "counts_buffer[counts_len] = @as(u32, @truncate(try pbz.wire.readVarintAt(payload, &payload_index)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const kinds_buffer = @constCast(self.kinds);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "kinds_buffer[kinds_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const words_buffer = @constCast(self.words);") != null);
@@ -13204,6 +13211,7 @@ test "codegen emits known-schema decode reuse for packed-only scalar and enum me
     try std.testing.expect(std.mem.indexOf(u8, content, "if (kinds_len != kinds_buffer.len) return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (words_len != words_buffer.len) return error.InvalidWireType;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (ratios_len != ratios_buffer.len) return error.InvalidWireType;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (counts_len != counts_buffer.len) return error.InvalidWireType;") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

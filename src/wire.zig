@@ -677,8 +677,42 @@ pub inline fn writeVarintToBuffer(buffer: []u8, value: u64) usize {
     return 10;
 }
 
+pub inline fn writeUInt32VarintToBuffer(buffer: []u8, value: u32) usize {
+    var v = value;
+    if (v < 0x80) {
+        buffer[0] = @truncate(v);
+        return 1;
+    }
+    buffer[0] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[1] = @truncate(v);
+        return 2;
+    }
+    buffer[1] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[2] = @truncate(v);
+        return 3;
+    }
+    buffer[2] = @truncate(v | 0x80);
+    v >>= 7;
+    if (v < 0x80) {
+        buffer[3] = @truncate(v);
+        return 4;
+    }
+    buffer[3] = @truncate(v | 0x80);
+    v >>= 7;
+    buffer[4] = @truncate(v);
+    return 5;
+}
+
 pub inline fn writeVarintToSlice(buffer: []u8, index: *usize, value: u64) void {
     index.* += writeVarintToBuffer(buffer[index.*..], value);
+}
+
+pub inline fn writeUInt32VarintToSlice(buffer: []u8, index: *usize, value: u32) void {
+    index.* += writeUInt32VarintToBuffer(buffer[index.*..], value);
 }
 
 /// Specialized for generated `encodeIntoAssumeCapacity` scalar fields, where
@@ -1609,10 +1643,11 @@ pub inline fn readUInt32At(input: []const u8, index_ptr: *usize) Error!u32 {
     const start = index_ptr.*;
     var index = start;
 
-    // Generated hot paths often decode small uint32 counters.  Handle the
-    // dominant one- and two-byte varints locally, but still fall back to the
-    // canonical 64-bit reader for wider encodings so non-canonical payloads
-    // keep the same truncation and malformed-varint behavior as Reader.readUInt32.
+    // Generated hot paths often decode packed uint32 streams.  Canonical uint32
+    // values fit in at most five bytes, so handle that full range locally and
+    // only fall back to the canonical 64-bit reader for deliberately wider
+    // encodings.  The fallback preserves protobuf's accepted 64-bit-to-32-bit
+    // truncation behavior and malformed-varint validation.
     if (index >= input.len) return error.TruncatedInput;
     const first = input[index];
     index += 1;
@@ -1630,6 +1665,42 @@ pub inline fn readUInt32At(input: []const u8, index_ptr: *usize) Error!u32 {
     index += 1;
     raw |= @as(u32, second & 0x7f) << 7;
     if (second < 0x80) {
+        index_ptr.* = index;
+        return raw;
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const third = input[index];
+    index += 1;
+    raw |= @as(u32, third & 0x7f) << 14;
+    if (third < 0x80) {
+        index_ptr.* = index;
+        return raw;
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const fourth = input[index];
+    index += 1;
+    raw |= @as(u32, fourth & 0x7f) << 21;
+    if (fourth < 0x80) {
+        index_ptr.* = index;
+        return raw;
+    }
+
+    if (index >= input.len) {
+        index_ptr.* = index;
+        return error.TruncatedInput;
+    }
+    const fifth = input[index];
+    index += 1;
+    raw |= @as(u32, fifth & 0x0f) << 28;
+    if (fifth < 0x80) {
         index_ptr.* = index;
         return raw;
     }
@@ -1941,6 +2012,12 @@ test "wire varint writer covers all encoded lengths" {
         var direct_scalar_index: usize = 0;
         writeDirectScalarVarintToSlice(&buffer, &direct_scalar_index, case.value);
         try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..direct_scalar_index]);
+
+        if (case.value <= std.math.maxInt(u32)) {
+            var u32_index: usize = 0;
+            writeUInt32VarintToSlice(&buffer, &u32_index, @intCast(case.value));
+            try std.testing.expectEqualSlices(u8, case.bytes, buffer[0..u32_index]);
+        }
     }
 }
 

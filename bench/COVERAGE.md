@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-textbytes-json-final.log` summarized by
-`/tmp/pbz-summary-textbytes-json-final.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-packed-u32-final.log` summarized by
+`/tmp/pbz-summary-packed-u32-final.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-textbytes-json-final.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-packed-u32-final.log --fail-on-loss
 ```
 
 ended with:
