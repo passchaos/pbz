@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 415
+EXPECTED_WORKLOAD_COUNT = 417
 
 
 @dataclass(frozen=True)
@@ -327,6 +327,22 @@ WORKLOADS: tuple[Workload, ...] = (
             "rust quick-protobuf": ("quick-protobuf scalarmix decode",),
             "c++ protobuf": ("c++ protobuf scalarmix decode", "c++ protobuf scalarmix decode reuse"),
             "go protobuf": ("go protobuf scalarmix decode",),
+        },
+    ),
+    Workload(
+        "ScalarMix JSON stringify",
+        ("generated ScalarMix JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf ScalarMix JSON stringify",),
+            "go protobuf": ("go protobuf ScalarMix JSON stringify",),
+        },
+    ),
+    Workload(
+        "ScalarMix JSON parse",
+        ("generated ScalarMix JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf ScalarMix JSON parse",),
+            "go protobuf": ("go protobuf ScalarMix JSON parse",),
         },
     ),
     Workload(
@@ -1548,6 +1564,12 @@ def self_test() -> None:
         benchmark_line("generated TextBytes JSON parse", 160, 160.0),
         benchmark_line("c++ protobuf TextBytes JSON parse", 160, 1000.0),
         benchmark_line("go protobuf TextBytes JSON parse", 160, 700.0),
+        benchmark_line("generated ScalarMix JSON stringify", 180, 130.0),
+        benchmark_line("c++ protobuf ScalarMix JSON stringify", 180, 800.0),
+        benchmark_line("go protobuf ScalarMix JSON stringify", 180, 500.0),
+        benchmark_line("generated ScalarMix JSON parse", 180, 200.0),
+        benchmark_line("c++ protobuf ScalarMix JSON parse", 180, 900.0),
+        benchmark_line("go protobuf ScalarMix JSON parse", 180, 550.0),
         benchmark_line("generated LargeMap JSON stringify", 12000, 2000.0),
         benchmark_line("c++ protobuf LargeMap JSON stringify", 12000, 20000.0),
         benchmark_line("go protobuf LargeMap JSON stringify", 12000, 18000.0),

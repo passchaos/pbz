@@ -408,6 +408,30 @@ int main() {
   std::string json;
   if (!google::protobuf::util::MessageToJsonString(person, &json).ok())
     std::abort();
+  std::string scalarmix_json;
+  if (!google::protobuf::util::MessageToJsonString(scalarmix,
+                                                   &scalarmix_json)
+           .ok())
+    std::abort();
+  if (scalarmix_json.find("\"bigDelta\":\"-9876543\"") ==
+          std::string::npos ||
+      scalarmix_json.find("\"kind\":\"BENCH_KIND_BETA\"") ==
+          std::string::npos ||
+      scalarmix_json.find("\"ids\":[\"1\",\"127\",\"128\"") ==
+          std::string::npos)
+    std::abort();
+  {
+    demo::ScalarMix decoded;
+    if (!google::protobuf::util::JsonStringToMessage(scalarmix_json, &decoded)
+             .ok())
+      std::abort();
+    if (decoded.count() != scalarmix.count() ||
+        decoded.total() != scalarmix.total() ||
+        decoded.big_delta() != scalarmix.big_delta() ||
+        decoded.kind() != scalarmix.kind() ||
+        decoded.ids_size() != scalarmix.ids_size() || decoded.ids(5) != 9876543210ULL)
+      std::abort();
+  }
   google::protobuf::util::JsonPrintOptions always_print_json_options;
   always_print_json_options.always_print_primitive_fields = true;
   const demo::Person empty_person;
@@ -1331,6 +1355,8 @@ int main() {
   std::cout << "payload size: " << bytes.size() << "\n";
   std::cout << "unknown fields payload size: " << unknown_bytes.size() << "\n";
   std::cout << "json payload size: " << json.size() << "\n";
+  std::cout << "scalarmix json payload size: " << scalarmix_json.size()
+            << "\n";
   std::cout << "always-print stringify json payload size: "
             << always_print_stringify_json.size() << "\n";
   std::cout << "proto name stringify json payload size: "
@@ -2351,6 +2377,16 @@ int main() {
       });
   json_stringify.Print();
 
+  auto scalarmix_json_stringify = RunTimed(
+      "c++ protobuf ScalarMix JSON stringify", kIterations,
+      scalarmix_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(scalarmix, &out).ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  scalarmix_json_stringify.Print();
+
   auto always_print_json_stringify = RunTimed(
       "c++ protobuf AlwaysPrint JSON stringify", kIterations,
       always_print_stringify_json.size(), [&]() {
@@ -2419,6 +2455,18 @@ int main() {
         asm volatile("" : : "g"(&reused_json_decoded) : "memory");
       });
   json_parse_reuse.Print();
+
+  auto scalarmix_json_parse = RunTimed(
+      "c++ protobuf ScalarMix JSON parse", kIterations, scalarmix_json.size(),
+      [&]() {
+        demo::ScalarMix decoded;
+        if (!google::protobuf::util::JsonStringToMessage(scalarmix_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  scalarmix_json_parse.Print();
 
   auto map_key_surrogate_json_parse =
       RunTimed("c++ protobuf MapKeySurrogate JSON parse", kIterations,

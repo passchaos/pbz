@@ -337,6 +337,25 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	scalarMixJSONBytes, err := protojson.Marshal(scalarmix)
+	if err != nil {
+		panic(err)
+	}
+	if !bytespkg.Contains(scalarMixJSONBytes, []byte(`"bigDelta":"-9876543"`)) ||
+		!bytespkg.Contains(scalarMixJSONBytes, []byte(`"kind":"BENCH_KIND_BETA"`)) {
+		panic("unexpected ScalarMix JSON stringify result")
+	}
+	{
+		var decoded personpb.ScalarMix
+		if err := protojson.Unmarshal(scalarMixJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Count != scalarmix.Count || decoded.Total != scalarmix.Total ||
+			decoded.BigDelta != scalarmix.BigDelta || decoded.Kind != scalarmix.Kind ||
+			len(decoded.Ids) != len(scalarmix.Ids) || decoded.Ids[5] != 9_876_543_210 {
+			panic("unexpected ScalarMix JSON parse result")
+		}
+	}
 	alwaysPrintMarshalOptions := protojson.MarshalOptions{EmitDefaultValues: true}
 	emptyPerson := &personpb.Person{}
 	alwaysPrintStringifyJSONBytes, err := alwaysPrintMarshalOptions.Marshal(emptyPerson)
@@ -1851,6 +1870,7 @@ func main() {
 	fmt.Printf("any WKT json payload size: %d\n", len(anyWKTJSONBytes))
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
+	fmt.Printf("scalarmix json payload size: %d\n", len(scalarMixJSONBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
 	fmt.Printf("textbytes json payload size: %d\n", len(textbytesJSONBytes))
 	fmt.Printf("largebytes payload size: %d\n", len(largebytesBytes))
@@ -2120,6 +2140,13 @@ func main() {
 		}
 		_ = out
 	}).print()
+	runTimed("go protobuf ScalarMix JSON stringify", iterations, len(scalarMixJSONBytes), func() {
+		out, err := protojson.Marshal(scalarmix)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
 	runTimed("go protobuf AlwaysPrint JSON stringify", iterations, len(alwaysPrintStringifyJSONBytes), func() {
 		out, err := alwaysPrintMarshalOptions.Marshal(emptyPerson)
 		if err != nil {
@@ -2145,6 +2172,12 @@ func main() {
 	runTimed("go protobuf JSON parse", iterations, len(jsonBytes), func() {
 		var decoded personpb.Person
 		if err := jsonUnmarshalOptions.Unmarshal(jsonBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+	runTimed("go protobuf ScalarMix JSON parse", iterations, len(scalarMixJSONBytes), func() {
+		var decoded personpb.ScalarMix
+		if err := jsonUnmarshalOptions.Unmarshal(scalarMixJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

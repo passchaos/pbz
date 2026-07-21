@@ -36,7 +36,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
   including optional generated and dynamic raw-field-number / compact run
   sidecars for repeated queries
 - deterministic binary encode
-- scalar mix encode/decode
+- scalar mix encode/decode plus generated ScalarMix JSON stringify/parse
 - string/bytes and repeated string/bytes encode/decode, including generated
   borrowed slices for copy-free output paths and generated TextBytes JSON
   stringify/parse for bytes base64 plus repeated string/bytes roundtrips
@@ -65,7 +65,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - generated typed iterators for packed varint fields
 - generated known-schema decode reuse for trusted same-schema hot paths,
   including packed repeated scalar and open-enum messages with reusable destination storage
-- JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse, generated null-field parse, generated ignore-unknown parse, generated enum-name parse, generated always-print default-value stringify, generated enum-number stringify, generated proto-name stringify, generated proto-name parse, generated open-enum numeric parse, generated integer numeric-exponent token parse, generated quoted numeric string parse, and generated TextBytes JSON stringify/parse for bytes base64 and repeated string/bytes fields
+- JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse, generated null-field parse, generated ignore-unknown parse, generated enum-name parse, generated ScalarMix JSON stringify/parse, generated always-print default-value stringify, generated enum-number stringify, generated proto-name stringify, generated proto-name parse, generated open-enum numeric parse, generated integer numeric-exponent token parse, generated quoted numeric string parse, and generated TextBytes JSON stringify/parse for bytes base64 and repeated string/bytes fields
 - TextFormat format/parse
 
 The unknown-field stress rows are pbz regression signals. Generated messages
@@ -84,7 +84,7 @@ compact run sidecar. The C++ unknown-field decode row remains manual context:
 C++ exposes parsed unknown fields, while pbz preserves exact raw-field byte
 slices.
 
-The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, and the same
+The cross-language binary, JSON, and TextFormat baselines use the same `Person` payload, a `TextBytes` payload with string/bytes and repeated string/bytes fields, a `LargeBytes` payload with a 64 KiB bytes field plus repeated 4 KiB chunks, a `PresenceMix` payload with proto3 optional scalar/string/bytes fields plus oneof, a `Complex` payload with nested messages, oneof, repeated message fields, and `map<string, message>`, the same ScalarMix payload for binary and JSON scalar-mix coverage, and the same
 `Packed { repeated int32 values = 1; }` and
 `FixedPacked { repeated fixed32 values = 1; }` and
 `Fixed64Packed { repeated fixed64 values = 1; }` and

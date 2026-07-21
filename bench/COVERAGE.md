@@ -39,11 +39,11 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-packed-u32-final.log` summarized by
-`/tmp/pbz-summary-packed-u32-final.txt`. The fail-on-loss summary gate:
+is `/tmp/pbz-compare-scalarmix-json-cpu3.log` summarized by
+`/tmp/pbz-summary-scalarmix-json-cpu3.txt`. The fail-on-loss summary gate:
 
 ```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-packed-u32-final.log --fail-on-loss
+python3 bench/summarize_compare.py /tmp/pbz-compare-scalarmix-json-cpu3.log --fail-on-loss
 ```
 
 ended with:
@@ -65,7 +65,7 @@ git diff --check
 
 ## Cross-language benchmark matrix
 
-`bench/summarize_compare.py` currently tracks 413 workloads. The parsed baselines
+`bench/summarize_compare.py` currently tracks 417 workloads. The parsed baselines
 include:
 
 - Rust `prost`
@@ -78,7 +78,7 @@ The matrix includes:
 - binary encode/decode
 - deterministic binary encode
 - unknown-field count-by-number against C++ `UnknownFieldSet` count
-- scalar mix encode/decode
+- scalar mix encode/decode plus generated ScalarMix JSON stringify/parse
 - string/bytes and repeated string/bytes encode/decode, including borrowed
   length-delimited output slices, plus generated TextBytes JSON stringify/parse
   coverage for string fields, bytes base64, repeated string, and repeated bytes
@@ -97,7 +97,7 @@ The matrix includes:
   min/zero/positive/number-input parse/numeric-exponent parse/negative/max `Int64Value`, zero/normal/number-input parse/numeric-exponent parse/max `UInt64Value`, min/zero/positive/string-input parse/numeric-exponent parse/negative/max `Int32Value`, zero/normal/string-input parse/numeric-exponent parse/max `UInt32Value`, true/false `BoolValue`, plus negative/zero/positive finite, finite string-input parse, numeric-exponent parse, and non-finite `DoubleValue` and `FloatValue` (`NaN`, `Infinity`, `-Infinity`),
   non-empty/escape-input parse/surrogate-pair parse/empty `StringValue`, and padded-standard/base64url/unpadded-base64 parse/empty `BytesValue`
 - complex TextFormat format/parse
-- simple JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse, generated null-field parse, generated ignore-unknown parse, generated enum-name parse, generated always-print default-value stringify, generated enum-number stringify, generated proto-name stringify, generated proto-name parse, generated open-enum numeric parse, generated integer numeric-exponent token parse, generated quoted numeric string parse, and generated TextBytes JSON stringify/parse for bytes base64 and repeated string/bytes fields
+- simple JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse, generated null-field parse, generated ignore-unknown parse, generated enum-name parse, generated ScalarMix JSON stringify/parse, generated always-print default-value stringify, generated enum-number stringify, generated proto-name stringify, generated proto-name parse, generated open-enum numeric parse, generated integer numeric-exponent token parse, generated quoted numeric string parse, and generated TextBytes JSON stringify/parse for bytes base64 and repeated string/bytes fields
 - simple TextFormat format/parse
 - packed int32 encode/decode
 - packed fixed32/fixed64/sfixed32/sfixed64/float/double encode/decode
