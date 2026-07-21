@@ -125,7 +125,7 @@ pub fn main() !void {
     try refl.addString(&user, "tags", "protobuf");
     try refl.putStringInt32MapEntry(&user, "counts", "red", 1);
     try refl.putStringInt32MapEntry(&user, "counts", "red", 2);
-    try refl.setEnum(&user, "role", 1);
+    try refl.setEnumByName(&user, "role", "ROLE_ADMIN");
     try std.testing.expectError(error.TypeMismatch, refl.setBytes(&user, "email", "ada@example.test"));
     try refl.setString(&user, "email", "ada@example.test");
     try refl.setUInt32(&user, "quota", 42);
@@ -142,8 +142,9 @@ pub fn main() !void {
     try refl.addBool(&user, "flags", true);
     try refl.addBytes(&user, "blobs", &.{ 1, 2 });
     try refl.addBytes(&user, "blobs", &.{ 3, 4 });
-    try refl.addEnum(&user, "roles", 0);
-    try refl.addEnum(&user, "roles", 1);
+    try refl.addEnumByName(&user, "roles", "ROLE_UNKNOWN");
+    try refl.addEnumByName(&user, "roles", "ROLE_ADMIN");
+    try std.testing.expectError(error.UnknownEnum, refl.addEnumByName(&user, "roles", "ROLE_MISSING"));
     try refl.addUInt32(&user, "samples", 10);
     try refl.addUInt32(&user, "samples", 20);
     try refl.addSInt64(&user, "deltas", -1);

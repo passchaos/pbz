@@ -677,6 +677,20 @@ pub const Reflection = struct {
         try self.addScalar(message_value, name, .enumeration, value);
     }
 
+    pub fn setEnumByName(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value_name: []const u8) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const enum_desc = try self.enumForField(message_value.descriptor, field);
+        const value = try self.enumValueByName(enum_desc, value_name);
+        try self.set(message_value, field, .{ .enumeration = value.number });
+    }
+
+    pub fn addEnumByName(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value_name: []const u8) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const enum_desc = try self.enumForField(message_value.descriptor, field);
+        const value = try self.enumValueByName(enum_desc, value_name);
+        try self.add(message_value, field, .{ .enumeration = value.number });
+    }
+
     pub fn getEnum(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
         return try self.getScalar(i32, message_value, name, .enumeration);
     }
