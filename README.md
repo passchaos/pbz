@@ -668,6 +668,7 @@ Important examples:
 - `examples/generated_unpacked.zig` — unpacked repeated scalar fields
 - `examples/generated_public_imports.zig` — generated public import chains
 - `examples/generated_merge_semantics.zig` — generated decode merge/last-wins semantics
+- `examples/generated_clone_owned.zig` — generated deep-clone ownership handoff
 - `examples/generated_unknown_mutation.zig` — generated unknown-field mutation APIs
 - `examples/generated_closed_enum.zig` — proto2 closed enum unknown preservation
 - `examples/proto2_extensions.zig` — proto2 extensions
