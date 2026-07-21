@@ -157,6 +157,7 @@ pub fn build(b: *std.Build) void {
         "registry_loader",
         "dynamic_editions_features",
         "dynamic_public_imports",
+        "dynamic_weak_imports",
         "descriptors_codegen",
         "generated_types",
         "generated_performance",

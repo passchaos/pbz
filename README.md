@@ -37,6 +37,8 @@ benchmarks, and upstream conformance suite:
   leaking protoc's descriptor-only synthetic oneofs into public APIs
 - generated imports, generated enum helpers, service metadata, and lightweight
   service client/handler adapters
+- dynamic loader support for public and weak imports, including missing weak
+  imports that leave the rest of a schema usable
 - dynamic JSON and TextFormat parse/format
 - WKT JSON/wire helpers for Timestamp, Duration, FieldMask, Any, Empty,
   Struct/Value/ListValue, and wrappers

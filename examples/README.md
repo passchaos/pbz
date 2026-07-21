@@ -17,6 +17,9 @@ library API.
   explicit/implicit/legacy-required presence, packed/expanded repeated scalars,
   delimited message encoding, relaxed UTF-8, and closed enum preservation.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
+- `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present
+  and missing proto2 weak imports, including descriptor-set, binary, JSON, and
+  TextFormat workflows.
 - `descriptors_codegen.zig` — descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
