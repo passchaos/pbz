@@ -20,8 +20,8 @@ library API.
 - `dynamic_text_options.zig` — dynamic TextFormat options: enum-number output,
   custom indentation, unknown-field printing, and numeric enum input.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
-  recursive imports, message/service registry lookup, and registry-backed
-  dynamic JSON output.
+  recursive imports, message/service/method registry lookup, and
+  registry-backed dynamic JSON output.
 - `dynamic_groups.zig` — dynamic proto2 group fields, repeated groups, JSON and
   TextFormat round-trips, singular group merge semantics, and unknown group
   preservation.
@@ -48,7 +48,7 @@ library API.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/clear helpers, repeated fields,
   all scalar families, maps, oneof inspection, imported message fields, service
-  descriptor lookup, binary, and JSON round-trips.
+  descriptor/method lookup, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.

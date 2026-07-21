@@ -927,6 +927,7 @@ test "registry resolves absolute relative nested and imported types" {
     try std.testing.expect(registry.findService(".demo.app.Requests", null) != null);
     try std.testing.expect(registry.findService("Requests", "demo.app") != null);
     try std.testing.expect(registry.findService("Requests", "demo.common") == null);
+    try std.testing.expect(registry.findService(".demo.app.Requests", null).?.findMethod("Get") != null);
 }
 
 test "registry rejects unqualified imported leaf references" {

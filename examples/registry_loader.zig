@@ -29,7 +29,7 @@ pub fn main() !void {
     const events_service = loaded.registry.findService(".demo.app.Events", null).?;
     std.debug.assert(std.mem.eql(u8, event_desc.name, "Event"));
     std.debug.assert(std.mem.eql(u8, user_desc.name, "User"));
-    std.debug.assert(std.mem.eql(u8, events_service.methods.items[0].name, "Get"));
+    std.debug.assert(std.mem.eql(u8, events_service.findMethod("Get").?.name, "Get"));
 
     // The filesystem loader follows the same recursive import and registry
     // validation path as MemorySourceTree, but exercises the public loadDir API

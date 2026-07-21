@@ -548,6 +548,13 @@ pub const ServiceDescriptor = struct {
     features: ?FeatureSet = null,
     options: OptionList = .empty,
 
+    pub fn findMethod(self: *const ServiceDescriptor, name: []const u8) ?*const MethodDescriptor {
+        for (self.methods.items) |*method| {
+            if (std.mem.eql(u8, method.name, name)) return method;
+        }
+        return null;
+    }
+
     pub fn deinit(self: *ServiceDescriptor, allocator: std.mem.Allocator) void {
         for (self.methods.items) |*method| method.deinit(allocator);
         self.methods.deinit(allocator);

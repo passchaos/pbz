@@ -253,7 +253,7 @@ benchmark harness.
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
   loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
-  registry lookup, and registry-backed dynamic JSON output.
+  and method lookup, and registry-backed dynamic JSON output.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
   dynamic schemas, descriptor round-trips, parser rejection of reserved
   declarations, and TextFormat's protobuf-compatible reserved-name ignore
@@ -300,8 +300,8 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/clear
   helpers across all scalar families, repeated fields, map last-wins mutation,
-  oneof inspection, imported message fields, service descriptor lookup, binary,
-  and JSON round-trips.
+  oneof inspection, imported message fields, service descriptor/method lookup,
+  binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff, and
   generated decode reuse.

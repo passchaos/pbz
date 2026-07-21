@@ -55,7 +55,8 @@ pub fn main() !void {
     const users_service = try refl.service(".demo.reflect.Users");
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
-    try std.testing.expectEqualStrings("Get", users_service.methods.items[0].name);
+    const get_method = users_service.findMethod("Get") orelse return error.MissingMethod;
+    try std.testing.expectEqualStrings("Get", get_method.name);
 
     var user = try refl.newMessage("demo.reflect.User");
     defer user.deinit();
