@@ -1370,23 +1370,23 @@ pub const Reader = struct {
     recursion_depth: u32 = 0,
     recursion_limit: u32 = 100,
 
-    pub fn init(input: []const u8) Reader {
+    pub inline fn init(input: []const u8) Reader {
         return .{ .input = input };
     }
 
-    pub fn eof(self: *const Reader) bool {
+    pub inline fn eof(self: *const Reader) bool {
         return self.index >= self.input.len;
     }
 
-    pub fn remaining(self: *const Reader) []const u8 {
+    pub inline fn remaining(self: *const Reader) []const u8 {
         return self.input[self.index..];
     }
 
-    pub fn position(self: *const Reader) usize {
+    pub inline fn position(self: *const Reader) usize {
         return self.index;
     }
 
-    pub fn lastTagStart(self: *const Reader) usize {
+    pub inline fn lastTagStart(self: *const Reader) usize {
         return self.last_tag_start;
     }
 
@@ -1409,14 +1409,14 @@ pub const Reader = struct {
         self.recursion_depth -= 1;
     }
 
-    pub fn readByte(self: *Reader) Error!u8 {
+    pub inline fn readByte(self: *Reader) Error!u8 {
         if (self.index >= self.input.len) return error.TruncatedInput;
         const b = self.input[self.index];
         self.index += 1;
         return b;
     }
 
-    pub fn readVarint(self: *Reader) Error!u64 {
+    pub inline fn readVarint(self: *Reader) Error!u64 {
         return try readVarintAt(self.input, &self.index);
     }
 
