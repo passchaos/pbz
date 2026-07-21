@@ -22,6 +22,22 @@ pub const Reflection = struct {
         return self.registry.findFile(path) orelse error.UnknownFile;
     }
 
+    pub fn fileName(_: Reflection, file_descriptor: *const schema.FileDescriptor) []const u8 {
+        return file_descriptor.name;
+    }
+
+    pub fn filePackage(_: Reflection, file_descriptor: *const schema.FileDescriptor) []const u8 {
+        return file_descriptor.package;
+    }
+
+    pub fn fileSyntax(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.Syntax {
+        return file_descriptor.syntax;
+    }
+
+    pub fn fileEdition(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.Edition {
+        return file_descriptor.edition;
+    }
+
     pub fn fileCanSee(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
         return self.registry.fileCanSee(from, to);
     }

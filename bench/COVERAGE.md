@@ -253,7 +253,7 @@ benchmark harness.
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
   loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
-  and method lookup, reflection file/import-chain lookup, registry-backed dynamic
+  and method lookup, reflection file metadata/import-chain lookup, registry-backed dynamic
   JSON output, plus C++ DescriptorPool parity for rejecting duplicate descriptor
   symbols assembled programmatically.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
@@ -306,7 +306,7 @@ benchmark harness.
   and clear helpers across all scalar families, present-field listing, immediate
   type-checked writes, repeated fields, typed message/group creation/access, map
   last-wins mutation, map key lookup, JSON-name field lookup/output, field presence/packing/reserved metadata,
-  file/import-chain lookup, enum descriptor/value lookup, oneof
+  file metadata/import-chain lookup, enum descriptor/value lookup, oneof
   lookup/presence/inspection/clearing, imported message fields, option lookup,
   service descriptor/method lookup, extension descriptor lookup, unknown-field
   query/mutation, required-field initialization checks, binary, and JSON round-trips.

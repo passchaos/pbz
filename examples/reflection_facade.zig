@@ -65,6 +65,10 @@ pub fn main() !void {
     const profile_desc = try refl.message(".demo.reflect.Profile");
     const role_desc = try refl.enumeration(".demo.reflect.Role");
     const role_file = try refl.fileOfEnum(role_desc);
+    try std.testing.expectEqualStrings("app.proto", refl.fileName(app_file));
+    try std.testing.expectEqualStrings("demo.reflect", refl.filePackage(app_file));
+    try std.testing.expectEqual(pbz.schema.Syntax.proto3, refl.fileSyntax(app_file));
+    try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));
     try std.testing.expectEqualStrings("common.proto", role_file.name);
     try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.enumValueByNumber(role_desc, 1)).name);
     try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
