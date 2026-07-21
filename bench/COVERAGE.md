@@ -283,7 +283,8 @@ benchmark harness.
   `examples/proto/*.proto` and fail on drift.
 - `examples/generated_streaming.zig` covers generated service client/handler
   adapters over a transport abstraction for unary, client-streaming,
-  server-streaming, and bidirectional-streaming RPC shapes.
+  server-streaming, and bidirectional-streaming RPC shapes, plus generated
+  service/method option metadata such as `deprecated` and `idempotency_level`.
 - `examples/descriptors_codegen.zig` covers descriptor encode/decode,
   descriptor sets, source-code info, uninterpreted custom options,
   service/method options including idempotency levels, direct codegen, plugin

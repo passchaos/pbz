@@ -103,8 +103,11 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     std.debug.assert(streaming.services.Pipe.Get.input_type_ref == Event);
+    std.debug.assert(streaming.services.Pipe.deprecated);
     std.debug.assert(streaming.services.Pipe.Upload.client_streaming);
     std.debug.assert(streaming.services.Pipe.Watch.server_streaming);
+    std.debug.assert(std.mem.eql(u8, streaming.services.Pipe.Watch.idempotency_level, "NO_SIDE_EFFECTS"));
+    std.debug.assert(streaming.services.Pipe.Watch.idempotency_level_number == 1);
     std.debug.assert(streaming.services.Pipe.Chat.client_streaming and streaming.services.Pipe.Chat.server_streaming);
 
     var impl = PipeImpl{};

@@ -11784,6 +11784,10 @@ fn writeServiceDecl(ctx: *const CodegenContext, service: *const schema.ServiceDe
     try writer.writeAll("pub const name = ");
     try writeZigStringLiteral(service.name, writer);
     try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const deprecated = ");
+    try writer.writeAll(if (optionListBool(service.options.items, "deprecated") orelse false) "true" else "false");
+    try writer.writeAll(";\n");
     for (service.methods.items) |*method| try writeMethodDecl(ctx, method, writer, depth + 1);
     if (serviceHasAdapters(ctx, service)) {
         try writeServiceHandlerDecl(ctx, service, writer, depth + 1);
@@ -11802,6 +11806,17 @@ fn writeMethodDecl(ctx: *const CodegenContext, method: *const schema.MethodDescr
     try writer.writeAll("pub const name = ");
     try writeZigStringLiteral(method.name, writer);
     try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const deprecated = ");
+    try writer.writeAll(if (optionListBool(method.options.items, "deprecated") orelse false) "true" else "false");
+    try writer.writeAll(";\n");
+    const idempotency_number = methodIdempotencyLevel(method.options.items) orelse 0;
+    try indent(writer, depth + 1);
+    try writer.writeAll("pub const idempotency_level = ");
+    try writeZigStringLiteral(idempotencyLevelName(idempotency_number), writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth + 1);
+    try writer.print("pub const idempotency_level_number = {d};\n", .{idempotency_number});
     try indent(writer, depth + 1);
     try writer.writeAll("pub const input_type = ");
     try writeZigStringLiteral(method.input_type, writer);
@@ -11836,6 +11851,41 @@ fn writeMethodDecl(ctx: *const CodegenContext, method: *const schema.MethodDescr
     try writer.writeAll(";\n");
     try indent(writer, depth);
     try writer.writeAll("};\n");
+}
+
+fn optionListBool(options: []const schema.FieldOption, name: []const u8) ?bool {
+    for (options) |option| {
+        if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), name)) return schema.optionAsBool(option.value);
+    }
+    return null;
+}
+
+fn methodIdempotencyLevel(options: []const schema.FieldOption) ?i32 {
+    for (options) |option| {
+        if (!std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), "idempotency_level")) continue;
+        return switch (option.value) {
+            .integer => |value| std.math.cast(i32, value),
+            .unsigned_integer => |value| std.math.cast(i32, value),
+            .identifier, .string => |value| idempotencyLevelNumber(value),
+            else => null,
+        };
+    }
+    return null;
+}
+
+fn idempotencyLevelNumber(value: []const u8) ?i32 {
+    if (std.mem.eql(u8, value, "IDEMPOTENCY_UNKNOWN")) return 0;
+    if (std.mem.eql(u8, value, "NO_SIDE_EFFECTS")) return 1;
+    if (std.mem.eql(u8, value, "IDEMPOTENT")) return 2;
+    return null;
+}
+
+fn idempotencyLevelName(number: i32) []const u8 {
+    return switch (number) {
+        1 => "NO_SIDE_EFFECTS",
+        2 => "IDEMPOTENT",
+        else => "IDEMPOTENCY_UNKNOWN",
+    };
 }
 
 fn serviceHasAdapters(ctx: *const CodegenContext, service: *const schema.ServiceDescriptor) bool {
@@ -14495,8 +14545,12 @@ test "codegen emits service metadata and unary adapters" {
         \\message Req {}
         \\message Res {}
         \\service Directory {
+        \\  option deprecated = true;
         \\  rpc Get (Req) returns (Res);
-        \\  rpc Stream (stream Req) returns (stream Res);
+        \\  rpc Stream (stream Req) returns (stream Res) {
+        \\    option deprecated = true;
+        \\    option idempotency_level = IDEMPOTENT;
+        \\  }
         \\}
     );
     defer file.deinit();
@@ -14505,7 +14559,9 @@ test "codegen emits service metadata and unary adapters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const services = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const Directory = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const name = \"Directory\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const deprecated = true;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const Get = struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const idempotency_level = \"IDEMPOTENCY_UNKNOWN\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_type = \"Req\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type = \"Res\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const input_has_type_ref = true") != null);
@@ -14514,6 +14570,8 @@ test "codegen emits service metadata and unary adapters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const output_type_ref = Res;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const client_streaming = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const server_streaming = true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const idempotency_level = \"IDEMPOTENT\";") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const idempotency_level_number = 2;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Handler(comptime Impl: type) type") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Client(comptime Transport: type) type") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Get(self: @This(), allocator: std.mem.Allocator, request: Req) !Res") != null);

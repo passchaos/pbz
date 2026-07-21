@@ -66,7 +66,10 @@ library API.
 - `generated_imports.zig` — multi-file generated modules using proto imports with typed imported singular, repeated, map value, and oneof message fields from `proto/imported_app.proto` / `proto/imported_common.proto`.
 - `generated_groups.zig` — typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from `proto/groups.proto`.
 - `generated_recursive.zig` — generated self-recursive message usage from `proto/recursive.proto`, including raw-payload singular recursion, typed repeated recursion, and decode recursion-limit enforcement.
-- `generated_streaming.zig` — generated service client/handler adapters over an in-memory transport covering unary, client-streaming, server-streaming, and bidirectional-streaming RPC shapes from `proto/streaming.proto`.
+- `generated_streaming.zig` — generated service/method metadata (including
+  deprecated/idempotency options) plus client/handler adapters over an in-memory
+  transport covering unary, client-streaming, server-streaming, and
+  bidirectional-streaming RPC shapes from `proto/streaming.proto`.
 - `ownership_patterns.zig` — generated and dynamic arena-style ownership, clone-to-long-lived allocator, and generated decode reuse patterns.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask, Empty,
   Struct/Value/ListValue, scalar wrappers, bytes wrappers, and Any including

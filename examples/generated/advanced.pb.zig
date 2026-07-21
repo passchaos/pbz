@@ -2628,8 +2628,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub const services = struct {
             pub const Directory = struct {
                 pub const name = "Directory";
+                pub const deprecated = false;
                 pub const Get = struct {
                     pub const name = "Get";
+                    pub const deprecated = false;
+                    pub const idempotency_level = "IDEMPOTENCY_UNKNOWN";
+                    pub const idempotency_level_number = 0;
                     pub const input_type = ".demo.advanced.Envelope";
                     pub const output_type = ".demo.advanced.Envelope";
                     pub const input_has_type_ref = true;
@@ -2641,6 +2645,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Watch = struct {
                     pub const name = "Watch";
+                    pub const deprecated = false;
+                    pub const idempotency_level = "IDEMPOTENCY_UNKNOWN";
+                    pub const idempotency_level_number = 0;
                     pub const input_type = ".demo.advanced.Envelope";
                     pub const output_type = ".demo.advanced.Envelope";
                     pub const input_has_type_ref = true;

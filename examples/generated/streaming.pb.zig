@@ -1028,8 +1028,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub const services = struct {
             pub const Pipe = struct {
                 pub const name = "Pipe";
+                pub const deprecated = true;
                 pub const Get = struct {
                     pub const name = "Get";
+                    pub const deprecated = false;
+                    pub const idempotency_level = "IDEMPOTENCY_UNKNOWN";
+                    pub const idempotency_level_number = 0;
                     pub const input_type = ".demo.streaming.Event";
                     pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
@@ -1041,6 +1045,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Upload = struct {
                     pub const name = "Upload";
+                    pub const deprecated = false;
+                    pub const idempotency_level = "IDEMPOTENCY_UNKNOWN";
+                    pub const idempotency_level_number = 0;
                     pub const input_type = ".demo.streaming.Event";
                     pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
@@ -1052,6 +1059,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Watch = struct {
                     pub const name = "Watch";
+                    pub const deprecated = false;
+                    pub const idempotency_level = "NO_SIDE_EFFECTS";
+                    pub const idempotency_level_number = 1;
                     pub const input_type = ".demo.streaming.Event";
                     pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;
@@ -1063,6 +1073,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 };
                 pub const Chat = struct {
                     pub const name = "Chat";
+                    pub const deprecated = false;
+                    pub const idempotency_level = "IDEMPOTENCY_UNKNOWN";
+                    pub const idempotency_level_number = 0;
                     pub const input_type = ".demo.streaming.Event";
                     pub const output_type = ".demo.streaming.Event";
                     pub const input_has_type_ref = true;

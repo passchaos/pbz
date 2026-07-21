@@ -7,8 +7,12 @@ message Event {
 }
 
 service Pipe {
+  option deprecated = true;
+
   rpc Get (Event) returns (Event);
   rpc Upload (stream Event) returns (Event);
-  rpc Watch (Event) returns (stream Event);
+  rpc Watch (Event) returns (stream Event) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc Chat (stream Event) returns (stream Event);
 }
