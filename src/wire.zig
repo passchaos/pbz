@@ -1263,11 +1263,11 @@ pub const Writer = struct {
         self.writeRawLittleAssumeCapacity(u32, value);
     }
 
-    pub inline fn writeSFixed32(self: *Writer, number: FieldNumber, value: i32) !void {
+    pub fn writeSFixed32(self: *Writer, number: FieldNumber, value: i32) !void {
         try self.writeFixed32(number, @bitCast(value));
     }
 
-    pub inline fn writeSFixed32AssumeCapacity(self: *Writer, number: FieldNumber, value: i32) void {
+    pub fn writeSFixed32AssumeCapacity(self: *Writer, number: FieldNumber, value: i32) void {
         self.writeFixed32AssumeCapacity(number, @bitCast(value));
     }
 
@@ -1281,27 +1281,27 @@ pub const Writer = struct {
         self.writeRawLittleAssumeCapacity(u64, value);
     }
 
-    pub inline fn writeSFixed64(self: *Writer, number: FieldNumber, value: i64) !void {
+    pub fn writeSFixed64(self: *Writer, number: FieldNumber, value: i64) !void {
         try self.writeFixed64(number, @bitCast(value));
     }
 
-    pub inline fn writeSFixed64AssumeCapacity(self: *Writer, number: FieldNumber, value: i64) void {
+    pub fn writeSFixed64AssumeCapacity(self: *Writer, number: FieldNumber, value: i64) void {
         self.writeFixed64AssumeCapacity(number, @bitCast(value));
     }
 
-    pub inline fn writeFloat(self: *Writer, number: FieldNumber, value: f32) !void {
+    pub fn writeFloat(self: *Writer, number: FieldNumber, value: f32) !void {
         try self.writeFixed32(number, @bitCast(value));
     }
 
-    pub inline fn writeFloatAssumeCapacity(self: *Writer, number: FieldNumber, value: f32) void {
+    pub fn writeFloatAssumeCapacity(self: *Writer, number: FieldNumber, value: f32) void {
         self.writeFixed32AssumeCapacity(number, @bitCast(value));
     }
 
-    pub inline fn writeDouble(self: *Writer, number: FieldNumber, value: f64) !void {
+    pub fn writeDouble(self: *Writer, number: FieldNumber, value: f64) !void {
         try self.writeFixed64(number, @bitCast(value));
     }
 
-    pub inline fn writeDoubleAssumeCapacity(self: *Writer, number: FieldNumber, value: f64) void {
+    pub fn writeDoubleAssumeCapacity(self: *Writer, number: FieldNumber, value: f64) void {
         self.writeFixed64AssumeCapacity(number, @bitCast(value));
     }
 
@@ -1325,19 +1325,19 @@ pub const Writer = struct {
         self.appendSliceAssumeCapacity(value);
     }
 
-    pub inline fn writeString(self: *Writer, number: FieldNumber, value: []const u8) !void {
+    pub fn writeString(self: *Writer, number: FieldNumber, value: []const u8) !void {
         try self.writeBytes(number, value);
     }
 
-    pub inline fn writeStringAssumeCapacity(self: *Writer, number: FieldNumber, value: []const u8) void {
+    pub fn writeStringAssumeCapacity(self: *Writer, number: FieldNumber, value: []const u8) void {
         self.writeBytesAssumeCapacity(number, value);
     }
 
-    pub inline fn writeMessage(self: *Writer, number: FieldNumber, encoded_message: []const u8) !void {
+    pub fn writeMessage(self: *Writer, number: FieldNumber, encoded_message: []const u8) !void {
         try self.writeBytes(number, encoded_message);
     }
 
-    pub inline fn writeMessageAssumeCapacity(self: *Writer, number: FieldNumber, encoded_message: []const u8) void {
+    pub fn writeMessageAssumeCapacity(self: *Writer, number: FieldNumber, encoded_message: []const u8) void {
         self.writeBytesAssumeCapacity(number, encoded_message);
     }
 
