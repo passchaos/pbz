@@ -23,6 +23,27 @@ functionality and measured hot-path performance.
   `std.json.Value` subtrees; nested generated messages now parse directly from
   pre-parsed JSON values via `jsonParseValueWithOptions`.
 
+## Completion audit against the broad project goal
+
+The standing user goal is broader than any single benchmark increment:
+
+> Continue optimizing pbz until it fully surpasses the C++ protobuf library; if
+> the code structure is unreasonable, refactor it.
+
+Do **not** treat this checklist as complete merely because a recent benchmark
+run passed.  The project can only claim completion after each requirement below
+has current, repository-verifiable evidence:
+
+| Requirement | Current evidence | Audit status |
+|---|---|---|
+| Generated-code workflow is C++/Rust-style and ergonomic. | `examples/generated_types.zig`, `examples/generated_imports.zig`, `examples/generated_groups.zig`, `examples/generated_recursive.zig`, `examples/generated_streaming.zig`, and `build.zig`'s `generateProtobuf` helper exercise checked-in and build-generated modules. | Covered for the examples in this repo; continue expanding when new schema shapes are added. |
+| Generated/runtime functionality covers protobuf surfaces used by examples, benchmarks, and conformance. | `zig build check` runs library tests, examples, summarizer self-test, and conformance smoke; `/tmp/pbz-upstream-conformance-after-textbytes-slices.log` records upstream Binary/JSON/TextFormat conformance with zero skips and zero unexpected failures. | Strong for current covered surfaces; not a proof of every possible protobuf edge case. |
+| pbz beats C++ protobuf and other tracked baselines on every parsed row. | `/tmp/pbz-compare-scalarmix-json-cpu3.log` summarized by `/tmp/pbz-summary-scalarmix-json-cpu3.txt`; fail-on-loss summary ends with `All parsed cross-language rows are pbz wins.` | Covered for the 417 workloads currently tracked by `bench/summarize_compare.py`. |
+| Performance wins come from public APIs, not benchmark-only one-offs. | `bench/summarize_compare.py` chooses public generated/runtime rows such as `encodeIntoAssumeCapacity`, `writeToAssumeCapacity`, `decodeKnownReuse`, field views/slices, packed iterators, and unknown-field sidecars; `examples/generated_performance.zig` demonstrates those APIs outside the benchmark harness. | Covered for the current matrix; new rows must keep using public APIs. |
+| JSON parsing avoids avoidable nested reserialization. | Generated nested-message JSON parsers use `jsonParseValueWithOptions`; complex JSON and proto-name JSON rows are in the cross-language matrix. | Covered for generated nested-message paths exercised by the matrix. |
+| Code structure remains maintainable. | Codegen/runtime helpers are grouped by generated API family; `bench/run_compare.sh` now has `PBZ_COMPARE_CPUSET` so noisy benchmark gating does not require ad-hoc command wrappers. | Ongoing.  Any newly identified awkward boundary should be refactored before claiming completion. |
+| The comparison is not overclaimed beyond covered workloads. | "Remaining non-goals / open audit items" below records limits: finite workload matrix, non-vendored full conformance runner, API differences for C++ unknown-field decode, trusted `decodeKnownReuse`, and hardware-sensitive benchmark results. | Not complete.  These limits mean the broad goal remains active unless a future audit closes or explicitly scopes them. |
+
 ## Verification commands
 
 Run the local generated/dynamic baseline:
