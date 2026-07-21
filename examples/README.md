@@ -12,7 +12,8 @@ library API.
 - `wire.zig` — low-level wire writer/reader usage.
 - `dynamic_message.zig` — runtime schema parsing, dynamic fields, repeated/map/oneof handling, deterministic encode/decode.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
-- `registry_loader.zig` — `MemorySourceTree`, recursive imports, and registry lookup.
+- `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
+  recursive imports, registry lookup, and registry-backed dynamic JSON output.
 - `dynamic_editions_features.zig` — dynamic protobuf editions features:
   explicit/implicit/legacy-required presence, packed/expanded repeated scalars,
   delimited message encoding, relaxed UTF-8, and closed enum preservation.
