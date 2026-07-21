@@ -776,6 +776,22 @@ pub const Reflection = struct {
         return try self.getScalar(*dynamic.DynamicMessage, message_value, name, .message);
     }
 
+    pub fn mutableMessage(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
+        if (self.getMessage(message_value, name)) |existing| return existing else |err| switch (err) {
+            error.MissingField => {},
+            else => return err,
+        }
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const nested = try self.allocator.create(dynamic.DynamicMessage);
+        errdefer self.allocator.destroy(nested);
+        nested.* = try self.newMessageForField(message_value.descriptor, field);
+        var owns_nested = true;
+        errdefer if (owns_nested) nested.deinit();
+        try self.set(message_value, field, .{ .message = nested });
+        owns_nested = false;
+        return nested;
+    }
+
     pub fn setGroupOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: *dynamic.DynamicMessage) Error!void {
         try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .group = value });
     }
@@ -786,6 +802,22 @@ pub const Reflection = struct {
 
     pub fn getGroup(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
         return try self.getScalar(*dynamic.DynamicMessage, message_value, name, .group);
+    }
+
+    pub fn mutableGroup(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
+        if (self.getGroup(message_value, name)) |existing| return existing else |err| switch (err) {
+            error.MissingField => {},
+            else => return err,
+        }
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const nested = try self.allocator.create(dynamic.DynamicMessage);
+        errdefer self.allocator.destroy(nested);
+        nested.* = try self.newGroupForField(message_value.descriptor, field);
+        var owns_nested = true;
+        errdefer if (owns_nested) nested.deinit();
+        try self.set(message_value, field, .{ .group = nested });
+        owns_nested = false;
+        return nested;
     }
 
     pub fn putMapEntryOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: dynamic.Value, value: dynamic.Value) Error!void {
