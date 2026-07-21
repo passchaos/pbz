@@ -657,6 +657,7 @@ Important examples:
 - `examples/generated_imports.zig` — multi-file generated imports
 - `examples/generated_groups.zig` — proto2 groups
 - `examples/generated_required.zig` — proto2 required-field initialization gates
+- `examples/generated_defaults.zig` — proto2 default values and has-bit semantics
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion

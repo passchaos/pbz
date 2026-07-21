@@ -1,0 +1,19 @@
+syntax = "proto2";
+package demo.defaults;
+
+enum Mode {
+  MODE_UNKNOWN = 0;
+  MODE_ALPHA = 1;
+  MODE_BETA = 2;
+}
+
+message Defaults {
+  optional int32 count = 1 [default = 42];
+  optional uint64 max_count = 2 [default = 18446744073709551615];
+  optional bool enabled = 3 [default = true];
+  optional string label = 4 [default = "hello\nzig"];
+  optional bytes raw = 5 [default = "\001\002"];
+  optional Mode mode = 6 [default = MODE_BETA];
+  optional float ratio = 7 [default = inf];
+  optional double neg_ratio = 8 [default = -inf];
+}

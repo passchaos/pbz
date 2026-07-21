@@ -36,7 +36,7 @@ has current, repository-verifiable evidence:
 
 | Requirement | Current evidence | Audit status |
 |---|---|---|
-| Generated-code workflow is C++/Rust-style and ergonomic. | `examples/generated_types.zig`, `examples/generated_imports.zig`, `examples/generated_groups.zig`, `examples/generated_required.zig`, `examples/generated_recursive.zig`, `examples/generated_streaming.zig`, and `build.zig`'s `generateProtobuf` helper exercise checked-in and build-generated modules. | Covered for the examples in this repo; continue expanding when new schema shapes are added. |
+| Generated-code workflow is C++/Rust-style and ergonomic. | `examples/generated_types.zig`, `examples/generated_imports.zig`, `examples/generated_groups.zig`, `examples/generated_required.zig`, `examples/generated_defaults.zig`, `examples/generated_recursive.zig`, `examples/generated_streaming.zig`, and `build.zig`'s `generateProtobuf` helper exercise checked-in and build-generated modules. | Covered for the examples in this repo; continue expanding when new schema shapes are added. |
 | Generated/runtime functionality covers protobuf surfaces used by examples, benchmarks, and conformance. | `zig build check` runs library tests, examples, summarizer self-test, and conformance smoke; `/tmp/pbz-upstream-conformance-after-textbytes-slices.log` records upstream Binary/JSON/TextFormat conformance with zero skips and zero unexpected failures. | Strong for current covered surfaces; not a proof of every possible protobuf edge case. |
 | pbz beats C++ protobuf and other tracked baselines on every parsed row. | `/tmp/pbz-compare-current-cpu3.log` summarized by `/tmp/pbz-summary-current-cpu3.txt`; fail-on-loss summary ends with `All parsed cross-language rows are pbz wins.` | Covered for the 417 workloads currently tracked by `bench/summarize_compare.py`. |
 | Performance wins come from public APIs, not benchmark-only one-offs. | `bench/summarize_compare.py` chooses public generated/runtime rows such as `encodeIntoAssumeCapacity`, `writeToAssumeCapacity`, `decodeKnownReuse`, field views/slices, packed iterators, and unknown-field sidecars; `examples/generated_performance.zig` demonstrates those APIs outside the benchmark harness. | Covered for the current matrix; new rows must keep using public APIs. |
@@ -195,6 +195,9 @@ benchmark harness.
 - `examples/generated_groups.zig` covers proto2 group fields.
 - `examples/generated_required.zig` covers generated proto2 required-field
   initialization gates for binary, deterministic binary, JSON, and TextFormat.
+- `examples/generated_defaults.zig` covers generated proto2 default values,
+  explicit has-bit behavior, JSON null reset semantics, and TextFormat
+  round-trips.
 - `examples/generated_recursive.zig` covers generated self-recursive schemas,
   including raw-payload singular recursion, typed repeated recursion, and
   generated decode recursion-limit propagation.
