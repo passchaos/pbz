@@ -500,6 +500,15 @@ pub const MessageDescriptor = struct {
         return null;
     }
 
+    pub fn findFieldByJsonName(self: *const MessageDescriptor, json_name: []const u8) ?*const FieldDescriptor {
+        for (self.fields.items) |*field| {
+            if (field.json_name) |explicit| {
+                if (std.mem.eql(u8, explicit, json_name)) return field;
+            } else if (eqlDefaultJsonName(field.name, json_name)) return field;
+        }
+        return null;
+    }
+
     pub fn findFieldByNumber(self: *const MessageDescriptor, number: wire.FieldNumber) ?*const FieldDescriptor {
         for (self.fields.items) |*field| {
             if (field.number == number) return field;

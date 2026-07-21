@@ -41,6 +41,7 @@ pub fn main() !void {
         \\  repeated Role roles = 21;
         \\  repeated uint32 samples = 22;
         \\  repeated sint64 deltas = 23;
+        \\  string display_name = 24 [json_name = "shownName"];
         \\}
         \\service Users { rpc Get (User) returns (User); }
     );
@@ -57,6 +58,9 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("common.proto", role_file.name);
     try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.enumValueByNumber(role_desc, 1)).name);
     try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
+    try std.testing.expectEqualStrings("display_name", (try refl.fieldByJsonName(user_desc, "shownName")).name);
+    try std.testing.expectEqualStrings("big_delta", (try refl.fieldByJsonName(user_desc, "bigDelta")).name);
+    try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));
     const users_service = try refl.service(".demo.reflect.Users");
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
