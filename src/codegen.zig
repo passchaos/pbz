@@ -7471,6 +7471,13 @@ fn writeMapEntryValueWriteCall(ctx: *const CodegenContext, field: *const schema.
 fn writeMapEntryFieldSizeExpr(number: u29, kind: schema.FieldKind, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
     const tag_size = wire.tagSize(number, kind.wireType()) catch unreachable;
     try writer.print("{d} + ", .{tag_size});
+    if (kind == .scalar and kind.scalar == .bool) {
+        // Map-entry encoded-size loops bind both key and value once so the
+        // generated shape remains uniform across scalar key/value kinds.  Bool
+        // payload size is always one byte, but mention the expression so Zig's
+        // unused-local analysis does not reject `map<bool, ...>` entries.
+        return try writer.print("(if ({s}) @as(usize, 1) else @as(usize, 1))", .{value_expr});
+    }
     try writeKindPayloadSizeExpr(kind, value_expr, writer);
 }
 

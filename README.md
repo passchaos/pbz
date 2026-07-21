@@ -663,6 +663,7 @@ Important examples:
 - `examples/generated_enum_alias.zig` — generated enum alias handling
 - `examples/generated_json_names.zig` — explicit generated JSON names
 - `examples/generated_messageset.zig` — generated proto2 MessageSet extensions
+- `examples/generated_map_keys.zig` — generated non-string map keys
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion

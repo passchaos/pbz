@@ -1,0 +1,9 @@
+syntax = "proto3";
+package demo.mapkeys;
+
+message MapKeys {
+  map<int32, string> by_int = 1;
+  map<bool, int32> by_bool = 2;
+  map<int64, string> by_i64 = 3;
+  map<uint64, string> by_u64 = 4;
+}
