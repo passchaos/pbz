@@ -5,7 +5,7 @@ const registry_mod = @import("registry.zig");
 const dynamic = @import("dynamic.zig");
 const wire = @import("wire.zig");
 
-pub const Error = dynamic.DecodeError || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField };
+pub const Error = dynamic.DecodeError || dynamic.ValidationError || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 const DefaultTag = std.meta.Tag(dynamic.DefaultValue);
@@ -206,6 +206,19 @@ pub const Reflection = struct {
 
     pub fn unknownByNumberAlloc(self: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) Error![]dynamic.UnknownField {
         return try message_value.unknownByNumberAlloc(self.allocator, number);
+    }
+
+    pub fn isInitialized(_: Reflection, message_value: *const dynamic.DynamicMessage) bool {
+        message_value.validateRequired() catch return false;
+        return true;
+    }
+
+    pub fn validateInitialized(_: Reflection, message_value: *const dynamic.DynamicMessage) Error!void {
+        return try message_value.validateRequired();
+    }
+
+    pub fn missingRequiredFieldPath(self: Reflection, message_value: *const dynamic.DynamicMessage) Error!?[]u8 {
+        return try message_value.missingRequiredFieldPath(self.allocator);
     }
 
     pub fn getOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) Error!dynamic.DefaultValue {

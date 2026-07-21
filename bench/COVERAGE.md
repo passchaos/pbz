@@ -309,7 +309,8 @@ benchmark harness.
   file/import-chain lookup, enum descriptor/value lookup, oneof
   lookup/presence/inspection/clearing, imported message fields, service
   descriptor/method lookup, extension descriptor lookup, unknown-field
-  query/mutation, binary, and JSON round-trips.
+  query/mutation, required-field initialization checks, binary, and JSON
+  round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for
   both generated and dynamic messages, and generated decode reuse.

@@ -233,6 +233,41 @@ pub fn main() !void {
     try refl.clearField(&user, "name");
     try std.testing.expect(!(try refl.hasField(&user, "name")));
     try std.testing.expectError(error.MissingField, refl.getString(&user, "name"));
+
+    var required_file = try pbz.ProtoParser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo.required_reflect;
+        \\message Child { required int32 id = 1; }
+        \\message Parent { required string name = 1; optional Child child = 2; }
+    );
+    defer required_file.deinit();
+    required_file.name = "required-reflect.proto";
+    var required_registry = pbz.Registry.init(allocator);
+    defer required_registry.deinit();
+    try required_registry.addFile(&required_file);
+
+    const required_refl = pbz.Reflection.init(allocator, &required_registry);
+    var parent = try required_refl.newMessage(".demo.required_reflect.Parent");
+    defer parent.deinit();
+    try std.testing.expect(!required_refl.isInitialized(&parent));
+    try std.testing.expectError(error.MissingRequiredField, required_refl.validateInitialized(&parent));
+    const missing_name = (try required_refl.missingRequiredFieldPath(&parent)).?;
+    defer allocator.free(missing_name);
+    try std.testing.expectEqualStrings("name", missing_name);
+
+    try required_refl.setString(&parent, "name", "root");
+    const child_desc = try required_refl.message(".demo.required_reflect.Child");
+    const child = try allocator.create(pbz.DynamicMessage);
+    child.* = pbz.DynamicMessage.init(allocator, child_desc);
+    try required_refl.set(&parent, try required_refl.fieldByName(parent.descriptor, "child"), .{ .message = child });
+    const missing_child = (try required_refl.missingRequiredFieldPath(&parent)).?;
+    defer allocator.free(missing_child);
+    try std.testing.expectEqualStrings("child.id", missing_child);
+
+    try required_refl.setInt32(parent.get("child").?.values.items[0].message, "id", 1);
+    try required_refl.validateInitialized(&parent);
+    try std.testing.expect(required_refl.isInitialized(&parent));
+    try std.testing.expect((try required_refl.missingRequiredFieldPath(&parent)) == null);
 }
 
 comptime {
