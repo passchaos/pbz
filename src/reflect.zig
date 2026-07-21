@@ -184,6 +184,14 @@ pub const Reflection = struct {
         return descriptor.findValueByNumber(number) orelse error.UnknownEnum;
     }
 
+    pub fn enumValuesByNumber(self: Reflection, descriptor: *const schema.EnumDescriptor, number: i32) Error![]*const schema.EnumValueDescriptor {
+        return try descriptor.valuesByNumberAlloc(self.allocator, number);
+    }
+
+    pub fn enumAllowAlias(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
+        return descriptor.allowAlias();
+    }
+
     pub fn enumReservedName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) bool {
         return descriptor.isReservedName(name);
     }

@@ -498,6 +498,19 @@ pub const EnumDescriptor = struct {
         return null;
     }
 
+    pub fn valuesByNumberAlloc(self: *const EnumDescriptor, allocator: std.mem.Allocator, number: i32) std.mem.Allocator.Error![]*const EnumValueDescriptor {
+        var values: std.ArrayList(*const EnumValueDescriptor) = .empty;
+        errdefer values.deinit(allocator);
+        for (self.values.items) |*value| {
+            if (value.number == number) try values.append(allocator, value);
+        }
+        return try values.toOwnedSlice(allocator);
+    }
+
+    pub fn allowAlias(self: *const EnumDescriptor) bool {
+        return optionBool(self.options.items, "allow_alias") orelse false;
+    }
+
     pub fn isReservedName(self: *const EnumDescriptor, name: []const u8) bool {
         return reservedNameMatches(self.reserved_names.items, name);
     }
