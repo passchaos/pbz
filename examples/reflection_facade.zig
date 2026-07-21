@@ -105,8 +105,12 @@ pub fn main() !void {
     const users_service = try refl.service(".demo.reflect.Users");
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
-    const get_method = users_service.findMethod("Get") orelse return error.MissingMethod;
+    const get_method = try refl.methodByName(users_service, "Get");
     try std.testing.expectEqualStrings("Get", get_method.name);
+    try std.testing.expect(try refl.methodInputType(users_service, get_method) == user_desc);
+    try std.testing.expect(try refl.methodOutputType(users_service, get_method) == user_desc);
+    try std.testing.expect(!refl.methodClientStreaming(get_method));
+    try std.testing.expect(!refl.methodServerStreaming(get_method));
     try std.testing.expect(refl.optionBool(users_service.options.items, "deprecated").?);
     try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionValue(get_method.options.items, "idempotency_level").?.identifier);
 

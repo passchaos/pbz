@@ -74,6 +74,28 @@ pub const Reflection = struct {
         return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
     }
 
+    pub fn methodByName(_: Reflection, descriptor: *const schema.ServiceDescriptor, name: []const u8) Error!*const schema.MethodDescriptor {
+        return descriptor.findMethod(name) orelse error.UnknownField;
+    }
+
+    pub fn methodInputType(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.MessageDescriptor {
+        const owner_file = try self.fileOfService(service_descriptor);
+        return self.registry.findMessageVisible(owner_file, method.input_type, owner_file.package) orelse error.UnknownMessage;
+    }
+
+    pub fn methodOutputType(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.MessageDescriptor {
+        const owner_file = try self.fileOfService(service_descriptor);
+        return self.registry.findMessageVisible(owner_file, method.output_type, owner_file.package) orelse error.UnknownMessage;
+    }
+
+    pub fn methodClientStreaming(_: Reflection, method: *const schema.MethodDescriptor) bool {
+        return method.client_streaming;
+    }
+
+    pub fn methodServerStreaming(_: Reflection, method: *const schema.MethodDescriptor) bool {
+        return method.server_streaming;
+    }
+
     pub fn newMessage(self: Reflection, name: []const u8) Error!dynamic.DynamicMessage {
         return dynamic.DynamicMessage.init(self.allocator, try self.message(name));
     }
