@@ -669,6 +669,7 @@ Important examples:
 - `examples/generated_public_imports.zig` — generated public import chains
 - `examples/generated_merge_semantics.zig` — generated decode merge/last-wins semantics
 - `examples/generated_unknown_mutation.zig` — generated unknown-field mutation APIs
+- `examples/generated_closed_enum.zig` — proto2 closed enum unknown preservation
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion

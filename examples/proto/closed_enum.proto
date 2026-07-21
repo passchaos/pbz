@@ -1,0 +1,12 @@
+syntax = "proto2";
+package demo.closedenum;
+
+enum Kind {
+  KIND_UNKNOWN = 0;
+  KIND_OK = 1;
+}
+
+message ClosedEnum {
+  optional Kind kind = 1;
+  repeated Kind history = 2;
+}

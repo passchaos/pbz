@@ -172,6 +172,7 @@ pub fn build(b: *std.Build) void {
         "generated_public_imports",
         "generated_merge_semantics",
         "generated_unknown_mutation",
+        "generated_closed_enum",
         "generated_imports",
         "generated_groups",
         "generated_recursive",
