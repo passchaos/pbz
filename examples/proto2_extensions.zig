@@ -17,7 +17,14 @@ pub fn main() !void {
         \\    verification = DECLARATION
         \\  ];
         \\}
-        \\extend Host { optional int32 priority = 100; }
+        \\message Payload {
+        \\  required int32 id = 1;
+        \\  optional string label = 2;
+        \\}
+        \\extend Host {
+        \\  optional int32 priority = 100;
+        \\  repeated Payload payloads = 101;
+        \\}
         \\extend DeclaredHost { optional int32 declared_priority = 200; }
     );
     defer file.deinit();
@@ -42,6 +49,45 @@ pub fn main() !void {
     const host_json = try pbz.stringifyJsonAllocWithRegistry(allocator, &file, &registry, &host, .{});
     defer allocator.free(host_json);
     std.debug.assert(std.mem.indexOf(u8, host_json, "[demo.priority]") != null);
+
+    var host_payloads = try pbz.parseTextInitializedAllocWithRegistry(allocator, &file, &registry, host_desc,
+        \\[demo.payloads] { id: 1 label: "one" }
+        \\[demo.payloads] < id: 2 label: "two" >
+    );
+    defer host_payloads.deinit();
+    const payloads_ext = registry.findExtension("demo.Host", 101).?;
+    const payload_values = host_payloads.getByNumber(payloads_ext.number).?.values.items;
+    std.debug.assert(payload_values.len == 2);
+    std.debug.assert(payload_values[1].message.get("id").?.values.items[0].int32 == 2);
+
+    var host_payloads_json = try pbz.parseJsonInitializedAllocWithRegistry(
+        allocator,
+        &file,
+        &registry,
+        host_desc,
+        "{\"[demo.payloads]\":[{\"id\":3},{\"id\":4,\"label\":\"four\"}]}",
+        .{},
+    );
+    defer host_payloads_json.deinit();
+    const json_payload_values = host_payloads_json.getByNumber(payloads_ext.number).?.values.items;
+    std.debug.assert(json_payload_values.len == 2);
+    std.debug.assert(json_payload_values[1].message.get("label").?.values.items[0].string.len == 4);
+
+    try std.testing.expectError(error.MissingRequiredField, pbz.parseTextInitializedAllocWithRegistry(
+        allocator,
+        &file,
+        &registry,
+        host_desc,
+        "[demo.payloads] { label: \"missing id\" }",
+    ));
+    try std.testing.expectError(error.MissingRequiredField, pbz.parseJsonInitializedAllocWithRegistry(
+        allocator,
+        &file,
+        &registry,
+        host_desc,
+        "{\"[demo.payloads]\":[{}]}",
+        .{},
+    ));
 
     const declared_desc = file.findMessage("DeclaredHost").?;
     const range = declared_desc.extension_ranges.items[0];
