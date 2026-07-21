@@ -139,6 +139,23 @@ pub const DynamicMessage = struct {
         return null;
     }
 
+    pub fn listFieldsAlloc(self: *const DynamicMessage, allocator: std.mem.Allocator) std.mem.Allocator.Error![]*const schema.FieldDescriptor {
+        var fields: std.ArrayList(*const schema.FieldDescriptor) = .empty;
+        errdefer fields.deinit(allocator);
+        try fields.ensureTotalCapacity(allocator, self.fields.items.len);
+        for (self.fields.items) |*entry| {
+            if (entry.values.items.len == 0) continue;
+            fields.appendAssumeCapacity(entry.descriptor);
+        }
+        const result = try fields.toOwnedSlice(allocator);
+        std.mem.sort(*const schema.FieldDescriptor, result, {}, struct {
+            fn lessThan(_: void, lhs: *const schema.FieldDescriptor, rhs: *const schema.FieldDescriptor) bool {
+                return lhs.number < rhs.number;
+            }
+        }.lessThan);
+        return result;
+    }
+
     pub fn clearField(self: *DynamicMessage, field: *const schema.FieldDescriptor) bool {
         var index: usize = 0;
         while (index < self.fields.items.len) : (index += 1) {

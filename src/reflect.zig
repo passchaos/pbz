@@ -140,6 +140,10 @@ pub const Reflection = struct {
         return self.get(message_value, try self.fieldByName(message_value.descriptor, name));
     }
 
+    pub fn listFields(self: Reflection, message_value: *const dynamic.DynamicMessage) Error![]*const schema.FieldDescriptor {
+        return try message_value.listFieldsAlloc(self.allocator);
+    }
+
     pub fn getOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) Error!dynamic.DefaultValue {
         const owner_file = try self.fileOfMessage(message_value.descriptor);
         return message_value.getOrDefaultWithRegistry(owner_file, self.registry, field);
@@ -733,6 +737,15 @@ test "reflection facade creates and edits dynamic messages" {
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&msg, "score"));
     try std.testing.expectEqual(@as(i32, 20), (try refl.repeatedValue(&msg, "score", 1)).int32);
     try std.testing.expectEqualStrings("active", refl.whichOneof(&msg, "pick").?.name);
+
+    const listed = try refl.listFields(&msg);
+    defer allocator.free(listed);
+    try std.testing.expectEqual(@as(usize, 5), listed.len);
+    try std.testing.expectEqualStrings("id", listed[0].name);
+    try std.testing.expectEqualStrings("name", listed[1].name);
+    try std.testing.expectEqualStrings("score", listed[2].name);
+    try std.testing.expectEqualStrings("counts", listed[3].name);
+    try std.testing.expectEqualStrings("active", listed[4].name);
 
     // Reflection writes validate the dynamic value before mutating the message,
     // matching C++ Reflection's typed setters rather than allowing an invalid
