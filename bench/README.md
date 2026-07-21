@@ -99,10 +99,10 @@ The cross-language binary, JSON, and TextFormat baselines use the same `Person` 
 `SInt64Packed { repeated sint64 values = 1; }` and
 `BoolPacked { repeated bool values = 1; }` and
 `EnumPacked { repeated BenchKind values = 1; }` and
-`LargeMap { map<string, int32> counts = 1; }` payloads, including a shuffled
-insertion-order large map for deterministic map encoding. Treat results as
-local machine baselines; use the same schema, payloads, optimization mode, and
-hardware when comparing.
+`LargeMap { map<string, int32> counts = 1; }` payloads, including generated
+LargeMap JSON stringify/parse coverage and a shuffled insertion-order large map
+for deterministic map encoding. Treat results as local machine baselines; use
+the same schema, payloads, optimization mode, and hardware when comparing.
 
 Each timed benchmark does a short warmup and reports the best elapsed sample out
 of three measured samples. This reduces one-off cold-cache and scheduler noise;

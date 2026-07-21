@@ -1756,6 +1756,20 @@ fn generatedLargeMapDecodeReuse(ctx: GeneratedLargeMapDecodeReuseCtx) !void {
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+const GeneratedLargeMapJsonStringifyCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.LargeMap };
+fn generatedLargeMapJsonStringify(ctx: GeneratedLargeMapJsonStringifyCtx) !void {
+    const json = try ctx.message.jsonStringifyAlloc(ctx.allocator);
+    std.mem.doNotOptimizeAway(json.ptr);
+    ctx.allocator.free(json);
+}
+
+const GeneratedLargeMapJsonParseCtx = struct { allocator: std.mem.Allocator, json: []const u8 };
+fn generatedLargeMapJsonParse(ctx: GeneratedLargeMapJsonParseCtx) !void {
+    var decoded = try person_pb.demo.LargeMap.jsonParse(ctx.allocator, ctx.json);
+    std.mem.doNotOptimizeAway(&decoded);
+    decoded.deinit(ctx.allocator);
+}
+
 const Int32PackedIteratorCtx = struct { bytes: []const u8 };
 fn int32PackedIteratorDecode(ctx: Int32PackedIteratorCtx) !void {
     var it = (try person_pb.demo.Packed.valuesPackedIterator(ctx.bytes)) orelse return error.InvalidWireType;
@@ -2855,6 +2869,15 @@ pub fn main() !void {
     defer generated_large_map_decode_reuse.deinit(allocator);
     const dynamic_large_map_bytes = try dynamic_large_map.encoded(&file);
     defer allocator.free(dynamic_large_map_bytes);
+    const generated_large_map_json = try generated_large_map.jsonStringifyAlloc(allocator);
+    defer allocator.free(generated_large_map_json);
+    std.debug.assert(std.mem.indexOf(u8, generated_large_map_json, "\"key-0000\":1") != null);
+    std.debug.assert(std.mem.indexOf(u8, generated_large_map_json, "\"key-1023\":1024") != null);
+    var generated_large_map_from_json = try person_pb.demo.LargeMap.jsonParse(allocator, generated_large_map_json);
+    defer generated_large_map_from_json.deinit(allocator);
+    std.debug.assert(generated_large_map_from_json.counts.count() == generated_large_map.counts.count());
+    std.debug.assert(generated_large_map_from_json.counts.get("key-0000").? == 1);
+    std.debug.assert(generated_large_map_from_json.counts.get("key-1023").? == 1024);
     const generated_json = try generated_person.jsonStringifyAlloc(allocator);
     defer allocator.free(generated_json);
     var generated_empty_person = person_pb.demo.Person.init();
@@ -3821,7 +3844,8 @@ pub fn main() !void {
     defer allocator.free(dynamic_text);
 
     std.debug.print("pbz benchmark baseline (Zig {s})\n", .{@import("builtin").zig_version_string});
-    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d} large_map_generated={d} large_map_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len, generated_large_map_bytes.len, dynamic_large_map_bytes.len });
+    std.debug.print("payload sizes: person_generated={d} person_dynamic={d} packed_generated={d} packed_dynamic={d} fixed_packed_generated={d} fixed_packed_dynamic={d} fixed64_packed_generated={d} fixed64_packed_dynamic={d} sfixed_packed_generated={d} sfixed_packed_dynamic={d} sfixed64_packed_generated={d} sfixed64_packed_dynamic={d} float_packed_generated={d} float_packed_dynamic={d} double_packed_generated={d} double_packed_dynamic={d} uint64_packed_generated={d} uint64_packed_dynamic={d} uint32_packed_generated={d} uint32_packed_dynamic={d} int64_packed_generated={d} int64_packed_dynamic={d} sint32_packed_generated={d} sint32_packed_dynamic={d} sint64_packed_generated={d} sint64_packed_dynamic={d} bool_packed_generated={d} bool_packed_dynamic={d} enum_packed_generated={d} enum_packed_dynamic={d}\n", .{ generated_bytes.len, dynamic_bytes.len, generated_packed_bytes.len, dynamic_packed_bytes.len, generated_fixed_packed_bytes.len, dynamic_fixed_packed_bytes.len, generated_fixed64_packed_bytes.len, dynamic_fixed64_packed_bytes.len, generated_sfixed_packed_bytes.len, dynamic_sfixed_packed_bytes.len, generated_sfixed64_packed_bytes.len, dynamic_sfixed64_packed_bytes.len, generated_float_packed_bytes.len, dynamic_float_packed_bytes.len, generated_double_packed_bytes.len, dynamic_double_packed_bytes.len, generated_uint64_packed_bytes.len, dynamic_uint64_packed_bytes.len, generated_uint32_packed_bytes.len, dynamic_uint32_packed_bytes.len, generated_int64_packed_bytes.len, dynamic_int64_packed_bytes.len, generated_sint32_packed_bytes.len, dynamic_sint32_packed_bytes.len, generated_sint64_packed_bytes.len, dynamic_sint64_packed_bytes.len, generated_bool_packed_bytes.len, dynamic_bool_packed_bytes.len, generated_enum_packed_bytes.len, dynamic_enum_packed_bytes.len });
+    std.debug.print("payload sizes large map: large_map_generated={d} large_map_dynamic={d} large_map_json={d}\n", .{ generated_large_map_bytes.len, dynamic_large_map_bytes.len, generated_large_map_json.len });
     // std.Io.Writer format calls are capped at 32 arguments; keep the payload
     // inventory split into thematic groups so adding future WKT edge-case rows
     // does not silently push any single diagnostic over the compiler-enforced
@@ -4023,6 +4047,8 @@ pub fn main() !void {
         try runTimed(io, "generated shuffled large map deterministic encodeIntoAssumeCapacity buffer reuse", iters.large_map, generated_shuffled_large_map_bytes.len, GeneratedLargeMapDeterministicEncodeIntoCtx{ .allocator = allocator, .buffer = generated_shuffled_large_map_buffer, .message = &generated_shuffled_large_map }, generatedLargeMapDeterministicEncodeIntoReuse),
         try runTimed(io, "generated large map decode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeCtx{ .allocator = allocator, .bytes = generated_large_map_bytes }, generatedLargeMapDecode),
         try runTimed(io, "generated large map decode reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_map_bytes, .message = &generated_large_map_decode_reuse }, generatedLargeMapDecodeReuse),
+        try runTimed(io, "generated LargeMap JSON stringify", iters.large_map, generated_large_map_json.len, GeneratedLargeMapJsonStringifyCtx{ .allocator = allocator, .message = &generated_large_map }, generatedLargeMapJsonStringify),
+        try runTimed(io, "generated LargeMap JSON parse", iters.large_map, generated_large_map_json.len, GeneratedLargeMapJsonParseCtx{ .allocator = allocator, .json = generated_large_map_json }, generatedLargeMapJsonParse),
         try runTimed(io, "dynamic large map encode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapEncodeCtx{ .message = &dynamic_large_map, .file = &file }, dynamicLargeMapEncode),
         try runTimed(io, "dynamic large map decode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapDecodeCtx{ .allocator = allocator, .descriptor = large_map_desc, .file = &file, .bytes = dynamic_large_map_bytes }, dynamicLargeMapDecode),
         try runTimed(io, "generated JSON stringify", iters.json, generated_json.len, GeneratedJsonStringifyCtx{ .allocator = allocator, .person = &generated_person }, generatedJsonStringify),

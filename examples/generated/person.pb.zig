@@ -759,7 +759,7 @@ pub const demo = struct {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -838,15 +838,12 @@ pub const demo = struct {
                 }
                 if (std.mem.eql(u8, key, "counts")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                    var list: std.ArrayList(countsEntry) = .empty;
-                    defer list.deinit(allocator);
+                    @This().deinitMap_counts(allocator, &self.counts);
+                    try self.counts.ensureUnusedCapacity(allocator, object_value.count());
                     var map_it = object_value.iterator();
                     while (map_it.next()) |map_entry| {
-                        try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
+                        try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
                     }
-                    @This().deinitMap_counts(allocator, &self.counts);
-                    try self.counts.ensureUnusedCapacity(allocator, list.items.len);
-                    for (list.items) |list_entry| self.counts.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -2465,7 +2462,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -3810,7 +3807,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -4903,7 +4900,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -6303,7 +6300,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -7399,7 +7396,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 errdefer allocator.destroy(arena);
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
-                const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
                 var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                 self._json_arena = arena;
                 return self;
@@ -8487,7 +8484,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -9568,7 +9565,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -10641,7 +10638,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -11714,7 +11711,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -12787,7 +12784,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -13860,7 +13857,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -14933,7 +14930,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -16012,7 +16009,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -17091,7 +17088,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -18170,7 +18167,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -19249,7 +19246,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -20328,7 +20325,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -21385,7 +21382,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -22467,7 +22464,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -23607,7 +23604,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -23658,15 +23655,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
                 if (std.mem.eql(u8, key, "counts")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                    var list: std.ArrayList(countsEntry) = .empty;
-                    defer list.deinit(allocator);
+                    @This().deinitMap_counts(allocator, &self.counts);
+                    try self.counts.ensureUnusedCapacity(allocator, object_value.count());
                     var map_it = object_value.iterator();
                     while (map_it.next()) |map_entry| {
-                        try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
+                        try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
                     }
-                    @This().deinitMap_counts(allocator, &self.counts);
-                    try self.counts.ensureUnusedCapacity(allocator, list.items.len);
-                    for (list.items) |list_entry| self.counts.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -25087,7 +25081,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer allocator.destroy(arena);
             arena.* = std.heap.ArenaAllocator.init(allocator);
             errdefer arena.deinit();
-            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+            const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
             var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
             self._json_arena = arena;
             return self;
@@ -25174,18 +25168,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
                 if (std.mem.eql(u8, key, "audits")) {
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                    var list: std.ArrayList(auditsEntry) = .empty;
-                    defer list.deinit(allocator);
-                    errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
+                    @This().deinitMap_audits(allocator, &self.audits);
+                    try self.audits.ensureUnusedCapacity(allocator, object_value.count());
                     var map_it = object_value.iterator();
                     while (map_it.next()) |map_entry| {
-                        var parsed_value = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        errdefer parsed_value.deinit(allocator);
-                        try @This().appendOrReplaceMapEntry_audits(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = parsed_value });
+                        {
+                            var parsed_value = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            errdefer parsed_value.deinit(allocator);
+                            try @This().putMapEntry_audits(allocator, &self.audits, .{ .key = map_entry.key_ptr.*, .value = parsed_value });
+                        }
                     }
-                    @This().deinitMap_audits(allocator, &self.audits);
-                    try self.audits.ensureUnusedCapacity(allocator, list.items.len);
-                    for (list.items) |list_entry| self.audits.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                     continue;
                 }
                 if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
@@ -26245,7 +26237,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 errdefer allocator.destroy(arena);
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
-                const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
                 var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                 self._json_arena = arena;
                 return self;

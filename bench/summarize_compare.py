@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 413
+EXPECTED_WORKLOAD_COUNT = 415
 
 
 @dataclass(frozen=True)
@@ -1370,6 +1370,22 @@ WORKLOADS: tuple[Workload, ...] = (
             "go protobuf": ("go protobuf large map decode",),
         },
     ),
+    Workload(
+        "LargeMap JSON stringify",
+        ("generated LargeMap JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf LargeMap JSON stringify",),
+            "go protobuf": ("go protobuf LargeMap JSON stringify",),
+        },
+    ),
+    Workload(
+        "LargeMap JSON parse",
+        ("generated LargeMap JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf LargeMap JSON parse",),
+            "go protobuf": ("go protobuf LargeMap JSON parse",),
+        },
+    ),
 )
 
 
@@ -1532,6 +1548,12 @@ def self_test() -> None:
         benchmark_line("generated TextBytes JSON parse", 160, 160.0),
         benchmark_line("c++ protobuf TextBytes JSON parse", 160, 1000.0),
         benchmark_line("go protobuf TextBytes JSON parse", 160, 700.0),
+        benchmark_line("generated LargeMap JSON stringify", 12000, 2000.0),
+        benchmark_line("c++ protobuf LargeMap JSON stringify", 12000, 20000.0),
+        benchmark_line("go protobuf LargeMap JSON stringify", 12000, 18000.0),
+        benchmark_line("generated LargeMap JSON parse", 12000, 4000.0),
+        benchmark_line("c++ protobuf LargeMap JSON parse", 12000, 25000.0),
+        benchmark_line("go protobuf LargeMap JSON parse", 12000, 22000.0),
         benchmark_line("generated PresenceMix JSON stringify", 128, 120.0),
         benchmark_line("c++ protobuf PresenceMix JSON stringify", 128, 900.0),
         benchmark_line("go protobuf PresenceMix JSON stringify", 128, 650.0),

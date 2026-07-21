@@ -1306,6 +1306,23 @@ int main() {
   const demo::LargeMap large_map = MakeLargeMap();
   std::string large_map_bytes;
   large_map.SerializeToString(&large_map_bytes);
+  std::string large_map_json;
+  if (!google::protobuf::util::MessageToJsonString(large_map, &large_map_json)
+           .ok())
+    std::abort();
+  if (large_map_json.find("\"key-0000\":1") == std::string::npos ||
+      large_map_json.find("\"key-1023\":1024") == std::string::npos)
+    std::abort();
+  {
+    demo::LargeMap decoded;
+    if (!google::protobuf::util::JsonStringToMessage(large_map_json, &decoded)
+             .ok())
+      std::abort();
+    if (decoded.counts_size() != large_map.counts_size() ||
+        decoded.counts().at("key-0000") != 1 ||
+        decoded.counts().at("key-1023") != 1024)
+      std::abort();
+  }
   const demo::LargeMap shuffled_large_map = MakeShuffledLargeMap();
   std::string shuffled_large_map_bytes;
   shuffled_large_map.SerializeToString(&shuffled_large_map_bytes);
@@ -1751,6 +1768,8 @@ int main() {
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
   std::cout << "textbytes json payload size: " << textbytes_json.size()
+            << "\n";
+  std::cout << "large map json payload size: " << large_map_json.size()
             << "\n";
   std::cout << "largebytes payload size: " << largebytes_bytes.size() << "\n";
   std::cout << "presencemix payload size: " << presencemix_bytes.size() << "\n";
@@ -3752,6 +3771,28 @@ int main() {
         asm volatile("" : : "g"(&reused_large_map_decoded) : "memory");
       });
   large_map_decode_reuse.Print();
+
+  auto large_map_json_stringify = RunTimed(
+      "c++ protobuf LargeMap JSON stringify", kIterations,
+      large_map_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(large_map, &out).ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  large_map_json_stringify.Print();
+
+  auto large_map_json_parse = RunTimed(
+      "c++ protobuf LargeMap JSON parse", kIterations, large_map_json.size(),
+      [&]() {
+        demo::LargeMap decoded;
+        if (!google::protobuf::util::JsonStringToMessage(large_map_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  large_map_json_parse.Print();
 
   return 0;
 }

@@ -26,6 +26,16 @@ pub fn main() !void {
     std.debug.assert(person.counts.count() == 1);
     std.debug.assert(person.counts.get("red").? == 2);
 
+    // Generated JSON map parsing follows protobuf object semantics for exact
+    // duplicate JSON object keys: the JSON parser retains the last key spelling,
+    // and generated map parsing inserts directly into the typed destination map.
+    var duplicate_key_json = try person_pb.demo.Person.jsonParse(allocator,
+        \\{"counts":{"red":1,"red":3}}
+    );
+    defer duplicate_key_json.deinit(allocator);
+    std.debug.assert(duplicate_key_json.counts.count() == 1);
+    std.debug.assert(duplicate_key_json.counts.get("red").? == 3);
+
     // Packed fixed-width numeric fields expose zero-copy helpers when the
     // wire buffer can be inspected directly (little-endian targets).
     var signed_fixed = person_pb.demo.SFixedPacked.init();

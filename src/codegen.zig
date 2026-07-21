@@ -8582,8 +8582,13 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("arena.* = std.heap.ArenaAllocator.init(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer arena.deinit();\n");
+    // Parse dynamic JSON objects with protobuf's "last value wins" behavior for
+    // exact duplicate JSON object keys. Generated map parsing can then insert
+    // directly into the destination map without first building a duplicate-key
+    // scratch list: the dynamic object has already retained only the final JSON
+    // value for each spelling.
     try indent(writer, depth + 1);
-    try writer.writeAll("const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});\n");
+    try writer.writeAll("const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);\n");
     try indent(writer, depth + 1);
@@ -9322,17 +9327,15 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try indent(writer, depth + 1);
     try writer.writeAll("const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var list: std.ArrayList(");
-    try writeQuotedIdentWithSuffix(field.name, "Entry", writer);
-    try writer.writeAll(") = .empty;\n");
+    try writer.writeAll("@This().");
+    try writeQuotedIdentWithPrefix(field.name, "deinitMap_", writer);
+    try writer.writeAll("(allocator, &self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(");\n");
     try indent(writer, depth + 1);
-    if (typedMapMessageValueWithContext(ctx, field)) |_| {
-        try writer.writeAll("defer list.deinit(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };\n");
-    } else {
-        try writer.writeAll("defer list.deinit(allocator);\n");
-    }
+    try writer.writeAll("try self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".ensureUnusedCapacity(allocator, object_value.count());\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var map_it = object_value.iterator();\n");
     try indent(writer, depth + 1);
@@ -9344,26 +9347,36 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try writer.writeAll(" catch |err| { if (options.ignore_unknown_fields) continue; return err; };\n");
         try indent(writer, depth + 2);
         try writer.writeAll("try @This().");
-        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
-        try writer.writeAll("(allocator, &list, .{ .key = ");
+        try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
+        try writer.writeAll("(allocator, &self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", .{ .key = ");
         try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
         try writer.writeAll(", .value = parsed_value });\n");
     } else if (typedMapMessageValueWithContext(ctx, field)) |type_name| {
+        try writer.writeAll("{\n");
+        try indent(writer, depth + 3);
         try writer.writeAll("var parsed_value = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
-        try indent(writer, depth + 2);
+        try indent(writer, depth + 3);
         try writer.writeAll("errdefer parsed_value.deinit(allocator);\n");
-        try indent(writer, depth + 2);
+        try indent(writer, depth + 3);
         try writer.writeAll("try @This().");
-        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
-        try writer.writeAll("(allocator, &list, .{ .key = ");
+        try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
+        try writer.writeAll("(allocator, &self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", .{ .key = ");
         try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
         try writer.writeAll(", .value = parsed_value });\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
     } else {
         try writer.writeAll("try @This().");
-        try writeQuotedIdentWithPrefix(field.name, "appendOrReplaceMapEntry_", writer);
-        try writer.writeAll("(allocator, &list, .{ .key = ");
+        try writeQuotedIdentWithPrefix(field.name, "putMapEntry_", writer);
+        try writer.writeAll("(allocator, &self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", .{ .key = ");
         try writeJsonParseMapKeyExpr(map_type.key, "map_entry.key_ptr.*", writer);
         try writer.writeAll(", .value = ");
         try writeJsonParseMapValueExpr(ctx, field, map_type.value.*, "map_entry.value_ptr.*", "arena_allocator", writer);
@@ -9371,20 +9384,6 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     }
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("@This().");
-    try writeQuotedIdentWithPrefix(field.name, "deinitMap_", writer);
-    try writer.writeAll("(allocator, &self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(");\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("try self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".ensureUnusedCapacity(allocator, list.items.len);\n");
-    try indent(writer, depth + 1);
-    try writer.writeAll("for (list.items) |list_entry| self.");
-    try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".putAssumeCapacityNoClobber(list_entry.key, list_entry.value);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
     try indent(writer, depth);
@@ -13520,7 +13519,7 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.clearRetainingCapacity();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_counts(allocator, &self.counts, entry);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const skip_entry = false;") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
 
     const text_start = std.mem.indexOf(u8, content, "pub fn parseText").?;
     try std.testing.expect(std.mem.indexOf(u8, content[text_start..], "try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry);") != null);
@@ -13611,18 +13610,18 @@ test "codegen emits map JSON stringify and parse helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonWriteEnum(writer, entry.value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, list.items.len);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, object_value.count());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_counts(allocator, &self.counts, .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "@This().deinitMap_counts(allocator, &self.counts);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try std.fmt.parseInt(i32, map_entry.key_ptr.*, 10)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().jsonMapKeyBool(map_entry.key_ptr.*)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const parsed_value = @This().jsonEnum(map_entry.value_ptr.*, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_flags(allocator, &list, .{ .key = try @This().jsonMapKeyBool(map_entry.key_ptr.*), .value = parsed_value });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_flags(allocator, &self.flags, .{ .key = try @This().jsonMapKeyBool(map_entry.key_ptr.*), .value = parsed_value });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var parsed_value = try Child.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "errdefer parsed_value.deinit(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_kids(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = parsed_value });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try self.kids.ensureUnusedCapacity(allocator, list.items.len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_kids(allocator, &self.kids, .{ .key = map_entry.key_ptr.*, .value = parsed_value });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.kids.ensureUnusedCapacity(allocator, object_value.count());") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
@@ -13884,7 +13883,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (self.choice)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".alias => |value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !@This()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{})") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const JsonParseOptions = struct { ignore_unknown_fields: bool = false };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().JsonParseOptions) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options)") != null);

@@ -1599,6 +1599,28 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	largeMapJSONBytes, err := protojson.Marshal(largeMap)
+	if err != nil {
+		panic(err)
+	}
+	var largeMapJSONCompact bytespkg.Buffer
+	if err := jsonpkg.Compact(&largeMapJSONCompact, largeMapJSONBytes); err != nil {
+		panic(err)
+	}
+	largeMapJSONCompactBytes := largeMapJSONCompact.Bytes()
+	if !bytespkg.Contains(largeMapJSONCompactBytes, []byte(`"key-0000":1`)) ||
+		!bytespkg.Contains(largeMapJSONCompactBytes, []byte(`"key-1023":1024`)) {
+		panic("unexpected LargeMap JSON stringify result")
+	}
+	{
+		var decoded personpb.LargeMap
+		if err := protojson.Unmarshal(largeMapJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if len(decoded.Counts) != len(largeMap.Counts) || decoded.Counts["key-0000"] != 1 || decoded.Counts["key-1023"] != 1024 {
+			panic("unexpected LargeMap JSON parse result")
+		}
+	}
 	shuffledLargeMap := makeShuffledLargeMap()
 	shuffledLargeMapBytes, err := proto.Marshal(shuffledLargeMap)
 	if err != nil {
@@ -1852,6 +1874,7 @@ func main() {
 	fmt.Printf("bool packed payload size: %d\n", len(boolPackedBytes))
 	fmt.Printf("enum packed payload size: %d\n", len(enumPackedBytes))
 	fmt.Printf("large map payload size: %d\n", len(largeMapBytes))
+	fmt.Printf("large map json payload size: %d\n", len(largeMapJSONBytes))
 	fmt.Printf("shuffled large map payload size: %d\n", len(shuffledLargeMapBytes))
 
 	runTimed("go protobuf binary encode", iterations, len(bytes), func() {
@@ -2794,6 +2817,20 @@ func main() {
 	runTimed("go protobuf large map decode", iterations, len(largeMapBytes), func() {
 		var decoded personpb.LargeMap
 		if err := unmarshalOptions.Unmarshal(largeMapBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf LargeMap JSON stringify", iterations, len(largeMapJSONBytes), func() {
+		out, err := protojson.Marshal(largeMap)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf LargeMap JSON parse", iterations, len(largeMapJSONBytes), func() {
+		var decoded personpb.LargeMap
+		if err := jsonUnmarshalOptions.Unmarshal(largeMapJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

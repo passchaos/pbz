@@ -553,7 +553,7 @@ pub const demo = struct {
                 errdefer allocator.destroy(arena);
                 arena.* = std.heap.ArenaAllocator.init(allocator);
                 errdefer arena.deinit();
-                const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
                 var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                 self._json_arena = arena;
                 return self;
@@ -1614,7 +1614,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     errdefer allocator.destroy(arena);
                     arena.* = std.heap.ArenaAllocator.init(allocator);
                     errdefer arena.deinit();
-                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
                     var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                     self._json_arena = arena;
                     return self;
@@ -2568,7 +2568,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     errdefer allocator.destroy(arena);
                     arena.* = std.heap.ArenaAllocator.init(allocator);
                     errdefer arena.deinit();
-                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
                     var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                     self._json_arena = arena;
                     return self;

@@ -753,7 +753,7 @@ pub const demo = struct {
                     errdefer allocator.destroy(arena);
                     arena.* = std.heap.ArenaAllocator.init(allocator);
                     errdefer arena.deinit();
-                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{});
+                    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), text, .{ .duplicate_field_behavior = .use_last });
                     var self = try @This().jsonParseValueWithOptions(allocator, arena.allocator(), parsed, options);
                     self._json_arena = arena;
                     return self;
@@ -831,18 +831,16 @@ pub const demo = struct {
                         }
                         if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
                             const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                            var list: std.ArrayList(by_nameEntry) = .empty;
-                            defer list.deinit(allocator);
-                            errdefer for (list.items) |list_entry| { var old_value = list_entry.value; old_value.deinit(allocator); };
+                            @This().deinitMap_by_name(allocator, &self.by_name);
+                            try self.by_name.ensureUnusedCapacity(allocator, object_value.count());
                             var map_it = object_value.iterator();
                             while (map_it.next()) |map_entry| {
-                                var parsed_value = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                                errdefer parsed_value.deinit(allocator);
-                                try @This().appendOrReplaceMapEntry_by_name(allocator, &list, .{ .key = map_entry.key_ptr.*, .value = parsed_value });
+                                {
+                                    var parsed_value = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                                    errdefer parsed_value.deinit(allocator);
+                                    try @This().putMapEntry_by_name(allocator, &self.by_name, .{ .key = map_entry.key_ptr.*, .value = parsed_value });
+                                }
                             }
-                            @This().deinitMap_by_name(allocator, &self.by_name);
-                            try self.by_name.ensureUnusedCapacity(allocator, list.items.len);
-                            for (list.items) |list_entry| self.by_name.putAssumeCapacityNoClobber(list_entry.key, list_entry.value);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "chosen")) {

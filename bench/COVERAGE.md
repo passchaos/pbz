@@ -102,7 +102,8 @@ The matrix includes:
 - packed int32 encode/decode
 - packed fixed32/fixed64/sfixed32/sfixed64/float/double encode/decode
 - packed uint64/uint32/int64/sint32/sint64/bool/enum encode/decode
-- large `map<string, int32>` encode/decode
+- large `map<string, int32>` encode/decode and generated LargeMap JSON
+  stringify/parse
 - shuffled large `map<string, int32>` deterministic encode against C++/Go
 
 The local `zig build bench` output also includes generated/dynamic
