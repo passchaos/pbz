@@ -107,7 +107,8 @@ pub const DynamicMessage = struct {
     }
 
     pub fn clear(self: *DynamicMessage) void {
-        for (self.fields.items) |*field| field.clearRetainingCapacity(self.allocator);
+        for (self.fields.items) |*field| field.deinit(self.allocator);
+        self.fields.clearRetainingCapacity();
         for (self.unknown_fields.items) |*field| field.deinit(self.allocator);
         self.unknown_fields.clearRetainingCapacity();
     }
@@ -3058,6 +3059,37 @@ test "dynamic unknown field API preserves queries and clears raw fields" {
     const encoded_clean = try message.encoded(&file);
     defer allocator.free(encoded_clean);
     try std.testing.expectEqualSlices(u8, &.{ 0x08, 0x05 }, encoded_clean);
+}
+
+test "dynamic decode clears absent fields from reused messages" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { int32 id = 1; string name = 2; repeated int32 nums = 3; }
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var first = wire.Writer.init(allocator);
+    defer first.deinit();
+    try first.writeInt32(1, 7);
+    try first.writeString(2, "old");
+    try first.writeInt32(3, 1);
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try message.decode(&file, first.slice());
+    try std.testing.expect(message.get("name") != null);
+    try std.testing.expect(message.get("nums") != null);
+
+    var second = wire.Writer.init(allocator);
+    defer second.deinit();
+    try second.writeInt32(1, 8);
+    try message.decode(&file, second.slice());
+
+    try std.testing.expectEqual(@as(i32, 8), message.get("id").?.values.items[0].int32);
+    try std.testing.expect(message.get("name") == null);
+    try std.testing.expect(message.get("nums") == null);
 }
 
 test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {

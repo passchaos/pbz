@@ -50,6 +50,18 @@ pub fn main() !void {
     try decoded.decode(&file, encoded);
     std.debug.assert(decoded.has(event_desc.findField("id").?));
 
+    // decode() is a reuse-friendly entry point, but semantically it clears the
+    // destination first: fields absent from the new payload should disappear
+    // rather than lingering as empty FieldValue entries.
+    var id_only = pbz.Writer.init(allocator);
+    defer id_only.deinit();
+    try id_only.writeInt32(1, 8);
+    try decoded.decode(&file, id_only.slice());
+    std.debug.assert(decoded.get("id").?.values.items[0].int32 == 8);
+    std.debug.assert(decoded.get("tags") == null);
+    std.debug.assert(decoded.get("counts") == null);
+    std.debug.assert(decoded.get("note") == null);
+
     var with_unknown = pbz.Writer.init(allocator);
     defer with_unknown.deinit();
     try with_unknown.appendSlice(encoded);
