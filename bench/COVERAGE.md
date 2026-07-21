@@ -253,8 +253,9 @@ benchmark harness.
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
   loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
-  and method lookup, registry-backed dynamic JSON output, plus C++ DescriptorPool
-  parity for rejecting duplicate descriptor symbols assembled programmatically.
+  and method lookup, reflection file/import-chain lookup, registry-backed dynamic
+  JSON output, plus C++ DescriptorPool parity for rejecting duplicate descriptor
+  symbols assembled programmatically.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
   dynamic schemas, descriptor round-trips, parser rejection of reserved
   declarations, and TextFormat's protobuf-compatible reserved-name ignore
@@ -303,9 +304,9 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/clear
   helpers across all scalar families, repeated fields, map last-wins mutation,
-  enum descriptor/value lookup, oneof lookup/inspection/clearing, imported
-  message fields, service descriptor/method lookup, extension descriptor lookup,
-  binary, and JSON round-trips.
+  file/import-chain lookup, enum descriptor/value lookup, oneof
+  lookup/inspection/clearing, imported message fields, service descriptor/method
+  lookup, extension descriptor lookup, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for
   both generated and dynamic messages, and generated decode reuse.

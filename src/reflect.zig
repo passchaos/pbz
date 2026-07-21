@@ -5,7 +5,7 @@ const registry_mod = @import("registry.zig");
 const dynamic = @import("dynamic.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.mem.Allocator.Error || error{ UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField, TypeMismatch };
+pub const Error = std.mem.Allocator.Error || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField, TypeMismatch };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 
@@ -15,6 +15,22 @@ pub const Reflection = struct {
 
     pub fn init(allocator: std.mem.Allocator, registry: *const registry_mod.Registry) Reflection {
         return .{ .allocator = allocator, .registry = registry };
+    }
+
+    pub fn file(self: Reflection, path: []const u8) Error!*const schema.FileDescriptor {
+        return self.registry.findFile(path) orelse error.UnknownFile;
+    }
+
+    pub fn fileCanSee(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
+        return self.registry.fileCanSee(from, to);
+    }
+
+    pub fn importChain(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) ?registry_mod.ImportChain {
+        return self.registry.importChain(from, to);
+    }
+
+    pub fn importChainByPath(self: Reflection, from_path: []const u8, to_path: []const u8) Error!?registry_mod.ImportChain {
+        return self.importChain(try self.file(from_path), try self.file(to_path));
     }
 
     pub fn message(self: Reflection, name: []const u8) Error!*const schema.MessageDescriptor {
@@ -95,13 +111,13 @@ pub const Reflection = struct {
             .message => |name| .{ name, false },
             else => return error.TypeMismatch,
         };
-        const file = try self.fileOfMessage(message_descriptor);
+        const owner_file = try self.fileOfMessage(message_descriptor);
         if (std.mem.indexOfScalar(u8, enum_name, '.') == null) {
-            if (message_descriptor.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name)) |enum_desc| return enum_desc;
+            if (message_descriptor.findEnumDeep(enum_name) orelse owner_file.findEnumDeep(enum_name)) |enum_desc| return enum_desc;
         }
         var scope_buf: [512]u8 = undefined;
-        const scope = messageScope(file, message_descriptor, &scope_buf) orelse if (file.package.len != 0) file.package else null;
-        if (self.registry.findEnumVisible(file, enum_name, scope)) |enum_desc| return enum_desc;
+        const scope = messageScope(owner_file, message_descriptor, &scope_buf) orelse if (owner_file.package.len != 0) owner_file.package else null;
+        if (self.registry.findEnumVisible(owner_file, enum_name, scope)) |enum_desc| return enum_desc;
         if (self.registry.findEnum(enum_name, scope)) |enum_desc| return enum_desc;
         return if (declared_enum) error.UnknownEnum else error.TypeMismatch;
     }
@@ -546,6 +562,60 @@ test "reflection facade finds extension descriptors" {
     try std.testing.expect(code == try refl.extensionForMessage(host_desc, 101));
     try std.testing.expectEqual(@as(wire.FieldNumber, 101), code.number);
     try std.testing.expectError(error.UnknownField, refl.extensionForMessage(host_desc, 102));
+}
+
+test "reflection facade resolves files and import chains" {
+    const allocator = std.testing.allocator;
+    var leaf = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo.leaf;
+        \\message User { int32 id = 1; }
+    );
+    defer leaf.deinit();
+    leaf.name = "leaf.proto";
+    var bridge = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo.bridge;
+        \\import public "leaf.proto";
+        \\message Bridge {}
+    );
+    defer bridge.deinit();
+    bridge.name = "bridge.proto";
+    var app = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo.app;
+        \\import "bridge.proto";
+        \\message App { demo.leaf.User user = 1; }
+    );
+    defer app.deinit();
+    app.name = "app.proto";
+
+    var reg = registry_mod.Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&leaf);
+    try reg.addFile(&bridge);
+    try reg.addFile(&app);
+    try reg.validateAllFileReferences();
+
+    const refl = Reflection.init(allocator, &reg);
+    const app_file = try refl.file("app.proto");
+    const bridge_file = try refl.file("bridge.proto");
+    const leaf_file = try refl.file("leaf.proto");
+    try std.testing.expect(refl.fileCanSee(app_file, bridge_file));
+    try std.testing.expect(refl.fileCanSee(app_file, leaf_file));
+    try std.testing.expect(!refl.fileCanSee(leaf_file, app_file));
+
+    const direct = refl.importChain(app_file, bridge_file).?;
+    try std.testing.expectEqual(@as(usize, 1), direct.len);
+    try std.testing.expectEqualStrings("bridge.proto", direct.paths[0]);
+
+    const public_chain = (try refl.importChainByPath("app.proto", "leaf.proto")).?;
+    try std.testing.expectEqual(@as(usize, 2), public_chain.len);
+    try std.testing.expectEqualStrings("bridge.proto", public_chain.paths[0]);
+    try std.testing.expectEqualStrings("leaf.proto", public_chain.paths[1]);
+    try std.testing.expectEqual(@as(usize, 0), refl.importChain(app_file, app_file).?.len);
+    try std.testing.expectError(error.UnknownFile, refl.file("missing.proto"));
+    try std.testing.expectError(error.UnknownFile, refl.importChainByPath("app.proto", "missing.proto"));
 }
 
 fn exerciseReflectionCleanup(allocator: std.mem.Allocator, registry: *const registry_mod.Registry) !void {

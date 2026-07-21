@@ -62,6 +62,7 @@ pub const parseJsonAllocWithRegistry = json.parseAllocWithRegistry;
 pub const parseJsonInitializedAlloc = json.parseInitializedAlloc;
 pub const parseJsonInitializedAllocWithRegistry = json.parseInitializedAllocWithRegistry;
 pub const Registry = registry.Registry;
+pub const ImportChain = registry.ImportChain;
 pub const Reflection = reflect.Reflection;
 pub const formatText = text.format;
 pub const formatTextWithRegistry = text.formatWithRegistry;

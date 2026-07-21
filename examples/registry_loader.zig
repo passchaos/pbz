@@ -27,6 +27,12 @@ pub fn main() !void {
     const event_desc = loaded.registry.findMessage(".demo.app.Event", null).?;
     const user_desc = loaded.registry.findMessage(".demo.common.User", null).?;
     const events_service = loaded.registry.findService(".demo.app.Events", null).?;
+    const refl = pbz.Reflection.init(allocator, &loaded.registry);
+    const app_file = try refl.file("app.proto");
+    const common_file = try refl.file("common.proto");
+    std.debug.assert(refl.fileCanSee(app_file, common_file));
+    const chain = (try refl.importChainByPath("app.proto", "common.proto")).?;
+    std.debug.assert(chain.len == 1 and std.mem.eql(u8, chain.paths[0], "common.proto"));
     std.debug.assert(std.mem.eql(u8, event_desc.name, "Event"));
     std.debug.assert(std.mem.eql(u8, user_desc.name, "User"));
     std.debug.assert(std.mem.eql(u8, events_service.findMethod("Get").?.name, "Get"));
