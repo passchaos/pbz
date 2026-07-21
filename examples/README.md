@@ -26,6 +26,8 @@ library API.
 - `dynamic_defaults.zig` — dynamic proto2 default values, has/getOrDefault
   behavior, enum-name helpers, JSON null reset, TextFormat parsing, and imported
   enum defaults resolved through a registry.
+- `dynamic_enum_alias.zig` — dynamic enum alias parsing and canonical
+  JSON/TextFormat output for singular, repeated, and map enum fields.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
 - `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present
   and missing proto2 weak imports, including descriptor-set, binary, JSON, and

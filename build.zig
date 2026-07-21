@@ -158,6 +158,7 @@ pub fn build(b: *std.Build) void {
         "dynamic_groups",
         "dynamic_editions_features",
         "dynamic_defaults",
+        "dynamic_enum_alias",
         "dynamic_public_imports",
         "dynamic_weak_imports",
         "dynamic_reserved_text",
