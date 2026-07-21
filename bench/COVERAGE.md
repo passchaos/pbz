@@ -304,14 +304,15 @@ benchmark harness.
   registry descriptors and dynamic messages, including typed get/set/add/clear
   helpers across all scalar families, repeated fields, map last-wins mutation,
   enum descriptor/value lookup, oneof lookup/inspection/clearing, imported
-  message fields, service descriptor/method lookup, binary, and JSON round-trips.
+  message fields, service descriptor/method lookup, extension descriptor lookup,
+  binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for
   both generated and dynamic messages, and generated decode reuse.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
   range declarations/verification, repeated message extensions with recursive
-  required-field validation, descriptor round-trips, JSON/TextFormat extension
-  mappings, and unknown preservation.
+  required-field validation, reflection extension lookup, descriptor round-trips,
+  JSON/TextFormat extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and
   bytes wrappers, standalone `Any` JSON mapping for embedded WKT payload

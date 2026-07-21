@@ -53,6 +53,26 @@ pub const Reflection = struct {
         return descriptor.findFieldByNumber(number) orelse error.UnknownField;
     }
 
+    pub fn extension(self: Reflection, extendee: []const u8, number: wire.FieldNumber) Error!*const schema.FieldDescriptor {
+        return self.registry.findExtension(extendee, number) orelse error.UnknownField;
+    }
+
+    pub fn extensionForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) Error!*const schema.FieldDescriptor {
+        return self.registry.findExtensionForMessage(descriptor, number) orelse error.UnknownField;
+    }
+
+    pub fn extensionByName(self: Reflection, extendee: []const u8, name: []const u8) Error!*const schema.FieldDescriptor {
+        return self.registry.findExtensionByName(extendee, name) orelse error.UnknownField;
+    }
+
+    pub fn extensionByNameForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.FieldDescriptor {
+        return self.registry.findExtensionByNameForMessage(descriptor, name) orelse error.UnknownField;
+    }
+
+    pub fn fileOfExtension(self: Reflection, descriptor: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingExtension(descriptor) orelse error.UnknownField;
+    }
+
     pub fn oneofByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.OneofDescriptor {
         return descriptor.findOneof(name) orelse error.UnknownField;
     }
@@ -497,6 +517,35 @@ test "reflection facade creates and edits dynamic messages" {
 
     try refl.clearField(&msg, "name");
     try std.testing.expect(!(try refl.hasField(&msg, "name")));
+}
+
+test "reflection facade finds extension descriptors" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host { extensions 100 to max; }
+        \\extend Host { optional string note = 100; }
+        \\message Scope { extend Host { optional int32 code = 101; } }
+    );
+    defer file.deinit();
+    file.name = "extensions.proto";
+    var reg = registry_mod.Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&file);
+
+    const refl = Reflection.init(allocator, &reg);
+    const host_desc = try refl.message(".demo.Host");
+    const note = try refl.extensionForMessage(host_desc, 100);
+    try std.testing.expect(note == try refl.extension(".demo.Host", 100));
+    try std.testing.expect(note == try refl.extensionByName(".demo.Host", ".demo.note"));
+    try std.testing.expect(note == try refl.extensionByNameForMessage(host_desc, "note"));
+    try std.testing.expectEqualStrings("extensions.proto", (try refl.fileOfExtension(note)).name);
+
+    const code = try refl.extensionByNameForMessage(host_desc, ".demo.Scope.code");
+    try std.testing.expect(code == try refl.extensionForMessage(host_desc, 101));
+    try std.testing.expectEqual(@as(wire.FieldNumber, 101), code.number);
+    try std.testing.expectError(error.UnknownField, refl.extensionForMessage(host_desc, 102));
 }
 
 fn exerciseReflectionCleanup(allocator: std.mem.Allocator, registry: *const registry_mod.Registry) !void {

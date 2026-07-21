@@ -50,8 +50,8 @@ library API.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/clear helpers, repeated fields,
   all scalar families, maps, enum descriptor/value lookup, oneof
-  lookup/inspection/clearing, imported message fields, service descriptor/method
-  lookup, binary, and JSON round-trips.
+  lookup/inspection/clearing, imported message fields, service and extension
+  descriptor lookup, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.
@@ -91,6 +91,6 @@ library API.
 - `any_type_url.zig` — custom `Any` type URL prefixes, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON,
   repeated message extensions with required-field validation, extension range
-  declarations/verification, descriptor round-trips, and preserved unknown
-  storage.
+  declarations/verification, reflection extension lookup, descriptor
+  round-trips, and preserved unknown storage.
 - `conformance.zig` — conformance-style JSON-to-protobuf conversion.

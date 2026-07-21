@@ -28,12 +28,20 @@ pub fn main() !void {
         \\extend DeclaredHost { optional int32 declared_priority = 200; }
     );
     defer file.deinit();
+    file.name = "extensions.proto";
 
     var registry = pbz.Registry.init(allocator);
     defer registry.deinit();
     try registry.addFile(&file);
 
-    const host_desc = file.findMessage("Host").?;
+    const refl = pbz.Reflection.init(allocator, &registry);
+    const host_desc = try refl.message(".demo.Host");
+    const priority_ext = try refl.extensionForMessage(host_desc, 100);
+    std.debug.assert(priority_ext == try refl.extension("demo.Host", 100));
+    std.debug.assert(priority_ext == try refl.extensionByName("demo.Host", ".demo.priority"));
+    std.debug.assert(priority_ext == try refl.extensionByNameForMessage(host_desc, "priority"));
+    std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
+
     var host = try pbz.parseTextAllocWithRegistry(
         allocator,
         &file,
@@ -43,7 +51,6 @@ pub fn main() !void {
     );
     defer host.deinit();
 
-    const priority_ext = registry.findExtension("demo.Host", 100).?;
     std.debug.assert(host.getByNumber(priority_ext.number).?.values.items[0].int32 == 5);
 
     const host_json = try pbz.stringifyJsonAllocWithRegistry(allocator, &file, &registry, &host, .{});
