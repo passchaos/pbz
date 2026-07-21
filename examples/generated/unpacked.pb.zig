@@ -1,28 +1,72 @@
 const std = @import("std");
 const pbz = @import("pbz");
 
-pub const proto_package = "demo.identifiers";
+pub const proto_package = "demo.unpacked";
 pub const proto_syntax = "proto3";
 
 pub const demo = struct {
-    pub const identifiers = struct {
-        pub const @"type" = struct {
-            pub const type_number = 1;
-            pub const error_number = 2;
-            pub const test_number = 3;
-            pub const align_number = 4;
-            pub const await_number = 5;
-            pub const opaque_number = 6;
-            pub const null_number = 7;
+    pub const unpacked = struct {
+        pub const Kind = enum(i32) {
+            KIND_UNKNOWN = 0,
+            KIND_A = 1,
+            KIND_B = 2,
+            pub fn fromInt(value: i32) ?@This() {
+                return switch (value) {
+                    0 => .KIND_UNKNOWN,
+                    1 => .KIND_A,
+                    2 => .KIND_B,
+                    else => null,
+                };
+            }
+            pub fn toInt(self: @This()) i32 {
+                return @intFromEnum(self);
+            }
+            pub fn protoName(self: @This()) []const u8 {
+                return switch (self) {
+                    .KIND_UNKNOWN => "KIND_UNKNOWN",
+                    .KIND_A => "KIND_A",
+                    .KIND_B => "KIND_B",
+                };
+            }
+            pub fn fromName(name: []const u8) ?@This() {
+                if (std.mem.eql(u8, name, "KIND_UNKNOWN")) return .KIND_UNKNOWN;
+                if (std.mem.eql(u8, name, "KIND_A")) return .KIND_A;
+                if (std.mem.eql(u8, name, "KIND_B")) return .KIND_B;
+                return null;
+            }
+            pub fn jsonParse(value: std.json.Value) !@This() {
+                return switch (value) {
+                    .string => |name| fromName(name) orelse error.InvalidEnumValue,
+                    .integer => |number| fromInt(std.math.cast(i32, number) orelse return error.Overflow) orelse error.InvalidEnumValue,
+                    .number_string => |text| fromInt(try std.fmt.parseInt(i32, text, 10)) orelse error.InvalidEnumValue,
+                    else => error.TypeMismatch,
+                };
+            }
+            pub fn textParse(value: []const u8) !@This() {
+                if (fromName(value)) |known| return known;
+                return fromInt(try std.fmt.parseInt(i32, value, 10)) orelse error.InvalidEnumValue;
+            }
+            pub fn textFormat(self: @This(), writer: *std.Io.Writer) !void {
+                try writer.writeAll(self.protoName());
+            }
+            pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
+                try std.json.Stringify.value(self.protoName(), .{}, writer);
+            }
+        };
 
-            pub const type_field = struct {
+        pub const Unpacked = struct {
+            pub const values_number = 1;
+            pub const flags_number = 2;
+            pub const kinds_number = 3;
+
+            pub const values_field = struct {
                 pub const number = 1;
-                pub const name = "type";
-                pub const json_name = "type";
-                pub const cardinality = "optional";
+                pub const name = "values";
+                pub const json_name = "values";
+                pub const cardinality = "repeated";
                 pub const kind = "int32";
                 pub const type_name = "int32";
-                pub const zig_type = "i32";
+                pub const zig_type = "[]const i32";
                 pub const has_type_ref = false;
                 pub const type_ref = void;
                 pub const has_enum_ref = false;
@@ -31,101 +75,14 @@ pub const demo = struct {
                 pub const default_value = "";
                 pub const is_packed = false;
             };
-            pub const error_field = struct {
+            pub const flags_field = struct {
                 pub const number = 2;
-                pub const name = "error";
-                pub const json_name = "error";
-                pub const cardinality = "optional";
-                pub const kind = "string";
-                pub const type_name = "string";
-                pub const zig_type = "[]const u8";
-                pub const has_type_ref = false;
-                pub const type_ref = void;
-                pub const has_enum_ref = false;
-                pub const enum_ref = void;
-                pub const has_presence = false;
-                pub const default_value = "";
-                pub const is_packed = false;
-            };
-            pub const test_field = struct {
-                pub const number = 3;
-                pub const name = "test";
-                pub const json_name = "test";
+                pub const name = "flags";
+                pub const json_name = "flags";
                 pub const cardinality = "repeated";
-                pub const kind = "string";
-                pub const type_name = "string";
-                pub const zig_type = "[]const []const u8";
-                pub const has_type_ref = false;
-                pub const type_ref = void;
-                pub const has_enum_ref = false;
-                pub const enum_ref = void;
-                pub const has_presence = false;
-                pub const default_value = "";
-                pub const is_packed = false;
-            };
-            pub const align_field = struct {
-                pub const number = 4;
-                pub const name = "align";
-                pub const json_name = "align";
-                pub const cardinality = "repeated";
-                pub const kind = "map";
-                pub const type_name = "";
-                pub const zig_type = "alignMap";
-                pub const has_type_ref = false;
-                pub const type_ref = void;
-                pub const has_enum_ref = false;
-                pub const enum_ref = void;
-                pub const has_presence = false;
-                pub const default_value = "";
-                pub const is_packed = false;
-                pub const map_key = "string";
-                pub const map_value_kind = "int32";
-                pub const map_value_type_name = "int32";
-                pub const map_value_has_type_ref = false;
-                pub const map_value_type_ref = void;
-                pub const map_value_has_enum_ref = false;
-                pub const map_value_enum_ref = void;
-            };
-            pub const await_field = struct {
-                pub const number = 5;
-                pub const name = "await";
-                pub const json_name = "await";
-                pub const cardinality = "optional";
-                pub const kind = "string";
-                pub const type_name = "string";
-                pub const zig_type = "[]const u8";
-                pub const has_type_ref = false;
-                pub const type_ref = void;
-                pub const has_enum_ref = false;
-                pub const enum_ref = void;
-                pub const has_presence = true;
-                pub const default_value = "";
-                pub const is_packed = false;
-            };
-            pub const opaque_field = struct {
-                pub const number = 6;
-                pub const name = "opaque";
-                pub const json_name = "opaque";
-                pub const cardinality = "optional";
-                pub const kind = "int32";
-                pub const type_name = "int32";
-                pub const zig_type = "i32";
-                pub const has_type_ref = false;
-                pub const type_ref = void;
-                pub const has_enum_ref = false;
-                pub const enum_ref = void;
-                pub const has_presence = true;
-                pub const default_value = "";
-                pub const is_packed = false;
-            };
-            pub const null_field = struct {
-                pub const number = 7;
-                pub const name = "null";
-                pub const json_name = "null";
-                pub const cardinality = "optional";
                 pub const kind = "bool";
                 pub const type_name = "bool";
-                pub const zig_type = "bool";
+                pub const zig_type = "[]const bool";
                 pub const has_type_ref = false;
                 pub const type_ref = void;
                 pub const has_enum_ref = false;
@@ -134,43 +91,26 @@ pub const demo = struct {
                 pub const default_value = "";
                 pub const is_packed = false;
             };
-
-            pub const alignMap = std.StringArrayHashMapUnmanaged(i32);
-
-            pub const alignEntry = struct {
-                key: []const u8 = "",
-                value: i32 = 0,
+            pub const kinds_field = struct {
+                pub const number = 3;
+                pub const name = "kinds";
+                pub const json_name = "kinds";
+                pub const cardinality = "repeated";
+                pub const kind = "enum";
+                pub const type_name = "demo.unpacked.Kind";
+                pub const zig_type = "[]const i32";
+                pub const has_type_ref = false;
+                pub const type_ref = void;
+                pub const has_enum_ref = true;
+                pub const enum_ref = Kind;
+                pub const has_presence = false;
+                pub const default_value = "";
+                pub const is_packed = false;
             };
 
-            fn appendOrReplaceMapEntry_align(allocator: std.mem.Allocator, list: *std.ArrayList(alignEntry), entry: alignEntry) !void {
-                for (list.items) |*existing| {
-                    if (std.mem.eql(u8, existing.key, entry.key)) { existing.* = entry; return; }
-                }
-                try list.append(allocator, entry);
-            }
-
-            fn putMapEntry_align(allocator: std.mem.Allocator, map: *alignMap, entry: alignEntry) !void {
-                const result = try map.getOrPut(allocator, entry.key);
-                result.value_ptr.* = entry.value;
-            }
-
-            fn deinitMap_align(allocator: std.mem.Allocator, map: *alignMap) void {
-                map.deinit(allocator);
-                map.* = .empty;
-            }
-
-            pub const asyncOneof = union(enum) {
-                none,
-                await: []const u8,
-                @"opaque": i32,
-            };
-
-            @"type": i32 = 0,
-            @"error": []const u8 = "",
-            @"test": []const []const u8 = &.{},
-            @"align": alignMap = .empty,
-            @"null": bool = false,
-            async: asyncOneof = .none,
+            values: []const i32 = &.{},
+            flags: []const bool = &.{},
+            kinds: []const i32 = &.{},
             _json_arena: ?*std.heap.ArenaAllocator = null,
             _unknown_fields: []const []const u8 = &.{},
 
@@ -179,8 +119,9 @@ pub const demo = struct {
             }
 
             pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-                allocator.free(self.@"test");
-                @This().deinitMap_align(allocator, &self.@"align");
+                allocator.free(self.values);
+                allocator.free(self.flags);
+                allocator.free(self.kinds);
                 pbz.wire.freeRawFields(allocator, self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                 self.* = undefined;
@@ -189,25 +130,21 @@ pub const demo = struct {
             pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
                 var out = @This().init();
                 errdefer out.deinit(allocator);
-                const owned_allocator = try out._pbzOwnedAllocator(allocator);
-                out.@"type" = self.@"type";
-                out.@"error" = try owned_allocator.dupe(u8, self.@"error");
-                if (self.@"test".len != 0) {
-                    const cloned = try allocator.alloc([]const u8, self.@"test".len);
-                    for (self.@"test", 0..) |item, i| cloned[i] = try owned_allocator.dupe(u8, item);
-                    out.@"test" = cloned;
+                if (self.values.len != 0) {
+                    const cloned = try allocator.alloc(i32, self.values.len);
+                    for (self.values, 0..) |item, i| cloned[i] = item;
+                    out.values = cloned;
                 }
-                if (self.@"align".count() != 0) {
-                    try out.@"align".ensureUnusedCapacity(allocator, self.@"align".count());
-                    var map_it = self.@"align".iterator();
-                    while (map_it.next()) |entry| out.@"align".putAssumeCapacityNoClobber(try owned_allocator.dupe(u8, entry.key_ptr.*), entry.value_ptr.*);
+                if (self.flags.len != 0) {
+                    const cloned = try allocator.alloc(bool, self.flags.len);
+                    for (self.flags, 0..) |item, i| cloned[i] = item;
+                    out.flags = cloned;
                 }
-                out.@"null" = self.@"null";
-                out.async = switch (self.async) {
-                    .none => .none,
-                    .await => |value| .{ .await = try owned_allocator.dupe(u8, value) },
-                    .@"opaque" => |value| .{ .@"opaque" = value },
-                };
+                if (self.kinds.len != 0) {
+                    const cloned = try allocator.alloc(i32, self.kinds.len);
+                    for (self.kinds, 0..) |item, i| cloned[i] = item;
+                    out.kinds = cloned;
+                }
                 out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
                 return out;
             }
@@ -262,137 +199,58 @@ pub const demo = struct {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             }
 
-            fn _pbzDeinitOneof_async(self: *@This(), allocator: std.mem.Allocator) void {
-                _ = allocator;
-                self.async = .none;
-            }
-
-
-            pub fn errorFieldView(bytes: []const u8) !?[]const u8 {
-                return try pbz.wire.bytesFieldView(bytes, 2);
-            }
-
-            pub fn errorFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
-            }
-
-            pub fn errorStringView(bytes: []const u8) !?[]const u8 {
-                return try errorFieldView(bytes);
-            }
-
-            pub fn errorStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                return try errorFieldSlices(header, value);
-            }
-
-            pub fn testFieldView(bytes: []const u8) !?[]const u8 {
-                return try pbz.wire.bytesFieldView(bytes, 3);
-            }
-
-            pub fn testFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 3, value);
-            }
-
-            pub fn testStringView(bytes: []const u8) !?[]const u8 {
-                return try testFieldView(bytes);
-            }
-
-            pub fn testStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
-                return try testFieldSlices(header, value);
-            }
 
 
             // no same-file extension accessors
 
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-                if (other.@"type" != 0) self.@"type" = other.@"type";
-                if (other.@"error".len != 0) self.@"error" = other.@"error";
-                if (other.@"test".len != 0) {
-                    const old = self.@"test";
-                    const merged = try allocator.alloc([]const u8, old.len + other.@"test".len);
+                if (other.values.len != 0) {
+                    const old = self.values;
+                    const merged = try allocator.alloc(i32, old.len + other.values.len);
                     @memcpy(merged[0..old.len], old);
-                    @memcpy(merged[old.len..], other.@"test");
-                    self.@"test" = merged;
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
                     if (old.len != 0) allocator.free(old);
                 }
-                const align_other_count = other.@"align".count();
-                if (align_other_count != 0) {
-                    try self.@"align".ensureUnusedCapacity(allocator, align_other_count);
-                    var other_it = other.@"align".iterator();
-                    while (other_it.next()) |entry| {
-                        const result = self.@"align".getOrPutAssumeCapacity(entry.key_ptr.*);
-                        result.value_ptr.* = entry.value_ptr.*;
-                    }
+                if (other.flags.len != 0) {
+                    const old = self.flags;
+                    const merged = try allocator.alloc(bool, old.len + other.flags.len);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.flags);
+                    self.flags = merged;
+                    if (old.len != 0) allocator.free(old);
                 }
-                if (other.@"null") self.@"null" = other.@"null";
-                switch (other.async) {
-                    .none => {},
-                    .await => |value| { self._pbzDeinitOneof_async(allocator); self.async = .{ .await = value }; },
-                    .@"opaque" => |value| { self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = value }; },
+                if (other.kinds.len != 0) {
+                    const old = self.kinds;
+                    const merged = try allocator.alloc(i32, old.len + other.kinds.len);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.kinds);
+                    self.kinds = merged;
+                    if (old.len != 0) allocator.free(old);
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
 
             pub fn encodedSize(self: @This()) usize {
                 var size: usize = 0;
-                if (self.@"type" != 0) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.@"type"))));
-                if (self.@"error".len != 0) size += 1 + pbz.wire.encodedVarintSize(self.@"error".len) + self.@"error".len;
-                for (self.@"test") |item| size += 1 + pbz.wire.encodedVarintSize(item.len) + item.len;
-                { var map_it = self.@"align".iterator(); while (map_it.next()) |entry| {
-                    const key = entry.key_ptr.*; const value = entry.value_ptr.*;
-                    const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value))));
-                    size += 1 + pbz.wire.encodedVarintSize(entry_len) + entry_len;
-                } }
-                if (self.@"null") size += 1 + (if (self.@"null") @as(usize, 1) else @as(usize, 1));
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
-                    .@"opaque" => |value| size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value)))),
-                }
+                for (self.values) |item| size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
+                for (self.flags) |item| size += 1 + (if (item) @as(usize, 1) else @as(usize, 1));
+                for (self.kinds) |item| size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, item))));
                 for (self._unknown_fields) |raw| size += raw.len;
                 return size;
             }
 
             pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
-                if (self.@"type" != 0) try w.writeInt32(1, self.@"type");
-                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; try w.writeString(2, self.@"error"); }
-                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; try w.writeString(3, item); }
-                { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
-                    const entry = alignEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
-                    if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
-                    const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
-                    try w.writeTag(4, .length_delimited);
-                    try w.writeVarint(entry_len);
-                    try w.writeString(1, entry.key);
-                    try w.writeInt32(2, entry.value);
-                } }
-                if (self.@"null") try w.writeBool(7, self.@"null");
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(5, value); },
-                    .@"opaque" => |value| try w.writeInt32(6, value),
-                }
+                for (self.values) |item| try w.writeInt32(1, item);
+                for (self.flags) |item| try w.writeBool(2, item);
+                for (self.kinds) |item| try w.writeInt32(3, item);
                 for (self._unknown_fields) |raw| try w.appendSlice(raw);
             }
 
             pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
-                if (self.@"type" != 0) w.writeInt32AssumeCapacity(1, self.@"type");
-                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.@"error"); }
-                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; w.writeStringAssumeCapacity(3, item); }
-                { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
-                    const entry = alignEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
-                    if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
-                    const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
-                    w.writeTagAssumeCapacity(4, .length_delimited);
-                    w.writeVarintAssumeCapacity(entry_len);
-                    w.writeStringAssumeCapacity(1, entry.key);
-                    w.writeInt32AssumeCapacity(2, entry.value);
-                } }
-                if (self.@"null") w.writeBoolAssumeCapacity(7, self.@"null");
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(5, value); },
-                    .@"opaque" => |value| w.writeInt32AssumeCapacity(6, value),
-                }
+                for (self.values) |item| w.writeInt32AssumeCapacity(1, item);
+                for (self.flags) |item| w.writeBoolAssumeCapacity(2, item);
+                for (self.kinds) |item| w.writeInt32AssumeCapacity(3, item);
                 for (self._unknown_fields) |raw| w.appendSliceAssumeCapacity(raw);
             }
 
@@ -413,153 +271,26 @@ pub const demo = struct {
             }
 
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
-                var index: usize = 0;
-                if (self.@"type" != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.@"type")))); }
-                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.@"error".len); @memcpy(buffer[index..][0..self.@"error".len], self.@"error"); index += self.@"error".len; }
-                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
-                { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
-                    const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
-                    if (!pbz.validateUtf8(key)) return error.InvalidUtf8;
-                    const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value))));
-                    buffer[index] = 34; index += 1;
-                    pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
-                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
-                    buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value))));
-                } }
-                if (self.@"null") { buffer[index] = 56; index += 1; buffer[index] = if (self.@"null") 1 else 0; index += 1; }
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
-                    .@"opaque" => |value| { buffer[index] = 48; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
-                }
-                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
-                return buffer[0..index];
+                var w = pbz.Writer.initBuffer(std.heap.page_allocator, buffer);
+                try self.writeToAssumeCapacity(&w);
+                return buffer[0..w.slice().len];
             }
 
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
-                var index: usize = 0;
-                if (self.@"type" != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.@"type")))); }
-                if (self.@"error".len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.@"error".len); @memcpy(buffer[index..][0..self.@"error".len], self.@"error"); index += self.@"error".len; }
-                for (self.@"test") |item| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
-                { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
-                    const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
-                    const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value))));
-                    buffer[index] = 34; index += 1;
-                    pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
-                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
-                    buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value))));
-                } }
-                if (self.@"null") { buffer[index] = 56; index += 1; buffer[index] = if (self.@"null") 1 else 0; index += 1; }
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
-                    .@"opaque" => |value| { buffer[index] = 48; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
-                }
-                for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
-                return buffer[0..index];
+                return try self.encodeIntoAssumeCapacity(buffer);
             }
 
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-                if (self.@"type" != 0) try w.writeInt32(1, self.@"type");
-                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; try w.writeString(2, self.@"error"); }
-                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; try w.writeString(3, item); }
-                if (self.@"align".count() != 0) {
-                    const insertion_sort_limit: usize = 32;
-                    const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(alignEntry), 1));
-                    var stack_entries: [stack_entry_count]alignEntry = undefined;
-                    const use_stack_entries = self.@"align".count() <= stack_entries.len;
-                    const entries = if (use_stack_entries) blk: { var map_it = self.@"align".iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.@"align".count()]; } else blk: { const owned = try allocator.alloc(alignEntry, self.@"align".count()); var map_it = self.@"align".iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
-                    defer if (!use_stack_entries) allocator.free(entries);
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
-                        }
-                    } else {
-                        const entries_already_sorted = sorted: {
-                            var check_i: usize = 1;
-                            while (check_i < entries.len) : (check_i += 1) {
-                                if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
-                            }
-                            break :sorted true;
-                        };
-                        if (!entries_already_sorted) {
-                            std.mem.sort(alignEntry, entries, {}, struct { fn lessThan(_: void, a: alignEntry, b: alignEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
-                        }
-                    }
-                    for (entries) |entry| {
-                        if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
-                        const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
-                        try w.writeTag(4, .length_delimited);
-                        try w.writeVarint(entry_len);
-                        try w.writeString(1, entry.key);
-                        try w.writeInt32(2, entry.value);
-                    }
-                }
-                switch (self.async) {
-                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(5, value); },
-                    else => {},
-                }
-                switch (self.async) {
-                    .@"opaque" => |value| try w.writeInt32(6, value),
-                    else => {},
-                }
-                if (self.@"null") try w.writeBool(7, self.@"null");
+                for (self.values) |item| try w.writeInt32(1, item);
+                for (self.flags) |item| try w.writeBool(2, item);
+                for (self.kinds) |item| try w.writeInt32(3, item);
                 try pbz.wire.writeRawFieldsDeterministic(allocator, self._unknown_fields, w);
             }
 
             pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-                if (self.@"type" != 0) w.writeInt32AssumeCapacity(1, self.@"type");
-                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.@"error"); }
-                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; w.writeStringAssumeCapacity(3, item); }
-                if (self.@"align".count() != 0) {
-                    const insertion_sort_limit: usize = 32;
-                    const stack_entry_count: usize = @max(insertion_sort_limit, (32 * 1024) / @max(@sizeOf(alignEntry), 1));
-                    var stack_entries: [stack_entry_count]alignEntry = undefined;
-                    const use_stack_entries = self.@"align".count() <= stack_entries.len;
-                    const entries = if (use_stack_entries) blk: { var map_it = self.@"align".iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) stack_entries[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk stack_entries[0..self.@"align".count()]; } else blk: { const owned = try allocator.alloc(alignEntry, self.@"align".count()); var map_it = self.@"align".iterator(); var i: usize = 0; while (map_it.next()) |entry| : (i += 1) owned[i] = .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* }; break :blk owned; };
-                    defer if (!use_stack_entries) allocator.free(entries);
-                    if (entries.len <= insertion_sort_limit) {
-                        var sort_i: usize = 1;
-                        while (sort_i < entries.len) : (sort_i += 1) {
-                            const item = entries[sort_i];
-                            var sort_j = sort_i;
-                            while (sort_j > 0 and pbz.wire.bytesLessThan(item.key, entries[sort_j - 1].key)) : (sort_j -= 1) entries[sort_j] = entries[sort_j - 1];
-                            entries[sort_j] = item;
-                        }
-                    } else {
-                        const entries_already_sorted = sorted: {
-                            var check_i: usize = 1;
-                            while (check_i < entries.len) : (check_i += 1) {
-                                if (pbz.wire.bytesLessThan(entries[check_i].key, entries[check_i - 1].key)) break :sorted false;
-                            }
-                            break :sorted true;
-                        };
-                        if (!entries_already_sorted) {
-                            std.mem.sort(alignEntry, entries, {}, struct { fn lessThan(_: void, a: alignEntry, b: alignEntry) bool { return pbz.wire.bytesLessThan(a.key, b.key); } }.lessThan);
-                        }
-                    }
-                    for (entries) |entry| {
-                        if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;
-                        const entry_len = 1 + pbz.wire.encodedVarintSize(entry.key.len) + entry.key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, entry.value))));
-                        w.writeTagAssumeCapacity(4, .length_delimited);
-                        w.writeVarintAssumeCapacity(entry_len);
-                        w.writeStringAssumeCapacity(1, entry.key);
-                        w.writeInt32AssumeCapacity(2, entry.value);
-                    }
-                }
-                switch (self.async) {
-                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(5, value); },
-                    else => {},
-                }
-                switch (self.async) {
-                    .@"opaque" => |value| w.writeInt32AssumeCapacity(6, value),
-                    else => {},
-                }
-                if (self.@"null") w.writeBoolAssumeCapacity(7, self.@"null");
+                for (self.values) |item| w.writeInt32AssumeCapacity(1, item);
+                for (self.flags) |item| w.writeBoolAssumeCapacity(2, item);
+                for (self.kinds) |item| w.writeInt32AssumeCapacity(3, item);
                 try pbz.wire.writeRawFieldsDeterministicAssumeCapacity(allocator, self._unknown_fields, w);
             }
 
@@ -603,81 +334,173 @@ pub const demo = struct {
             pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
-                var test_list: std.ArrayList([]const u8) = .empty;
-                defer test_list.deinit(allocator);
+                var values_list: std.ArrayList(i32) = .empty;
+                defer values_list.deinit(allocator);
+                var flags_list: std.ArrayList(bool) = .empty;
+                defer flags_list.deinit(allocator);
+                var kinds_list: std.ArrayList(i32) = .empty;
+                defer kinds_list.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
-                        1 => { self.@"type" = try r.readInt32(); },
-                        2 => { self.@"error" = try r.readBytes(); if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; },
-                        3 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try test_list.append(allocator, value); },
-                        4 => {
-                            var entry = alignEntry{};
-                            const payload = try r.readBytes();
-                            var entry_reader = try r.nested(payload);
-                            while (try entry_reader.nextTag()) |entry_tag| {
-                                switch (entry_tag.number) {
-                                    1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                    2 => entry.value = try entry_reader.readInt32(),
-                                    else => try entry_reader.skipValue(entry_tag),
-                                }
+                        1 => {
+                            if (tag.wire_type == .length_delimited) {
+                                const payload = try r.readBytes();
+                                try pbz.wire.appendPackedInt32(allocator, &values_list, payload);
+                            } else {
+                                try values_list.append(allocator, try r.readInt32());
                             }
-                            try @This().putMapEntry_align(allocator, &self.@"align", entry);
                         },
-                        5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_async(allocator); self.async = .{ .await = value }; },
-                        6 => { const value = try r.readInt32(); self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = value }; },
-                        7 => { self.@"null" = try r.readBool(); },
+                        2 => {
+                            if (tag.wire_type == .length_delimited) {
+                                const payload = try r.readBytes();
+                                try pbz.wire.appendPackedBool(allocator, &flags_list, payload);
+                            } else {
+                                try flags_list.append(allocator, try r.readBool());
+                            }
+                        },
+                        3 => {
+                            if (tag.wire_type == .length_delimited) {
+                                const payload = try r.readBytes();
+                                try pbz.wire.appendPackedInt32(allocator, &kinds_list, payload);
+                            } else {
+                                { const value = try r.readInt32(); try kinds_list.append(allocator, value); }
+                            }
+                        },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
                 }
-                self.@"test" = if (test_list.items.len != 0 and test_list.items.len == test_list.capacity) test_list.toOwnedSliceAssert() else try test_list.toOwnedSlice(allocator);
+                self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
+                self.flags = if (flags_list.items.len != 0 and flags_list.items.len == flags_list.capacity) flags_list.toOwnedSliceAssert() else try flags_list.toOwnedSlice(allocator);
+                self.kinds = if (kinds_list.items.len != 0 and kinds_list.items.len == kinds_list.capacity) kinds_list.toOwnedSliceAssert() else try kinds_list.toOwnedSlice(allocator);
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                 return self;
             }
 
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
-                var test_list: std.ArrayList([]const u8) = std.ArrayList([]const u8).fromOwnedSlice(@constCast(self.@"test"));
-                test_list.clearRetainingCapacity();
-                self.@"test" = &.{};
-                errdefer test_list.deinit(allocator);
+                var values_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.values));
+                values_list.clearRetainingCapacity();
+                self.values = &.{};
+                errdefer values_list.deinit(allocator);
+                var flags_list: std.ArrayList(bool) = std.ArrayList(bool).fromOwnedSlice(@constCast(self.flags));
+                flags_list.clearRetainingCapacity();
+                self.flags = &.{};
+                errdefer flags_list.deinit(allocator);
+                var kinds_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.kinds));
+                kinds_list.clearRetainingCapacity();
+                self.kinds = &.{};
+                errdefer kinds_list.deinit(allocator);
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-                self.@"align".clearRetainingCapacity();
-                self._pbzDeinitOneof_async(allocator);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
-                self.@"type" = 0;
-                self.@"error" = "";
-                self.@"null" = false;
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 var r = pbz.Reader.init(bytes);
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
-                        1 => { self.@"type" = try r.readInt32(); },
-                        2 => { self.@"error" = try r.readBytes(); if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; },
-                        3 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try test_list.append(allocator, value); },
-                        4 => {
-                            var entry = alignEntry{};
-                            const payload = try r.readBytes();
-                            var entry_reader = try r.nested(payload);
-                            while (try entry_reader.nextTag()) |entry_tag| {
-                                switch (entry_tag.number) {
-                                    1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                    2 => entry.value = try entry_reader.readInt32(),
-                                    else => try entry_reader.skipValue(entry_tag),
-                                }
+                        1 => {
+                            if (tag.wire_type == .length_delimited) {
+                                const payload = try r.readBytes();
+                                try pbz.wire.appendPackedInt32(allocator, &values_list, payload);
+                            } else {
+                                try values_list.append(allocator, try r.readInt32());
                             }
-                            try @This().putMapEntry_align(allocator, &self.@"align", entry);
                         },
-                        5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_async(allocator); self.async = .{ .await = value }; },
-                        6 => { const value = try r.readInt32(); self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = value }; },
-                        7 => { self.@"null" = try r.readBool(); },
+                        2 => {
+                            if (tag.wire_type == .length_delimited) {
+                                const payload = try r.readBytes();
+                                try pbz.wire.appendPackedBool(allocator, &flags_list, payload);
+                            } else {
+                                try flags_list.append(allocator, try r.readBool());
+                            }
+                        },
+                        3 => {
+                            if (tag.wire_type == .length_delimited) {
+                                const payload = try r.readBytes();
+                                try pbz.wire.appendPackedInt32(allocator, &kinds_list, payload);
+                            } else {
+                                { const value = try r.readInt32(); try kinds_list.append(allocator, value); }
+                            }
+                        },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
                 }
-                self.@"test" = if (test_list.items.len != 0 and test_list.items.len == test_list.capacity) test_list.toOwnedSliceAssert() else try test_list.toOwnedSlice(allocator);
+                self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
+                self.flags = if (flags_list.items.len != 0 and flags_list.items.len == flags_list.capacity) flags_list.toOwnedSliceAssert() else try flags_list.toOwnedSlice(allocator);
+                self.kinds = if (kinds_list.items.len != 0 and kinds_list.items.len == kinds_list.capacity) kinds_list.toOwnedSliceAssert() else try kinds_list.toOwnedSlice(allocator);
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+            }
+
+            /// Trusted same-schema hot path that reuses existing repeated buffers.
+            /// The caller must pre-size those buffers for the decoded element counts.
+            /// Unknown or schema-mismatched fields are rejected instead of preserved.
+            pub fn decodeKnownReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                const values_buffer = @constCast(self.values);
+                var values_len: usize = 0;
+                const flags_buffer = @constCast(self.flags);
+                var flags_len: usize = 0;
+                const kinds_buffer = @constCast(self.kinds);
+                var kinds_len: usize = 0;
+                pbz.wire.clearRawFields(allocator, &self._unknown_fields);
+                if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                var r = pbz.Reader.init(bytes);
+                while (!r.eof()) {
+                    const raw_tag_start = r.position();
+                    const first_tag_byte = try r.readByte();
+                    const raw_tag: u64 = if (first_tag_byte < 0x80) first_tag_byte else blk: { r.index = raw_tag_start; break :blk try r.readVarint(); };
+                    switch (raw_tag) {
+                        10 => {
+                            const payload = try r.readBytes();
+                            var payload_index: usize = 0;
+                            while (payload_index < payload.len) {
+                                values_buffer[values_len] = try pbz.wire.readInt32At(payload, &payload_index);
+                                values_len += 1;
+                            }
+                        },
+                        8 => {
+                            values_buffer[values_len] = try r.readInt32();
+                            values_len += 1;
+                        },
+                        18 => {
+                            const payload = try r.readBytes();
+                            for (payload) |byte| {
+                                flags_buffer[flags_len] = byte != 0;
+                                flags_len += 1;
+                            }
+                        },
+                        16 => {
+                            flags_buffer[flags_len] = try r.readBool();
+                            flags_len += 1;
+                        },
+                        26 => {
+                            const payload = try r.readBytes();
+                            if (pbz.wire.packedEnumAllSingleByte(payload)) {
+                                for (payload) |byte| {
+                                    kinds_buffer[kinds_len] = @intCast(byte);
+                                    kinds_len += 1;
+                                }
+                            } else {
+                            var payload_index: usize = 0;
+                            while (payload_index < payload.len) {
+                                kinds_buffer[kinds_len] = @truncate(@as(i64, @bitCast(try pbz.wire.readVarintAt(payload, &payload_index))));
+                                kinds_len += 1;
+                            }
+                            }
+                        },
+                        24 => {
+                            kinds_buffer[kinds_len] = try r.readInt32();
+                            kinds_len += 1;
+                        },
+                        else => return error.InvalidWireType,
+                    }
+                }
+                if (values_len != values_buffer.len) return error.InvalidWireType;
+                self.values = values_buffer;
+                if (flags_len != flags_buffer.len) return error.InvalidWireType;
+                self.flags = flags_buffer;
+                if (kinds_len != kinds_buffer.len) return error.InvalidWireType;
+                self.kinds = kinds_buffer;
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -744,51 +567,23 @@ pub const demo = struct {
                 _ = allocator;
                 try writer.writeAll("{");
                 var first = true;
-                if (self.@"type" != 0 or options.always_print_primitive_fields) {
-                    try writer.writeAll(if (first) "\"type\":" else ",\"type\":"); first = false;
-                    const value = self.@"type";
-                    try writer.print("{d}", .{value});
-                }
-                if (self.@"error".len != 0 or options.always_print_primitive_fields) {
-                    try writer.writeAll(if (first) "\"error\":" else ",\"error\":"); first = false;
-                    const value = self.@"error";
-                    try @This().jsonWriteString(writer, value);
-                }
-                if (self.@"test".len != 0 or options.always_print_primitive_fields) {
-                    try writer.writeAll(if (first) "\"test\":" else ",\"test\":"); first = false;
+                if (self.values.len != 0 or options.always_print_primitive_fields) {
+                    try writer.writeAll(if (first) "\"values\":" else ",\"values\":"); first = false;
                     try writer.writeAll("[");
-                    for (self.@"test", 0..) |item, i| { if (i != 0) try writer.writeAll(","); try @This().jsonWriteString(writer, item); }
+                    for (self.values, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.print("{d}", .{item}); }
                     try writer.writeAll("]");
                 }
-                if (self.@"align".count() != 0 or options.always_print_primitive_fields) {
-                    try writer.writeAll(if (first) "\"align\":" else ",\"align\":"); first = false;
-                    try writer.writeAll("{");
-                    var map_it = self.@"align".iterator();
-                    var i: usize = 0;
-                    while (map_it.next()) |map_entry| : (i += 1) {
-                        const entry = alignEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
-                        if (i != 0) try writer.writeAll(",");
-                        try @This().jsonWriteString(writer, entry.key);
-                        try writer.writeAll(":");
-                        try writer.print("{d}", .{entry.value});
-                    }
-                    try writer.writeAll("}");
+                if (self.flags.len != 0 or options.always_print_primitive_fields) {
+                    try writer.writeAll(if (first) "\"flags\":" else ",\"flags\":"); first = false;
+                    try writer.writeAll("[");
+                    for (self.flags, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try writer.writeAll(if (item) "true" else "false"); }
+                    try writer.writeAll("]");
                 }
-                if (self.@"null" or options.always_print_primitive_fields) {
-                    try writer.writeAll(if (first) "\"null\":" else ",\"null\":"); first = false;
-                    const value = self.@"null";
-                    try writer.writeAll(if (value) "true" else "false");
-                }
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| {
-                        try writer.writeAll(if (first) "\"await\":" else ",\"await\":"); first = false;
-                        try @This().jsonWriteString(writer, value);
-                    },
-                    .@"opaque" => |value| {
-                        try writer.writeAll(if (first) "\"opaque\":" else ",\"opaque\":"); first = false;
-                        try writer.print("{d}", .{value});
-                    },
+                if (self.kinds.len != 0 or options.always_print_primitive_fields) {
+                    try writer.writeAll(if (first) "\"kinds\":" else ",\"kinds\":"); first = false;
+                    try writer.writeAll("[");
+                    for (self.kinds, 0..) |item, i| { if (i != 0) try writer.writeAll(","); try @This().jsonWriteEnum(writer, item, &.{"KIND_UNKNOWN", "KIND_A", "KIND_B"}, &.{0, 1, 2}, options.enum_as_name); }
+                    try writer.writeAll("]");
                 }
                 try writer.writeAll("}");
             }
@@ -846,67 +641,46 @@ pub const demo = struct {
                     const key = entry.key_ptr.*;
                     const value = entry.value_ptr.*;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "type")) {
-                            self.@"type" = 0;
+                        if (std.mem.eql(u8, key, "values")) {
+                            const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "error")) {
-                            self.@"error" = "";
+                        if (std.mem.eql(u8, key, "flags")) {
+                            const old = self.flags; self.flags = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "test")) {
-                            const old = self.@"test"; self.@"test" = &.{}; if (old.len != 0) allocator.free(old);
+                        if (std.mem.eql(u8, key, "kinds")) {
+                            const old = self.kinds; self.kinds = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "align")) {
-                            @This().deinitMap_align(allocator, &self.@"align");
-                            continue;
-                        }
-                        if (std.mem.eql(u8, key, "null")) {
-                            self.@"null" = false;
-                            continue;
-                        }
-                        if (std.mem.eql(u8, key, "await")) { self._pbzDeinitOneof_async(allocator); continue; }
-                        if (std.mem.eql(u8, key, "opaque")) { self._pbzDeinitOneof_async(allocator); continue; }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "type")) {
-                        self.@"type" = try @This().jsonInt(i32, value);
-                        continue;
-                    }
-                    if (std.mem.eql(u8, key, "error")) {
-                        self.@"error" = try @This().jsonString(value);
-                        continue;
-                    }
-                    if (std.mem.eql(u8, key, "test")) {
+                    if (std.mem.eql(u8, key, "values")) {
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
-                        var list: std.ArrayList([]const u8) = .empty;
+                        var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);
-                        for (array.items) |item| try list.append(allocator, try @This().jsonString(item));
-                        self.@"test" = blk: { const old = self.@"test"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                        for (array.items) |item| try list.append(allocator, try @This().jsonInt(i32, item));
+                        self.values = blk: { const old = self.values; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "align")) {
-                        const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
-                        @This().deinitMap_align(allocator, &self.@"align");
-                        try self.@"align".ensureUnusedCapacity(allocator, object_value.count());
-                        var map_it = object_value.iterator();
-                        while (map_it.next()) |map_entry| {
-                            try @This().putMapEntry_align(allocator, &self.@"align", .{ .key = map_entry.key_ptr.*, .value = try @This().jsonInt(i32, map_entry.value_ptr.*) });
+                    if (std.mem.eql(u8, key, "flags")) {
+                        const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
+                        var list: std.ArrayList(bool) = .empty;
+                        errdefer list.deinit(allocator);
+                        for (array.items) |item| try list.append(allocator, try @This().jsonBool(item));
+                        self.flags = blk: { const old = self.flags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "kinds")) {
+                        const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
+                        var list: std.ArrayList(i32) = .empty;
+                        errdefer list.deinit(allocator);
+                        for (array.items) |item| {
+                            const parsed_enum = @This().jsonEnum(item, &.{"KIND_UNKNOWN", "KIND_A", "KIND_B"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
+                            try list.append(allocator, parsed_enum);
                         }
-                        continue;
-                    }
-                    if (std.mem.eql(u8, key, "null")) {
-                        self.@"null" = try @This().jsonBool(value);
-                        continue;
-                    }
-                    if (std.mem.eql(u8, key, "await")) {
-                        self._pbzDeinitOneof_async(allocator); self.async = .{ .await = try @This().jsonString(value) };
-                        continue;
-                    }
-                    if (std.mem.eql(u8, key, "opaque")) {
-                        self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = try @This().jsonInt(i32, value) };
+                        self.kinds = blk: { const old = self.kinds; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
@@ -1438,27 +1212,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
                 _ = allocator;
-                _ = options;
-                if (self.@"type" != 0) { try writer.writeAll("type: "); const value = self.@"type"; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
-                if (self.@"error".len != 0) { try writer.writeAll("error: "); const value = self.@"error"; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
-                for (self.@"test") |value| { try writer.writeAll("test: "); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
-                { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
-                    const entry = alignEntry{ .key = map_entry.key_ptr.*, .value = map_entry.value_ptr.* };
-                    try writer.writeAll("align {\n");
-                    try writer.writeAll("key: "); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer); try writer.writeByte('\n');
-                    try writer.writeAll("value: "); try writer.print("{d}", .{entry.value}); try writer.writeByte('\n');
-                    try writer.writeAll("}\n");
-                } }
-                if (self.@"null") { try writer.writeAll("null: "); const value = self.@"null"; try writer.writeAll(if (value) "true" else "false"); try writer.writeByte('\n'); }
-                switch (self.async) {
-                    .none => {},
-                    .await => |value| {
-                        try writer.writeAll("await: "); try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n');
-                    },
-                    .@"opaque" => |value| {
-                        try writer.writeAll("opaque: "); try writer.print("{d}", .{value}); try writer.writeByte('\n');
-                    },
-                }
+                for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+                for (self.flags) |value| { try writer.writeAll("flags: "); try writer.writeAll(if (value) "true" else "false"); try writer.writeByte('\n'); }
+                for (self.kinds) |value| { try writer.writeAll("kinds: "); try @This().textWriteEnum(writer, value, &.{"KIND_UNKNOWN", "KIND_A", "KIND_B"}, &.{0, 1, 2}, options.enum_as_name); try writer.writeByte('\n'); }
                 for (self._unknown_fields) |raw| {
                     try @This().textWriteUnknownRaw(raw, writer);
                 }
@@ -1473,10 +1229,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
-                var test_list: std.ArrayList([]const u8) = .empty;
-                defer test_list.deinit(allocator);
-                var align_list: std.ArrayList(alignEntry) = .empty;
-                defer align_list.deinit(allocator);
+                var values_list: std.ArrayList(i32) = .empty;
+                defer values_list.deinit(allocator);
+                var flags_list: std.ArrayList(bool) = .empty;
+                defer flags_list.deinit(allocator);
+                var kinds_list: std.ArrayList(i32) = .empty;
+                defer kinds_list.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 const needs_normalized_text = @This().textNeedsSeparatorNormalization(text);
@@ -1487,46 +1245,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 while (lines.next()) |raw_line| {
                     const line = @This().textCleanLine(raw_line, text_has_comments);
                     if (line.len == 0) continue;
-                    if (@This().textFieldValue(line, "type")) |raw_value| {
-                        self.@"type" = try @This().textInt(i32, raw_value);
+                    if (@This().textFieldValue(line, "values")) |raw_value| {
+                        try values_list.append(allocator, try @This().textInt(i32, raw_value));
                         continue;
                     }
-                    if (@This().textFieldValue(line, "error")) |raw_value| {
-                        self.@"error" = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };
+                    if (@This().textFieldValue(line, "flags")) |raw_value| {
+                        try flags_list.append(allocator, try @This().textBool(raw_value));
                         continue;
                     }
-                    if (@This().textFieldValue(line, "test")) |raw_value| {
-                        try test_list.append(allocator, blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; });
+                    if (@This().textFieldValue(line, "kinds")) |raw_value| {
+                        const parsed_enum = @This().textEnum(raw_value, &.{"KIND_UNKNOWN", "KIND_A", "KIND_B"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; };
+                        try kinds_list.append(allocator, parsed_enum);
                         continue;
                     }
-                    if (@This().textBlockField(line, "align")) {
-                        var entry = alignEntry{};
-                        while (lines.next()) |raw_entry_line| {
-                            const entry_line = @This().textCleanLine(raw_entry_line, text_has_comments);
-                            if (entry_line.len == 0) continue;
-                            if (std.mem.eql(u8, entry_line, "}") or std.mem.eql(u8, entry_line, ">")) break;
-                            if (@This().textFieldValue(entry_line, "key")) |raw_key| { entry.key = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_key); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; }; continue; }
-                            if (@This().textFieldValue(entry_line, "value")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }
-                            return error.UnknownField;
-                        }
-                        try @This().appendOrReplaceMapEntry_align(allocator, &align_list, entry);
-                        continue;
-                    }
-                    if (@This().textFieldValue(line, "null")) |raw_value| {
-                        self.@"null" = try @This().textBool(raw_value);
-                        continue;
-                    }
-                    if (@This().textFieldValue(line, "await")) |raw_value| { self._pbzDeinitOneof_async(allocator); self.async = .{ .await = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
-                    if (@This().textFieldValue(line, "opaque")) |raw_value| { self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = try @This().textInt(i32, raw_value) }; continue; }
                     if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                     if (try @This().textUnknownGroup(allocator, line, &lines, text_has_comments)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                self.@"test" = if (test_list.items.len != 0 and test_list.items.len == test_list.capacity) test_list.toOwnedSliceAssert() else try test_list.toOwnedSlice(allocator);
-                self.@"align" = .empty;
-                try self.@"align".ensureUnusedCapacity(allocator, align_list.items.len);
-                for (align_list.items) |entry| self.@"align".putAssumeCapacityNoClobber(entry.key, entry.value);
+                self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
+                self.flags = if (flags_list.items.len != 0 and flags_list.items.len == flags_list.capacity) flags_list.toOwnedSliceAssert() else try flags_list.toOwnedSlice(allocator);
+                self.kinds = if (kinds_list.items.len != 0 and kinds_list.items.len == kinds_list.capacity) kinds_list.toOwnedSliceAssert() else try kinds_list.toOwnedSlice(allocator);
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
                 return self;
             }

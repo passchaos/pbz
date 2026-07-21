@@ -1863,7 +1863,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodedSize(self: @This()) usize {
             var size: usize = 0;
-            if (self.active) size += 1 + 1;
+            if (self.active) size += 1 + (if (self.active) @as(usize, 1) else @as(usize, 1));
             if (self.count != 0) size += 1 + pbz.wire.encodedVarintSize(self.count);
             if (self.total != 0) size += 1 + pbz.wire.encodedVarintSize(self.total);
             if (self.delta != 0) size += 1 + pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode32(self.delta));

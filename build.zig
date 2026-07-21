@@ -168,6 +168,7 @@ pub fn build(b: *std.Build) void {
         "generated_messageset",
         "generated_map_keys",
         "generated_nested_types",
+        "generated_unpacked",
         "generated_imports",
         "generated_groups",
         "generated_recursive",

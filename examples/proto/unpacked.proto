@@ -1,0 +1,14 @@
+syntax = "proto3";
+package demo.unpacked;
+
+enum Kind {
+  KIND_UNKNOWN = 0;
+  KIND_A = 1;
+  KIND_B = 2;
+}
+
+message Unpacked {
+  repeated int32 values = 1 [packed = false];
+  repeated bool flags = 2 [packed = false];
+  repeated Kind kinds = 3 [packed = false];
+}

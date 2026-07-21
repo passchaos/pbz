@@ -3065,7 +3065,12 @@ fn writeScalarPayloadSizeExprForField(scalar: schema.ScalarType, receiver: []con
             try writeQuotedIdent(field_name, writer);
             try writer.writeAll("))");
         },
-        .bool => try writer.writeAll("1"),
+        .bool => {
+            try writer.writeAll("(if (");
+            try writer.writeAll(receiver);
+            try writeQuotedIdent(field_name, writer);
+            try writer.writeAll(") @as(usize, 1) else @as(usize, 1))");
+        },
         .string, .bytes => {
             try writer.writeAll("pbz.wire.encodedVarintSize(");
             try writer.writeAll(receiver);
@@ -6922,7 +6927,7 @@ fn writePackedScalarSizeExpr(scalar: schema.ScalarType, value_expr: []const u8, 
         .uint32, .uint64 => try writer.print("pbz.wire.encodedVarintSize({s})", .{value_expr}),
         .sint32 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode32({s}))", .{value_expr}),
         .sint64 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode64({s}))", .{value_expr}),
-        .bool => try writer.writeAll("1"),
+        .bool => try writer.print("(if ({s}) @as(usize, 1) else @as(usize, 1))", .{value_expr}),
         .string, .bytes => try writer.writeAll("@compileError(\"non-packable scalar\")"),
     }
 }
@@ -7499,7 +7504,7 @@ fn writeScalarPayloadSizeExpr(scalar: schema.ScalarType, value_expr: []const u8,
         .uint32, .uint64 => try writer.print("pbz.wire.encodedVarintSize({s})", .{value_expr}),
         .sint32 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode32({s}))", .{value_expr}),
         .sint64 => try writer.print("pbz.wire.encodedVarintSize(pbz.wire.zigZagEncode64({s}))", .{value_expr}),
-        .bool => try writer.writeAll("1"),
+        .bool => try writer.print("(if ({s}) @as(usize, 1) else @as(usize, 1))", .{value_expr}),
         .string, .bytes => try writer.print("pbz.wire.encodedVarintSize({s}.len) + {s}.len", .{ value_expr, value_expr }),
     }
 }
