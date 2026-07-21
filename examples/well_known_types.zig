@@ -20,8 +20,33 @@ pub fn main() !void {
     defer mask.deinit(allocator);
     std.debug.assert(mask.paths.len == 2);
 
+    const empty_bytes = try pbz.Empty.encode(allocator);
+    defer allocator.free(empty_bytes);
+    std.debug.assert(empty_bytes.len == 0);
+    _ = try pbz.Empty.decode(empty_bytes);
+    try std.testing.expectError(error.UnknownField, pbz.Empty.jsonParse(allocator, "{\"unexpected\":true}"));
+
     var title = try pbz.StringValue.jsonParseOwned(allocator, "\"hello\"");
     defer title.deinit(allocator);
+
+    var big_int = try pbz.Int64Value.jsonParse(allocator, "\"9007199254740993\"");
+    std.debug.assert(big_int.value == 9_007_199_254_740_993);
+    const big_int_json = try big_int.jsonStringifyAlloc(allocator);
+    defer allocator.free(big_int_json);
+    std.debug.assert(std.mem.eql(u8, big_int_json, "\"9007199254740993\""));
+
+    var bytes_value = try pbz.BytesValue.jsonParseOwned(allocator, "\"aGk\"");
+    defer bytes_value.deinit(allocator);
+    std.debug.assert(std.mem.eql(u8, bytes_value.value, "hi"));
+    const bytes_value_json = try bytes_value.jsonStringifyAlloc(allocator);
+    defer allocator.free(bytes_value_json);
+    std.debug.assert(std.mem.eql(u8, bytes_value_json, "\"aGk=\""));
+
+    const nan_double = try pbz.DoubleValue.jsonParse(allocator, "\"NaN\"");
+    std.debug.assert(std.math.isNan(nan_double.value));
+    const nan_json = try nan_double.jsonStringifyAlloc(allocator);
+    defer allocator.free(nan_json);
+    std.debug.assert(std.mem.eql(u8, nan_json, "\"NaN\""));
 
     var any_title = try pbz.Any.packEncoded(allocator, "google.protobuf.StringValue", title);
     defer any_title.deinit(allocator);
@@ -44,9 +69,38 @@ pub fn main() !void {
     defer allocator.free(object_json);
     std.debug.assert(std.mem.indexOf(u8, object_json, "enabled") != null);
 
+    var scalar_value = try pbz.Value.jsonParse(allocator, "\"standalone\"");
+    defer scalar_value.deinit(allocator);
+    const scalar_value_wire = try scalar_value.encode(allocator);
+    defer allocator.free(scalar_value_wire);
+    var scalar_value_roundtrip = try pbz.Value.decode(allocator, scalar_value_wire);
+    defer scalar_value_roundtrip.deinit(allocator);
+    switch (scalar_value_roundtrip) {
+        .string_value => |value| std.debug.assert(std.mem.eql(u8, value, "standalone")),
+        else => return error.UnexpectedValueKind,
+    }
+
+    var list = try pbz.ListValue.jsonParse(allocator,
+        \\[null,true,{"nested":["owned"]}]
+    );
+    defer list.deinit(allocator);
+    const list_json = try list.jsonStringifyAlloc(allocator);
+    defer allocator.free(list_json);
+    std.debug.assert(std.mem.indexOf(u8, list_json, "\"owned\"") != null);
+    const list_wire = try list.encode(allocator);
+    defer allocator.free(list_wire);
+    var list_roundtrip = try pbz.ListValue.decode(allocator, list_wire);
+    defer list_roundtrip.deinit(allocator);
+    std.debug.assert(list_roundtrip.values.len == 3);
+
     var object_any = try pbz.Any.packEncoded(allocator, "google.protobuf.Struct", object);
     defer object_any.deinit(allocator);
     const object_any_json = try object_any.jsonStringifyAlloc(allocator);
     defer allocator.free(object_any_json);
     std.debug.assert(std.mem.indexOf(u8, object_any_json, "\"value\":{") != null);
+
+    var empty_any = try pbz.Any.jsonParse(allocator, "{\"@type\":\"type.googleapis.com/google.protobuf.Empty\",\"value\":{}}");
+    defer empty_any.deinit(allocator);
+    std.debug.assert(empty_any.isType("google.protobuf.Empty"));
+    _ = try pbz.Empty.decode(empty_any.value);
 }

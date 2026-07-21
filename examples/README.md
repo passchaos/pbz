@@ -56,7 +56,9 @@ library API.
 - `generated_recursive.zig` — generated self-recursive message usage from `proto/recursive.proto`, including raw-payload singular recursion, typed repeated recursion, and decode recursion-limit enforcement.
 - `generated_streaming.zig` — generated service client/handler adapters over an in-memory transport covering unary, client-streaming, server-streaming, and bidirectional-streaming RPC shapes from `proto/streaming.proto`.
 - `ownership_patterns.zig` — generated and dynamic arena-style ownership, clone-to-long-lived allocator, and generated decode reuse patterns.
-- `well_known_types.zig` — Timestamp, Duration, FieldMask, wrappers, Any including embedded WKT JSON values, and Struct helpers.
+- `well_known_types.zig` — Timestamp, Duration, FieldMask, Empty,
+  Struct/Value/ListValue, scalar wrappers, bytes wrappers, and Any including
+  embedded WKT JSON values.
 - `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup and required-field validation.
 - `any_type_url.zig` — custom `Any` type URL prefixes, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON and preserved unknown storage.

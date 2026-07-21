@@ -280,7 +280,9 @@ benchmark harness.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing and unknown
   preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
-  standalone `Any` JSON mapping for embedded WKT payload values.
+  Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and
+  bytes wrappers, standalone `Any` JSON mapping for embedded WKT payload
+  values, and WKT wire round-trips.
 - `examples/any_dynamic.zig` covers custom dynamic-message `Any`
   pack/unpack with registry lookup, type-url matching, required-field
   validation on pack and unpack, and type mismatch errors.
