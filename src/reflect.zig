@@ -125,6 +125,10 @@ pub const Reflection = struct {
         try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .int64 = value });
     }
 
+    pub fn addInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .int64 = value });
+    }
+
     pub fn getInt64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i64 {
         const field = try self.fieldByName(message_value.descriptor, name);
         const value = lastValue(message_value, field) orelse return error.MissingField;
@@ -134,8 +138,182 @@ pub const Reflection = struct {
         };
     }
 
+    pub fn setUInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u32) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .uint32 = value });
+    }
+
+    pub fn addUInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u32) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .uint32 = value });
+    }
+
+    pub fn getUInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u32 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .uint32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setUInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u64) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .uint64 = value });
+    }
+
+    pub fn addUInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u64) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .uint64 = value });
+    }
+
+    pub fn getUInt64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u64 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .uint64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setSInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sint32 = value });
+    }
+
+    pub fn addSInt32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sint32 = value });
+    }
+
+    pub fn getSInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .sint32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setSInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sint64 = value });
+    }
+
+    pub fn addSInt64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sint64 = value });
+    }
+
+    pub fn getSInt64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i64 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .sint64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setFixed32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u32) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .fixed32 = value });
+    }
+
+    pub fn addFixed32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u32) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .fixed32 = value });
+    }
+
+    pub fn getFixed32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u32 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .fixed32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setFixed64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u64) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .fixed64 = value });
+    }
+
+    pub fn addFixed64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: u64) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .fixed64 = value });
+    }
+
+    pub fn getFixed64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!u64 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .fixed64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setSFixed32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sfixed32 = value });
+    }
+
+    pub fn addSFixed32(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sfixed32 = value });
+    }
+
+    pub fn getSFixed32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .sfixed32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setSFixed64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sfixed64 = value });
+    }
+
+    pub fn addSFixed64(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i64) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .sfixed64 = value });
+    }
+
+    pub fn getSFixed64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i64 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .sfixed64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setFloat(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: f32) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .float = value });
+    }
+
+    pub fn addFloat(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: f32) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .float = value });
+    }
+
+    pub fn getFloat(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!f32 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .float => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn setDouble(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: f64) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .double = value });
+    }
+
+    pub fn addDouble(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: f64) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .double = value });
+    }
+
+    pub fn getDouble(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!f64 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const value = lastValue(message_value, field) orelse return error.MissingField;
+        return switch (value) {
+            .double => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn setBool(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: bool) Error!void {
         try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .boolean = value });
+    }
+
+    pub fn addBool(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: bool) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .boolean = value });
     }
 
     pub fn getBool(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!bool {
@@ -183,6 +361,15 @@ pub const Reflection = struct {
         try self.set(message_value, field, .{ .bytes = owned });
     }
 
+    pub fn addBytes(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: []const u8) Error!void {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const owned = try self.allocator.dupe(u8, value);
+        var owns_owned = true;
+        errdefer if (owns_owned) self.allocator.free(owned);
+        owns_owned = false;
+        try self.add(message_value, field, .{ .bytes = owned });
+    }
+
     pub fn getBytes(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]const u8 {
         const field = try self.fieldByName(message_value.descriptor, name);
         const value = lastValue(message_value, field) orelse return error.MissingField;
@@ -194,6 +381,10 @@ pub const Reflection = struct {
 
     pub fn setEnum(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
         try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .enumeration = value });
+    }
+
+    pub fn addEnum(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: i32) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .enumeration = value });
     }
 
     pub fn getEnum(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!i32 {

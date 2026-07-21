@@ -26,6 +26,21 @@ pub fn main() !void {
         \\  Role role = 5;
         \\  Profile profile = 6;
         \\  oneof contact { string email = 7; bool disabled = 8; }
+        \\  uint32 quota = 9;
+        \\  uint64 total = 10;
+        \\  sint32 delta = 11;
+        \\  sint64 big_delta = 12;
+        \\  fixed32 checksum = 13;
+        \\  fixed64 token = 14;
+        \\  sfixed32 signed_fixed = 15;
+        \\  sfixed64 signed_big_fixed = 16;
+        \\  float ratio = 17;
+        \\  double score = 18;
+        \\  repeated bool flags = 19;
+        \\  repeated bytes blobs = 20;
+        \\  repeated Role roles = 21;
+        \\  repeated uint32 samples = 22;
+        \\  repeated sint64 deltas = 23;
         \\}
     );
 
@@ -51,6 +66,26 @@ pub fn main() !void {
     try std.testing.expectError(error.TypeMismatch, refl.getString(&user, "email"));
     try refl.clearField(&user, "email");
     try refl.setString(&user, "email", "ada@example.test");
+    try refl.setUInt32(&user, "quota", 42);
+    try refl.setUInt64(&user, "total", 9_000_000_000);
+    try refl.setSInt32(&user, "delta", -12);
+    try refl.setSInt64(&user, "big_delta", -9_000_000_000);
+    try refl.setFixed32(&user, "checksum", 0xdead_beef);
+    try refl.setFixed64(&user, "token", 0x0102_0304_0506_0708);
+    try refl.setSFixed32(&user, "signed_fixed", -123);
+    try refl.setSFixed64(&user, "signed_big_fixed", -456);
+    try refl.setFloat(&user, "ratio", 1.5);
+    try refl.setDouble(&user, "score", 9.25);
+    try refl.addBool(&user, "flags", false);
+    try refl.addBool(&user, "flags", true);
+    try refl.addBytes(&user, "blobs", &.{ 1, 2 });
+    try refl.addBytes(&user, "blobs", &.{ 3, 4 });
+    try refl.addEnum(&user, "roles", 0);
+    try refl.addEnum(&user, "roles", 1);
+    try refl.addUInt32(&user, "samples", 10);
+    try refl.addUInt32(&user, "samples", 20);
+    try refl.addSInt64(&user, "deltas", -1);
+    try refl.addSInt64(&user, "deltas", -2);
 
     const profile = try allocator.create(pbz.DynamicMessage);
     profile.* = pbz.DynamicMessage.init(allocator, profile_desc);
@@ -64,6 +99,21 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&user, "tags"));
     try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 1)).string);
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "role"));
+    try std.testing.expectEqual(@as(u32, 42), try refl.getUInt32(&user, "quota"));
+    try std.testing.expectEqual(@as(u64, 9_000_000_000), try refl.getUInt64(&user, "total"));
+    try std.testing.expectEqual(@as(i32, -12), try refl.getSInt32(&user, "delta"));
+    try std.testing.expectEqual(@as(i64, -9_000_000_000), try refl.getSInt64(&user, "big_delta"));
+    try std.testing.expectEqual(@as(u32, 0xdead_beef), try refl.getFixed32(&user, "checksum"));
+    try std.testing.expectEqual(@as(u64, 0x0102_0304_0506_0708), try refl.getFixed64(&user, "token"));
+    try std.testing.expectEqual(@as(i32, -123), try refl.getSFixed32(&user, "signed_fixed"));
+    try std.testing.expectEqual(@as(i64, -456), try refl.getSFixed64(&user, "signed_big_fixed"));
+    try std.testing.expectEqual(@as(f32, 1.5), try refl.getFloat(&user, "ratio"));
+    try std.testing.expectEqual(@as(f64, 9.25), try refl.getDouble(&user, "score"));
+    try std.testing.expect(try refl.getBool(&user, "flags"));
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, try refl.getBytes(&user, "blobs"));
+    try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "roles"));
+    try std.testing.expectEqual(@as(u32, 20), (try refl.repeatedValue(&user, "samples", 1)).uint32);
+    try std.testing.expectEqual(@as(i64, -2), (try refl.repeatedValue(&user, "deltas", 1)).sint64);
     try std.testing.expectEqualStrings("email", refl.whichOneof(&user, "contact").?.name);
     try std.testing.expectEqualStrings("ada@example.test", try refl.getString(&user, "email"));
 
