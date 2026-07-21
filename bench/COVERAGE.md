@@ -242,6 +242,10 @@ benchmark harness.
   preservation, usable local fields when a weak import is absent, and
   registry-backed binary/JSON/TextFormat round-trips when the weak import is
   present.
+- `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
+  dynamic schemas, descriptor round-trips, parser rejection of reserved
+  declarations, and TextFormat's protobuf-compatible reserved-name ignore
+  semantics.
 - `examples/generated_merge_semantics.zig` covers generated binary decode merge
   semantics for repeated singular messages, repeated fields, map last-wins,
   oneof last-wins, and decode reuse.
