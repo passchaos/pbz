@@ -58,6 +58,10 @@ pub fn main() !void {
     std.debug.assert(!event.has(event_desc.findField("id").?));
     try event.add(event_desc.findField("id").?, .{ .int32 = 7 });
     std.debug.assert(!event.clearFieldByName("missing"));
+    std.debug.assert(event.clearOneof("payload"));
+    std.debug.assert(event.whichOneof("payload") == null);
+    try event.add(event_desc.findField("note").?, .{ .string = try allocator.dupe(u8, "hello") });
+    std.debug.assert(!event.clearOneof("missing"));
 
     const encoded = try event.encodedDeterministic(&file);
     defer allocator.free(encoded);

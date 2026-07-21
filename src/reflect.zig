@@ -45,6 +45,10 @@ pub const Reflection = struct {
         return descriptor.findFieldByNumber(number) orelse error.UnknownField;
     }
 
+    pub fn oneofByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.OneofDescriptor {
+        return descriptor.findOneof(name) orelse error.UnknownField;
+    }
+
     pub fn has(_: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) bool {
         return message_value.has(field);
     }
@@ -101,6 +105,11 @@ pub const Reflection = struct {
 
     pub fn clearField(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!void {
         self.clear(message_value, try self.fieldByName(message_value.descriptor, name));
+    }
+
+    pub fn clearOneof(self: Reflection, message_value: *dynamic.DynamicMessage, oneof_name: []const u8) Error!bool {
+        _ = try self.oneofByName(message_value.descriptor, oneof_name);
+        return message_value.clearOneof(oneof_name);
     }
 
     pub fn whichOneof(_: Reflection, message_value: *const dynamic.DynamicMessage, oneof_name: []const u8) ?*const schema.FieldDescriptor {
@@ -412,6 +421,12 @@ test "reflection facade creates and edits dynamic messages" {
     try refl.setString(&msg, "label", "chosen");
     try std.testing.expectEqualStrings("label", refl.whichOneof(&msg, "pick").?.name);
     try std.testing.expectEqualStrings("chosen", try refl.getString(&msg, "label"));
+    try std.testing.expectEqualStrings("pick", (try refl.oneofByName(msg.descriptor, "pick")).name);
+    try std.testing.expect(try refl.clearOneof(&msg, "pick"));
+    try std.testing.expect(refl.whichOneof(&msg, "pick") == null);
+    try std.testing.expectError(error.MissingField, refl.getString(&msg, "label"));
+    try std.testing.expect(!(try refl.clearOneof(&msg, "pick")));
+    try std.testing.expectError(error.UnknownField, refl.clearOneof(&msg, "missing"));
 
     try refl.clearField(&msg, "name");
     try std.testing.expect(!(try refl.hasField(&msg, "name")));

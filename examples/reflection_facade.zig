@@ -154,6 +154,11 @@ pub fn main() !void {
     try refl.setBool(&user, "disabled", true);
     try std.testing.expectEqualStrings("disabled", refl.whichOneof(&user, "contact").?.name);
     try std.testing.expect(try refl.getBool(&user, "disabled"));
+    try std.testing.expectEqualStrings("contact", (try refl.oneofByName(user_desc, "contact")).name);
+    try std.testing.expect(try refl.clearOneof(&user, "contact"));
+    try std.testing.expect(refl.whichOneof(&user, "contact") == null);
+    try std.testing.expectError(error.MissingField, refl.getBool(&user, "disabled"));
+    try refl.setBool(&user, "disabled", true);
 
     try refl.clearField(&user, "name");
     try std.testing.expect(!(try refl.hasField(&user, "name")));

@@ -500,6 +500,13 @@ pub const MessageDescriptor = struct {
         return null;
     }
 
+    pub fn findOneof(self: *const MessageDescriptor, name: []const u8) ?*const OneofDescriptor {
+        for (self.oneofs.items) |*oneof| {
+            if (std.mem.eql(u8, oneof.name, name)) return oneof;
+        }
+        return null;
+    }
+
     pub fn findMessage(self: *const MessageDescriptor, name: []const u8) ?*const MessageDescriptor {
         for (self.messages.items) |*message| {
             if (std.mem.eql(u8, message.name, name)) return message;

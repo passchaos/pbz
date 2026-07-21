@@ -27,6 +27,7 @@ pub const Writer = wire.Writer;
 pub const FileDescriptor = schema.FileDescriptor;
 pub const MessageDescriptor = schema.MessageDescriptor;
 pub const FieldDescriptor = schema.FieldDescriptor;
+pub const OneofDescriptor = schema.OneofDescriptor;
 pub const ServiceDescriptor = schema.ServiceDescriptor;
 pub const MethodDescriptor = schema.MethodDescriptor;
 pub const FieldEditionDefault = schema.FieldEditionDefault;

@@ -272,8 +272,8 @@ benchmark harness.
   append/query/clear APIs, by-number extraction, sidecar counts, exact raw-byte
   round-trip, and invalid raw-field rejection.
 - `examples/dynamic_message.zig` covers dynamic runtime schema usage,
-  repeated/map/oneof mutation, field and map-entry clear helpers, deterministic
-  encode/decode, decode reuse clearing semantics for absent fields, and dynamic
+  repeated/map/oneof mutation, field, oneof, and map-entry clear helpers,
+  deterministic encode/decode, decode reuse clearing semantics for absent fields, and dynamic
   unknown-field query/mutation APIs including append, by-number extraction,
   sidecar counts, clear, and invalid raw-field rejection.
 - `examples/dynamic_json_options.zig` covers dynamic JSON parse/stringify
@@ -303,7 +303,7 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/clear
   helpers across all scalar families, repeated fields, map last-wins mutation,
-  oneof inspection, imported message fields, service descriptor/method lookup,
+  oneof lookup/inspection/clearing, imported message fields, service descriptor/method lookup,
   binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for

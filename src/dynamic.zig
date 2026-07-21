@@ -156,6 +156,24 @@ pub const DynamicMessage = struct {
         return self.clearField(field);
     }
 
+    pub fn clearOneof(self: *DynamicMessage, oneof_name: []const u8) bool {
+        if (self.descriptor.findOneof(oneof_name) == null) return false;
+        var removed = false;
+        var index: usize = 0;
+        while (index < self.fields.items.len) {
+            const entry = &self.fields.items[index];
+            const same_oneof = if (entry.descriptor.oneof_name) |name| std.mem.eql(u8, name, oneof_name) else false;
+            if (same_oneof) {
+                entry.deinit(self.allocator);
+                _ = self.fields.swapRemove(index);
+                removed = true;
+                continue;
+            }
+            index += 1;
+        }
+        return removed;
+    }
+
     pub fn clearMapEntry(self: *DynamicMessage, field: *const schema.FieldDescriptor, key: Value) bool {
         if (field.kind != .map) return false;
         const field_value = self.getMutableByNumber(field.number) orelse return false;
@@ -3035,6 +3053,12 @@ test "dynamic oneof keeps only the last selected field" {
     try std.testing.expect(decoded.get("name") == null);
     try std.testing.expectEqualStrings("id", decoded.whichOneof("pick").?.name);
     try std.testing.expectEqual(@as(i32, 7), decoded.get("id").?.values.items[0].int32);
+
+    try std.testing.expect(decoded.clearOneof("pick"));
+    try std.testing.expect(decoded.whichOneof("pick") == null);
+    try std.testing.expect(decoded.get("id") == null);
+    try std.testing.expect(!decoded.clearOneof("pick"));
+    try std.testing.expect(!decoded.clearOneof("missing"));
 }
 
 test "dynamic unknown field API preserves queries and clears raw fields" {
