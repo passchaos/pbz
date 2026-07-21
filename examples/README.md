@@ -49,8 +49,9 @@ library API.
   codegen, plugin request generation, and generated-code info annotations.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/clear helpers, repeated fields,
-  all scalar families, maps, oneof lookup/inspection/clearing, imported message fields, service
-  descriptor/method lookup, binary, and JSON round-trips.
+  all scalar families, maps, enum descriptor/value lookup, oneof
+  lookup/inspection/clearing, imported message fields, service descriptor/method
+  lookup, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.

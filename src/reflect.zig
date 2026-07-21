@@ -5,7 +5,7 @@ const registry_mod = @import("registry.zig");
 const dynamic = @import("dynamic.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.mem.Allocator.Error || error{ UnknownMessage, UnknownService, UnknownField, MissingField, TypeMismatch };
+pub const Error = std.mem.Allocator.Error || error{ UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField, TypeMismatch };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 
@@ -23,6 +23,14 @@ pub const Reflection = struct {
 
     pub fn fileOfMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingMessage(descriptor) orelse error.UnknownMessage;
+    }
+
+    pub fn enumeration(self: Reflection, name: []const u8) Error!*const schema.EnumDescriptor {
+        return self.registry.findEnum(name, null) orelse error.UnknownEnum;
+    }
+
+    pub fn fileOfEnum(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingEnum(descriptor) orelse error.UnknownEnum;
     }
 
     pub fn service(self: Reflection, name: []const u8) Error!*const schema.ServiceDescriptor {
@@ -47,6 +55,35 @@ pub const Reflection = struct {
 
     pub fn oneofByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.OneofDescriptor {
         return descriptor.findOneof(name) orelse error.UnknownField;
+    }
+
+    pub fn enumValueByName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
+        return descriptor.findValue(name) orelse error.UnknownEnum;
+    }
+
+    pub fn enumValueByNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i32) Error!*const schema.EnumValueDescriptor {
+        return descriptor.findValueByNumber(number) orelse error.UnknownEnum;
+    }
+
+    pub fn enumForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
+        const enum_name, const declared_enum = switch (field.kind) {
+            .enumeration => |name| .{ name, true },
+            // Imported enum references can remain in the parser's message arm
+            // until a registry-backed lookup resolves them.  Keep accepting
+            // that representation so reflection over descriptor sets behaves
+            // like C++ DescriptorPool-backed reflection.
+            .message => |name| .{ name, false },
+            else => return error.TypeMismatch,
+        };
+        const file = try self.fileOfMessage(message_descriptor);
+        if (std.mem.indexOfScalar(u8, enum_name, '.') == null) {
+            if (message_descriptor.findEnumDeep(enum_name) orelse file.findEnumDeep(enum_name)) |enum_desc| return enum_desc;
+        }
+        var scope_buf: [512]u8 = undefined;
+        const scope = messageScope(file, message_descriptor, &scope_buf) orelse if (file.package.len != 0) file.package else null;
+        if (self.registry.findEnumVisible(file, enum_name, scope)) |enum_desc| return enum_desc;
+        if (self.registry.findEnum(enum_name, scope)) |enum_desc| return enum_desc;
+        return if (declared_enum) error.UnknownEnum else error.TypeMismatch;
     }
 
     pub fn has(_: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) bool {
@@ -343,6 +380,13 @@ pub const Reflection = struct {
         return try self.getScalar(i32, message_value, name, .enumeration);
     }
 
+    pub fn getEnumValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*const schema.EnumValueDescriptor {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const number = try self.getEnum(message_value, name);
+        const descriptor = try self.enumForField(message_value.descriptor, field);
+        return try self.enumValueByNumber(descriptor, number);
+    }
+
     pub fn putMapEntryOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: dynamic.Value, value: dynamic.Value) Error!void {
         var owned_key = key;
         var owns_key = true;
@@ -382,6 +426,29 @@ fn lastValue(message_value: *const dynamic.DynamicMessage, field: *const schema.
     const field_value = message_value.getByNumber(field.number) orelse return null;
     if (field_value.values.items.len == 0) return null;
     return field_value.values.items[field_value.values.items.len - 1];
+}
+
+fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (file.messages.items) |*message| {
+        if (message == current) return formatMessageScope(file.package, message.name, buf);
+        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (message.messages.items) |*nested| {
+        var path_buf: [512]u8 = undefined;
+        const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
+        if (nested == target) return formatMessageScope(package, nested_path, buf);
+        if (messageScopeInMessage(package, nested_path, nested, target, buf)) |path| return path;
+    }
+    return null;
+}
+
+fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
+    if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
+    return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
 }
 
 test "reflection facade creates and edits dynamic messages" {

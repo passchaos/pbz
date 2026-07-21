@@ -451,6 +451,13 @@ pub const EnumDescriptor = struct {
         }
         return null;
     }
+
+    pub fn findValueByNumber(self: *const EnumDescriptor, number: i32) ?*const EnumValueDescriptor {
+        for (self.values.items) |*value| {
+            if (value.number == number) return value;
+        }
+        return null;
+    }
 };
 
 pub const MessageDescriptor = struct {

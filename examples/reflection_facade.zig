@@ -52,6 +52,11 @@ pub fn main() !void {
     const user_desc = try refl.message(".demo.reflect.User");
     const app_file = try refl.fileOfMessage(user_desc);
     const profile_desc = try refl.message(".demo.reflect.Profile");
+    const role_desc = try refl.enumeration(".demo.reflect.Role");
+    const role_file = try refl.fileOfEnum(role_desc);
+    try std.testing.expectEqualStrings("common.proto", role_file.name);
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.enumValueByNumber(role_desc, 1)).name);
+    try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
     const users_service = try refl.service(".demo.reflect.Users");
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
@@ -105,6 +110,8 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&user, "tags"));
     try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 1)).string);
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "role"));
+    try std.testing.expect(role_desc == try refl.enumForField(user_desc, try refl.fieldByName(user_desc, "role")));
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.getEnumValue(&user, "role")).name);
     try std.testing.expectEqual(@as(u32, 42), try refl.getUInt32(&user, "quota"));
     try std.testing.expectEqual(@as(u64, 9_000_000_000), try refl.getUInt64(&user, "total"));
     try std.testing.expectEqual(@as(i32, -12), try refl.getSInt32(&user, "delta"));
