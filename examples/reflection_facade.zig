@@ -43,7 +43,10 @@ pub fn main() !void {
         \\  repeated sint64 deltas = 23;
         \\  string display_name = 24 [json_name = "shownName"];
         \\}
-        \\service Users { rpc Get (User) returns (User); }
+        \\service Users {
+        \\  option deprecated = true;
+        \\  rpc Get (User) returns (User) { option idempotency_level = NO_SIDE_EFFECTS; }
+        \\}
     );
 
     var loaded = try pbz.loadMemory(allocator, &tree, "app.proto");
@@ -86,6 +89,8 @@ pub fn main() !void {
     try std.testing.expect(service_file == app_file);
     const get_method = users_service.findMethod("Get") orelse return error.MissingMethod;
     try std.testing.expectEqualStrings("Get", get_method.name);
+    try std.testing.expect(refl.optionBool(users_service.options.items, "deprecated").?);
+    try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionValue(get_method.options.items, "idempotency_level").?.identifier);
 
     var user = try refl.newMessage("demo.reflect.User");
     defer user.deinit();

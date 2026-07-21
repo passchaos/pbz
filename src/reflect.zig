@@ -124,6 +124,14 @@ pub const Reflection = struct {
         return field.resolvedPacked(try self.fileOfMessage(descriptor));
     }
 
+    pub fn optionValue(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?schema.OptionValue {
+        return schema.optionValue(options, name);
+    }
+
+    pub fn optionBool(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?bool {
+        return schema.optionBool(options, name);
+    }
+
     pub fn fieldByNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByNumber(number) orelse error.UnknownField;
     }

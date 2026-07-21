@@ -940,11 +940,15 @@ pub fn optionAsIdentifier(value: OptionValue) ?[]const u8 {
     };
 }
 
-pub fn optionBool(options: []const FieldOption, name: []const u8) ?bool {
+pub fn optionValue(options: []const FieldOption, name: []const u8) ?OptionValue {
     for (options) |option| {
-        if (std.mem.eql(u8, optionLeaf(option.name), name)) return optionAsBool(option.value);
+        if (std.mem.eql(u8, option.name, name) or std.mem.eql(u8, optionLeaf(option.name), name)) return option.value;
     }
     return null;
+}
+
+pub fn optionBool(options: []const FieldOption, name: []const u8) ?bool {
+    return if (optionValue(options, name)) |value| optionAsBool(value) else null;
 }
 
 pub fn optionLeaf(name: []const u8) []const u8 {

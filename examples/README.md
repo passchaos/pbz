@@ -52,9 +52,9 @@ library API.
   present-field listing, type-checked writes, repeated fields, all scalar families,
   typed message/group creation/access, maps, map key lookup, JSON-name field lookup/output, field presence/packing
   metadata, file/import-chain lookup, enum descriptor/value lookup, oneof
-  lookup/presence/inspection/clearing, imported message fields, service and
-  extension descriptor lookup, unknown-field query/mutation, required-field
-  initialization checks, binary, and JSON round-trips.
+  lookup/presence/inspection/clearing, imported message fields, option lookup,
+  service and extension descriptor lookup, unknown-field query/mutation,
+  required-field initialization checks, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.
