@@ -95,15 +95,8 @@ pub const Reflection = struct {
     }
 
     pub fn clear(self: Reflection, message_value: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor) void {
-        var index: usize = 0;
-        while (index < message_value.fields.items.len) {
-            if (message_value.fields.items[index].descriptor.number == field.number) {
-                message_value.fields.items[index].deinit(self.allocator);
-                _ = message_value.fields.swapRemove(index);
-                return;
-            }
-            index += 1;
-        }
+        _ = self;
+        _ = message_value.clearField(field);
     }
 
     pub fn clearField(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!void {

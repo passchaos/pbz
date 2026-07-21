@@ -139,6 +139,23 @@ pub const DynamicMessage = struct {
         return null;
     }
 
+    pub fn clearField(self: *DynamicMessage, field: *const schema.FieldDescriptor) bool {
+        var index: usize = 0;
+        while (index < self.fields.items.len) : (index += 1) {
+            if (self.fields.items[index].descriptor.number == field.number) {
+                self.fields.items[index].deinit(self.allocator);
+                _ = self.fields.swapRemove(index);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pub fn clearFieldByName(self: *DynamicMessage, name: []const u8) bool {
+        const field = self.descriptor.findField(name) orelse return false;
+        return self.clearField(field);
+    }
+
     pub fn has(self: *const DynamicMessage, field: *const schema.FieldDescriptor) bool {
         return if (self.getByNumber(field.number)) |value| value.values.items.len != 0 else false;
     }
@@ -3090,6 +3107,28 @@ test "dynamic decode clears absent fields from reused messages" {
     try std.testing.expectEqual(@as(i32, 8), message.get("id").?.values.items[0].int32);
     try std.testing.expect(message.get("name") == null);
     try std.testing.expect(message.get("nums") == null);
+}
+
+test "dynamic clearField removes stored values by descriptor or name" {
+    const allocator = std.testing.allocator;
+    var file = try parser.Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { int32 id = 1; repeated string tags = 2; }
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var message = DynamicMessage.init(allocator, desc);
+    defer message.deinit();
+    try message.add(desc.findField("id").?, .{ .int32 = 1 });
+    try message.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "one") });
+    try message.add(desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "two") });
+
+    try std.testing.expect(message.clearField(desc.findField("id").?));
+    try std.testing.expect(message.get("id") == null);
+    try std.testing.expect(message.clearFieldByName("tags"));
+    try std.testing.expect(message.get("tags") == null);
+    try std.testing.expect(!message.clearFieldByName("missing"));
 }
 
 test "dynamic has and getOrDefault expose proto2 defaults and explicit values" {

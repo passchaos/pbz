@@ -41,6 +41,13 @@ pub fn main() !void {
     try event.add(event_desc.findField("counts").?, .{ .map_entry = replacement_count });
     std.debug.assert(event.get("counts").?.values.items.len == 1);
     std.debug.assert(event.get("counts").?.values.items[0].map_entry.value.int32 == 9);
+    std.debug.assert(event.clearFieldByName("tags"));
+    std.debug.assert(event.get("tags") == null);
+    try event.add(event_desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "zig") });
+    std.debug.assert(event.clearField(event_desc.findField("id").?));
+    std.debug.assert(!event.has(event_desc.findField("id").?));
+    try event.add(event_desc.findField("id").?, .{ .int32 = 7 });
+    std.debug.assert(!event.clearFieldByName("missing"));
 
     const encoded = try event.encodedDeterministic(&file);
     defer allocator.free(encoded);
