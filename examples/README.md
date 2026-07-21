@@ -10,7 +10,9 @@ zig build examples
 library API.
 
 - `wire.zig` — low-level wire writer/reader usage.
-- `dynamic_message.zig` — runtime schema parsing, dynamic fields, repeated/map/oneof handling, deterministic encode/decode.
+- `dynamic_message.zig` — runtime schema parsing, dynamic fields,
+  repeated/map/oneof handling, deterministic encode/decode, and dynamic
+  unknown-field query/mutation APIs.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
   recursive imports, registry lookup, and registry-backed dynamic JSON output.

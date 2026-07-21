@@ -268,6 +268,10 @@ benchmark harness.
 - `examples/generated_unknown_mutation.zig` covers generated unknown-field
   append/query/clear APIs, by-number extraction, sidecar counts, exact raw-byte
   round-trip, and invalid raw-field rejection.
+- `examples/dynamic_message.zig` covers dynamic runtime schema usage,
+  repeated/map/oneof mutation, deterministic encode/decode, and dynamic
+  unknown-field query/mutation APIs including append, by-number extraction,
+  sidecar counts, clear, and invalid raw-field rejection.
 - `examples/generated_closed_enum.zig` covers generated proto2 closed-enum
   unknown numeric preservation into raw unknown fields, including singular,
   repeated, and packed repeated inputs.

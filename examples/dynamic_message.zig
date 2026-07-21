@@ -70,4 +70,32 @@ pub fn main() !void {
     const unknown_runs = try decoded_with_unknown.unknownFieldNumberRunsAlloc(allocator);
     defer allocator.free(unknown_runs);
     std.debug.assert(pbz.wire.rawFieldNumberRunCount(unknown_runs, 100) == 2);
+
+    // Dynamic messages also expose mutation helpers over exact raw unknown
+    // fields. This mirrors generated-message unknown APIs while keeping the
+    // dynamic representation's parsed number/wire-type sidecar available for
+    // fast by-number queries.
+    var appended = pbz.Writer.init(allocator);
+    defer appended.deinit();
+    try appended.writeUInt32(102, 9);
+    try decoded_with_unknown.appendUnknownRaw(appended.slice());
+    std.debug.assert(decoded_with_unknown.hasUnknownFieldNumber(102));
+    std.debug.assert(decoded_with_unknown.unknownFieldCountByNumber(102) == 1);
+    const unknown_102 = decoded_with_unknown.unknownByNumber(102);
+    std.debug.assert(unknown_102.len == 1);
+    std.debug.assert(std.mem.eql(u8, unknown_102[0].data, appended.slice()));
+    const unknown_100_owned = try decoded_with_unknown.unknownByNumberAlloc(allocator, 100);
+    defer allocator.free(unknown_100_owned);
+    std.debug.assert(unknown_100_owned.len == 2);
+
+    decoded_with_unknown.clearUnknownFieldsByNumber(100);
+    std.debug.assert(!decoded_with_unknown.hasUnknownFieldNumber(100));
+    std.debug.assert(decoded_with_unknown.hasUnknownFieldNumber(101));
+    decoded_with_unknown.clearUnknownFields();
+    std.debug.assert(decoded_with_unknown.unknownCount() == 0);
+
+    var invalid_raw = pbz.Writer.init(allocator);
+    defer invalid_raw.deinit();
+    try invalid_raw.writeTag(1, .end_group);
+    try std.testing.expectError(error.UnsupportedWireType, decoded_with_unknown.appendUnknownRaw(invalid_raw.slice()));
 }
