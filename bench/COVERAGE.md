@@ -253,7 +253,8 @@ benchmark harness.
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
   loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
-  and method lookup, and registry-backed dynamic JSON output.
+  and method lookup, registry-backed dynamic JSON output, plus C++ DescriptorPool
+  parity for rejecting duplicate descriptor symbols assembled programmatically.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
   dynamic schemas, descriptor round-trips, parser rejection of reserved
   declarations, and TextFormat's protobuf-compatible reserved-name ignore

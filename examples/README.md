@@ -22,7 +22,8 @@ library API.
   custom indentation, unknown-field printing, and numeric enum input.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
   recursive imports, message/service/method registry lookup, and
-  registry-backed dynamic JSON output.
+  registry-backed dynamic JSON output. Also shows registry duplicate-symbol
+  protection for descriptors assembled directly rather than parsed from text.
 - `dynamic_groups.zig` — dynamic proto2 group fields, repeated groups, JSON and
   TextFormat round-trips, singular group merge semantics, and unknown group
   preservation.

@@ -76,4 +76,26 @@ pub fn main() !void {
     const json = try pbz.stringifyJsonAllocWithRegistry(allocator, root_file, &fs_loaded.registry, &envelope, .{});
     defer allocator.free(json);
     std.debug.assert(std.mem.indexOf(u8, json, "\"from-dir\"") != null);
+
+    var generated_file = pbz.FileDescriptor.init(allocator);
+    defer generated_file.deinit();
+    generated_file.setSyntax(.proto3);
+    generated_file.package = "generated";
+    try generated_file.enums.append(allocator, .{ .name = "Status" });
+    try generated_file.enums.items[0].values.append(allocator, .{ .name = "Payload", .number = 0 });
+
+    var conflicting_file = pbz.FileDescriptor.init(allocator);
+    defer conflicting_file.deinit();
+    conflicting_file.setSyntax(.proto3);
+    conflicting_file.package = "generated";
+    try conflicting_file.messages.append(allocator, .{ .name = "Payload" });
+
+    var checked_registry = pbz.Registry.init(allocator);
+    defer checked_registry.deinit();
+    try checked_registry.addFile(&generated_file);
+    // The registry is also the safety net for descriptors assembled directly in
+    // Zig (or decoded from descriptor sets), where the text parser's local
+    // duplicate-symbol checks did not run.  C++ DescriptorPool rejects this
+    // file-level collision because enum values share their parent scope.
+    try std.testing.expectError(error.DuplicateSymbol, checked_registry.addFile(&conflicting_file));
 }

@@ -35,7 +35,7 @@ pub const Registry = struct {
     }
 
     pub fn addFile(self: *Registry, file: *const schema.FileDescriptor) Error!void {
-        try self.validateNoTypeConflicts(file);
+        try self.validateNoSymbolConflicts(file);
         try self.validateNoExtensionConflicts(file);
         try self.files.append(self.allocator, file);
         errdefer self.files.items.len -= 1;
@@ -44,7 +44,7 @@ pub const Registry = struct {
 
     pub fn validateLoadedFiles(self: *const Registry) Error!void {
         try self.validateLoadedFileNames();
-        try self.validateLoadedTypeConflicts();
+        try self.validateLoadedSymbolConflicts();
         try self.validateLoadedExtensionConflicts();
         try self.validateExtensionDeclarations();
         try self.validateAllFileReferences();
@@ -59,7 +59,7 @@ pub const Registry = struct {
         }
     }
 
-    fn validateLoadedTypeConflicts(self: *const Registry) Error!void {
+    fn validateLoadedSymbolConflicts(self: *const Registry) Error!void {
         var seen = std.StringHashMap(void).init(self.allocator);
         defer seen.deinit();
         var owned_names: std.ArrayList([]u8) = .empty;
@@ -68,37 +68,73 @@ pub const Registry = struct {
             owned_names.deinit(self.allocator);
         }
         for (self.files.items) |file| {
-            for (file.messages.items) |*message| try self.validateLoadedMessageType(&seen, &owned_names, file.package, message);
-            for (file.enums.items) |*enumeration| {
-                const full_name = try qualifiedTypeName(self.allocator, file.package, enumeration.name);
-                _ = try self.putLoadedTypeName(&seen, &owned_names, full_name);
-            }
-            for (file.services.items) |*service| {
-                const full_name = try qualifiedTypeName(self.allocator, file.package, service.name);
-                _ = try self.putLoadedTypeName(&seen, &owned_names, full_name);
-            }
+            try self.collectFileSymbols(&seen, &owned_names, file);
         }
     }
 
-    fn validateLoadedMessageType(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), prefix: []const u8, message: *const schema.MessageDescriptor) Error!void {
-        const full_name = try qualifiedTypeName(self.allocator, prefix, message.name);
-        const stored_name = try self.putLoadedTypeName(seen, owned_names, full_name);
-        for (message.messages.items) |*nested| try self.validateLoadedMessageType(seen, owned_names, stored_name, nested);
-        for (message.enums.items) |*enumeration| {
-            const enum_name = try qualifiedTypeName(self.allocator, stored_name, enumeration.name);
-            _ = try self.putLoadedTypeName(seen, owned_names, enum_name);
-        }
-    }
-
-    fn putLoadedTypeName(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), full_name: []u8) Error![]const u8 {
+    fn putLoadedSymbolName(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), full_name: []u8) Error![]const u8 {
         if (seen.contains(full_name)) {
             self.allocator.free(full_name);
             return error.DuplicateSymbol;
         }
+        errdefer self.allocator.free(full_name);
         try owned_names.append(self.allocator, full_name);
         errdefer _ = owned_names.pop();
         try seen.put(full_name, {});
         return full_name;
+    }
+
+    fn collectFileSymbols(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), file: *const schema.FileDescriptor) Error!void {
+        for (file.messages.items) |*message| try self.collectMessageSymbols(seen, owned_names, file.package, message);
+        for (file.enums.items) |*enumeration| try self.collectEnumSymbols(seen, owned_names, file.package, enumeration);
+        for (file.extensions.items) |*field| try self.collectExtensionSymbol(seen, owned_names, file.package, field);
+        for (file.services.items) |*service| try self.collectServiceSymbols(seen, owned_names, file.package, service);
+    }
+
+    fn collectMessageSymbols(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), prefix: []const u8, message: *const schema.MessageDescriptor) Error!void {
+        const full_name = try qualifiedSymbolName(self.allocator, prefix, message.name);
+        const message_scope = try self.putLoadedSymbolName(seen, owned_names, full_name);
+
+        // Protobuf enum values are scoped to the enum's parent, not to the enum
+        // type itself.  Field, oneof, nested-type, extension, and enum-value
+        // names therefore all share a message-level symbol table.  The parser
+        // enforces this for text parsed in one file; the registry repeats the
+        // check so descriptor sets assembled programmatically or across files
+        // match DescriptorPool/C++ duplicate-symbol behavior.
+        for (message.fields.items) |*field| {
+            const field_name = try qualifiedSymbolName(self.allocator, message_scope, field.name);
+            _ = try self.putLoadedSymbolName(seen, owned_names, field_name);
+        }
+        for (message.oneofs.items) |*oneof| {
+            const oneof_name = try qualifiedSymbolName(self.allocator, message_scope, oneof.name);
+            _ = try self.putLoadedSymbolName(seen, owned_names, oneof_name);
+        }
+        for (message.extensions.items) |*field| try self.collectExtensionSymbol(seen, owned_names, message_scope, field);
+        for (message.messages.items) |*nested| try self.collectMessageSymbols(seen, owned_names, message_scope, nested);
+        for (message.enums.items) |*enumeration| try self.collectEnumSymbols(seen, owned_names, message_scope, enumeration);
+    }
+
+    fn collectEnumSymbols(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), prefix: []const u8, enumeration: *const schema.EnumDescriptor) Error!void {
+        const enum_name = try qualifiedSymbolName(self.allocator, prefix, enumeration.name);
+        _ = try self.putLoadedSymbolName(seen, owned_names, enum_name);
+        for (enumeration.values.items) |value| {
+            const value_name = try qualifiedSymbolName(self.allocator, prefix, value.name);
+            _ = try self.putLoadedSymbolName(seen, owned_names, value_name);
+        }
+    }
+
+    fn collectExtensionSymbol(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), scope: []const u8, field: *const schema.FieldDescriptor) Error!void {
+        const full_name = try qualifiedSymbolName(self.allocator, scope, schema.extensionFullName(field));
+        _ = try self.putLoadedSymbolName(seen, owned_names, full_name);
+    }
+
+    fn collectServiceSymbols(self: *const Registry, seen: *std.StringHashMap(void), owned_names: *std.ArrayList([]u8), scope: []const u8, service: *const schema.ServiceDescriptor) Error!void {
+        const full_name = try qualifiedSymbolName(self.allocator, scope, service.name);
+        const service_scope = try self.putLoadedSymbolName(seen, owned_names, full_name);
+        for (service.methods.items) |*method| {
+            const method_name = try qualifiedSymbolName(self.allocator, service_scope, method.name);
+            _ = try self.putLoadedSymbolName(seen, owned_names, method_name);
+        }
     }
 
     const ExtensionRef = struct {
@@ -125,34 +161,16 @@ pub const Registry = struct {
         for (message.messages.items) |*nested| try self.collectLoadedMessageExtensionRefs(file, nested, output);
     }
 
-    fn validateNoTypeConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
-        for (file.messages.items) |*message| try self.validateMessageType(file.package, message);
-        for (file.enums.items) |*enumeration| {
-            const full_name = try qualifiedTypeName(self.allocator, file.package, enumeration.name);
-            defer self.allocator.free(full_name);
-            if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
-            if (self.findService(full_name, null) != null) return error.DuplicateSymbol;
+    fn validateNoSymbolConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
+        var seen = std.StringHashMap(void).init(self.allocator);
+        defer seen.deinit();
+        var owned_names: std.ArrayList([]u8) = .empty;
+        defer {
+            for (owned_names.items) |name| self.allocator.free(name);
+            owned_names.deinit(self.allocator);
         }
-        for (file.services.items) |*service| {
-            const full_name = try qualifiedTypeName(self.allocator, file.package, service.name);
-            defer self.allocator.free(full_name);
-            if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
-            if (self.findService(full_name, null) != null) return error.DuplicateSymbol;
-        }
-    }
-
-    fn validateMessageType(self: *const Registry, prefix: []const u8, message: *const schema.MessageDescriptor) Error!void {
-        const full_name = try qualifiedTypeName(self.allocator, prefix, message.name);
-        defer self.allocator.free(full_name);
-        if (self.findAbsolute(full_name) != null) return error.DuplicateSymbol;
-        if (self.findService(full_name, null) != null) return error.DuplicateSymbol;
-        for (message.messages.items) |*nested| try self.validateMessageType(full_name, nested);
-        for (message.enums.items) |*enumeration| {
-            const enum_name = try qualifiedTypeName(self.allocator, full_name, enumeration.name);
-            defer self.allocator.free(enum_name);
-            if (self.findAbsolute(enum_name) != null) return error.DuplicateSymbol;
-            if (self.findService(enum_name, null) != null) return error.DuplicateSymbol;
-        }
+        for (self.files.items) |existing| try self.collectFileSymbols(&seen, &owned_names, existing);
+        try self.collectFileSymbols(&seen, &owned_names, file);
     }
 
     fn validateNoExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
@@ -739,6 +757,12 @@ fn qualifiedTypeName(allocator: std.mem.Allocator, prefix: []const u8, name: []c
     return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
 }
 
+fn qualifiedSymbolName(allocator: std.mem.Allocator, scope: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
+    const normalized = normalizeName(name);
+    if (scope.len == 0 or std.mem.indexOfScalar(u8, normalized, '.') != null) return try allocator.dupe(u8, normalized);
+    return qualifiedTypeName(allocator, scope, normalized);
+}
+
 fn findExtensionByNameInMessage(package: []const u8, message: *const schema.MessageDescriptor, extendee: []const u8, name: []const u8) ?*const schema.FieldDescriptor {
     for (message.extensions.items) |*field| {
         if (field.extendee != null and namesMatch(field.extendee.?, extendee) and schema.extensionNameMatches(package, field, name)) return field;
@@ -1202,6 +1226,48 @@ test "registry rejects duplicate service symbols across files" {
     try registry.addFile(&first);
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_service));
     try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&duplicate_message));
+}
+
+test "registry rejects descriptor symbols not produced by parser validation" {
+    const allocator = std.testing.allocator;
+    var enum_file = schema.FileDescriptor.init(allocator);
+    defer enum_file.deinit();
+    enum_file.setSyntax(.proto3);
+    enum_file.package = "demo";
+    try enum_file.enums.append(allocator, .{ .name = "Status" });
+    try enum_file.enums.items[0].values.append(allocator, .{ .name = "Payload", .number = 0 });
+
+    var message_file = schema.FileDescriptor.init(allocator);
+    defer message_file.deinit();
+    message_file.setSyntax(.proto3);
+    message_file.package = "demo";
+    try message_file.messages.append(allocator, .{ .name = "Payload" });
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&enum_file);
+    // File-level enum values share the package scope in protobuf, so
+    // ".demo.Payload" is already occupied even though the enum type is named
+    // ".demo.Status".  This mirrors C++ DescriptorPool for descriptor sets or
+    // programmatically-built descriptors that bypass the .proto parser.
+    try std.testing.expectError(error.DuplicateSymbol, registry.addFile(&message_file));
+
+    var message_scope_file = schema.FileDescriptor.init(allocator);
+    defer message_scope_file.deinit();
+    message_scope_file.setSyntax(.proto3);
+    message_scope_file.package = "manual";
+    try message_scope_file.messages.append(allocator, .{ .name = "Scope" });
+    const scope = &message_scope_file.messages.items[0];
+    try scope.fields.append(allocator, .{ .name = "STATE_UNSPECIFIED", .number = 1, .kind = .{ .scalar = .int32 } });
+    try scope.enums.append(allocator, .{ .name = "State" });
+    try scope.enums.items[0].values.append(allocator, .{ .name = "STATE_UNSPECIFIED", .number = 0 });
+
+    var scoped_registry = Registry.init(allocator);
+    defer scoped_registry.deinit();
+    // Message fields, oneofs, nested types, extensions, and nested enum values
+    // share the message scope; the registry must enforce that invariant even
+    // when a descriptor is assembled directly in Zig.
+    try std.testing.expectError(error.DuplicateSymbol, scoped_registry.addFile(&message_scope_file));
 }
 
 test "registry rejects duplicate extension symbols across files" {
