@@ -62,6 +62,32 @@ pub const Reflection = struct {
         return dynamic.DynamicMessage.init(self.allocator, try self.message(name));
     }
 
+    pub fn newMessageForField(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!dynamic.DynamicMessage {
+        const type_name = switch (field.kind) {
+            .message => |name| name,
+            else => return error.TypeMismatch,
+        };
+        const descriptor = try self.messageForFieldType(parent_descriptor, field, type_name);
+        return dynamic.DynamicMessage.init(self.allocator, descriptor);
+    }
+
+    pub fn newMessageForFieldName(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, name: []const u8) Error!dynamic.DynamicMessage {
+        return try self.newMessageForField(parent_descriptor, try self.fieldByName(parent_descriptor, name));
+    }
+
+    pub fn newGroupForField(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!dynamic.DynamicMessage {
+        const type_name = switch (field.kind) {
+            .group => |name| name,
+            else => return error.TypeMismatch,
+        };
+        const descriptor = try self.messageForFieldType(parent_descriptor, field, type_name);
+        return dynamic.DynamicMessage.init(self.allocator, descriptor);
+    }
+
+    pub fn newGroupForFieldName(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, name: []const u8) Error!dynamic.DynamicMessage {
+        return try self.newGroupForField(parent_descriptor, try self.fieldByName(parent_descriptor, name));
+    }
+
     pub fn fieldByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.FieldDescriptor {
         return descriptor.findField(name) orelse error.UnknownField;
     }

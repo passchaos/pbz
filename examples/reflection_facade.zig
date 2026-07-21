@@ -127,7 +127,8 @@ pub fn main() !void {
     try refl.addSInt64(&user, "deltas", -2);
 
     const profile = try allocator.create(pbz.DynamicMessage);
-    profile.* = pbz.DynamicMessage.init(allocator, profile_desc);
+    profile.* = try refl.newMessageForFieldName(user_desc, "profile");
+    try std.testing.expect(profile.descriptor == profile_desc);
     try refl.setInt64(profile, "created_at", 123456);
     try refl.setBytes(profile, "avatar", &.{ 0xde, 0xad, 0xbe, 0xef });
     try refl.setMessageOwned(&user, "profile", profile);
@@ -258,7 +259,8 @@ pub fn main() !void {
     try required_refl.setString(&parent, "name", "root");
     const child_desc = try required_refl.message(".demo.required_reflect.Child");
     const child = try allocator.create(pbz.DynamicMessage);
-    child.* = pbz.DynamicMessage.init(allocator, child_desc);
+    child.* = try required_refl.newMessageForFieldName(parent.descriptor, "child");
+    try std.testing.expect(child.descriptor == child_desc);
     try required_refl.setMessageOwned(&parent, "child", child);
     const missing_child = (try required_refl.missingRequiredFieldPath(&parent)).?;
     defer allocator.free(missing_child);
