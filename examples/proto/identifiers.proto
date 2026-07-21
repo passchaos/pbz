@@ -1,0 +1,14 @@
+syntax = "proto3";
+package demo.identifiers;
+
+message type {
+  int32 type = 1;
+  string error = 2;
+  repeated string test = 3;
+  map<string, int32> align = 4;
+  oneof async {
+    string await = 5;
+    int32 opaque = 6;
+  }
+  bool null = 7;
+}

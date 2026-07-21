@@ -659,6 +659,7 @@ Important examples:
 - `examples/generated_required.zig` — proto2 required-field initialization gates
 - `examples/generated_defaults.zig` — proto2 default values and has-bit semantics
 - `examples/generated_extensions.zig` — generated proto2 extension accessors
+- `examples/generated_identifiers.zig` — quoted generated identifiers for Zig keyword collisions
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion
