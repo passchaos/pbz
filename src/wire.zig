@@ -1111,11 +1111,11 @@ pub const Writer = struct {
     allocator: std.mem.Allocator,
     bytes: std.ArrayList(u8) = .empty,
 
-    pub fn init(allocator: std.mem.Allocator) Writer {
+    pub inline fn init(allocator: std.mem.Allocator) Writer {
         return .{ .allocator = allocator };
     }
 
-    pub fn initBuffer(allocator: std.mem.Allocator, buffer: []u8) Writer {
+    pub inline fn initBuffer(allocator: std.mem.Allocator, buffer: []u8) Writer {
         return .{ .allocator = allocator, .bytes = std.ArrayList(u8).initBuffer(buffer) };
     }
 
@@ -1124,11 +1124,11 @@ pub const Writer = struct {
         self.* = undefined;
     }
 
-    pub fn clearRetainingCapacity(self: *Writer) void {
+    pub inline fn clearRetainingCapacity(self: *Writer) void {
         self.bytes.clearRetainingCapacity();
     }
 
-    pub fn slice(self: *const Writer) []const u8 {
+    pub inline fn slice(self: *const Writer) []const u8 {
         return self.bytes.items;
     }
 
@@ -1140,7 +1140,7 @@ pub const Writer = struct {
         try self.bytes.append(self.allocator, byte);
     }
 
-    pub fn appendByteAssumeCapacity(self: *Writer, byte: u8) void {
+    pub inline fn appendByteAssumeCapacity(self: *Writer, byte: u8) void {
         self.bytes.appendAssumeCapacity(byte);
     }
 
@@ -1148,7 +1148,7 @@ pub const Writer = struct {
         try self.bytes.appendSlice(self.allocator, data);
     }
 
-    pub fn appendSliceAssumeCapacity(self: *Writer, data: []const u8) void {
+    pub inline fn appendSliceAssumeCapacity(self: *Writer, data: []const u8) void {
         const out = self.bytes.addManyAsSliceAssumeCapacity(data.len);
         @memcpy(out, data);
     }
@@ -1160,7 +1160,7 @@ pub const Writer = struct {
         _ = writeVarintToBuffer(out, value);
     }
 
-    pub fn writeVarintAssumeCapacity(self: *Writer, value: u64) void {
+    pub inline fn writeVarintAssumeCapacity(self: *Writer, value: u64) void {
         const out = self.bytes.addManyAsSliceAssumeCapacity(encodedVarintSize(value));
         _ = writeVarintToBuffer(out, value);
     }
@@ -1174,7 +1174,7 @@ pub const Writer = struct {
         }
     }
 
-    pub fn writeTagAssumeCapacity(self: *Writer, number: FieldNumber, wire_type: WireType) void {
+    pub inline fn writeTagAssumeCapacity(self: *Writer, number: FieldNumber, wire_type: WireType) void {
         const raw = (@as(u64, number) << 3) | @intFromEnum(wire_type);
         if (raw < 0x80) {
             self.appendByteAssumeCapacity(@intCast(raw));
