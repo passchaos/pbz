@@ -12,6 +12,14 @@ Run pbz plus every available cross-language baseline with:
 bench/run_compare.sh
 ```
 
+On busy development machines, set `PBZ_COMPARE_CPUSET` to run every baseline on
+the same CPU set via `taskset`; this avoids comparing pbz on one core mix
+against C++/Go/Rust on another:
+
+```sh
+PBZ_COMPARE_CPUSET=3 bench/run_compare.sh
+```
+
 Summarize a full comparison log with:
 
 ```sh

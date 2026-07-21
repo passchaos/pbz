@@ -38,6 +38,13 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
+If unrelated machine load makes per-row timings unstable, set
+`PBZ_COMPARE_CPUSET` so every compared implementation runs on the same CPU set:
+
+```sh
+PBZ_COMPARE_CPUSET=3 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
+```
+
 The latest accepted full-gate evidence at the time this checklist was updated
 is `/tmp/pbz-compare-scalarmix-json-cpu3.log` summarized by
 `/tmp/pbz-summary-scalarmix-json-cpu3.txt`. The fail-on-loss summary gate:

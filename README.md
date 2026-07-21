@@ -82,6 +82,13 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot > /tmp/pbz-compare-pivot.md
 ```
 
+For noisy shared machines, run all compared implementations on the same CPU set
+with `PBZ_COMPARE_CPUSET`, for example:
+
+```sh
+PBZ_COMPARE_CPUSET=3 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
+```
+
 Latest accepted comparison (`/tmp/pbz-compare-scalarmix-json-cpu3.log`,
 summarized in `/tmp/pbz-summary-scalarmix-json-cpu3.txt`) ended with:
 
