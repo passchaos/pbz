@@ -224,6 +224,11 @@ pub const Reflection = struct {
         return message_value.clearOneof(oneof_name);
     }
 
+    pub fn hasOneof(self: Reflection, message_value: *const dynamic.DynamicMessage, oneof_name: []const u8) Error!bool {
+        _ = try self.oneofByName(message_value.descriptor, oneof_name);
+        return message_value.hasOneof(oneof_name);
+    }
+
     pub fn whichOneof(_: Reflection, message_value: *const dynamic.DynamicMessage, oneof_name: []const u8) ?*const schema.FieldDescriptor {
         return message_value.whichOneof(oneof_name);
     }
@@ -803,6 +808,7 @@ test "reflection facade creates and edits dynamic messages" {
     try std.testing.expectEqual(@as(usize, 1), msg.get("children").?.values.items.len);
 
     try std.testing.expectError(error.TypeMismatch, refl.setBytes(&msg, "label", "not-a-string"));
+    try std.testing.expect(try refl.hasOneof(&msg, "pick"));
     try std.testing.expectEqualStrings("active", refl.whichOneof(&msg, "pick").?.name);
 
     try refl.setString(&msg, "label", "chosen");
@@ -810,9 +816,11 @@ test "reflection facade creates and edits dynamic messages" {
     try std.testing.expectEqualStrings("chosen", try refl.getString(&msg, "label"));
     try std.testing.expectEqualStrings("pick", (try refl.oneofByName(msg.descriptor, "pick")).name);
     try std.testing.expect(try refl.clearOneof(&msg, "pick"));
+    try std.testing.expect(!(try refl.hasOneof(&msg, "pick")));
     try std.testing.expect(refl.whichOneof(&msg, "pick") == null);
     try std.testing.expectError(error.MissingField, refl.getString(&msg, "label"));
     try std.testing.expect(!(try refl.clearOneof(&msg, "pick")));
+    try std.testing.expectError(error.UnknownField, refl.hasOneof(&msg, "missing"));
     try std.testing.expectError(error.UnknownField, refl.clearOneof(&msg, "missing"));
 
     try refl.clearField(&msg, "name");

@@ -173,6 +173,10 @@ pub const DynamicMessage = struct {
         return self.clearField(field);
     }
 
+    pub fn hasOneof(self: *const DynamicMessage, oneof_name: []const u8) bool {
+        return self.whichOneof(oneof_name) != null;
+    }
+
     pub fn clearOneof(self: *DynamicMessage, oneof_name: []const u8) bool {
         if (self.descriptor.findOneof(oneof_name) == null) return false;
         var removed = false;

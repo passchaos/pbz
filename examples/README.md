@@ -11,7 +11,7 @@ library API.
 
 - `wire.zig` — low-level wire writer/reader usage.
 - `dynamic_message.zig` — runtime schema parsing, dynamic fields,
-  repeated/map/oneof handling, field, oneof, and map-entry query/clear helpers,
+  repeated/map/oneof handling, field, oneof presence, and map-entry query/clear helpers,
   deterministic encode/decode, decode reuse clearing semantics, and dynamic
   unknown-field query/mutation APIs.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
@@ -51,7 +51,7 @@ library API.
   dynamic messages, including typed get/set/add/get-default/clear helpers,
   present-field listing, type-checked writes, repeated fields, all scalar families, maps,
   map key lookup, file/import-chain lookup, enum descriptor/value lookup, oneof
-  lookup/inspection/clearing, imported message fields, service and extension
+  lookup/presence/inspection/clearing, imported message fields, service and extension
   descriptor lookup, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
