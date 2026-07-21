@@ -24,7 +24,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
-EXPECTED_WORKLOAD_COUNT = 411
+EXPECTED_WORKLOAD_COUNT = 413
 
 
 @dataclass(frozen=True)
@@ -358,6 +358,22 @@ WORKLOADS: tuple[Workload, ...] = (
             "rust quick-protobuf": ("quick-protobuf textbytes decode",),
             "c++ protobuf": ("c++ protobuf textbytes decode", "c++ protobuf textbytes decode reuse"),
             "go protobuf": ("go protobuf textbytes decode",),
+        },
+    ),
+    Workload(
+        "TextBytes JSON stringify",
+        ("generated TextBytes JSON stringify",),
+        {
+            "c++ protobuf": ("c++ protobuf TextBytes JSON stringify",),
+            "go protobuf": ("go protobuf TextBytes JSON stringify",),
+        },
+    ),
+    Workload(
+        "TextBytes JSON parse",
+        ("generated TextBytes JSON parse",),
+        {
+            "c++ protobuf": ("c++ protobuf TextBytes JSON parse",),
+            "go protobuf": ("go protobuf TextBytes JSON parse",),
         },
     ),
     Workload(
@@ -1510,6 +1526,12 @@ def self_test() -> None:
         benchmark_line("c++ protobuf unknown fields count by number", 4016, 100.0),
         benchmark_line("generated textbytes borrowed slices encode", 134, 20.0),
         benchmark_line("quick-protobuf textbytes encode reuse", 134, 30.0),
+        benchmark_line("generated TextBytes JSON stringify", 160, 110.0),
+        benchmark_line("c++ protobuf TextBytes JSON stringify", 160, 850.0),
+        benchmark_line("go protobuf TextBytes JSON stringify", 160, 600.0),
+        benchmark_line("generated TextBytes JSON parse", 160, 160.0),
+        benchmark_line("c++ protobuf TextBytes JSON parse", 160, 1000.0),
+        benchmark_line("go protobuf TextBytes JSON parse", 160, 700.0),
         benchmark_line("generated PresenceMix JSON stringify", 128, 120.0),
         benchmark_line("c++ protobuf PresenceMix JSON stringify", 128, 900.0),
         benchmark_line("go protobuf PresenceMix JSON stringify", 128, 650.0),

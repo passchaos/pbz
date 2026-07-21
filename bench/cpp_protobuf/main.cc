@@ -579,6 +579,36 @@ int main() {
   scalarmix.SerializeToString(&scalarmix_bytes);
   std::string textbytes_bytes;
   textbytes.SerializeToString(&textbytes_bytes);
+  std::string textbytes_json;
+  if (!google::protobuf::util::MessageToJsonString(textbytes, &textbytes_json)
+           .ok())
+    std::abort();
+  if (textbytes_json.find("\"title\":\"ASCII title for protobuf\"") ==
+          std::string::npos ||
+      textbytes_json.find(
+          "\"payload\":\"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=\"") ==
+          std::string::npos ||
+      textbytes_json.find("\"tags\":[\"alpha\",\"beta\",\"gamma\",\"delta\"]") ==
+          std::string::npos ||
+      textbytes_json.find(
+          "\"chunks\":[\"Y2h1bmstb25l\",\"Y2h1bmstdHdv\",\"Y2h1bmstdGhyZWU=\",\"Y2h1bmstZm91cg==\"]") ==
+          std::string::npos)
+    std::abort();
+  {
+    demo::TextBytes decoded;
+    if (!google::protobuf::util::JsonStringToMessage(textbytes_json, &decoded)
+             .ok())
+      std::abort();
+    if (decoded.title() != textbytes.title() ||
+        decoded.payload() != textbytes.payload() ||
+        decoded.tags_size() != textbytes.tags_size() ||
+        decoded.chunks_size() != textbytes.chunks_size())
+      std::abort();
+    for (int i = 0; i < textbytes.tags_size(); ++i)
+      if (decoded.tags(i) != textbytes.tags(i)) std::abort();
+    for (int i = 0; i < textbytes.chunks_size(); ++i)
+      if (decoded.chunks(i) != textbytes.chunks(i)) std::abort();
+  }
   std::string largebytes_bytes;
   largebytes.SerializeToString(&largebytes_bytes);
   std::string presencemix_bytes;
@@ -1720,6 +1750,8 @@ int main() {
   std::cout << "text payload size: " << text.size() << "\n";
   std::cout << "scalarmix payload size: " << scalarmix_bytes.size() << "\n";
   std::cout << "textbytes payload size: " << textbytes_bytes.size() << "\n";
+  std::cout << "textbytes json payload size: " << textbytes_json.size()
+            << "\n";
   std::cout << "largebytes payload size: " << largebytes_bytes.size() << "\n";
   std::cout << "presencemix payload size: " << presencemix_bytes.size() << "\n";
   std::cout << "complex payload size: " << complex_bytes.size() << "\n";
@@ -1943,6 +1975,28 @@ int main() {
                  asm volatile("" : : "g"(&reused_textbytes_decoded) : "memory");
                });
   textbytes_decode_reuse.Print();
+
+  auto textbytes_json_stringify = RunTimed(
+      "c++ protobuf TextBytes JSON stringify", kIterations,
+      textbytes_json.size(), [&]() {
+        std::string out;
+        if (!google::protobuf::util::MessageToJsonString(textbytes, &out).ok())
+          std::abort();
+        asm volatile("" : : "g"(out.data()) : "memory");
+      });
+  textbytes_json_stringify.Print();
+
+  auto textbytes_json_parse = RunTimed(
+      "c++ protobuf TextBytes JSON parse", kIterations, textbytes_json.size(),
+      [&]() {
+        demo::TextBytes decoded;
+        if (!google::protobuf::util::JsonStringToMessage(textbytes_json,
+                                                         &decoded)
+                 .ok())
+          std::abort();
+        asm volatile("" : : "g"(&decoded) : "memory");
+      });
+  textbytes_json_parse.Print();
 
   auto largebytes_encode =
       RunTimed("c++ protobuf largebytes encode", kIterations,

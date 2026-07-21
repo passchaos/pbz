@@ -2,6 +2,7 @@ package main
 
 import (
 	bytespkg "bytes"
+	jsonpkg "encoding/json"
 	"fmt"
 	"math"
 	"time"
@@ -485,6 +486,45 @@ func main() {
 	textbytesBytes, err := proto.Marshal(textbytes)
 	if err != nil {
 		panic(err)
+	}
+	textbytesJSONBytes, err := protojson.Marshal(textbytes)
+	if err != nil {
+		panic(err)
+	}
+	var textbytesJSONCompact bytespkg.Buffer
+	// protojson is free to insert insignificant spaces.  Compact before the
+	// smoke substring checks so the guard validates protobuf JSON semantics
+	// (field names plus bytes base64) rather than a particular pretty-printing
+	// choice.
+	if err := jsonpkg.Compact(&textbytesJSONCompact, textbytesJSONBytes); err != nil {
+		panic(err)
+	}
+	textbytesJSONCompactBytes := textbytesJSONCompact.Bytes()
+	if !bytespkg.Contains(textbytesJSONCompactBytes, []byte(`"title":"ASCII title for protobuf"`)) ||
+		!bytespkg.Contains(textbytesJSONCompactBytes, []byte(`"payload":"MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="`)) ||
+		!bytespkg.Contains(textbytesJSONCompactBytes, []byte(`"tags":["alpha","beta","gamma","delta"]`)) ||
+		!bytespkg.Contains(textbytesJSONCompactBytes, []byte(`"chunks":["Y2h1bmstb25l","Y2h1bmstdHdv","Y2h1bmstdGhyZWU=","Y2h1bmstZm91cg=="]`)) {
+		panic("unexpected TextBytes JSON stringify result")
+	}
+	{
+		var decoded personpb.TextBytes
+		if err := protojson.Unmarshal(textbytesJSONBytes, &decoded); err != nil {
+			panic(err)
+		}
+		if decoded.Title != textbytes.Title || !bytespkg.Equal(decoded.Payload, textbytes.Payload) ||
+			len(decoded.Tags) != len(textbytes.Tags) || len(decoded.Chunks) != len(textbytes.Chunks) {
+			panic("unexpected TextBytes JSON parse result")
+		}
+		for i := range textbytes.Tags {
+			if decoded.Tags[i] != textbytes.Tags[i] {
+				panic("unexpected TextBytes JSON tag")
+			}
+		}
+		for i := range textbytes.Chunks {
+			if !bytespkg.Equal(decoded.Chunks[i], textbytes.Chunks[i]) {
+				panic("unexpected TextBytes JSON chunk")
+			}
+		}
 	}
 	largebytesBytes, err := proto.Marshal(largebytes)
 	if err != nil {
@@ -1790,6 +1830,7 @@ func main() {
 	fmt.Printf("text payload size: %d\n", len(textBytes))
 	fmt.Printf("scalarmix payload size: %d\n", len(scalarmixBytes))
 	fmt.Printf("textbytes payload size: %d\n", len(textbytesBytes))
+	fmt.Printf("textbytes json payload size: %d\n", len(textbytesJSONBytes))
 	fmt.Printf("largebytes payload size: %d\n", len(largebytesBytes))
 	fmt.Printf("presencemix payload size: %d\n", len(presencemixBytes))
 	fmt.Printf("complex payload size: %d\n", len(complexBytes))
@@ -1893,6 +1934,20 @@ func main() {
 	runTimed("go protobuf textbytes decode", iterations, len(textbytesBytes), func() {
 		var decoded personpb.TextBytes
 		if err := unmarshalOptions.Unmarshal(textbytesBytes, &decoded); err != nil {
+			panic(err)
+		}
+	}).print()
+
+	runTimed("go protobuf TextBytes JSON stringify", iterations, len(textbytesJSONBytes), func() {
+		out, err := protojson.Marshal(textbytes)
+		if err != nil {
+			panic(err)
+		}
+		_ = out
+	}).print()
+	runTimed("go protobuf TextBytes JSON parse", iterations, len(textbytesJSONBytes), func() {
+		var decoded personpb.TextBytes
+		if err := jsonUnmarshalOptions.Unmarshal(textbytesJSONBytes, &decoded); err != nil {
 			panic(err)
 		}
 	}).print()

@@ -38,7 +38,8 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - deterministic binary encode
 - scalar mix encode/decode
 - string/bytes and repeated string/bytes encode/decode, including generated
-  borrowed slices for copy-free output paths
+  borrowed slices for copy-free output paths and generated TextBytes JSON
+  stringify/parse for bytes base64 plus repeated string/bytes roundtrips
 - large bytes and repeated large bytes encode/decode, including generated
   borrowed slices/views for copy-free payload paths
 - proto3 optional presence plus oneof encode/decode and JSON stringify/parse
@@ -64,7 +65,7 @@ The benchmark currently measures pbz generated and dynamic paths for:
 - generated typed iterators for packed varint fields
 - generated known-schema decode reuse for trusted same-schema hot paths,
   including packed repeated scalar and open-enum messages with reusable destination storage
-- JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse, generated null-field parse, generated ignore-unknown parse, generated enum-name parse, generated always-print default-value stringify, generated enum-number stringify, generated proto-name stringify, generated proto-name parse, generated open-enum numeric parse, and generated integer numeric-exponent token parse, generated quoted numeric string parse
+- JSON stringify/parse, including generated `map<string, int32>` surrogate-pair key parse, generated null-field parse, generated ignore-unknown parse, generated enum-name parse, generated always-print default-value stringify, generated enum-number stringify, generated proto-name stringify, generated proto-name parse, generated open-enum numeric parse, generated integer numeric-exponent token parse, generated quoted numeric string parse, and generated TextBytes JSON stringify/parse for bytes base64 and repeated string/bytes fields
 - TextFormat format/parse
 
 The unknown-field stress rows are pbz regression signals. Generated messages
