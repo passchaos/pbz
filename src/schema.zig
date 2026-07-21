@@ -485,6 +485,14 @@ pub const EnumDescriptor = struct {
         }
         return null;
     }
+
+    pub fn isReservedName(self: *const EnumDescriptor, name: []const u8) bool {
+        return reservedNameMatches(self.reserved_names.items, name);
+    }
+
+    pub fn isReservedNumber(self: *const EnumDescriptor, number: i64) bool {
+        return reservedNumberMatches(self.reserved_ranges.items, number);
+    }
 };
 
 pub const MessageDescriptor = struct {
@@ -541,6 +549,14 @@ pub const MessageDescriptor = struct {
             if (field.number == number) return field;
         }
         return null;
+    }
+
+    pub fn isReservedName(self: *const MessageDescriptor, name: []const u8) bool {
+        return reservedNameMatches(self.reserved_names.items, name);
+    }
+
+    pub fn isReservedNumber(self: *const MessageDescriptor, number: i64) bool {
+        return reservedNumberMatches(self.reserved_ranges.items, number);
     }
 
     pub fn findOneof(self: *const MessageDescriptor, name: []const u8) ?*const OneofDescriptor {
@@ -955,6 +971,21 @@ pub fn optionLeaf(name: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, name, " \t\r\n");
     if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| return trimmed[idx + 1 ..];
     return trimmed;
+}
+
+fn reservedNameMatches(names: []const []const u8, name: []const u8) bool {
+    for (names) |reserved_name| {
+        if (std.mem.eql(u8, reserved_name, name)) return true;
+    }
+    return false;
+}
+
+fn reservedNumberMatches(ranges: []const ReservedRange, number: i64) bool {
+    for (ranges) |range| {
+        const end = range.end orelse std.math.maxInt(i64);
+        if (number >= range.start and number < end) return true;
+    }
+    return false;
 }
 
 pub fn extensionFullName(field: *const FieldDescriptor) []const u8 {

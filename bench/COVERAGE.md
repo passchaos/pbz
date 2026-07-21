@@ -305,7 +305,7 @@ benchmark harness.
   registry descriptors and dynamic messages, including typed get/set/add/get-default
   and clear helpers across all scalar families, present-field listing, immediate
   type-checked writes, repeated fields, typed message/group creation/access, map
-  last-wins mutation, map key lookup, JSON-name field lookup/output, field presence/packing metadata,
+  last-wins mutation, map key lookup, JSON-name field lookup/output, field presence/packing/reserved metadata,
   file/import-chain lookup, enum descriptor/value lookup, oneof
   lookup/presence/inspection/clearing, imported message fields, option lookup,
   service descriptor/method lookup, extension descriptor lookup, unknown-field

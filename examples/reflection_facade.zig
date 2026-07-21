@@ -18,7 +18,14 @@ pub fn main() !void {
         \\syntax = "proto3";
         \\package demo.reflect;
         \\import "common.proto";
+        \\enum Status {
+        \\  reserved 5 to 9;
+        \\  reserved "STATUS_OLD";
+        \\  STATUS_UNKNOWN = 0;
+        \\}
         \\message User {
+        \\  reserved 100 to 110;
+        \\  reserved "legacy";
         \\  int32 id = 1;
         \\  string name = 2;
         \\  repeated string tags = 3;
@@ -83,6 +90,13 @@ pub fn main() !void {
     try std.testing.expect(refl.fieldIsMap(counts_desc_field));
     try std.testing.expect(refl.fieldIsRepeatedLike(counts_desc_field));
     try std.testing.expect(!refl.fieldIsPackable(counts_desc_field));
+    try std.testing.expect(refl.messageReservedName(user_desc, "legacy"));
+    try std.testing.expect(refl.messageReservedNumber(user_desc, 100));
+    try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
+    const status_desc = try refl.enumeration(".demo.reflect.Status");
+    try std.testing.expect(refl.enumReservedName(status_desc, "STATUS_OLD"));
+    try std.testing.expect(refl.enumReservedNumber(status_desc, 5));
+    try std.testing.expect(!refl.enumReservedNumber(status_desc, 10));
     try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));
     const users_service = try refl.service(".demo.reflect.Users");
     const service_file = try refl.fileOfService(users_service);

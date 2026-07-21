@@ -168,6 +168,14 @@ pub const Reflection = struct {
         return descriptor.findValueByNumber(number) orelse error.UnknownEnum;
     }
 
+    pub fn enumReservedName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) bool {
+        return descriptor.isReservedName(name);
+    }
+
+    pub fn enumReservedNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i64) bool {
+        return descriptor.isReservedNumber(number);
+    }
+
     pub fn enumForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
         return try self.enumForKind(message_descriptor, field, field.kind);
     }
@@ -192,6 +200,14 @@ pub const Reflection = struct {
 
     pub fn has(_: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) bool {
         return message_value.has(field);
+    }
+
+    pub fn messageReservedName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) bool {
+        return descriptor.isReservedName(name);
+    }
+
+    pub fn messageReservedNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
+        return descriptor.isReservedNumber(number);
     }
 
     pub fn hasField(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!bool {
