@@ -405,6 +405,20 @@ pub fn appendConsumedRawField(allocator: std.mem.Allocator, list: *std.ArrayList
     const raw_end = reader.position();
     if (raw_start > raw_end or raw_end > reader.input.len) return error.InvalidWireType;
 
+    if (list.capacity == 0) {
+        // Unknown-field-heavy messages commonly store many small raw fields in
+        // one tail segment (for example telemetry envelopes carrying future
+        // scalar fields).  Reserve the slice table on first contact so exact
+        // raw-byte preservation does not also pay repeated metadata reallocs.
+        // The raw bytes themselves are still individually owned, preserving the
+        // long-standing `[]const []const u8` ownership contract.
+        const raw_len = raw_end - raw_start;
+        const remaining_bytes = reader.input.len - raw_start;
+        const average_field_len = @max(raw_len, @as(usize, 1));
+        const estimated_fields = @max(@as(usize, 4), @min(@as(usize, 512), remaining_bytes / average_field_len));
+        try list.ensureTotalCapacity(allocator, estimated_fields);
+    }
+
     // Raw unknown fields must preserve the exact source bytes, including
     // non-canonical-but-accepted tag or length varints. Callers therefore pass
     // the position captured before tag decoding instead of recomputing a tag
@@ -2111,6 +2125,7 @@ test "wire appends consumed raw fields with exact source bytes" {
     try reader.skipValue(tag);
     try appendConsumedRawField(allocator, &list, &reader, reader.lastTagStart());
     try std.testing.expectEqualSlices(u8, &noncanonical_tag, list.items[0]);
+    try std.testing.expect(list.capacity >= 4);
 
     var skipped_reader = Reader.init(&.{ 0xa2, 0x06, 0x03, 'z', 'i', 'g' });
     const skipped = (try skipped_reader.nextTag()).?;
