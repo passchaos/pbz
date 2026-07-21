@@ -5,7 +5,7 @@ const registry_mod = @import("registry.zig");
 const dynamic = @import("dynamic.zig");
 const wire = @import("wire.zig");
 
-pub const Error = std.mem.Allocator.Error || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField, TypeMismatch };
+pub const Error = dynamic.DecodeError || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 const DefaultTag = std.meta.Tag(dynamic.DefaultValue);
@@ -144,6 +144,38 @@ pub const Reflection = struct {
         return try message_value.listFieldsAlloc(self.allocator);
     }
 
+    pub fn unknownCount(_: Reflection, message_value: *const dynamic.DynamicMessage) usize {
+        return message_value.unknownCount();
+    }
+
+    pub fn unknownFields(_: Reflection, message_value: *const dynamic.DynamicMessage) []const dynamic.UnknownField {
+        return message_value.unknownFields();
+    }
+
+    pub fn unknownFieldCountByNumber(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) usize {
+        return message_value.unknownFieldCountByNumber(number);
+    }
+
+    pub fn hasUnknownFieldNumber(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) bool {
+        return message_value.hasUnknownFieldNumber(number);
+    }
+
+    pub fn unknownFieldNumbers(self: Reflection, message_value: *const dynamic.DynamicMessage) Error![]wire.FieldNumber {
+        return try message_value.unknownFieldNumbersAlloc(self.allocator);
+    }
+
+    pub fn unknownFieldNumberRuns(self: Reflection, message_value: *const dynamic.DynamicMessage) Error![]wire.RawFieldNumberRun {
+        return try message_value.unknownFieldNumberRunsAlloc(self.allocator);
+    }
+
+    pub fn unknownByNumber(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) []const dynamic.UnknownField {
+        return message_value.unknownByNumber(number);
+    }
+
+    pub fn unknownByNumberAlloc(self: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) Error![]dynamic.UnknownField {
+        return try message_value.unknownByNumberAlloc(self.allocator, number);
+    }
+
     pub fn getOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) Error!dynamic.DefaultValue {
         const owner_file = try self.fileOfMessage(message_value.descriptor);
         return message_value.getOrDefaultWithRegistry(owner_file, self.registry, field);
@@ -217,6 +249,18 @@ pub const Reflection = struct {
 
     pub fn clearField(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!void {
         self.clear(message_value, try self.fieldByName(message_value.descriptor, name));
+    }
+
+    pub fn appendUnknownRaw(_: Reflection, message_value: *dynamic.DynamicMessage, raw: []const u8) Error!void {
+        return try message_value.appendUnknownRaw(raw);
+    }
+
+    pub fn clearUnknownFieldsByNumber(_: Reflection, message_value: *dynamic.DynamicMessage, number: wire.FieldNumber) void {
+        message_value.clearUnknownFieldsByNumber(number);
+    }
+
+    pub fn clearUnknownFields(_: Reflection, message_value: *dynamic.DynamicMessage) void {
+        message_value.clearUnknownFields();
     }
 
     pub fn clearOneof(self: Reflection, message_value: *dynamic.DynamicMessage, oneof_name: []const u8) Error!bool {

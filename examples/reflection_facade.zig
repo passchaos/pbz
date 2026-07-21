@@ -162,6 +162,31 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("email", refl.whichOneof(&decoded, "contact").?.name);
     try std.testing.expectEqualStrings("ada@example.test", try refl.getString(&decoded, "email"));
 
+    var raw_unknown = pbz.Writer.init(allocator);
+    defer raw_unknown.deinit();
+    try raw_unknown.writeUInt32(100, 1);
+    try refl.appendUnknownRaw(&decoded, raw_unknown.slice());
+    try std.testing.expectEqual(@as(usize, 1), refl.unknownCount(&decoded));
+    try std.testing.expect(refl.hasUnknownFieldNumber(&decoded, 100));
+    try std.testing.expectEqual(@as(usize, 1), refl.unknownFieldCountByNumber(&decoded, 100));
+    const unknown_numbers = try refl.unknownFieldNumbers(&decoded);
+    defer allocator.free(unknown_numbers);
+    try std.testing.expectEqualSlices(pbz.FieldNumber, &.{100}, unknown_numbers);
+    const unknown_runs = try refl.unknownFieldNumberRuns(&decoded);
+    defer allocator.free(unknown_runs);
+    try std.testing.expectEqual(@as(usize, 1), unknown_runs.len);
+    try std.testing.expectEqual(@as(pbz.FieldNumber, 100), unknown_runs[0].number);
+    try std.testing.expectEqual(@as(usize, 1), unknown_runs[0].count);
+    try std.testing.expectEqualSlices(u8, raw_unknown.slice(), refl.unknownByNumber(&decoded, 100)[0].data);
+    const owned_unknown = try refl.unknownByNumberAlloc(&decoded, 100);
+    defer allocator.free(owned_unknown);
+    try std.testing.expectEqual(@as(usize, 1), owned_unknown.len);
+    refl.clearUnknownFieldsByNumber(&decoded, 100);
+    try std.testing.expectEqual(@as(usize, 0), refl.unknownCount(&decoded));
+    try refl.appendUnknownRaw(&decoded, raw_unknown.slice());
+    refl.clearUnknownFields(&decoded);
+    try std.testing.expectEqual(@as(usize, 0), refl.unknownFields(&decoded).len);
+
     const json = try pbz.stringifyJsonAllocWithRegistry(allocator, app_file, &loaded.registry, &user, .{});
     defer allocator.free(json);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"profile\":") != null);
