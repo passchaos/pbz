@@ -173,6 +173,23 @@ pub const DynamicMessage = struct {
         return self.clearField(field);
     }
 
+    pub fn removeRepeatedValue(self: *DynamicMessage, field: *const schema.FieldDescriptor, index: usize) bool {
+        if (!field.isRepeatedLike()) return false;
+        const field_value = self.getMutableByNumber(field.number) orelse return false;
+        if (index >= field_value.values.items.len) return false;
+        deinitValue(&field_value.values.items[index], self.allocator);
+        const tail = field_value.values.items[index + 1 ..];
+        std.mem.copyForwards(Value, field_value.values.items[index .. index + tail.len], tail);
+        field_value.values.items.len -= 1;
+        if (field_value.values.items.len == 0) _ = self.clearField(field);
+        return true;
+    }
+
+    pub fn removeRepeatedValueByName(self: *DynamicMessage, name: []const u8, index: usize) bool {
+        const field = self.descriptor.findField(name) orelse return false;
+        return self.removeRepeatedValue(field, index);
+    }
+
     pub fn hasOneof(self: *const DynamicMessage, oneof_name: []const u8) bool {
         return self.whichOneof(oneof_name) != null;
     }

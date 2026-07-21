@@ -165,6 +165,10 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Ada", try refl.getString(&user, "name"));
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&user, "tags"));
     try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 1)).string);
+    try std.testing.expect(try refl.removeRepeatedValue(&user, "tags", 0));
+    try std.testing.expectEqual(@as(usize, 1), try refl.repeatedLen(&user, "tags"));
+    try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 0)).string);
+    try std.testing.expect(!try refl.removeRepeatedValue(&user, "tags", 5));
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "role"));
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnumOrDefault(&user, "role"));
     try std.testing.expect(role_desc == try refl.enumForField(user_desc, try refl.fieldByName(user_desc, "role")));
