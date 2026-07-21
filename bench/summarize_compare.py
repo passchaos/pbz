@@ -25,6 +25,7 @@ LINE_RE = re.compile(r"^(?P<name>[^:]+): best of \d+ x \d+ iters, (?:\d+ bytes/i
 # Keep this in sync with bench/COVERAGE.md so the self-test catches accidental
 # benchmark-matrix drift instead of silently weakening the comparison evidence.
 EXPECTED_WORKLOAD_COUNT = 417
+COVERAGE_WORKLOAD_RE = re.compile(r"`bench/summarize_compare\.py` currently tracks (?P<count>\d+) workloads\.")
 
 
 @dataclass(frozen=True)
@@ -1407,6 +1408,11 @@ WORKLOADS: tuple[Workload, ...] = (
 
 def validate_workloads() -> None:
     assert len(WORKLOADS) == EXPECTED_WORKLOAD_COUNT, (len(WORKLOADS), EXPECTED_WORKLOAD_COUNT)
+    coverage = Path(__file__).with_name("COVERAGE.md").read_text(encoding="utf-8")
+    match = COVERAGE_WORKLOAD_RE.search(coverage)
+    assert match is not None, "bench/COVERAGE.md workload count marker not found"
+    coverage_count = int(match.group("count"))
+    assert coverage_count == EXPECTED_WORKLOAD_COUNT, (coverage_count, EXPECTED_WORKLOAD_COUNT)
 
     names = [workload.name for workload in WORKLOADS]
     duplicate_names = sorted({name for name in names if names.count(name) > 1})
