@@ -242,6 +242,14 @@ pub fn build(b: *std.Build) void {
         "bench/summarize_compare.py",
         "--self-test",
     });
+    const run_generated_examples_check = b.addSystemCommand(&.{
+        "python3",
+        "tools/check_generated_examples.py",
+        "--plugin",
+    });
+    run_generated_examples_check.addArtifactArg(plugin_exe);
+    const generated_examples_check_step = b.step("check-generated-examples", "Regenerate checked-in protobuf examples and verify no drift");
+    generated_examples_check_step.dependOn(&run_generated_examples_check.step);
     const run_conformance_smoke = b.addSystemCommand(&.{
         "python3",
         "tools/smoke_conformance.py",
@@ -258,5 +266,6 @@ pub fn build(b: *std.Build) void {
 
     const check_step = b.step("check", "Run non-benchmark validation gates");
     check_step.dependOn(test_step);
+    check_step.dependOn(generated_examples_check_step);
     check_step.dependOn(conformance_smoke_step);
 }

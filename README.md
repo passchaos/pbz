@@ -668,6 +668,7 @@ zig build check
 zig build test
 zig build examples
 zig build build-codegen-smoke
+zig build check-generated-examples
 zig build conformance-smoke
 python3 bench/summarize_compare.py --self-test
 tools/run_conformance.sh

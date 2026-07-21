@@ -88,6 +88,7 @@ The same audit pass also kept these functional coverage gates green:
 zig build check
 zig build test
 zig build examples
+zig build check-generated-examples
 zig build conformance-smoke
 python3 bench/summarize_compare.py --self-test
 git diff --check
@@ -197,6 +198,9 @@ benchmark harness.
 - `examples/generated_recursive.zig` covers generated self-recursive schemas,
   including raw-payload singular recursion, typed repeated recursion, and
   generated decode recursion-limit propagation.
+- `tools/check_generated_examples.py` and `zig build check-generated-examples`
+  regenerate every checked-in `examples/generated/*.pb.zig` module from
+  `examples/proto/*.proto` and fail on drift.
 - `examples/generated_streaming.zig` covers generated service client/handler
   adapters over a transport abstraction for unary, client-streaming,
   server-streaming, and bidirectional-streaming RPC shapes.
