@@ -20,7 +20,7 @@ pub const WireType = enum(u3) {
     end_group = 4,
     fixed32 = 5,
 
-    pub inline fn fromInt(value: u3) Error!WireType {
+    pub fn fromInt(value: u3) Error!WireType {
         return switch (value) {
             0 => .varint,
             1 => .fixed64,
@@ -37,12 +37,12 @@ pub const Tag = struct {
     number: FieldNumber,
     wire_type: WireType,
 
-    pub inline fn encode(self: Tag) Error!u64 {
+    pub fn encode(self: Tag) Error!u64 {
         if (self.number == 0) return error.InvalidFieldNumber;
         return (@as(u64, self.number) << 3) | @intFromEnum(self.wire_type);
     }
 
-    pub inline fn decode(value: u64) Error!Tag {
+    pub fn decode(value: u64) Error!Tag {
         const number = value >> 3;
         if (number == 0 or number > std.math.maxInt(FieldNumber)) return error.InvalidFieldNumber;
         return .{
