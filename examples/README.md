@@ -14,6 +14,9 @@ library API.
   repeated/map/oneof handling, deterministic encode/decode, and dynamic
   unknown-field query/mutation APIs.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
+- `dynamic_json_options.zig` — dynamic JSON parse/stringify options:
+  ignore-unknown, proto-name fields, always-print defaults, enum-number output,
+  and proto-name input aliases.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
   recursive imports, message/service registry lookup, and registry-backed
   dynamic JSON output.

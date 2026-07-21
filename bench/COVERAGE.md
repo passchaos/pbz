@@ -274,6 +274,9 @@ benchmark harness.
   repeated/map/oneof mutation, deterministic encode/decode, and dynamic
   unknown-field query/mutation APIs including append, by-number extraction,
   sidecar counts, clear, and invalid raw-field rejection.
+- `examples/dynamic_json_options.zig` covers dynamic JSON parse/stringify
+  options: ignore-unknown parsing, proto-name field output/input,
+  always-print default values, and enum-number output.
 - `examples/generated_closed_enum.zig` covers generated proto2 closed-enum
   unknown numeric preservation into raw unknown fields, including singular,
   repeated, and packed repeated inputs.
