@@ -10940,21 +10940,21 @@ fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const sch
         try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
         try writer.writeAll(" {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const raw = try getOn(message, allocator);\n");
+        try writer.writeAll("const _pbz_raw = try getOn(message, allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(raw);\n");
+        try writer.writeAll("defer allocator.free(_pbz_raw);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const out = try allocator.alloc(");
+        try writer.writeAll("const _pbz_out = try allocator.alloc(");
         try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
-        try writer.writeAll(", raw.len);\n");
+        try writer.writeAll(", _pbz_raw.len);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("errdefer allocator.free(out);\n");
+        try writer.writeAll("errdefer allocator.free(_pbz_out);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("for (raw, 0..) |value, i| out[i] = ");
+        try writer.writeAll("for (_pbz_raw, 0..) |_pbz_value, _pbz_i| _pbz_out[_pbz_i] = ");
         try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
-        try writer.writeAll(".fromInt(value) orelse return error.InvalidEnumValue;\n");
+        try writer.writeAll(".fromInt(_pbz_value) orelse return error.InvalidEnumValue;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("return out;\n");
+        try writer.writeAll("return _pbz_out;\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
 
@@ -10976,13 +10976,13 @@ fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const sch
         try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+        try writer.writeAll("const _pbz_raw = try allocator.alloc(i32, values.len);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(raw);\n");
+        try writer.writeAll("defer allocator.free(_pbz_raw);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+        try writer.writeAll("for (values, 0..) |_pbz_value, _pbz_i| _pbz_raw[_pbz_i] = _pbz_value.toInt();\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try appendAllOn(message, allocator, raw);\n");
+        try writer.writeAll("try appendAllOn(message, allocator, _pbz_raw);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
 
@@ -10993,13 +10993,13 @@ fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const sch
         try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const raw = try allocator.alloc(i32, values.len);\n");
+        try writer.writeAll("const _pbz_raw = try allocator.alloc(i32, values.len);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(raw);\n");
+        try writer.writeAll("defer allocator.free(_pbz_raw);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("for (values, 0..) |value, i| raw[i] = value.toInt();\n");
+        try writer.writeAll("for (values, 0..) |_pbz_value, _pbz_i| _pbz_raw[_pbz_i] = _pbz_value.toInt();\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try replaceAllOn(message, allocator, raw);\n");
+        try writer.writeAll("try replaceAllOn(message, allocator, _pbz_raw);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
         return;
@@ -11012,11 +11012,11 @@ fn writeExtensionEnumFacadeHelpers(ctx: *const CodegenContext, field: *const sch
     try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const raw = (try getOn(message, allocator)) orelse return null;\n");
+    try writer.writeAll("const _pbz_raw = (try getOn(message, allocator)) orelse return null;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("return ");
     try writeEnumTypeReferenceWithContext(ctx, field.kind.enumeration, writer);
-    try writer.writeAll(".fromInt(raw);\n");
+    try writer.writeAll(".fromInt(_pbz_raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -11059,11 +11059,11 @@ fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const 
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const payload = try value.encode(allocator);\n");
+        try writer.writeAll("const _pbz_payload = try value.encode(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(payload);\n");
+        try writer.writeAll("defer allocator.free(_pbz_payload);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try appendToUnknown(message, allocator, payload);\n");
+        try writer.writeAll("try appendToUnknown(message, allocator, _pbz_payload);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
 
@@ -11074,21 +11074,21 @@ fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const 
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(" {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const payloads = try decodeAllFromUnknown(message, allocator);\n");
+        try writer.writeAll("const _pbz_payloads = try decodeAllFromUnknown(message, allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(payloads);\n");
+        try writer.writeAll("defer allocator.free(_pbz_payloads);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var list: std.ArrayList(");
+        try writer.writeAll("var _pbz_list: std.ArrayList(");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") = .empty;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("errdefer { for (list.items) |*item| item.deinit(allocator); list.deinit(allocator); }\n");
+        try writer.writeAll("errdefer { for (_pbz_list.items) |*item| item.deinit(allocator); _pbz_list.deinit(allocator); }\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("for (payloads) |payload| try list.append(allocator, try ");
+        try writer.writeAll("for (_pbz_payloads) |_pbz_payload| try _pbz_list.append(allocator, try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".decode(allocator, payload));\n");
+        try writer.writeAll(".decode(allocator, _pbz_payload));\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+        try writer.writeAll("return try _pbz_list.toOwnedSlice(allocator);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     } else {
@@ -11099,11 +11099,11 @@ fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const 
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(") !void {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const payload = try value.encode(allocator);\n");
+        try writer.writeAll("const _pbz_payload = try value.encode(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer allocator.free(payload);\n");
+        try writer.writeAll("defer allocator.free(_pbz_payload);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try replaceInUnknown(message, allocator, payload);\n");
+        try writer.writeAll("try replaceInUnknown(message, allocator, _pbz_payload);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
 
@@ -11114,11 +11114,11 @@ fn writeExtensionMessageFacadeHelpers(ctx: *const CodegenContext, field: *const 
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(" {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const payload = (try decodeFirstFromUnknown(message, allocator)) orelse return null;\n");
+        try writer.writeAll("const _pbz_payload = (try decodeFirstFromUnknown(message, allocator)) orelse return null;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("return try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".decode(allocator, payload);\n");
+        try writer.writeAll(".decode(allocator, _pbz_payload);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -11175,11 +11175,11 @@ fn writeExtensionWriteHelpers(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(") !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const raw = try encodeRaw(allocator, value);\n");
+    try writer.writeAll("const _pbz_raw = try encodeRaw(allocator, value);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(raw);\n");
+    try writer.writeAll("defer allocator.free(_pbz_raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try message.appendUnknownRaw(allocator, raw);\n");
+    try writer.writeAll("try message.appendUnknownRaw(allocator, _pbz_raw);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -11235,7 +11235,7 @@ fn writeExtensionWriteHelpers(ctx: *const CodegenContext, field: *const schema.F
             try writer.print("try w.writeBytes({d}, packed_writer.slice());\n", .{field.number});
         } else {
             try indent(writer, depth + 1);
-            try writer.writeAll("for (values) |value| try write(w, value);\n");
+            try writer.writeAll("for (values) |_pbz_value| try write(w, _pbz_value);\n");
         }
         try indent(writer, depth);
         try writer.writeAll("}\n");
@@ -11263,14 +11263,14 @@ fn writeExtensionWriteHelpers(ctx: *const CodegenContext, field: *const schema.F
             try indent(writer, depth + 1);
             try writer.writeAll("if (values.len == 0) return;\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("const raw = try encodeAllRaw(allocator, values);\n");
+            try writer.writeAll("const _pbz_raw = try encodeAllRaw(allocator, values);\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("defer allocator.free(raw);\n");
+            try writer.writeAll("defer allocator.free(_pbz_raw);\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("try message.appendUnknownRaw(allocator, raw);\n");
+            try writer.writeAll("try message.appendUnknownRaw(allocator, _pbz_raw);\n");
         } else {
             try indent(writer, depth + 1);
-            try writer.writeAll("for (values) |value| try appendToUnknown(message, allocator, value);\n");
+            try writer.writeAll("for (values) |_pbz_value| try appendToUnknown(message, allocator, _pbz_value);\n");
         }
         try indent(writer, depth);
         try writer.writeAll("}\n");
@@ -11319,23 +11319,23 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(raw);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const tag = (try r.nextTag()) orelse return null;\n");
+    try writer.writeAll("const _pbz_tag = (try r.nextTag()) orelse return null;\n");
     if (extensionUsesMessageSet(ctx, field)) {
         try indent(writer, depth + 1);
-        try writer.writeAll("if (tag.number == 1 and tag.wire_type == .start_group) { const value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return value; }\n");
+        try writer.writeAll("if (_pbz_tag.number == 1 and _pbz_tag.wire_type == .start_group) { const _pbz_value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return _pbz_value; }\n");
         try indent(writer, depth + 1);
-        try writer.print("if (tag.number == {d} and tag.wire_type == .length_delimited) {{ const value = try r.readBytes(); if (!r.eof()) return error.InvalidWireType; return value; }}\n", .{field.number});
+        try writer.print("if (_pbz_tag.number == {d} and _pbz_tag.wire_type == .length_delimited) {{ const _pbz_value = try r.readBytes(); if (!r.eof()) return error.InvalidWireType; return _pbz_value; }}\n", .{field.number});
         try indent(writer, depth + 1);
         try writer.writeAll("return null;\n");
     } else {
         try indent(writer, depth + 1);
-        try writer.print("if (tag.number != number or tag.wire_type != .{s}) return null;\n", .{@tagName(field.kind.wireType())});
+        try writer.print("if (_pbz_tag.number != number or _pbz_tag.wire_type != .{s}) return null;\n", .{@tagName(field.kind.wireType())});
         try indent(writer, depth + 1);
-        try writer.writeAll("const value = try decodeValue(&r);\n");
+        try writer.writeAll("const _pbz_value = try decodeValue(&r);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("return value;\n");
+        try writer.writeAll("return _pbz_value;\n");
     }
     try indent(writer, depth);
     try writer.writeAll("}\n");
@@ -11348,25 +11348,25 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
         try indent(writer, depth + 1);
         try writer.writeAll("var r = pbz.Reader.init(raw);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("const tag = (try r.nextTag()) orelse return null;\n");
+        try writer.writeAll("const _pbz_tag = (try r.nextTag()) orelse return null;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("if (tag.number != number or tag.wire_type != .length_delimited) return null;\n");
+        try writer.writeAll("if (_pbz_tag.number != number or _pbz_tag.wire_type != .length_delimited) return null;\n");
         try indent(writer, depth + 1);
         try writer.writeAll("var packed_reader = pbz.Reader.init(try r.readBytes());\n");
         try indent(writer, depth + 1);
         try writer.writeAll("if (!r.eof()) return error.InvalidWireType;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var list: std.ArrayList(");
+        try writer.writeAll("var _pbz_list: std.ArrayList(");
         try writer.writeAll(extensionSingleZigType(field.kind));
         try writer.writeAll(") = .empty;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("errdefer list.deinit(allocator);\n");
+        try writer.writeAll("errdefer _pbz_list.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("while (!packed_reader.eof()) try list.append(allocator, ");
+        try writer.writeAll("while (!packed_reader.eof()) try _pbz_list.append(allocator, ");
         try writeEntryReadExpr(field.kind, "packed_reader", writer);
         try writer.writeAll(");\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+        try writer.writeAll("return try _pbz_list.toOwnedSlice(allocator);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -11376,23 +11376,23 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var list: std.ArrayList(");
+    try writer.writeAll("var _pbz_list: std.ArrayList(");
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(") = .empty;\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("errdefer list.deinit(allocator);\n");
+    try writer.writeAll("errdefer _pbz_list.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("for (raw_fields) |raw| {\n");
+    try writer.writeAll("for (raw_fields) |_pbz_raw| {\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
+    try writer.writeAll("if (try decodeRaw(_pbz_raw)) |_pbz_value| try _pbz_list.append(allocator, _pbz_value);\n");
     if (field.resolvedPacked(file)) {
         try indent(writer, depth + 2);
-        try writer.writeAll("if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }\n");
+        try writer.writeAll("if (try decodePackedRaw(allocator, _pbz_raw)) |_pbz_values| { defer allocator.free(_pbz_values); try _pbz_list.appendSlice(allocator, _pbz_values); }\n");
     }
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return try list.toOwnedSlice(allocator);\n");
+    try writer.writeAll("return try _pbz_list.toOwnedSlice(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -11420,11 +11420,11 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
     try writer.writeAll(extensionSingleZigType(field.kind));
     try writer.writeAll(" {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const values = try decodeFromUnknownFieldsAlloc(message, allocator);\n");
+    try writer.writeAll("const _pbz_values = try decodeFromUnknownFieldsAlloc(message, allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("defer allocator.free(values);\n");
+    try writer.writeAll("defer allocator.free(_pbz_values);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return if (values.len == 0) null else values[values.len - 1];\n");
+    try writer.writeAll("return if (_pbz_values.len == 0) null else _pbz_values[_pbz_values.len - 1];\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
@@ -11443,10 +11443,10 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
         try writer.writeAll(extensionSingleZigType(field.kind));
         try writer.writeAll("), raw: []const u8) !void {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("if (try decodeRaw(raw)) |value| try list.append(allocator, value);\n");
+        try writer.writeAll("if (try decodeRaw(raw)) |_pbz_value| try list.append(allocator, _pbz_value);\n");
         if (field.resolvedPacked(file)) {
             try indent(writer, depth + 1);
-            try writer.writeAll("if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }\n");
+            try writer.writeAll("if (try decodePackedRaw(allocator, raw)) |_pbz_values| { defer allocator.free(_pbz_values); try list.appendSlice(allocator, _pbz_values); }\n");
         }
         try indent(writer, depth);
         try writer.writeAll("}\n");
@@ -11457,25 +11457,25 @@ fn writeExtensionDecodeHelpers(ctx: *const CodegenContext, field: *const schema.
         try indent(writer, depth + 1);
         try writer.writeAll("var type_id: ?u32 = null;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var payload: ?[]const u8 = null;\n");
+        try writer.writeAll("var _pbz_payload: ?[]const u8 = null;\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("while (try r.nextTag()) |tag| {\n");
+        try writer.writeAll("while (try r.nextTag()) |_pbz_tag| {\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("if (tag.wire_type == .end_group) {\n");
+        try writer.writeAll("if (_pbz_tag.wire_type == .end_group) {\n");
         try indent(writer, depth + 3);
-        try writer.writeAll("if (tag.number != 1) return error.InvalidFieldNumber;\n");
+        try writer.writeAll("if (_pbz_tag.number != 1) return error.InvalidFieldNumber;\n");
         try indent(writer, depth + 3);
-        try writer.print("return if (type_id != null and type_id.? == {d}) payload else null;\n", .{field.number});
+        try writer.print("return if (type_id != null and type_id.? == {d}) _pbz_payload else null;\n", .{field.number});
         try indent(writer, depth + 2);
         try writer.writeAll("}\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("switch (tag.number) {\n");
+        try writer.writeAll("switch (_pbz_tag.number) {\n");
         try indent(writer, depth + 3);
-        try writer.writeAll("2 => { if (tag.wire_type != .varint) return error.InvalidWireType; const raw_type_id = try r.readUInt32(); if (raw_type_id == 0 or raw_type_id > std.math.maxInt(pbz.FieldNumber)) return error.InvalidFieldNumber; type_id = raw_type_id; },\n");
+        try writer.writeAll("2 => { if (_pbz_tag.wire_type != .varint) return error.InvalidWireType; const raw_type_id = try r.readUInt32(); if (raw_type_id == 0 or raw_type_id > std.math.maxInt(pbz.FieldNumber)) return error.InvalidFieldNumber; type_id = raw_type_id; },\n");
         try indent(writer, depth + 3);
-        try writer.writeAll("3 => { if (tag.wire_type != .length_delimited) return error.InvalidWireType; payload = try r.readBytes(); },\n");
+        try writer.writeAll("3 => { if (_pbz_tag.wire_type != .length_delimited) return error.InvalidWireType; _pbz_payload = try r.readBytes(); },\n");
         try indent(writer, depth + 3);
-        try writer.writeAll("else => try r.skipValue(tag),\n");
+        try writer.writeAll("else => try r.skipValue(_pbz_tag),\n");
         try indent(writer, depth + 2);
         try writer.writeAll("}\n");
         try indent(writer, depth + 1);
@@ -12577,7 +12577,7 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getMessageOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !?imports.common_proto.demo.common.Note") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const value_enum_ref = @\"demo.common.Role\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !?@\"demo.common.Role\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return @\"demo.common.Role\".fromInt(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return @\"demo.common.Role\".fromInt(_pbz_raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) !@\"demo.common.Role\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try getEnumOn(message, allocator)) orelse @\"demo.common.Role\".fromInt(default_value_zig) orelse unreachable;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
@@ -12585,9 +12585,9 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumsOn(message: imports.common_proto.demo.common.Host, allocator: std.mem.Allocator) ![]@\"demo.common.Role\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn addEnumOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, value: @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllEnumsOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, _pbz_raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, _pbz_raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.jsonParseValueWithOptions(arena_allocator, arena_allocator") != null);
@@ -14095,7 +14095,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try write(&w, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try message.appendUnknownRaw(allocator, _pbz_raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasInUnknown(message: anytype) !bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try message.hasUnknownFieldNumber(number);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn countInUnknown(message: anytype) !usize") != null);
@@ -14108,26 +14108,26 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeValue(r: *pbz.Reader) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try r.readBytes();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeRaw(raw: []const u8) !?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number != number or tag.wire_type != .length_delimited) return null;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const value = try decodeValue(&r);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (_pbz_tag.number != number or _pbz_tag.wire_type != .length_delimited) return null;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const _pbz_value = try decodeValue(&r);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!r.eof()) return error.InvalidWireType;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return value;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return _pbz_value;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllRaw(allocator: std.mem.Allocator, raw_fields: []const []const u8) ![][]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |raw| {") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodeRaw(raw)) |value| try list.append(allocator, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (raw_fields) |_pbz_raw| {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodeRaw(_pbz_raw)) |_pbz_value| try _pbz_list.append(allocator, _pbz_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFromUnknownFieldsAlloc(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeAllRaw(allocator, message.unknownFields());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAllFromUnknown(message: anytype, allocator: std.mem.Allocator) ![][]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try decodeFromUnknownFieldsAlloc(message, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFirstFromUnknown(message: anytype, allocator: std.mem.Allocator) !?[]const u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return if (values.len == 0) null else values[values.len - 1];") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return if (_pbz_values.len == 0) null else _pbz_values[_pbz_values.len - 1];") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const nums = struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const cardinality = \"repeated\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn writeAll(w: *pbz.Writer, values: []const i32) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try write(w, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |_pbz_value| try write(w, _pbz_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeAllRaw(allocator: std.mem.Allocator, values: []const i32) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendAllToUnknown(message: anytype, allocator: std.mem.Allocator, values: []const i32) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| try appendToUnknown(message, allocator, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |_pbz_value| try appendToUnknown(message, allocator, _pbz_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllInUnknown(message: anytype, allocator: std.mem.Allocator, values: []const i32) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllToUnknown(message, allocator, values);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeAppend(allocator: std.mem.Allocator, list: *std.ArrayList(i32), r: *pbz.Reader) !void") != null);
@@ -14139,9 +14139,9 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeBytes(103, packed_writer.slice());") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodePackedRaw(allocator: std.mem.Allocator, raw: []const u8) !?[]i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (values.len == 0) return;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try encodeAllRaw(allocator, values);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try list.append(allocator, try packed_reader.readInt32());") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodePackedRaw(allocator, raw)) |values| { defer allocator.free(values); try list.appendSlice(allocator, values); }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const _pbz_raw = try encodeAllRaw(allocator, values);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) try _pbz_list.append(allocator, try packed_reader.readInt32());") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (try decodePackedRaw(allocator, _pbz_raw)) |_pbz_values| { defer allocator.free(_pbz_values); try _pbz_list.appendSlice(allocator, _pbz_values); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.packed_nums.decodePackedRaw(allocator, raw) catch null) |values| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (values) |value| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.packed_nums]: \"); try writer.print(\"{d}\", .{value});") != null);
@@ -14211,7 +14211,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value_zig: i32 = 7;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.getExtension_role(allocator)) orelse extensions.role.default_value_zig;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumExtension_role(self: @This(), allocator: std.mem.Allocator) !?Kind") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return Kind.fromInt(raw);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return Kind.fromInt(_pbz_raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn getEnumOrDefaultExtension_role(self: @This(), allocator: std.mem.Allocator) !Kind") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return (try self.getEnumExtension_role(allocator)) orelse Kind.fromInt(extensions.role.default_value_zig) orelse unreachable;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setEnumExtension_role(self: *@This(), allocator: std.mem.Allocator, value: Kind) !void") != null);
@@ -14294,11 +14294,11 @@ test "codegen emits MessageSet extension write helper" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .end_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn encodeRaw(allocator: std.mem.Allocator, value: []const u8) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn appendToUnknown(message: anytype, allocator: std.mem.Allocator, value: []const u8) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) { const value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return value; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 100 and tag.wire_type == .length_delimited) { const value = try r.readBytes(); if (!r.eof()) return error.InvalidWireType; return value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (_pbz_tag.number == 1 and _pbz_tag.wire_type == .start_group) { const _pbz_value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return _pbz_value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (_pbz_tag.number == 100 and _pbz_tag.wire_type == .length_delimited) { const _pbz_value = try r.readBytes(); if (!r.eof()) return error.InvalidWireType; return _pbz_value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw_type_id = try r.readUInt32(); if (raw_type_id == 0 or raw_type_id > std.math.maxInt(pbz.FieldNumber)) return error.InvalidFieldNumber; type_id = raw_type_id;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) payload else null;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return if (type_id != null and type_id.? == 100) _pbz_payload else null;") != null);
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);
@@ -14370,7 +14370,7 @@ test "codegen detects imported MessageSet extension extendees" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(1, .start_group);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeUInt32(2, 100);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeMessage(3, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (tag.number == 1 and tag.wire_type == .start_group) { const value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (_pbz_tag.number == 1 and _pbz_tag.wire_type == .start_group) { const _pbz_value = try decodeMessageSetItem(&r); if (!r.eof()) return error.InvalidWireType; return _pbz_value; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeMessageSetItem(r: *pbz.Reader) !?[]const u8") != null);
 }
 

@@ -1,0 +1,25 @@
+syntax = "proto2";
+package demo.extgen;
+
+message Host {
+  extensions 100 to max;
+}
+
+message Payload {
+  required int32 id = 1;
+  optional string note = 2;
+}
+
+enum Role {
+  ROLE_UNKNOWN = 0;
+  ROLE_USER = 1;
+  ROLE_ADMIN = 2;
+}
+
+extend Host {
+  optional string tag = 100 [default = "untagged"];
+  repeated int32 nums = 101 [packed = true];
+  optional Payload payload = 102;
+  repeated Payload payloads = 103;
+  optional Role role = 104 [default = ROLE_ADMIN];
+}
