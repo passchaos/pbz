@@ -10,7 +10,15 @@ pub fn main() !void {
         \\syntax = "proto2";
         \\package demo;
         \\message Host { extensions 100 to max; }
+        \\message DeclaredHost {
+        \\  extensions 200 to max [
+        \\    declaration = { number: 200 full_name: ".demo.declared_priority" type: "int32" },
+        \\    declaration = { number: 201 reserved: true },
+        \\    verification = DECLARATION
+        \\  ];
+        \\}
         \\extend Host { optional int32 priority = 100; }
+        \\extend DeclaredHost { optional int32 declared_priority = 200; }
     );
     defer file.deinit();
 
@@ -34,4 +42,46 @@ pub fn main() !void {
     const host_json = try pbz.stringifyJsonAllocWithRegistry(allocator, &file, &registry, &host, .{});
     defer allocator.free(host_json);
     std.debug.assert(std.mem.indexOf(u8, host_json, "[demo.priority]") != null);
+
+    const declared_desc = file.findMessage("DeclaredHost").?;
+    const range = declared_desc.extension_ranges.items[0];
+    std.debug.assert(range.verification.? == .declaration);
+    std.debug.assert(range.declarations.items.len == 2);
+    std.debug.assert(std.mem.eql(u8, range.declarations.items[0].full_name, ".demo.declared_priority"));
+    std.debug.assert(range.declarations.items[1].reserved);
+
+    const descriptor_bytes = try pbz.encodeFileDescriptorProto(allocator, &file, "extensions.proto");
+    defer allocator.free(descriptor_bytes);
+    var decoded_file = try pbz.decodeFileDescriptorProto(allocator, descriptor_bytes);
+    defer decoded_file.deinit();
+    const decoded_range = decoded_file.findMessage("DeclaredHost").?.extension_ranges.items[0];
+    std.debug.assert(decoded_range.verification.? == .declaration);
+    std.debug.assert(std.mem.eql(u8, decoded_range.declarations.items[0].type_name, "int32"));
+
+    var declared = try pbz.parseTextAllocWithRegistry(
+        allocator,
+        &file,
+        &registry,
+        declared_desc,
+        "[demo.declared_priority]: 11\n",
+    );
+    defer declared.deinit();
+
+    const declared_ext = registry.findExtension("demo.DeclaredHost", 200).?;
+    std.debug.assert(declared.getByNumber(declared_ext.number).?.values.items[0].int32 == 11);
+    const declared_json = try pbz.stringifyJsonAllocWithRegistry(allocator, &file, &registry, &declared, .{});
+    defer allocator.free(declared_json);
+    std.debug.assert(std.mem.indexOf(u8, declared_json, "[demo.declared_priority]") != null);
+
+    try std.testing.expectError(error.ReservedField, pbz.ProtoParser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message Host {
+        \\  extensions 200 to max [
+        \\    declaration = { number: 201 reserved: true },
+        \\    verification = DECLARATION
+        \\  ];
+        \\}
+        \\extend Host { optional int32 forbidden = 201; }
+    ));
 }

@@ -280,8 +280,9 @@ benchmark harness.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff, and
   generated decode reuse.
-- `examples/proto2_extensions.zig` covers proto2 extension parsing and unknown
-  preservation.
+- `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
+  range declarations/verification, descriptor round-trips, JSON/TextFormat
+  extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and
   bytes wrappers, standalone `Any` JSON mapping for embedded WKT payload
