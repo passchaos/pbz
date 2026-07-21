@@ -165,6 +165,28 @@ pub const Reflection = struct {
         return value.values.items[index];
     }
 
+    pub fn mapEntry(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!?*const dynamic.MapEntry {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        try self.validateMapKey(field, key);
+        return message_value.getMapEntry(field, key);
+    }
+
+    pub fn mapValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!?dynamic.Value {
+        const entry = (try self.mapEntry(message_value, name, key)) orelse return null;
+        return entry.value;
+    }
+
+    pub fn stringMapEntry(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?*const dynamic.MapEntry {
+        const owned_key = try self.allocator.dupe(u8, key);
+        defer self.allocator.free(owned_key);
+        return try self.mapEntry(message_value, name, .{ .string = owned_key });
+    }
+
+    pub fn stringMapValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?dynamic.Value {
+        const entry = (try self.stringMapEntry(message_value, name, key)) orelse return null;
+        return entry.value;
+    }
+
     /// Replace a singular field or append/replace map entries using an owned
     /// dynamic value. String, bytes, message, group, and map-entry payloads are
     /// consumed on success and freed on failure.
@@ -574,12 +596,17 @@ pub const Reflection = struct {
     }
 
     fn validateMapEntryParts(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, key: dynamic.Value, value: dynamic.Value) Error!void {
+        try self.validateMapKey(field, key);
+        const map_type = field.kind.map;
+        try self.validateValueForKind(message_descriptor, field, map_type.value.*, value);
+    }
+
+    fn validateMapKey(_: Reflection, field: *const schema.FieldDescriptor, key: dynamic.Value) Error!void {
         const map_type = switch (field.kind) {
             .map => |map_type| map_type,
             else => return error.TypeMismatch,
         };
         if (!valueMatchesScalar(map_type.key, key)) return error.TypeMismatch;
-        try self.validateValueForKind(message_descriptor, field, map_type.value.*, value);
     }
 
     fn validateValueForKind(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind, value: dynamic.Value) Error!void {

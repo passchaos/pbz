@@ -214,6 +214,30 @@ pub const DynamicMessage = struct {
         return self.clearMapEntry(field, key);
     }
 
+    pub fn getMapEntry(self: *const DynamicMessage, field: *const schema.FieldDescriptor, key: Value) ?*const MapEntry {
+        if (field.kind != .map) return null;
+        const field_value = self.getByNumber(field.number) orelse return null;
+        for (field_value.values.items) |*value| {
+            if (value.* == .map_entry and valueEqual(value.map_entry.key, key)) return value.map_entry;
+        }
+        return null;
+    }
+
+    pub fn getMapEntryByName(self: *const DynamicMessage, name: []const u8, key: Value) ?*const MapEntry {
+        const field = self.descriptor.findField(name) orelse return null;
+        return self.getMapEntry(field, key);
+    }
+
+    pub fn getMapValue(self: *const DynamicMessage, field: *const schema.FieldDescriptor, key: Value) ?Value {
+        const entry = self.getMapEntry(field, key) orelse return null;
+        return entry.value;
+    }
+
+    pub fn getMapValueByName(self: *const DynamicMessage, name: []const u8, key: Value) ?Value {
+        const field = self.descriptor.findField(name) orelse return null;
+        return self.getMapValue(field, key);
+    }
+
     fn getMutableByNumber(self: *DynamicMessage, number: wire.FieldNumber) ?*FieldValue {
         for (self.fields.items) |*field| {
             if (field.descriptor.number == number) return field;

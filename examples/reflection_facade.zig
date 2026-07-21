@@ -139,6 +139,12 @@ pub fn main() !void {
     const count_field = (try refl.getField(&user, "counts")).?;
     try std.testing.expectEqual(@as(usize, 1), count_field.values.items.len);
     try std.testing.expectEqual(@as(i32, 2), count_field.values.items[0].map_entry.value.int32);
+    try std.testing.expectEqual(@as(i32, 2), (try refl.stringMapValue(&user, "counts", "red")).?.int32);
+    const red_lookup = try allocator.dupe(u8, "red");
+    defer allocator.free(red_lookup);
+    try std.testing.expectEqual(@as(i32, 2), (try refl.mapValue(&user, "counts", .{ .string = red_lookup })).?.int32);
+    try std.testing.expect((try refl.stringMapEntry(&user, "counts", "missing")) == null);
+    try std.testing.expectError(error.TypeMismatch, refl.mapValue(&user, "counts", .{ .int32 = 1 }));
     try std.testing.expect(try refl.clearStringMapEntry(&user, "counts", "red"));
     try std.testing.expect((try refl.getField(&user, "counts")) == null);
     try refl.putStringInt32MapEntry(&user, "counts", "red", 2);
