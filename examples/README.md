@@ -20,7 +20,9 @@ library API.
 - `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present
   and missing proto2 weak imports, including descriptor-set, binary, JSON, and
   TextFormat workflows.
-- `descriptors_codegen.zig` — descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
+- `descriptors_codegen.zig` — descriptor encode/decode, source-code info,
+  uninterpreted custom options, descriptor sets, direct codegen, plugin request
+  generation, and generated-code info annotations.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.

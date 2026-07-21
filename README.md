@@ -29,7 +29,8 @@ benchmarks, and upstream conformance suite:
   oneof, proto3 optional, required-field validation
 - unknown field preservation, deterministic encoding, MessageSet support, and
   proto2 extensions
-- descriptor and descriptor-set workflows
+- descriptor and descriptor-set workflows, including source-code info,
+  uninterpreted custom options, and generated-code info annotations
 - reflection helpers for runtime message creation, field lookup, typed
   get/set/add/clear, repeated fields, maps, and oneof inspection
 - generated Zig structs with public fields and package-mirrored namespaces

@@ -263,6 +263,9 @@ benchmark harness.
 - `examples/generated_streaming.zig` covers generated service client/handler
   adapters over a transport abstraction for unary, client-streaming,
   server-streaming, and bidirectional-streaming RPC shapes.
+- `examples/descriptors_codegen.zig` covers descriptor encode/decode,
+  descriptor sets, source-code info, uninterpreted custom options, direct
+  codegen, plugin request generation, and generated-code info annotations.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff, and
   generated decode reuse.
