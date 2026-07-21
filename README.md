@@ -83,7 +83,9 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot > /tmp/pbz-compa
 ```
 
 For noisy shared machines, run all compared implementations on the same CPU set
-with `PBZ_COMPARE_CPUSET`, for example:
+with `PBZ_COMPARE_CPUSET`. The compare script also derives `GOMAXPROCS` from
+the CPU set when the variable is not already set, keeping Go baseline
+parallelism aligned with the pinned run. For example:
 
 ```sh
 PBZ_COMPARE_CPUSET=3 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log

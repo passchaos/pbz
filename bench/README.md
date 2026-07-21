@@ -14,11 +14,15 @@ bench/run_compare.sh
 
 On busy development machines, set `PBZ_COMPARE_CPUSET` to run every baseline on
 the same CPU set via `taskset`; this avoids comparing pbz on one core mix
-against C++/Go/Rust on another:
+against C++/Go/Rust on another. When `GOMAXPROCS` is not already set, the
+script also derives it from the CPU set so Go uses the same parallelism limit:
 
 ```sh
 PBZ_COMPARE_CPUSET=3 bench/run_compare.sh
 ```
+
+Use `PBZ_COMPARE_DRY_RUN=1` with the same command to print the exact pinned
+commands without executing the benchmarks.
 
 Summarize a full comparison log with:
 

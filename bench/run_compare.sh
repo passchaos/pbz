@@ -9,9 +9,34 @@ if [ "${PBZ_COMPARE_CPUSET:-}" ]; then
     exit 127
   fi
   echo "Pinning benchmark commands to CPU set: $PBZ_COMPARE_CPUSET"
+  if [ -z "${GOMAXPROCS:-}" ]; then
+    GOMAXPROCS="$(printf '%s\n' "$PBZ_COMPARE_CPUSET" | awk -F, '{
+      count = 0
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^[0-9]+-[0-9]+$/) {
+          split($i, range, "-")
+          count += range[2] - range[1] + 1
+        } else if ($i ~ /^[0-9]+$/) {
+          count += 1
+        }
+      }
+      print (count > 0 ? count : 1)
+    }')"
+    export GOMAXPROCS
+    echo "Setting GOMAXPROCS=$GOMAXPROCS for pinned Go benchmark runs"
+  fi
 fi
 
 run_pinned() {
+  if [ "${PBZ_COMPARE_DRY_RUN:-}" ]; then
+    printf 'DRY RUN:'
+    if [ "${PBZ_COMPARE_CPUSET:-}" ]; then
+      printf ' taskset -c %s' "$PBZ_COMPARE_CPUSET"
+    fi
+    printf ' %s' "$@"
+    printf '\n'
+    return 0
+  fi
   if [ "${PBZ_COMPARE_CPUSET:-}" ]; then
     taskset -c "$PBZ_COMPARE_CPUSET" "$@"
   else

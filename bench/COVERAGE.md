@@ -60,7 +60,9 @@ python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
 If unrelated machine load makes per-row timings unstable, set
-`PBZ_COMPARE_CPUSET` so every compared implementation runs on the same CPU set:
+`PBZ_COMPARE_CPUSET` so every compared implementation runs on the same CPU set.
+If `GOMAXPROCS` is unset, `bench/run_compare.sh` derives it from that CPU set
+for the Go baseline:
 
 ```sh
 PBZ_COMPARE_CPUSET=3 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
