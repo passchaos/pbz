@@ -277,8 +277,9 @@ benchmark harness.
   adapters over a transport abstraction for unary, client-streaming,
   server-streaming, and bidirectional-streaming RPC shapes.
 - `examples/descriptors_codegen.zig` covers descriptor encode/decode,
-  descriptor sets, source-code info, uninterpreted custom options, direct
-  codegen, plugin request generation, and generated-code info annotations.
+  descriptor sets, source-code info, uninterpreted custom options,
+  service/method options including idempotency levels, direct codegen, plugin
+  request generation, and generated-code info annotations.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/clear
   helpers across all scalar families, repeated fields, map last-wins mutation,

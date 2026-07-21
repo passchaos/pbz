@@ -17,6 +17,14 @@ pub fn main() !void {
         \\  // id leading comment.
         \\  int32 id = 1 [(demo.field_opt).nested.leaf = 123]; // id trailing comment.
         \\}
+        \\service Audit {
+        \\  option deprecated = true;
+        \\  rpc Get (Event) returns (Event) {
+        \\    option deprecated = true;
+        \\    option idempotency_level = IDEMPOTENT;
+        \\    option (demo.method_opt) = "method-value";
+        \\  }
+        \\}
     );
     defer file.deinit();
     file.name = "event.proto";
@@ -42,6 +50,12 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i64, 123), decoded_field.options.items[0].value.integer);
     const decoded_id_location = sourceLocation(&decoded_file, &.{ 4, 0, 2, 0 }) orelse return error.MissingSourceInfo;
     try std.testing.expectEqualStrings("id trailing comment.\n", decoded_id_location.trailing_comments.?);
+    const decoded_service = decoded_file.services.items[0];
+    try std.testing.expect(optionValue(decoded_service.options.items, "deprecated").?.boolean);
+    const decoded_method = decoded_service.methods.items[0];
+    try std.testing.expect(optionValue(decoded_method.options.items, "deprecated").?.boolean);
+    try std.testing.expectEqual(@as(i64, 2), optionValue(decoded_method.options.items, "idempotency_level").?.integer);
+    try std.testing.expectEqualStrings("method-value", optionValue(decoded_method.options.items, "(demo.method_opt)").?.string);
 
     const descriptor_set = try pbz.encodeFileDescriptorSet(allocator, &.{&file});
     defer allocator.free(descriptor_set);
@@ -53,6 +67,7 @@ pub fn main() !void {
     }
     std.debug.assert(decoded_set.len == 1);
     try std.testing.expectEqualStrings("(demo.file_opt).child", decoded_set[0].options.items[0].name);
+    try std.testing.expect(optionValue(decoded_set[0].services.items[0].options.items, "deprecated").?.boolean);
 
     const zig_source = try pbz.generateZigFile(allocator, &file);
     defer allocator.free(zig_source);
@@ -77,6 +92,13 @@ pub fn main() !void {
 fn sourceLocation(file: *const pbz.FileDescriptor, path: []const i32) ?*const pbz.SourceCodeInfo.Location {
     for (file.source_code_info.locations.items) |*location| {
         if (std.mem.eql(i32, location.path.items, path)) return location;
+    }
+    return null;
+}
+
+fn optionValue(options: []const pbz.schema.FieldOption, name: []const u8) ?pbz.schema.OptionValue {
+    for (options) |option| {
+        if (std.mem.eql(u8, option.name, name)) return option.value;
     }
     return null;
 }

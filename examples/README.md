@@ -30,8 +30,8 @@ library API.
   JSON/TextFormat mapping, payload-before-type-id parsing, and unknown item
   preservation.
 - `descriptors_codegen.zig` — descriptor encode/decode, source-code info,
-  uninterpreted custom options, descriptor sets, direct codegen, plugin request
-  generation, and generated-code info annotations.
+  uninterpreted custom options, service/method options, descriptor sets, direct
+  codegen, plugin request generation, and generated-code info annotations.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/clear helpers, repeated fields,
   all scalar families, maps, oneof inspection, imported message fields, binary,
