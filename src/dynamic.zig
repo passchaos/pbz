@@ -190,6 +190,19 @@ pub const DynamicMessage = struct {
         return self.removeRepeatedValue(field, index);
     }
 
+    pub fn swapRepeatedValues(self: *DynamicMessage, field: *const schema.FieldDescriptor, lhs: usize, rhs: usize) bool {
+        if (!field.isRepeatedLike()) return false;
+        const field_value = self.getMutableByNumber(field.number) orelse return false;
+        if (lhs >= field_value.values.items.len or rhs >= field_value.values.items.len) return false;
+        std.mem.swap(Value, &field_value.values.items[lhs], &field_value.values.items[rhs]);
+        return true;
+    }
+
+    pub fn swapRepeatedValuesByName(self: *DynamicMessage, name: []const u8, lhs: usize, rhs: usize) bool {
+        const field = self.descriptor.findField(name) orelse return false;
+        return self.swapRepeatedValues(field, lhs, rhs);
+    }
+
     pub fn hasOneof(self: *const DynamicMessage, oneof_name: []const u8) bool {
         return self.whichOneof(oneof_name) != null;
     }

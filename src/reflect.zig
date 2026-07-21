@@ -354,6 +354,10 @@ pub const Reflection = struct {
         return message_value.removeRepeatedValue(try self.fieldByName(message_value.descriptor, name), index);
     }
 
+    pub fn swapRepeatedValues(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, lhs: usize, rhs: usize) Error!bool {
+        return message_value.swapRepeatedValues(try self.fieldByName(message_value.descriptor, name), lhs, rhs);
+    }
+
     pub fn mapEntry(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!?*const dynamic.MapEntry {
         const field = try self.fieldByName(message_value.descriptor, name);
         try self.validateMapKey(field, key);

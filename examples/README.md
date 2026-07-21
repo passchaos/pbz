@@ -50,7 +50,7 @@ library API.
   codegen, plugin request generation, and generated-code info annotations.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/get-default/clear helpers,
-  present-field listing, type-checked writes, repeated field removal, all scalar families,
+  present-field listing, type-checked writes, repeated field reordering/removal, all scalar families,
   typed message/group creation/access/mutation, maps, map key lookup, JSON-name field lookup/output, field presence/packing/reserved
   metadata, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/presence/inspection/clearing, imported message fields, option lookup,
