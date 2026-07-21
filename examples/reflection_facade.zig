@@ -79,9 +79,7 @@ pub fn main() !void {
     try refl.putStringInt32MapEntry(&user, "counts", "red", 1);
     try refl.putStringInt32MapEntry(&user, "counts", "red", 2);
     try refl.setEnum(&user, "role", 1);
-    try refl.setBytes(&user, "email", "ada@example.test");
-    try std.testing.expectError(error.TypeMismatch, refl.getString(&user, "email"));
-    try refl.clearField(&user, "email");
+    try std.testing.expectError(error.TypeMismatch, refl.setBytes(&user, "email", "ada@example.test"));
     try refl.setString(&user, "email", "ada@example.test");
     try refl.setUInt32(&user, "quota", 42);
     try refl.setUInt64(&user, "total", 9_000_000_000);

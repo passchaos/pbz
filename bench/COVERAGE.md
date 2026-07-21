@@ -303,10 +303,11 @@ benchmark harness.
   request generation, and generated-code info annotations.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/get-default
-  and clear helpers across all scalar families, repeated fields, map last-wins
-  mutation, file/import-chain lookup, enum descriptor/value lookup, oneof
-  lookup/inspection/clearing, imported message fields, service descriptor/method
-  lookup, extension descriptor lookup, binary, and JSON round-trips.
+  and clear helpers across all scalar families, immediate type-checked writes,
+  repeated fields, map last-wins mutation, file/import-chain lookup, enum
+  descriptor/value lookup, oneof lookup/inspection/clearing, imported message
+  fields, service descriptor/method lookup, extension descriptor lookup, binary,
+  and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for
   both generated and dynamic messages, and generated decode reuse.

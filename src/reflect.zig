@@ -103,7 +103,11 @@ pub const Reflection = struct {
     }
 
     pub fn enumForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
-        const enum_name, const declared_enum = switch (field.kind) {
+        return try self.enumForKind(message_descriptor, field, field.kind);
+    }
+
+    fn enumForKind(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind) Error!*const schema.EnumDescriptor {
+        const enum_name, const declared_enum = switch (kind) {
             .enumeration => |name| .{ name, true },
             // Imported enum references can remain in the parser's message arm
             // until a registry-backed lookup resolves them.  Keep accepting
@@ -112,12 +116,9 @@ pub const Reflection = struct {
             .message => |name| .{ name, false },
             else => return error.TypeMismatch,
         };
-        const owner_file = try self.fileOfMessage(message_descriptor);
-        if (std.mem.indexOfScalar(u8, enum_name, '.') == null) {
-            if (message_descriptor.findEnumDeep(enum_name) orelse owner_file.findEnumDeep(enum_name)) |enum_desc| return enum_desc;
-        }
+        const owner_file = try self.fileForFieldContext(message_descriptor, field);
         var scope_buf: [512]u8 = undefined;
-        const scope = messageScope(owner_file, message_descriptor, &scope_buf) orelse if (owner_file.package.len != 0) owner_file.package else null;
+        const scope = fieldLookupScope(owner_file, message_descriptor, field, &scope_buf);
         if (self.registry.findEnumVisible(owner_file, enum_name, scope)) |enum_desc| return enum_desc;
         if (self.registry.findEnum(enum_name, scope)) |enum_desc| return enum_desc;
         return if (declared_enum) error.UnknownEnum else error.TypeMismatch;
@@ -166,6 +167,7 @@ pub const Reflection = struct {
     pub fn set(self: Reflection, message_value: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, value: dynamic.Value) Error!void {
         var owned = value;
         errdefer dynamic.deinitValue(&owned, self.allocator);
+        try self.validateValueForField(message_value.descriptor, field, owned);
         // DynamicMessage.add already replaces singular values and map entries.
         // Avoid clearing those fields first: if allocation fails while adding
         // the replacement, callers should not lose the previous value.
@@ -175,9 +177,10 @@ pub const Reflection = struct {
 
     /// Add an owned dynamic value. String, bytes, message, group, and map-entry
     /// payloads are consumed on success and freed on failure.
-    pub fn add(_: Reflection, message_value: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, value: dynamic.Value) Error!void {
+    pub fn add(self: Reflection, message_value: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor, value: dynamic.Value) Error!void {
         var owned = value;
         errdefer dynamic.deinitValue(&owned, message_value.allocator);
+        try self.validateValueForField(message_value.descriptor, field, owned);
         try message_value.add(field, owned);
     }
 
@@ -527,6 +530,7 @@ pub const Reflection = struct {
         var owns_value = true;
         errdefer if (owns_value) dynamic.deinitValue(&owned_value, self.allocator);
         const field = try self.fieldByName(message_value.descriptor, name);
+        try self.validateMapEntryParts(message_value.descriptor, field, owned_key, owned_value);
         const entry = try self.allocator.create(dynamic.MapEntry);
         var owns_entry = true;
         errdefer if (owns_entry) self.allocator.destroy(entry);
@@ -552,6 +556,78 @@ pub const Reflection = struct {
         defer self.allocator.free(owned_key);
         return try self.clearMapEntry(message_value, name, .{ .string = owned_key });
     }
+
+    fn validateValueForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: dynamic.Value) Error!void {
+        if (field.kind == .map) {
+            const entry = switch (value) {
+                .map_entry => |entry| entry,
+                else => return error.TypeMismatch,
+            };
+            return try self.validateMapEntryParts(message_descriptor, field, entry.key, entry.value);
+        }
+        if (value == .map_entry) return error.TypeMismatch;
+        try self.validateValueForKind(message_descriptor, field, field.kind, value);
+    }
+
+    fn validateMapEntryParts(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, key: dynamic.Value, value: dynamic.Value) Error!void {
+        const map_type = switch (field.kind) {
+            .map => |map_type| map_type,
+            else => return error.TypeMismatch,
+        };
+        if (!valueMatchesScalar(map_type.key, key)) return error.TypeMismatch;
+        try self.validateValueForKind(message_descriptor, field, map_type.value.*, value);
+    }
+
+    fn validateValueForKind(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, kind: schema.FieldKind, value: dynamic.Value) Error!void {
+        switch (kind) {
+            .scalar => |scalar| if (!valueMatchesScalar(scalar, value)) return error.TypeMismatch,
+            .enumeration => if (value != .enumeration) return error.TypeMismatch,
+            .message => |type_name| {
+                if (self.enumForKind(message_descriptor, field, kind)) |_| {
+                    if (value != .enumeration) return error.TypeMismatch;
+                    return;
+                } else |err| switch (err) {
+                    error.TypeMismatch, error.UnknownEnum => {},
+                    else => return err,
+                }
+                try self.validateMessageValue(message_descriptor, field, type_name, value);
+            },
+            .group => |type_name| try self.validateGroupValue(message_descriptor, field, type_name, value),
+            .map => return error.TypeMismatch,
+        }
+    }
+
+    fn validateMessageValue(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, value: dynamic.Value) Error!void {
+        const nested_message = switch (value) {
+            .message => |nested| nested,
+            else => return error.TypeMismatch,
+        };
+        const descriptor = try self.messageForFieldType(parent_descriptor, field, type_name);
+        if (nested_message.descriptor != descriptor) return error.TypeMismatch;
+    }
+
+    fn validateGroupValue(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8, value: dynamic.Value) Error!void {
+        const nested_message = switch (value) {
+            .group => |nested| nested,
+            else => return error.TypeMismatch,
+        };
+        const descriptor = try self.messageForFieldType(parent_descriptor, field, type_name);
+        if (nested_message.descriptor != descriptor) return error.TypeMismatch;
+    }
+
+    fn messageForFieldType(self: Reflection, parent_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, type_name: []const u8) Error!*const schema.MessageDescriptor {
+        const owner_file = try self.fileForFieldContext(parent_descriptor, field);
+        var scope_buf: [512]u8 = undefined;
+        const scope = fieldLookupScope(owner_file, parent_descriptor, field, &scope_buf);
+        if (self.registry.findMessageVisible(owner_file, type_name, scope)) |msg_desc| return msg_desc;
+        if (self.registry.findMessage(type_name, scope)) |msg_desc| return msg_desc;
+        return error.TypeMismatch;
+    }
+
+    fn fileForFieldContext(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
+        if (field.extendee != null) return self.registry.fileContainingExtension(field) orelse error.UnknownField;
+        return try self.fileOfMessage(message_descriptor);
+    }
 };
 
 fn lastValue(message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) ?dynamic.Value {
@@ -560,16 +636,50 @@ fn lastValue(message_value: *const dynamic.DynamicMessage, field: *const schema.
     return field_value.values.items[field_value.values.items.len - 1];
 }
 
+fn valueMatchesScalar(scalar: schema.ScalarType, value: dynamic.Value) bool {
+    return switch (scalar) {
+        .double => value == .double,
+        .float => value == .float,
+        .int32 => value == .int32,
+        .int64 => value == .int64,
+        .uint32 => value == .uint32,
+        .uint64 => value == .uint64,
+        .sint32 => value == .sint32,
+        .sint64 => value == .sint64,
+        .fixed32 => value == .fixed32,
+        .fixed64 => value == .fixed64,
+        .sfixed32 => value == .sfixed32,
+        .sfixed64 => value == .sfixed64,
+        .bool => value == .boolean,
+        .string => value == .string,
+        .bytes => value == .bytes,
+    };
+}
+
+fn fieldLookupScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, buf: *[512]u8) ?[]const u8 {
+    if (field.extendee != null) return extensionScope(file, field);
+    return messageScope(file, current, buf) orelse if (file.package.len != 0) file.package else null;
+}
+
+fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
+    if (field.full_name) |full_name| {
+        const normalized = if (std.mem.startsWith(u8, full_name, ".")) full_name[1..] else full_name;
+        if (std.mem.lastIndexOfScalar(u8, normalized, '.')) |idx| return normalized[0..idx];
+        if (std.mem.startsWith(u8, full_name, ".")) return null;
+    }
+    return if (file.package.len != 0) file.package else null;
+}
+
 fn messageScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
-    for (file.messages.items) |*message| {
-        if (message == current) return formatMessageScope(file.package, message.name, buf);
-        if (messageScopeInMessage(file.package, message.name, message, current, buf)) |path| return path;
+    for (file.messages.items) |*msg_desc| {
+        if (msg_desc == current) return formatMessageScope(file.package, msg_desc.name, buf);
+        if (messageScopeInMessage(file.package, msg_desc.name, msg_desc, current, buf)) |path| return path;
     }
     return null;
 }
 
-fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
-    for (message.messages.items) |*nested| {
+fn messageScopeInMessage(package: []const u8, prefix: []const u8, scope_message: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor, buf: *[512]u8) ?[]const u8 {
+    for (scope_message.messages.items) |*nested| {
         var path_buf: [512]u8 = undefined;
         const nested_path = std.fmt.bufPrint(&path_buf, "{s}.{s}", .{ prefix, nested.name }) catch return null;
         if (nested == target) return formatMessageScope(package, nested_path, buf);
@@ -594,7 +704,11 @@ test "reflection facade creates and edits dynamic messages" {
         \\  repeated int32 score = 3;
         \\  map<string, int32> counts = 4;
         \\  oneof pick { bool active = 5; string label = 6; }
+        \\  Child child = 7;
+        \\  map<string, Child> children = 8;
         \\}
+        \\message Child { string name = 1; }
+        \\message Other { string name = 1; }
     );
     defer file.deinit();
     var reg = registry_mod.Registry.init(allocator);
@@ -602,6 +716,9 @@ test "reflection facade creates and edits dynamic messages" {
     try reg.addFile(&file);
 
     const refl = Reflection.init(allocator, &reg);
+    const person_desc = try refl.message("demo.Person");
+    const child_desc = try refl.message("demo.Child");
+    const other_desc = try refl.message("demo.Other");
     var msg = try refl.newMessage("demo.Person");
     defer msg.deinit();
 
@@ -615,6 +732,37 @@ test "reflection facade creates and edits dynamic messages" {
     try std.testing.expectEqualStrings("Zig", try refl.getString(&msg, "name"));
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&msg, "score"));
     try std.testing.expectEqual(@as(i32, 20), (try refl.repeatedValue(&msg, "score", 1)).int32);
+    try std.testing.expectEqualStrings("active", refl.whichOneof(&msg, "pick").?.name);
+
+    // Reflection writes validate the dynamic value before mutating the message,
+    // matching C++ Reflection's typed setters rather than allowing an invalid
+    // FieldValue to linger until a later read or encode.
+    try std.testing.expectError(error.TypeMismatch, refl.setInt32(&msg, "name", 99));
+    try std.testing.expectEqualStrings("Zig", try refl.getString(&msg, "name"));
+    try std.testing.expectError(error.TypeMismatch, refl.addString(&msg, "score", "bad"));
+    try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&msg, "score"));
+    try std.testing.expectError(error.TypeMismatch, refl.putMapEntryOwned(&msg, "counts", .{ .int32 = 1 }, .{ .int32 = 2 }));
+    try std.testing.expectError(error.TypeMismatch, refl.putMapEntryOwned(&msg, "counts", .{ .string = try allocator.dupe(u8, "bad") }, .{ .string = try allocator.dupe(u8, "value") }));
+    try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
+
+    const child = try allocator.create(dynamic.DynamicMessage);
+    child.* = dynamic.DynamicMessage.init(allocator, child_desc);
+    try refl.setString(child, "name", "child");
+    try refl.set(&msg, try refl.fieldByName(person_desc, "child"), .{ .message = child });
+    const other = try allocator.create(dynamic.DynamicMessage);
+    other.* = dynamic.DynamicMessage.init(allocator, other_desc);
+    try std.testing.expectError(error.TypeMismatch, refl.set(&msg, try refl.fieldByName(person_desc, "child"), .{ .message = other }));
+    const still_child = (try refl.getField(&msg, "child")).?.values.items[0].message;
+    try std.testing.expect(still_child.descriptor == child_desc);
+
+    const child_entry = try allocator.create(dynamic.DynamicMessage);
+    child_entry.* = dynamic.DynamicMessage.init(allocator, child_desc);
+    try refl.setString(child_entry, "name", "map-child");
+    try refl.putMapEntryOwned(&msg, "children", .{ .string = try allocator.dupe(u8, "ok") }, .{ .message = child_entry });
+    try std.testing.expectError(error.TypeMismatch, refl.putMapEntryOwned(&msg, "children", .{ .string = try allocator.dupe(u8, "bad") }, .{ .int32 = 1 }));
+    try std.testing.expectEqual(@as(usize, 1), msg.get("children").?.values.items.len);
+
+    try std.testing.expectError(error.TypeMismatch, refl.setBytes(&msg, "label", "not-a-string"));
     try std.testing.expectEqualStrings("active", refl.whichOneof(&msg, "pick").?.name);
 
     try refl.setString(&msg, "label", "chosen");
