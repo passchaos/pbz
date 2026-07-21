@@ -11186,21 +11186,51 @@ fn writeExtensionWriteHelpers(ctx: *const CodegenContext, field: *const schema.F
     try indent(writer, depth);
     try writer.writeAll("pub fn hasInUnknown(message: anytype) !bool {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return try message.hasUnknownFieldNumber(number);\n");
+    if (extensionUsesMessageSet(ctx, field)) {
+        try writer.writeAll("for (message.unknownFields()) |_pbz_raw| { if ((try decodeRaw(_pbz_raw)) != null) return true; }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return false;\n");
+    } else {
+        try writer.writeAll("return try message.hasUnknownFieldNumber(number);\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn countInUnknown(message: anytype) !usize {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return try message.unknownFieldCountByNumber(number);\n");
+    if (extensionUsesMessageSet(ctx, field)) {
+        try writer.writeAll("var _pbz_count: usize = 0;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (message.unknownFields()) |_pbz_raw| { if ((try decodeRaw(_pbz_raw)) != null) _pbz_count += 1; }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return _pbz_count;\n");
+    } else {
+        try writer.writeAll("return try message.unknownFieldCountByNumber(number);\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn clearFromUnknown(message: anytype, allocator: std.mem.Allocator) !void {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("try message.clearUnknownFieldsByNumber(allocator, number);\n");
+    if (extensionUsesMessageSet(ctx, field)) {
+        try writer.writeAll("const _pbz_old = message.unknownFields();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (_pbz_old.len == 0) return;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var _pbz_keep: std.ArrayList([]const u8) = .empty;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("errdefer _pbz_keep.deinit(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("for (_pbz_old) |_pbz_raw| { if ((try decodeRaw(_pbz_raw)) == null) try _pbz_keep.append(allocator, _pbz_raw) else allocator.free(_pbz_raw); }\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("if (_pbz_keep.items.len == 0) { _pbz_keep.deinit(allocator); message._unknown_fields = &.{}; } else message._unknown_fields = try _pbz_keep.toOwnedSlice(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("allocator.free(_pbz_old);\n");
+    } else {
+        try writer.writeAll("try message.clearUnknownFieldsByNumber(allocator, number);\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("}\n");
 

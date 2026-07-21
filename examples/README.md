@@ -25,6 +25,7 @@ library API.
 - `generated_identifiers.zig` — generated quoting for proto names that collide with Zig keywords, primitive names, and test declarations from `proto/identifiers.proto`.
 - `generated_enum_alias.zig` — generated enum alias constants, canonical output, and alias input parsing from `proto/enum_alias.proto`.
 - `generated_json_names.zig` — generated explicit `json_name` stringify/parse behavior from `proto/json_names.proto`.
+- `generated_messageset.zig` — generated proto2 MessageSet extension helpers from `proto/messageset.proto`.
 - `generated_imports.zig` — multi-file generated modules using proto imports with typed imported singular, repeated, map value, and oneof message fields from `proto/imported_app.proto` / `proto/imported_common.proto`.
 - `generated_groups.zig` — typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from `proto/groups.proto`.
 - `generated_recursive.zig` — generated self-recursive message usage from `proto/recursive.proto`, including raw-payload singular recursion, typed repeated recursion, and decode recursion-limit enforcement.

@@ -165,6 +165,7 @@ pub fn build(b: *std.Build) void {
         "generated_identifiers",
         "generated_enum_alias",
         "generated_json_names",
+        "generated_messageset",
         "generated_imports",
         "generated_groups",
         "generated_recursive",

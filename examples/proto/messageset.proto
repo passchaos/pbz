@@ -1,0 +1,16 @@
+syntax = "proto2";
+package demo.messageset;
+
+message Host {
+  option message_set_wire_format = true;
+  extensions 4 to max;
+}
+
+message Note {
+  required int32 id = 1;
+  optional string text = 2;
+}
+
+extend Host {
+  optional Note note = 100;
+}
