@@ -60,6 +60,12 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
     try std.testing.expectEqualStrings("display_name", (try refl.fieldByJsonName(user_desc, "shownName")).name);
     try std.testing.expectEqualStrings("big_delta", (try refl.fieldByJsonName(user_desc, "bigDelta")).name);
+    const explicit_json_name = try refl.fieldJsonName(try refl.fieldByName(user_desc, "display_name"));
+    defer allocator.free(explicit_json_name);
+    try std.testing.expectEqualStrings("shownName", explicit_json_name);
+    const default_json_name = try refl.fieldJsonName(try refl.fieldByName(user_desc, "big_delta"));
+    defer allocator.free(default_json_name);
+    try std.testing.expectEqualStrings("bigDelta", default_json_name);
     try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));
     const users_service = try refl.service(".demo.reflect.Users");
     const service_file = try refl.fileOfService(users_service);

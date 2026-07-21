@@ -70,6 +70,10 @@ pub const Reflection = struct {
         return descriptor.findFieldByJsonName(json_name) orelse error.UnknownField;
     }
 
+    pub fn fieldJsonName(self: Reflection, field: *const schema.FieldDescriptor) Error![]u8 {
+        return try field.jsonName(self.allocator);
+    }
+
     pub fn fieldByNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByNumber(number) orelse error.UnknownField;
     }

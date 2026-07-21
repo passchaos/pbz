@@ -266,6 +266,16 @@ pub const FieldDescriptor = struct {
         return self.cardinality == .repeated or self.kind == .map;
     }
 
+    pub fn jsonName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+        if (self.json_name) |explicit| return try allocator.dupe(u8, explicit);
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(allocator);
+        var index: usize = 0;
+        var upper_next = false;
+        while (nextDefaultJsonNameChar(self.name, &index, &upper_next)) |c| try out.append(allocator, c);
+        return try out.toOwnedSlice(allocator);
+    }
+
     pub fn resolvedPacked(self: FieldDescriptor, file: *const FileDescriptor) bool {
         if (!self.isPackable()) return false;
         if (self.packed_override) |is_packed| return is_packed;
