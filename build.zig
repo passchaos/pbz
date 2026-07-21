@@ -180,6 +180,7 @@ pub fn build(b: *std.Build) void {
         "ownership_patterns",
         "well_known_types",
         "any_dynamic",
+        "any_type_url",
         "proto2_extensions",
         "conformance",
     };

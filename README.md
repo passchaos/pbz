@@ -673,6 +673,7 @@ Important examples:
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/any_dynamic.zig` — dynamic-message Any helpers
+- `examples/any_type_url.zig` — Any type URL prefix helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion
 
 ## Validation commands

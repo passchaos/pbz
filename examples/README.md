@@ -40,5 +40,6 @@ library API.
 - `ownership_patterns.zig` — generated and dynamic arena-style ownership, clone-to-long-lived allocator, and generated decode reuse patterns.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask, wrappers, Any including embedded WKT JSON values, and Struct helpers.
 - `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup and required-field validation.
+- `any_type_url.zig` — custom `Any` type URL prefixes, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON and preserved unknown storage.
 - `conformance.zig` — conformance-style JSON-to-protobuf conversion.

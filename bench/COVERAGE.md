@@ -254,6 +254,9 @@ benchmark harness.
 - `examples/any_dynamic.zig` covers custom dynamic-message `Any`
   pack/unpack with registry lookup, type-url matching, required-field
   validation on pack and unpack, and type mismatch errors.
+- `examples/any_type_url.zig` covers custom `Any` type URL prefixes, leading-dot
+  protobuf type names, JSON parse for custom prefixes, default prefix
+  canonicalization, and type mismatch errors.
 - `src/pbz_conformance.zig`, `tools/smoke_conformance.py`,
   `tools/fetch_conformance_runner.sh`, and `tools/run_conformance.sh` provide a
   conformance-test-runner-compatible subprocess executable, descriptor-set
