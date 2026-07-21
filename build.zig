@@ -155,6 +155,7 @@ pub fn build(b: *std.Build) void {
         "dynamic_message",
         "json_text",
         "registry_loader",
+        "dynamic_public_imports",
         "descriptors_codegen",
         "generated_types",
         "generated_performance",

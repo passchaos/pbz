@@ -226,6 +226,8 @@ benchmark harness.
 - `examples/generated_public_imports.zig` covers generated public-import chains,
   re-exported type references, binary round-trip, JSON round-trip, proto-name
   JSON input, and TextFormat round-trip.
+- `examples/dynamic_public_imports.zig` covers dynamic registry public-import
+  chain lookup and binary/JSON round-trips through public re-exported types.
 - `examples/generated_merge_semantics.zig` covers generated binary decode merge
   semantics for repeated singular messages, repeated fields, map last-wins,
   oneof last-wins, and decode reuse.

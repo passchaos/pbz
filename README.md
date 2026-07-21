@@ -667,6 +667,7 @@ Important examples:
 - `examples/generated_nested_types.zig` — nested generated message/enum refs
 - `examples/generated_unpacked.zig` — unpacked repeated scalar fields
 - `examples/generated_public_imports.zig` — generated public import chains
+- `examples/dynamic_public_imports.zig` — dynamic public import chains
 - `examples/generated_merge_semantics.zig` — generated decode merge/last-wins semantics
 - `examples/generated_clone_owned.zig` — generated deep-clone ownership handoff
 - `examples/generated_unknown_mutation.zig` — generated unknown-field mutation APIs
