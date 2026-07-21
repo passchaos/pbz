@@ -1,0 +1,23 @@
+syntax = "proto3";
+package demo.nested;
+
+message Outer {
+  enum State {
+    STATE_UNKNOWN = 0;
+    STATE_READY = 1;
+  }
+
+  message Inner {
+    int32 id = 1;
+    State state = 2;
+  }
+
+  Inner primary = 1;
+  repeated Inner history = 2;
+  map<string, Inner> by_name = 3;
+
+  oneof selected {
+    Inner chosen = 4;
+    State chosen_state = 5;
+  }
+}

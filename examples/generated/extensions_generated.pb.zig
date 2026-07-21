@@ -447,9 +447,9 @@ pub const demo = struct {
                     const payloads = try extensions.payload.decodeAllFromUnknown(self, allocator);
                     defer allocator.free(payloads);
                     for (payloads) |payload| {
-                        var nested = try Payload.decode(allocator, payload);
-                        defer nested.deinit(allocator);
-                        if (try nested.missingRequiredFieldPath(allocator)) |suffix| {
+                        var _pbz_nested = try Payload.decode(allocator, payload);
+                        defer _pbz_nested.deinit(allocator);
+                        if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| {
                             defer allocator.free(suffix);
                             return try std.fmt.allocPrint(allocator, "payload.{s}", .{suffix});
                         }
@@ -459,9 +459,9 @@ pub const demo = struct {
                     const payloads = try extensions.payloads.decodeAllFromUnknown(self, allocator);
                     defer allocator.free(payloads);
                     for (payloads) |payload| {
-                        var nested = try Payload.decode(allocator, payload);
-                        defer nested.deinit(allocator);
-                        if (try nested.missingRequiredFieldPath(allocator)) |suffix| {
+                        var _pbz_nested = try Payload.decode(allocator, payload);
+                        defer _pbz_nested.deinit(allocator);
+                        if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| {
                             defer allocator.free(suffix);
                             return try std.fmt.allocPrint(allocator, "payloads.{s}", .{suffix});
                         }
@@ -480,18 +480,18 @@ pub const demo = struct {
                     const payloads = try extensions.payload.decodeAllFromUnknown(self, allocator);
                     defer allocator.free(payloads);
                     for (payloads) |payload| {
-                        var nested = try Payload.decode(allocator, payload);
-                        defer nested.deinit(allocator);
-                        try nested.validateRequiredRecursive(allocator);
+                        var _pbz_nested = try Payload.decode(allocator, payload);
+                        defer _pbz_nested.deinit(allocator);
+                        try _pbz_nested.validateRequiredRecursive(allocator);
                     }
                 }
                 {
                     const payloads = try extensions.payloads.decodeAllFromUnknown(self, allocator);
                     defer allocator.free(payloads);
                     for (payloads) |payload| {
-                        var nested = try Payload.decode(allocator, payload);
-                        defer nested.deinit(allocator);
-                        try nested.validateRequiredRecursive(allocator);
+                        var _pbz_nested = try Payload.decode(allocator, payload);
+                        defer _pbz_nested.deinit(allocator);
+                        try _pbz_nested.validateRequiredRecursive(allocator);
                     }
                 }
             }
@@ -545,7 +545,7 @@ pub const demo = struct {
                     if (values.len != 0) {
                         try writer.writeAll(if (first) "\"[demo.extgen.payload]\":" else ",\"[demo.extgen.payload]\":"); first = false;
                         const value = values[values.len - 1];
-                        try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try Payload.decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, value);
+                        try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var _pbz_nested = try Payload.decode(allocator_, payload_); defer _pbz_nested.deinit(allocator_); try _pbz_nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, value);
                     }
                 }
                 {
@@ -554,7 +554,7 @@ pub const demo = struct {
                     if (values.len != 0) {
                         try writer.writeAll(if (first) "\"[demo.extgen.payloads]\":" else ",\"[demo.extgen.payloads]\":"); first = false;
                         try writer.writeAll("[");
-                        for (values, 0..) |value, i| { if (i != 0) try writer.writeAll(","); try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try Payload.decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, value); }
+                        for (values, 0..) |value, i| { if (i != 0) try writer.writeAll(","); try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var _pbz_nested = try Payload.decode(allocator_, payload_); defer _pbz_nested.deinit(allocator_); try _pbz_nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, value); }
                         try writer.writeAll("]");
                     }
                 }
@@ -643,18 +643,18 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.payload]") or std.mem.eql(u8, key, "[payload]")) {
-                        var nested = try Payload.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(arena_allocator);
-                        try extensions.payload.replaceInUnknown(self, allocator, try nested.encode(arena_allocator));
+                        var _pbz_nested = try Payload.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        defer _pbz_nested.deinit(arena_allocator);
+                        try extensions.payload.replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));
                         continue;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.payloads]") or std.mem.eql(u8, key, "[payloads]")) {
                         try self.clearUnknownFieldsByNumber(allocator, extensions.payloads.number);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         for (array.items) |item| {
-                            var nested = try Payload.jsonParseValueWithOptions(arena_allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            defer nested.deinit(arena_allocator);
-                            try extensions.payloads.appendToUnknown(self, allocator, try nested.encode(arena_allocator));
+                            var _pbz_nested = try Payload.jsonParseValueWithOptions(arena_allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            defer _pbz_nested.deinit(arena_allocator);
+                            try extensions.payloads.appendToUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));
                         }
                         continue;
                     }
@@ -1208,17 +1208,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                     if (extensions.payload.decodeRaw(raw) catch null) |payload| {
                             try writer.writeAll("[demo.extgen.payload] {\n");
-                            var nested = try Payload.decode(allocator, payload);
-                            defer nested.deinit(allocator);
-                            try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                            var _pbz_nested = try Payload.decode(allocator, payload);
+                            defer _pbz_nested.deinit(allocator);
+                            try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                             try writer.writeAll("}\n");
                             continue;
                     }
                     if (extensions.payloads.decodeRaw(raw) catch null) |payload| {
                             try writer.writeAll("[demo.extgen.payloads] {\n");
-                            var nested = try Payload.decode(allocator, payload);
-                            defer nested.deinit(allocator);
-                            try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                            var _pbz_nested = try Payload.decode(allocator, payload);
+                            defer _pbz_nested.deinit(allocator);
+                            try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                             try writer.writeAll("}\n");
                             continue;
                     }
@@ -1264,10 +1264,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textBlockField(line, "[demo.extgen.payload]") or @This().textBlockField(line, "[payload]")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Payload.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
+                        var _pbz_nested = try Payload.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        defer _pbz_nested.deinit(allocator);
                         const owned_allocator = try self._pbzOwnedAllocator(allocator);
-                        const payload = try nested.encode(owned_allocator);
+                        const payload = try _pbz_nested.encode(owned_allocator);
                         const raw = try extensions.payload.encodeRaw(allocator, payload);
                         errdefer allocator.free(raw);
                         try _unknown_fields_list.append(allocator, raw);
@@ -1276,10 +1276,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textBlockField(line, "[demo.extgen.payloads]") or @This().textBlockField(line, "[payloads]")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Payload.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
+                        var _pbz_nested = try Payload.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        defer _pbz_nested.deinit(allocator);
                         const owned_allocator = try self._pbzOwnedAllocator(allocator);
-                        const payload = try nested.encode(owned_allocator);
+                        const payload = try _pbz_nested.encode(owned_allocator);
                         const raw = try extensions.payloads.encodeRaw(allocator, payload);
                         errdefer allocator.free(raw);
                         try _unknown_fields_list.append(allocator, raw);

@@ -386,9 +386,9 @@ pub const demo = struct {
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
                         1 => { self.id = try r.readInt32(); self.has_id = true; },
-                        2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; } },
-                        4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try item_list.append(allocator, nested); },
-                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; },
+                        2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var _pbz_nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.box = _pbz_nested; } },
+                        4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var _pbz_nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try item_list.append(allocator, _pbz_nested); },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = _pbz_nested }; },
                         7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = value }; },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
@@ -418,9 +418,9 @@ pub const demo = struct {
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
                         1 => { self.id = try r.readInt32(); self.has_id = true; },
-                        2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; } },
-                        4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try item_list.append(allocator, nested); },
-                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; },
+                        2 => { const payload = try r.readGroupBytes(2); var payload_reader = try r.nested(payload); var _pbz_nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.box) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.box = _pbz_nested; } },
+                        4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var _pbz_nested = try Item.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try item_list.append(allocator, _pbz_nested); },
+                        6 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Box.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = _pbz_nested }; },
                         7 => { const value = try r.readBytes(); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = value }; },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
@@ -455,16 +455,16 @@ pub const demo = struct {
             }
 
             pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {
-                if (self.box) |nested| {
-                    if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "box.{s}", .{suffix}); }
+                if (self.box) |_pbz_nested| {
+                    if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "box.{s}", .{suffix}); }
                 }
-                for (self.item) |nested| {
-                    if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "item.{s}", .{suffix}); }
+                for (self.item) |_pbz_nested| {
+                    if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "item.{s}", .{suffix}); }
                 }
                 switch (self.picked) {
                     .none => {},
-                    .picked_box => |nested| {
-                        if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "picked_box.{s}", .{suffix}); }
+                    .picked_box => |_pbz_nested| {
+                        if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "picked_box.{s}", .{suffix}); }
                     },
                     else => {},
                 }
@@ -477,11 +477,11 @@ pub const demo = struct {
 
             pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                 try self.validateRequired();
-                if (self.box) |nested| try nested.validateRequiredRecursive(allocator);
-                for (self.item) |nested| try nested.validateRequiredRecursive(allocator);
+                if (self.box) |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);
+                for (self.item) |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);
                 switch (self.picked) {
                     .none => {},
-                    .picked_box => |nested| try nested.validateRequiredRecursive(allocator),
+                    .picked_box => |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator),
                     else => {},
                 }
             }
@@ -515,9 +515,9 @@ pub const demo = struct {
                     const value = self.id;
                     try writer.print("{d}", .{value});
                 }
-                if (self.box) |nested| {
+                if (self.box) |_pbz_nested| {
                     try writer.writeAll(if (first) "\"box\":" else ",\"box\":"); first = false;
-                    try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
+                    try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.item.len != 0 or options.always_print_primitive_fields) {
                     try writer.writeAll(if (first) "\"item\":" else ",\"item\":"); first = false;
@@ -618,9 +618,9 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "box")) {
-                        var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        errdefer nested.deinit(allocator);
-                        if (self.box) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.box = nested; }
+                        var _pbz_nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        errdefer _pbz_nested.deinit(allocator);
+                        if (self.box) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.box = _pbz_nested; }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "item")) {
@@ -628,15 +628,15 @@ pub const demo = struct {
                         var list: std.ArrayList(Item) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
                         for (array.items) |item| {
-                            var nested = try Item.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            errdefer nested.deinit(allocator);
-                            try list.append(allocator, nested);
+                            var _pbz_nested = try Item.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            errdefer _pbz_nested.deinit(allocator);
+                            try list.append(allocator, _pbz_nested);
                         }
                         { const old = self.item; self.item = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "picked_box") or std.mem.eql(u8, key, "pickedBox")) {
-                        { var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = nested }; }
+                        { var _pbz_nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = _pbz_nested }; }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "note")) {
@@ -1172,14 +1172,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
                 if (self.has_id) { try writer.writeAll("id: "); const value = self.id; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
-                if (self.box) |nested| {
+                if (self.box) |_pbz_nested| {
                     try writer.writeAll("box {\n");
-                    try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                    try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
-                for (self.item) |nested| {
+                for (self.item) |_pbz_nested| {
                     try writer.writeAll("item {\n");
-                    try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                    try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
                 switch (self.picked) {
@@ -1228,28 +1228,28 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textBlockField(line, "box")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        if (self.box) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.box = nested; }
+                        var _pbz_nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        if (self.box) |*existing| { defer _pbz_nested.deinit(allocator); try existing.mergeFrom(allocator, _pbz_nested); } else { errdefer _pbz_nested.deinit(allocator); self.box = _pbz_nested; }
                         continue;
                     }
                     if (@This().textBlockField(line, "item")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Item.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        var _pbz_nested = try Item.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         {
-                            errdefer nested.deinit(allocator);
-                            try item_list.append(allocator, nested);
+                            errdefer _pbz_nested.deinit(allocator);
+                            try item_list.append(allocator, _pbz_nested);
                         }
                         continue;
                     }
                     if (@This().textBlockField(line, "picked_box") or @This().textBlockField(line, "pickedBox")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        var _pbz_nested = try Box.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         {
-                            errdefer nested.deinit(allocator);
+                            errdefer _pbz_nested.deinit(allocator);
                             self._pbzDeinitOneof_picked(allocator);
-                            self.picked = .{ .picked_box = nested };
+                            self.picked = .{ .picked_box = _pbz_nested };
                         }
                         continue;
                     }

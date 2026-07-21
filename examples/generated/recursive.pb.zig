@@ -201,13 +201,13 @@ pub const demo = struct {
             }
 
             pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-                if (self.has_child) { const item = self.child; var nested = try Node.decode(allocator, item); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
+                if (self.has_child) { const item = self.child; var _pbz_nested = try Node.decode(allocator, item); defer _pbz_nested.deinit(allocator); const payload = try _pbz_nested.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
                 for (self.children) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
                 try pbz.wire.writeRawFieldsDeterministic(allocator, self._unknown_fields, w);
             }
 
             pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-                                if (self.has_child) { const item = self.child; var nested = try Node.decode(allocator, item); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
+                                if (self.has_child) { const item = self.child; var _pbz_nested = try Node.decode(allocator, item); defer _pbz_nested.deinit(allocator); const payload = try _pbz_nested.encodeDeterministic(allocator); defer allocator.free(payload); try w.writeMessage(1, payload); }
                 for (self.children) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(2, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
                 try pbz.wire.writeRawFieldsDeterministicAssumeCapacity(allocator, self._unknown_fields, w);
             }
@@ -260,7 +260,7 @@ pub const demo = struct {
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
                         1 => { const payload = try r.readBytes(); if (self.has_child and self.child.len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.child.len + payload.len); @memcpy(merged[0..self.child.len], self.child); @memcpy(merged[self.child.len..], payload); self.child = merged; } else if (!self.has_child or self.child.len == 0) { self.child = payload; } self.has_child = true; },
-                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested); },
+                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try children_list.append(allocator, _pbz_nested); },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
                 }
@@ -286,7 +286,7 @@ pub const demo = struct {
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
                         1 => { const payload = try r.readBytes(); if (self.has_child and self.child.len != 0 and payload.len != 0) { const owned_allocator = try self._pbzOwnedAllocator(allocator); const merged = try owned_allocator.alloc(u8, self.child.len + payload.len); @memcpy(merged[0..self.child.len], self.child); @memcpy(merged[self.child.len..], payload); self.child = merged; } else if (!self.has_child or self.child.len == 0) { self.child = payload; } self.has_child = true; },
-                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested); },
+                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Node.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try children_list.append(allocator, _pbz_nested); },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
                 }
@@ -321,15 +321,15 @@ pub const demo = struct {
 
             pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {
                 if (self.child.len != 0) {
-                    var nested = try Node.decode(allocator, self.child);
-                    defer nested.deinit(allocator);
-                    if (try nested.missingRequiredFieldPath(allocator)) |suffix| {
+                    var _pbz_nested = try Node.decode(allocator, self.child);
+                    defer _pbz_nested.deinit(allocator);
+                    if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| {
                         defer allocator.free(suffix);
                         return try std.fmt.allocPrint(allocator, "child.{s}", .{suffix});
                     }
                 }
-                for (self.children) |nested| {
-                    if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "children.{s}", .{suffix}); }
+                for (self.children) |_pbz_nested| {
+                    if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "children.{s}", .{suffix}); }
                 }
                 return null;
             }
@@ -341,11 +341,11 @@ pub const demo = struct {
             pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                 try self.validateRequired();
                 if (self.child.len != 0) {
-                    var nested = try Node.decode(allocator, self.child);
-                    defer nested.deinit(allocator);
-                    try nested.validateRequiredRecursive(allocator);
+                    var _pbz_nested = try Node.decode(allocator, self.child);
+                    defer _pbz_nested.deinit(allocator);
+                    try _pbz_nested.validateRequiredRecursive(allocator);
                 }
-                for (self.children) |nested| try nested.validateRequiredRecursive(allocator);
+                for (self.children) |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);
             }
 
             pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };
@@ -374,9 +374,9 @@ pub const demo = struct {
                 var first = true;
                 if (self.child.len != 0) {
                     try writer.writeAll(if (first) "\"child\":" else ",\"child\":"); first = false;
-                    var nested = try Node.decode(allocator, self.child);
-                    defer nested.deinit(allocator);
-                    try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
+                    var _pbz_nested = try Node.decode(allocator, self.child);
+                    defer _pbz_nested.deinit(allocator);
+                    try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.children.len != 0 or options.always_print_primitive_fields) {
                     try writer.writeAll(if (first) "\"children\":" else ",\"children\":"); first = false;
@@ -455,9 +455,9 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "child")) {
-                        var nested = try Node.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(arena_allocator);
-                        self.child = try nested.encode(arena_allocator);
+                        var _pbz_nested = try Node.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        defer _pbz_nested.deinit(arena_allocator);
+                        self.child = try _pbz_nested.encode(arena_allocator);
                         self.has_child = true;
                         continue;
                     }
@@ -466,9 +466,9 @@ pub const demo = struct {
                         var list: std.ArrayList(Node) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
                         for (array.items) |item| {
-                            var nested = try Node.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            errdefer nested.deinit(allocator);
-                            try list.append(allocator, nested);
+                            var _pbz_nested = try Node.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            errdefer _pbz_nested.deinit(allocator);
+                            try list.append(allocator, _pbz_nested);
                         }
                         { const old = self.children; self.children = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                         continue;
@@ -1003,14 +1003,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
                 if (self.child.len != 0) {
                     try writer.writeAll("child {\n");
-                    var nested = try Node.decode(allocator, self.child);
-                    defer nested.deinit(allocator);
-                    try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                    var _pbz_nested = try Node.decode(allocator, self.child);
+                    defer _pbz_nested.deinit(allocator);
+                    try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
-                for (self.children) |nested| {
+                for (self.children) |_pbz_nested| {
                     try writer.writeAll("children {\n");
-                    try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                    try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
                 for (self._unknown_fields) |raw| {
@@ -1043,10 +1043,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textBlockField(line, "child")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Node.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        defer nested.deinit(allocator);
+                        var _pbz_nested = try Node.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        defer _pbz_nested.deinit(allocator);
                         const owned_allocator = try self._pbzOwnedAllocator(allocator);
-                        const payload = try nested.encode(owned_allocator);
+                        const payload = try _pbz_nested.encode(owned_allocator);
                         if (self.has_child and self.child.len != 0 and payload.len != 0) {
                             const merged = try owned_allocator.alloc(u8, self.child.len + payload.len);
                             @memcpy(merged[0..self.child.len], self.child);
@@ -1061,10 +1061,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textBlockField(line, "children")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Node.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        var _pbz_nested = try Node.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         {
-                            errdefer nested.deinit(allocator);
-                            try children_list.append(allocator, nested);
+                            errdefer _pbz_nested.deinit(allocator);
+                            try children_list.append(allocator, _pbz_nested);
                         }
                         continue;
                     }

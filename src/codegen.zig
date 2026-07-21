@@ -1302,15 +1302,15 @@ fn writeTextParseMessageExtensionField(ctx: *const CodegenContext, field: *const
     try indent(writer, depth + 1);
     try writer.writeAll("defer allocator.free(block);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("const payload = try nested.encode(owned_allocator);\n");
+    try writer.writeAll("const payload = try _pbz_nested.encode(owned_allocator);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const raw = try ");
     try writeExtensionHelperReference(field, writer);
@@ -1397,18 +1397,18 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
     try indent(writer, depth);
     try writer.writeAll("defer allocator.free(block);\n");
     try indent(writer, depth);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
     if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
         try indent(writer, depth);
         try writer.writeAll("{\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("errdefer nested.deinit(allocator);\n");
+        try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try ");
         try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-        try writer.writeAll(".append(allocator, nested);\n");
+        try writer.writeAll(".append(allocator, _pbz_nested);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
         return;
@@ -1417,9 +1417,9 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try indent(writer, depth);
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.");
+        try writer.writeAll(") |*existing| { defer _pbz_nested.deinit(allocator); try existing.mergeFrom(allocator, _pbz_nested); } else { errdefer _pbz_nested.deinit(allocator); self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = nested; }\n");
+        try writer.writeAll(" = _pbz_nested; }\n");
         return;
     }
     if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
@@ -1427,7 +1427,7 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try indent(writer, depth);
         try writer.writeAll("{\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("errdefer nested.deinit(allocator);\n");
+        try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
         try writeOneofDeinitCall(oneof_name, writer);
         try writer.writeAll("\n");
@@ -1436,17 +1436,17 @@ fn writeTextParseMessagePayloadAssign(ctx: *const CodegenContext, field: *const 
         try writeQuotedIdent(oneof_name, writer);
         try writer.writeAll(" = .{ .");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = nested };\n");
+        try writer.writeAll(" = _pbz_nested };\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
         return;
     }
     try indent(writer, depth);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("const payload = try nested.encode(owned_allocator);\n");
+    try writer.writeAll("const payload = try _pbz_nested.encode(owned_allocator);\n");
     if (field.cardinality == .repeated) {
         try indent(writer, depth);
         try writer.writeAll("try ");
@@ -1547,27 +1547,27 @@ fn writeTextParseMapField(ctx: *const CodegenContext, field: *const schema.Field
         try indent(writer, depth + 3);
         try writer.writeAll("defer allocator.free(block);\n");
         try indent(writer, depth + 3);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, map_type.value.message, writer);
         try writer.writeAll(".parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         if (typedMapMessageValueWithContext(ctx, field)) |_| {
             try indent(writer, depth + 3);
             try writer.writeAll("{\n");
             try indent(writer, depth + 4);
-            try writer.writeAll("errdefer nested.deinit(allocator);\n");
+            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
             try indent(writer, depth + 4);
             try writer.writeAll("entry.value.deinit(allocator);\n");
             try indent(writer, depth + 4);
-            try writer.writeAll("entry.value = nested;\n");
+            try writer.writeAll("entry.value = _pbz_nested;\n");
             try indent(writer, depth + 3);
             try writer.writeAll("}\n");
         } else {
             try indent(writer, depth + 3);
-            try writer.writeAll("defer nested.deinit(allocator);\n");
+            try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
             try indent(writer, depth + 3);
             try writer.writeAll("const owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
             try indent(writer, depth + 3);
-            try writer.writeAll("entry.value = try nested.encode(owned_allocator);\n");
+            try writer.writeAll("entry.value = try _pbz_nested.encode(owned_allocator);\n");
         }
         try indent(writer, depth + 3);
         try writer.writeAll("continue;\n");
@@ -4684,9 +4684,9 @@ fn writeMissingRequiredPathField(ctx: *const CodegenContext, field: *const schem
             try indent(writer, depth);
             try writer.writeAll("for (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |nested| {\n");
+            try writer.writeAll(") |_pbz_nested| {\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
+            try writer.writeAll("if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
             try writeEscapedStringContents(field.name, writer);
             try writer.writeAll(".{s}\", .{suffix}); }\n");
             try indent(writer, depth);
@@ -4705,9 +4705,9 @@ fn writeMissingRequiredPathField(ctx: *const CodegenContext, field: *const schem
             try indent(writer, depth);
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |nested| {\n");
+            try writer.writeAll(") |_pbz_nested| {\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
+            try writer.writeAll("if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
             try writeEscapedStringContents(field.name, writer);
             try writer.writeAll(".{s}\", .{suffix}); }\n");
             try indent(writer, depth);
@@ -4772,9 +4772,9 @@ fn writeMissingRequiredPathOneof(ctx: *const CodegenContext, message: *const sch
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |");
                 if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
-                    try writer.writeAll("nested| {\n");
+                    try writer.writeAll("_pbz_nested| {\n");
                     try indent(writer, depth + 2);
-                    try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
+                    try writer.writeAll("if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, \"");
                     try writeEscapedStringContents(field.name, writer);
                     try writer.writeAll(".{s}\", .{suffix}); }\n");
                 } else {
@@ -4794,16 +4794,16 @@ fn writeMissingRequiredPathOneof(ctx: *const CodegenContext, message: *const sch
 
 fn writeMissingRequiredPathPayload(ctx: *const CodegenContext, type_name: []const u8, field_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
     if (std.mem.eql(u8, payload_expr, "self.")) try writeQuotedIdent(field_name, writer);
     try writer.writeAll(");\n");
     try indent(writer, depth);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("if (try nested.missingRequiredFieldPath(allocator)) |suffix| {\n");
+    try writer.writeAll("if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("defer allocator.free(suffix);\n");
     try indent(writer, depth + 1);
@@ -4914,7 +4914,7 @@ fn writeValidateMessagePayloadField(ctx: *const CodegenContext, field: *const sc
         try writer.writeAll("for (self.");
         try writeQuotedIdent(field.name, writer);
         if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
-            try writer.writeAll(") |nested| try nested.validateRequiredRecursive(allocator);\n");
+            try writer.writeAll(") |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);\n");
         } else {
             try writer.writeAll(") |payload| {\n");
             try writeDecodeAndValidatePayload(ctx, type_name, "payload", writer, depth + 1);
@@ -4926,7 +4926,7 @@ fn writeValidateMessagePayloadField(ctx: *const CodegenContext, field: *const sc
             try indent(writer, depth);
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |nested| try nested.validateRequiredRecursive(allocator);\n");
+            try writer.writeAll(") |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);\n");
             return;
         }
         try indent(writer, depth);
@@ -4934,15 +4934,15 @@ fn writeValidateMessagePayloadField(ctx: *const CodegenContext, field: *const sc
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(".len != 0) {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".decode(allocator, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer nested.deinit(allocator);\n");
+        try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try nested.validateRequiredRecursive(allocator);\n");
+        try writer.writeAll("try _pbz_nested.validateRequiredRecursive(allocator);\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -5000,7 +5000,7 @@ fn writeValidateMessagePayloadOneof(ctx: *const CodegenContext, message: *const 
                 try writeQuotedIdent(field.name, writer);
                 try writer.writeAll(" => |");
                 if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
-                    try writer.writeAll("nested| try nested.validateRequiredRecursive(allocator),\n");
+                    try writer.writeAll("_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator),\n");
                     continue;
                 } else {
                     try writer.writeAll("payload| {\n");
@@ -5019,15 +5019,15 @@ fn writeValidateMessagePayloadOneof(ctx: *const CodegenContext, message: *const 
 
 fn writeDecodeAndValidatePayload(ctx: *const CodegenContext, type_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
     try writer.writeAll(");\n");
     try indent(writer, depth);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.validateRequiredRecursive(allocator);\n");
+    try writer.writeAll("try _pbz_nested.validateRequiredRecursive(allocator);\n");
 }
 
 fn oneofHasMessageField(message: *const schema.MessageDescriptor, oneof_name: []const u8) bool {
@@ -6181,11 +6181,11 @@ fn writeDecodeMessageField(ctx: *const CodegenContext, field: *const schema.Fiel
         if (typedRepeatedMessageFieldWithContext(ctx, field)) |type_name| {
             try writer.writeAll("{ const payload = ");
             try writeMessagePayloadRead(file, field, "r", writer);
-            try writer.writeAll("; var payload_reader = try r.nested(payload); var nested = try ");
+            try writer.writeAll("; var payload_reader = try r.nested(payload); var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try ");
+            try writer.writeAll(".decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try ");
             try writeQuotedIdentWithSuffix(field.name, "_list", writer);
-            try writer.writeAll(".append(allocator, nested); },\n");
+            try writer.writeAll(".append(allocator, _pbz_nested); },\n");
         } else {
             try writeRepeatedAppendPrefix(field, writer);
             try writeMessagePayloadRead(file, field, "r", writer);
@@ -6196,13 +6196,13 @@ fn writeDecodeMessageField(ctx: *const CodegenContext, field: *const schema.Fiel
     } else if (typedSingularMessageFieldWithContext(ctx, field)) |type_name| {
         try writer.writeAll("{ const payload = ");
         try writeMessagePayloadRead(file, field, "r", writer);
-        try writer.writeAll("; var payload_reader = try r.nested(payload); var nested = try ");
+        try writer.writeAll("; var payload_reader = try r.nested(payload); var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.");
+        try writer.writeAll(".decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.");
+        try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = nested; } },\n");
+        try writer.writeAll(" = _pbz_nested; } },\n");
     } else {
         try writer.writeAll("{ const payload = ");
         try writeMessagePayloadRead(file, field, "r", writer);
@@ -6474,15 +6474,15 @@ fn writeOneofMessageDecodeAssign(ctx: *const CodegenContext, field: *const schem
     if (typedOneofMessageFieldWithContext(ctx, field)) |type_name| {
         try writer.writeAll("{ const payload = ");
         try writeMessagePayloadRead(file, field, "r", writer);
-        try writer.writeAll("; var payload_reader = try r.nested(payload); var nested = try ");
+        try writer.writeAll("; var payload_reader = try r.nested(payload); var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-        try writer.writeAll(".decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); ");
+        try writer.writeAll(".decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); ");
         try writeOneofDeinitCall(oneof_name, writer);
         try writer.writeAll(" self.");
         try writeQuotedIdent(oneof_name, writer);
         try writer.writeAll(" = .{ .");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = nested }; },\n");
+        try writer.writeAll(" = _pbz_nested }; },\n");
         return;
     }
     try writer.writeAll("{ const value = ");
@@ -7218,11 +7218,11 @@ fn writeEncodeGroupFieldAssumeCapacity(ctx: *const CodegenContext, field: *const
 }
 
 fn writeEncodeMessagePayloadDeterministic(ctx: *const CodegenContext, number: u29, delimited: bool, type_name: []const u8, payload_expr: []const u8, writer_name: []const u8, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
-    try writer.writeAll("); defer nested.deinit(allocator); const payload = try nested.encodeDeterministic(allocator); defer allocator.free(payload); ");
+    try writer.writeAll("); defer _pbz_nested.deinit(allocator); const payload = try _pbz_nested.encodeDeterministic(allocator); defer allocator.free(payload); ");
     if (delimited) {
         try writer.print("try {s}.writeTag({d}, .start_group); try {s}.appendSlice(payload); try {s}.writeTag({d}, .end_group);", .{ writer_name, number, writer_name, writer_name, number });
     } else {
@@ -8015,8 +8015,8 @@ fn messageScopeHasTextMessageExtension(file: *const schema.FileDescriptor, targe
     for (scope.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, target, field) and extensionTextUsesAllocator(file, field)) return true;
     }
-    for (scope.messages.items) |*nested| {
-        if (messageScopeHasTextMessageExtension(file, target, nested)) return true;
+    for (scope.messages.items) |*_pbz_nested| {
+        if (messageScopeHasTextMessageExtension(file, target, _pbz_nested)) return true;
     }
     return false;
 }
@@ -8142,13 +8142,13 @@ fn writeTextMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
             try writer.writeAll("for (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |nested| {\n");
+            try writer.writeAll(") |_pbz_nested| {\n");
             try indent(writer, depth + 1);
             try writer.writeAll("try writer.writeAll(\"");
             try writeEscapedStringContents(field.name, writer);
             try writer.writeAll(" {\\n\");\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+            try writer.writeAll("try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
             try indent(writer, depth + 1);
             try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
         } else {
@@ -8164,13 +8164,13 @@ fn writeTextMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |nested| {\n");
+            try writer.writeAll(") |_pbz_nested| {\n");
             try indent(writer, depth + 1);
             try writer.writeAll("try writer.writeAll(\"");
             try writeEscapedStringContents(field.name, writer);
             try writer.writeAll(" {\\n\");\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+            try writer.writeAll("try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
             try indent(writer, depth + 1);
             try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
             try indent(writer, depth);
@@ -8192,16 +8192,16 @@ fn writeTextMessagePayload(ctx: *const CodegenContext, field_name: []const u8, t
     try writeEscapedStringContents(field_name, writer);
     try writer.writeAll(" {\\n\");\n");
     try indent(writer, depth);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
     if (std.mem.eql(u8, payload_expr, "self.")) try writeQuotedIdent(field_name, writer);
     try writer.writeAll(");\n");
     try indent(writer, depth);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+    try writer.writeAll("try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
     try indent(writer, depth);
     try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
 }
@@ -8237,13 +8237,13 @@ fn writeTextMapField(ctx: *const CodegenContext, field: *const schema.FieldDescr
             try writer.writeAll("try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
         } else {
             try indent(writer, depth + 1);
-            try writer.writeAll("var nested = try ");
+            try writer.writeAll("var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, map_type.value.message, writer);
             try writer.writeAll(".decode(allocator, entry.value);\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("defer nested.deinit(allocator);\n");
+            try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+            try writer.writeAll("try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
         }
         try indent(writer, depth + 1);
         try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
@@ -8405,13 +8405,13 @@ fn writeTextUnknownMessageExtensionField(ctx: *const CodegenContext, field: *con
     try indent(writer, depth + 2);
     try writeTextExtensionBlockPrefix(file, field, writer);
     try indent(writer, depth + 2);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, payload);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth + 2);
-    try writer.writeAll("try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
+    try writer.writeAll("try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });\n");
     try indent(writer, depth + 2);
     try writer.writeAll("try writer.writeAll(\"}\\n\");\n");
     try indent(writer, depth + 2);
@@ -8485,11 +8485,11 @@ fn writeTextMapValue(ctx: *const CodegenContext, kind: schema.FieldKind, value_e
         .scalar => |scalar| try writeTextScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeTextEnumValue(file, name, value_expr, writer),
         .message => |name| if (codegenCanReferenceMessageWithContext(ctx, name)) {
-            try writer.writeAll("var nested = try ");
+            try writer.writeAll("var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, name, writer);
             try writer.writeAll(".decode(allocator, ");
             try writer.writeAll(value_expr);
-            try writer.writeAll("); defer nested.deinit(allocator); try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name })");
+            try writer.writeAll("); defer _pbz_nested.deinit(allocator); try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name })");
         } else try writer.writeAll("@compileError(\"unsupported map text value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map text value\")"),
     }
@@ -8835,8 +8835,8 @@ fn messageScopeHasJsonExtensions(ctx: *const CodegenContext, target: *const sche
     for (scope.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) return true;
     }
-    for (scope.messages.items) |*nested| {
-        if (messageScopeHasJsonExtensions(ctx, target, nested)) return true;
+    for (scope.messages.items) |*_pbz_nested| {
+        if (messageScopeHasJsonExtensions(ctx, target, _pbz_nested)) return true;
     }
     return false;
 }
@@ -8857,8 +8857,8 @@ fn messageScopeHasJsonOptionUsingExtensions(ctx: *const CodegenContext, target: 
     for (scope.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, target, field) and jsonExtensionUsesOptions(ctx, field)) return true;
     }
-    for (scope.messages.items) |*nested| {
-        if (messageScopeHasJsonOptionUsingExtensions(ctx, target, nested)) return true;
+    for (scope.messages.items) |*_pbz_nested| {
+        if (messageScopeHasJsonOptionUsingExtensions(ctx, target, _pbz_nested)) return true;
     }
     return false;
 }
@@ -8879,8 +8879,8 @@ fn messageScopeHasJsonMessageExtension(ctx: *const CodegenContext, target: *cons
     for (scope.extensions.items) |*field| {
         if (extensionAppliesToMessage(file, target, field) and jsonExtensionUsesArenaWithContext(ctx, field)) return true;
     }
-    for (scope.messages.items) |*nested| {
-        if (messageScopeHasJsonMessageExtension(ctx, target, nested)) return true;
+    for (scope.messages.items) |*_pbz_nested| {
+        if (messageScopeHasJsonMessageExtension(ctx, target, _pbz_nested)) return true;
     }
     return false;
 }
@@ -9091,13 +9091,13 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
             try indent(writer, depth + 1);
             try writer.writeAll("for (array.items) |item| {\n");
             try indent(writer, depth + 2);
-            try writer.writeAll("var nested = try ");
+            try writer.writeAll("var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
             try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
             try indent(writer, depth + 2);
-            try writer.writeAll("errdefer nested.deinit(allocator);\n");
+            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
             try indent(writer, depth + 2);
-            try writer.writeAll("try list.append(allocator, nested);\n");
+            try writer.writeAll("try list.append(allocator, _pbz_nested);\n");
             try indent(writer, depth + 1);
             try writer.writeAll("}\n");
             try indent(writer, depth + 1);
@@ -9121,13 +9121,13 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         try indent(writer, depth + 1);
         try writer.writeAll("for (array.items) |item| {\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("defer nested.deinit(arena_allocator);\n");
+        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("try list.append(allocator, try nested.encode(arena_allocator));\n");
+        try writer.writeAll("try list.append(allocator, try _pbz_nested.encode(arena_allocator));\n");
         try indent(writer, depth + 1);
         try writer.writeAll("}\n");
         try indent(writer, depth + 1);
@@ -9140,17 +9140,17 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
             const oneof_name = field.oneof_name orelse return;
             try indent(writer, depth + 1);
-            try writer.writeAll("var nested = try ");
+            try writer.writeAll("var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
             try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("errdefer nested.deinit(allocator);\n");
+            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
             try indent(writer, depth + 1);
             try writer.writeAll("self.");
             try writeQuotedIdent(oneof_name, writer);
             try writer.writeAll(" = .{ .");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = nested };\n");
+            try writer.writeAll(" = _pbz_nested };\n");
             try indent(writer, depth + 1);
             try writer.writeAll("continue;\n");
             try indent(writer, depth);
@@ -9159,17 +9159,17 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
         }
         if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
             try indent(writer, depth + 1);
-            try writer.writeAll("var nested = try ");
+            try writer.writeAll("var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
             try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
             try indent(writer, depth + 1);
-            try writer.writeAll("errdefer nested.deinit(allocator);\n");
+            try writer.writeAll("errdefer _pbz_nested.deinit(allocator);\n");
             try indent(writer, depth + 1);
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.");
+            try writer.writeAll(") |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(" = nested; }\n");
+            try writer.writeAll(" = _pbz_nested; }\n");
             try indent(writer, depth + 1);
             try writer.writeAll("continue;\n");
             try indent(writer, depth);
@@ -9177,15 +9177,15 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
             return;
         }
         try indent(writer, depth + 1);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer nested.deinit(arena_allocator);\n");
+        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = try nested.encode(arena_allocator);\n");
+        try writer.writeAll(" = try _pbz_nested.encode(arena_allocator);\n");
         if (hasPresence(file, field.*)) {
             try indent(writer, depth + 1);
             try writer.writeAll("self.");
@@ -9292,28 +9292,28 @@ fn writeJsonParseMessageExtensionField(ctx: *const CodegenContext, field: *const
         try indent(writer, depth + 1);
         try writer.writeAll("for (array.items) |item| {\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 2);
-        try writer.writeAll("defer nested.deinit(arena_allocator);\n");
+        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 2);
         try writer.writeAll("try ");
         try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".appendToUnknown(self, allocator, try nested.encode(arena_allocator));\n");
+        try writer.writeAll(".appendToUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));\n");
         try indent(writer, depth + 1);
         try writer.writeAll("}\n");
     } else {
         try indent(writer, depth + 1);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer nested.deinit(arena_allocator);\n");
+        try writer.writeAll("defer _pbz_nested.deinit(arena_allocator);\n");
         try indent(writer, depth + 1);
         try writer.writeAll("try ");
         try writeExtensionHelperReference(field, writer);
-        try writer.writeAll(".replaceInUnknown(self, allocator, try nested.encode(arena_allocator));\n");
+        try writer.writeAll(".replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));\n");
     }
     try indent(writer, depth + 1);
     try writer.writeAll("continue;\n");
@@ -9428,24 +9428,24 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
     if (maybe_message_type) |type_name| {
         if (codegenCanReferenceMessageWithContext(ctx, type_name)) {
             if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
-                try writer.writeAll("{ var nested = try ");
+                try writer.writeAll("{ var _pbz_nested = try ");
                 try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-                try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator); ");
+                try writer.writeAll(".jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator); ");
                 try writeOneofDeinitCall(oneof.name, writer);
                 try writer.writeAll(" self.");
                 try writeQuotedIdent(oneof.name, writer);
                 try writer.writeAll(" = .{ .");
                 try writeQuotedIdent(field.name, writer);
-                try writer.writeAll(" = nested }; }\n");
+                try writer.writeAll(" = _pbz_nested }; }\n");
                 try indent(writer, depth + 1);
                 try writer.writeAll("continue;\n");
                 try indent(writer, depth);
                 try writer.writeAll("}\n");
                 return;
             } else {
-                try writer.writeAll("{ var nested = try ");
+                try writer.writeAll("{ var _pbz_nested = try ");
                 try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-                try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer nested.deinit(arena_allocator); const payload = try nested.encode(arena_allocator); ");
+                try writer.writeAll(".jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer _pbz_nested.deinit(arena_allocator); const payload = try _pbz_nested.encode(arena_allocator); ");
                 try writeOneofDeinitCall(oneof.name, writer);
                 try writer.writeAll(" self.");
                 try writeQuotedIdent(oneof.name, writer);
@@ -9561,16 +9561,16 @@ fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, field: *const schema.F
     switch (kind) {
         .message => |name| if (codegenCanReferenceMessageWithContext(ctx, name)) {
             if (typedMapMessageValueWithContext(ctx, field)) |_| {
-                try writer.writeAll("blk: { var nested = try ");
+                try writer.writeAll("blk: { var _pbz_nested = try ");
                 try writeMessageTypeReferenceWithContext(ctx, name, writer);
                 try writer.writeAll(".jsonParseValueWithOptions(allocator, ");
                 try writer.writeAll(arena_expr);
                 try writer.writeAll(", ");
                 try writer.writeAll(value_expr);
-                try writer.writeAll(", .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer nested.deinit(allocator");
+                try writer.writeAll(", .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator");
                 try writer.writeAll("); break :blk nested; }");
             } else {
-                try writer.writeAll("blk: { var nested = try ");
+                try writer.writeAll("blk: { var _pbz_nested = try ");
                 try writeMessageTypeReferenceWithContext(ctx, name, writer);
                 try writer.writeAll(".jsonParseValueWithOptions(");
                 try writer.writeAll(arena_expr);
@@ -9578,9 +9578,9 @@ fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, field: *const schema.F
                 try writer.writeAll(arena_expr);
                 try writer.writeAll(", ");
                 try writer.writeAll(value_expr);
-                try writer.writeAll(", .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer nested.deinit(");
+                try writer.writeAll(", .{ .ignore_unknown_fields = options.ignore_unknown_fields }); defer _pbz_nested.deinit(");
                 try writer.writeAll(arena_expr);
-                try writer.writeAll("); break :blk try nested.encode(");
+                try writer.writeAll("); break :blk try _pbz_nested.encode(");
                 try writer.writeAll(arena_expr);
                 try writer.writeAll("); }");
             }
@@ -10332,10 +10332,10 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
             try writer.writeAll("if (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(") |nested| {\n");
+            try writer.writeAll(") |_pbz_nested| {\n");
             try writeJsonPrefix(field, writer, depth + 1);
             try indent(writer, depth + 1);
-            try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
+            try writer.writeAll("try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
             try indent(writer, depth);
             try writer.writeAll("}\n");
             return;
@@ -10345,15 +10345,15 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         try writer.writeAll(".len != 0) {\n");
         try writeJsonPrefix(field, writer, depth + 1);
         try indent(writer, depth + 1);
-        try writer.writeAll("var nested = try ");
+        try writer.writeAll("var _pbz_nested = try ");
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
         try writer.writeAll(".decode(allocator, self.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("defer nested.deinit(allocator);\n");
+        try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
+        try writer.writeAll("try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
         try indent(writer, depth);
         try writer.writeAll("}\n");
     }
@@ -10361,15 +10361,15 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
 
 fn writeDecodeAndStringifyPayload(ctx: *const CodegenContext, type_name: []const u8, payload_expr: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("var nested = try ");
+    try writer.writeAll("var _pbz_nested = try ");
     try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     try writer.writeAll(".decode(allocator, ");
     try writer.writeAll(payload_expr);
     try writer.writeAll(");\n");
     try indent(writer, depth);
-    try writer.writeAll("defer nested.deinit(allocator);\n");
+    try writer.writeAll("defer _pbz_nested.deinit(allocator);\n");
     try indent(writer, depth);
-    try writer.writeAll("try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
+    try writer.writeAll("try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });\n");
 }
 
 fn jsonMapValueSupported(ctx: *const CodegenContext, kind: schema.FieldKind) bool {
@@ -10398,11 +10398,11 @@ fn writeJsonMapEntryValue(ctx: *const CodegenContext, field: *const schema.Field
             if (typedMapMessageValueWithContext(ctx, field)) |_| {
                 try writer.print("try {s}.jsonStringifyWithOptions(allocator, writer, .{{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields }})", .{value_expr});
             } else {
-                try writer.writeAll("var nested = try ");
+                try writer.writeAll("var _pbz_nested = try ");
                 try writeMessageTypeReferenceWithContext(ctx, name, writer);
                 try writer.writeAll(".decode(allocator, ");
                 try writer.writeAll(value_expr);
-                try writer.writeAll("); defer nested.deinit(allocator); try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })");
+                try writer.writeAll("); defer _pbz_nested.deinit(allocator); try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })");
             }
         } else try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
         else => try writer.writeAll("@compileError(\"unsupported map JSON value\")"),
@@ -10529,9 +10529,9 @@ fn writeJsonExtensionValue(ctx: *const CodegenContext, kind: schema.FieldKind, v
         .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
         .message, .group => |type_name| {
-            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try ");
+            try writer.writeAll("try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var _pbz_nested = try ");
             try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-            try writer.writeAll(".decode(allocator_, payload_); defer nested.deinit(allocator_); try nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, ");
+            try writer.writeAll(".decode(allocator_, payload_); defer _pbz_nested.deinit(allocator_); try _pbz_nested.jsonStringifyWithOptions(allocator_, writer_, .{ .enum_as_name = options_.enum_as_name, .preserve_proto_field_names = options_.preserve_proto_field_names, .always_print_primitive_fields = options_.always_print_primitive_fields }); } }.write(allocator, writer, options, ");
             try writer.writeAll(value_expr);
             try writer.writeAll(")");
         },
@@ -12306,30 +12306,30 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const zig_type = \"keyedMap\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.common_proto.demo.common.User.Profile = .{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "picked: imports.common_proto.demo.common.User,") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try profiles_list.append(allocator, nested);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try profiles_list.append(allocator, _pbz_nested);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try imports.common_proto.demo.common.User.Profile.decodeFromReader(allocator, &value_reader);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = nested };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = _pbz_nested };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.writeTo(w);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeDeterministicTo(allocator, w); },") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value_ptr.validateRequiredRecursive(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |nested| try nested.validateRequiredRecursive(allocator),") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.Profile.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator),") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.Profile.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var parsed_value = try imports.common_proto.demo.common.User.Profile.jsonParseValueWithOptions(allocator, arena_allocator, map_entry.value_ptr.*, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "errdefer parsed_value.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".{ .key = map_entry.key_ptr.*, .value = parsed_value }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_pick(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = nested };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.user) |nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = _pbz_nested };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.user) |_pbz_nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try value.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.User.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.Profile.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer _pbz_nested.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_pick(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = nested };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = _pbz_nested };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try value.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try imports.common_proto.demo.common.User.decode(allocator, payload);") != null);
@@ -12557,8 +12557,8 @@ test "codegen validates imported extension required payloads" {
     const content = try generateZigFileWithRegistry(allocator, &app, &registry);
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.payload.decodeAllFromUnknown(self, allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.common.Payload.decode(allocator, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.common.Payload.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try _pbz_nested.validateRequiredRecursive(allocator);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -12625,10 +12625,10 @@ test "codegen with registry emits extension type refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try appendAllOn(message, allocator, _pbz_raw);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn replaceAllEnumsOn(message: *imports.common_proto.demo.common.Host, allocator: std.mem.Allocator, values: []const @\"demo.common.Role\") !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try replaceAllOn(message, allocator, _pbz_raw);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.decode(allocator, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.jsonParseValueWithOptions(arena_allocator, arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try imports.common_proto.demo.common.Note.decode(allocator_, payload_);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.Note.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.Note.jsonParseValueWithOptions(arena_allocator, arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.Note.decode(allocator_, payload_);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -13277,13 +13277,13 @@ test "codegen emits message payload fields and encoders" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |value| { const payload_len = value.encodedSize(); try w.writeTag(1, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.children) |item| { const payload_len = item.encodedSize(); try w.writeTag(2, .length_delimited); try w.writeVarint(payload_len); try item.writeTo(w); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonStringifyWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |nested|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |_pbz_nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields })") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.children.len != 0 or options.always_print_primitive_fields)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.children, 0..) |item, i|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = nested };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = _pbz_nested };") != null);
 }
 
 test "codegen emits JSON helpers for proto2 group payload fields" {
@@ -13301,10 +13301,10 @@ test "codegen emits JSON helpers for proto2 group payload fields" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "box: ?Box = null") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "item: []const Item = &.{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |_pbz_nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (self.item, 0..) |item, i|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Item.jsonParseValueWithOptions(allocator, arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Box.jsonParseValueWithOptions(allocator, arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Item.jsonParseValueWithOptions(allocator, arena_allocator") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "{ const old = self.item; self.item = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }") != null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -13347,7 +13347,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteEnum(writer, value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, options.enum_as_name);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteEnum(writer: *std.Io.Writer, value: i32, comptime names: []const []const u8, comptime numbers: []const i32, enum_as_name: bool) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"child {\\n\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"kids {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"alias: \"); try @This().textWriteQuotedBytes(value, writer);") != null);
@@ -13383,9 +13383,9 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"counts\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textFieldValue(entry_line, \"value\")) |raw_value| { entry.value = try @This().textInt(i32, raw_value); continue; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(entry_line, \"value\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer _pbz_nested.deinit(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "entry.value.deinit(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = nested;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = _pbz_nested;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .alias = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.pick = .{ .picked = @This().textEnum(raw_value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) { continue; } return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textFieldValue(line: []const u8, comptime name: []const u8) ?[]const u8") != null);
@@ -13413,11 +13413,11 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textEnum(value: []const u8, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"child\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const block = try @This().textBlock(allocator, &lines, text_has_comments);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer nested.deinit(allocator);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try children_list.append(allocator, nested);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "errdefer _pbz_nested.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try children_list.append(allocator, _pbz_nested);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, _pbz_nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"picked_msg\") or @This().textBlockField(line, \"pickedMsg\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bool) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, line, \">\")") != null);
@@ -13729,7 +13729,7 @@ test "codegen decodes repeated scalar enum and message payload fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "var ids_list: std.ArrayList(i32) = .empty") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try ids_list.append(allocator, try r.readInt32())") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "{ const value = try r.readInt32(); try kinds_list.append(allocator, value); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try children_list.append(allocator, nested);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try children_list.append(allocator, _pbz_nested);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.ids = if (ids_list.items.len != 0 and ids_list.items.len == ids_list.capacity) ids_list.toOwnedSliceAssert() else try ids_list.toOwnedSlice(allocator)") != null);
 }
 
@@ -13750,7 +13750,7 @@ test "codegen supports self-recursive generated schemas" {
     try std.testing.expect(std.mem.indexOf(u8, content, "has_child: bool = false,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "children: []const Node = &.{},") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Node.decodeFromReader(allocator, &payload_reader);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Node.decodeFromReader(allocator, &payload_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "child: ?Node") == null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -14011,14 +14011,14 @@ test "codegen emits recursive required validation for message payloads" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |nested|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.children) |nested|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |_pbz_nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (self.children) |_pbz_nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |_pbz_nested|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var map_it = self.keyed.iterator(); while (map_it.next()) |entry|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value_ptr.validateRequiredRecursive(allocator)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payloads = try extensions.child_ext.decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (payloads) |payload|") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try nested.validateRequiredRecursive(allocator)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try _pbz_nested.validateRequiredRecursive(allocator)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"child_ext.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"child.{s}\", .{suffix});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try std.fmt.allocPrint(allocator, \"children.{s}\", .{suffix});") != null);
@@ -14060,14 +14060,14 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.child) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.child = try other_value.cloneOwned(allocator); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (other.box) |other_value|") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.box = try other_value.cloneOwned(allocator); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, nested)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try existing.mergeFrom(allocator, _pbz_nested)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "switch (other.pick)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = owned_value }; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var nested = try Box.decodeFromReader(allocator, &payload_reader);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var _pbz_nested = try Box.decodeFromReader(allocator, &payload_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |value| { try w.writeTag(4, .start_group); try value.writeTo(w); try w.writeTag(4, .end_group); }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |nested|") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |_pbz_nested|") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -14187,14 +14187,14 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.tag.encodeRaw(allocator, try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.nums.encodeRaw(allocator, try @This().textInt(i32, raw_value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.note]\") or @This().textBlockField(line, \"[note]\"))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Note.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.note.encodeRaw(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, key, \"[demo.tag]\") or std.mem.eql(u8, key, \"[tag]\")) {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.clearUnknownFieldsByNumber(allocator, extensions.tag.number); continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.tag.replaceInUnknown(self, allocator, try @This().jsonString(value));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.nums.appendToUnknown(self, allocator, try @This().jsonInt(i32, item));") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Note.jsonParseValueWithOptions(arena_allocator, arena_allocator") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.note.replaceInUnknown(self, allocator, try nested.encode(arena_allocator));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Note.jsonParseValueWithOptions(arena_allocator, arena_allocator") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.note.replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.tag.decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (first) \"\\\"[demo.tag]\\\":\" else \",\\\"[demo.tag]\\\":\"); first = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const value = values[values.len - 1];") != null);
@@ -14202,12 +14202,12 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const values = try extensions.nums.decodeAllFromUnknown(self, allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(if (first) \"\\\"[demo.nums]\\\":\" else \",\\\"[demo.nums]\\\":\"); first = false;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var nested = try Note.decode(allocator_, payload_);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try struct { fn write(allocator_: std.mem.Allocator, writer_: *std.Io.Writer, options_: anytype, payload_: []const u8) !void { var _pbz_nested = try Note.decode(allocator_, payload_);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.tag.decodeRaw(raw) catch null) |value| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.tag]: \"); try @This().textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.note.decodeRaw(raw) catch null) |payload| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.note] {\\n\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Note.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Note.decode(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn hasExtension_tag(self: @This()) !bool") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return try extensions.tag.hasInUnknown(self);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn countExtension_tag(self: @This()) !usize") != null);
@@ -14268,7 +14268,7 @@ test "codegen emits proto2 extension metadata" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (@This().textBlockField(line, \"[demo.legacy]\") or @This().textBlockField(line, \"[legacy]\"))") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const raw = try extensions.legacy.encodeRaw(allocator, payload);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.mem.eql(u8, key, \"[demo.legacy]\") or std.mem.eql(u8, key, \"[legacy]\")) {") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.legacy.replaceInUnknown(self, allocator, try nested.encode(arena_allocator));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try extensions.legacy.replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (extensions.legacy.decodeRaw(raw) catch null) |payload| {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"[demo.legacy] {\\n\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn setExtensionMessage_legacy(self: *@This(), allocator: std.mem.Allocator, value: Note) !void") != null);
@@ -14565,8 +14565,8 @@ test "codegen honors editions message encoding features" {
     try std.testing.expect(std.mem.indexOf(u8, content, "try w.writeTag(3, .start_group); try w.appendSlice(value); try w.writeTag(3, .end_group)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const payload = try r.readGroupBytes(1); if (self.has_delimited") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.has_delimited = true;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var nested = try Child.decode(allocator, payload);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self.length_prefixed = nested;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try Child.decode(allocator, payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.length_prefixed = _pbz_nested;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const value = try r.readGroupBytes(3);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = value };") != null);
 

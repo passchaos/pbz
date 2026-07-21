@@ -167,6 +167,7 @@ pub fn build(b: *std.Build) void {
         "generated_json_names",
         "generated_messageset",
         "generated_map_keys",
+        "generated_nested_types",
         "generated_imports",
         "generated_groups",
         "generated_recursive",

@@ -1332,8 +1332,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
                         1 => { self.name = try r.readBytes(); self.has_name = true; },
-                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
-                        3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try history_list.append(allocator, nested); },
+                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; } },
+                        3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try history_list.append(allocator, _pbz_nested); },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag),
                     }
                 }
@@ -1361,8 +1361,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 while (try r.nextTag()) |tag| {
                     switch (tag.number) {
                         1 => { self.name = try r.readBytes(); self.has_name = true; },
-                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; } },
-                        3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer nested.deinit(allocator); try history_list.append(allocator, nested); },
+                        2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; } },
+                        3 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); try history_list.append(allocator, _pbz_nested); },
                         else => try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag),
                     }
                 }
@@ -1397,11 +1397,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {
                 if (!self.has_name) return try allocator.dupe(u8, "name");
-                if (self.child) |nested| {
-                    if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "child.{s}", .{suffix}); }
+                if (self.child) |_pbz_nested| {
+                    if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "child.{s}", .{suffix}); }
                 }
-                for (self.history) |nested| {
-                    if (try nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "history.{s}", .{suffix}); }
+                for (self.history) |_pbz_nested| {
+                    if (try _pbz_nested.missingRequiredFieldPath(allocator)) |suffix| { defer allocator.free(suffix); return try std.fmt.allocPrint(allocator, "history.{s}", .{suffix}); }
                 }
                 return null;
             }
@@ -1412,8 +1412,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
                 try self.validateRequired();
-                if (self.child) |nested| try nested.validateRequiredRecursive(allocator);
-                for (self.history) |nested| try nested.validateRequiredRecursive(allocator);
+                if (self.child) |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);
+                for (self.history) |_pbz_nested| try _pbz_nested.validateRequiredRecursive(allocator);
             }
 
             pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };
@@ -1445,9 +1445,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const value = self.name;
                     try @This().jsonWriteString(writer, value);
                 }
-                if (self.child) |nested| {
+                if (self.child) |_pbz_nested| {
                     try writer.writeAll(if (first) "\"child\":" else ",\"child\":"); first = false;
-                    try nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
+                    try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
                 }
                 if (self.history.len != 0 or options.always_print_primitive_fields) {
                     try writer.writeAll(if (first) "\"history\":" else ",\"history\":"); first = false;
@@ -1535,9 +1535,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "child")) {
-                        var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        errdefer nested.deinit(allocator);
-                        if (self.child) |*existing| { try existing.mergeFrom(allocator, nested); nested.deinit(allocator); } else { self.child = nested; }
+                        var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        errdefer _pbz_nested.deinit(allocator);
+                        if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "history")) {
@@ -1545,9 +1545,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var list: std.ArrayList(Child) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }
                         for (array.items) |item| {
-                            var nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                            errdefer nested.deinit(allocator);
-                            try list.append(allocator, nested);
+                            var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, item, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                            errdefer _pbz_nested.deinit(allocator);
+                            try list.append(allocator, _pbz_nested);
                         }
                         { const old = self.history; self.history = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                         continue;
@@ -2081,14 +2081,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
                 if (self.has_name) { try writer.writeAll("name: "); const value = self.name; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
-                if (self.child) |nested| {
+                if (self.child) |_pbz_nested| {
                     try writer.writeAll("child {\n");
-                    try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                    try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
-                for (self.history) |nested| {
+                for (self.history) |_pbz_nested| {
                     try writer.writeAll("history {\n");
-                    try nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
+                    try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
                     try writer.writeAll("}\n");
                 }
                 for (self._unknown_fields) |raw| {
@@ -2126,17 +2126,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (@This().textBlockField(line, "child")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
-                        if (self.child) |*existing| { defer nested.deinit(allocator); try existing.mergeFrom(allocator, nested); } else { errdefer nested.deinit(allocator); self.child = nested; }
+                        var _pbz_nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        if (self.child) |*existing| { defer _pbz_nested.deinit(allocator); try existing.mergeFrom(allocator, _pbz_nested); } else { errdefer _pbz_nested.deinit(allocator); self.child = _pbz_nested; }
                         continue;
                     }
                     if (@This().textBlockField(line, "history")) {
                         const block = try @This().textBlock(allocator, &lines, text_has_comments);
                         defer allocator.free(block);
-                        var nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
+                        var _pbz_nested = try Child.parseTextWithOptions(allocator, block, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         {
-                            errdefer nested.deinit(allocator);
-                            try history_list.append(allocator, nested);
+                            errdefer _pbz_nested.deinit(allocator);
+                            try history_list.append(allocator, _pbz_nested);
                         }
                         continue;
                     }
