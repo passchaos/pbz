@@ -354,6 +354,17 @@ pub const Reflection = struct {
         return message_value.removeRepeatedValue(try self.fieldByName(message_value.descriptor, name), index);
     }
 
+    pub fn setRepeatedValue(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, index: usize, value: dynamic.Value) Error!bool {
+        var owned = value;
+        var owns_owned = true;
+        defer if (owns_owned) dynamic.deinitValue(&owned, self.allocator);
+        const field = try self.fieldByName(message_value.descriptor, name);
+        try self.validateValueForField(message_value.descriptor, field, owned);
+        if (!message_value.setRepeatedValue(field, index, owned)) return false;
+        owns_owned = false;
+        return true;
+    }
+
     pub fn swapRepeatedValues(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, lhs: usize, rhs: usize) Error!bool {
         return message_value.swapRepeatedValues(try self.fieldByName(message_value.descriptor, name), lhs, rhs);
     }

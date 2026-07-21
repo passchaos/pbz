@@ -305,7 +305,7 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/get-default
   and clear helpers across all scalar families, present-field listing, immediate
-  type-checked writes, repeated field reordering/removal, typed message/group creation/access/mutation, map
+  type-checked writes, repeated field replacement/reordering/removal, typed message/group creation/access/mutation, map
   last-wins mutation, map key lookup, JSON-name field lookup/output, field presence/packing/reserved metadata,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/presence/inspection/clearing, imported message fields, option lookup,

@@ -190,6 +190,20 @@ pub const DynamicMessage = struct {
         return self.removeRepeatedValue(field, index);
     }
 
+    pub fn setRepeatedValue(self: *DynamicMessage, field: *const schema.FieldDescriptor, index: usize, value: Value) bool {
+        if (!field.isRepeatedLike()) return false;
+        const field_value = self.getMutableByNumber(field.number) orelse return false;
+        if (index >= field_value.values.items.len) return false;
+        deinitValue(&field_value.values.items[index], self.allocator);
+        field_value.values.items[index] = value;
+        return true;
+    }
+
+    pub fn setRepeatedValueByName(self: *DynamicMessage, name: []const u8, index: usize, value: Value) bool {
+        const field = self.descriptor.findField(name) orelse return false;
+        return self.setRepeatedValue(field, index, value);
+    }
+
     pub fn swapRepeatedValues(self: *DynamicMessage, field: *const schema.FieldDescriptor, lhs: usize, rhs: usize) bool {
         if (!field.isRepeatedLike()) return false;
         const field_value = self.getMutableByNumber(field.number) orelse return false;

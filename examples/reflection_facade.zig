@@ -165,8 +165,12 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Ada", try refl.getString(&user, "name"));
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&user, "tags"));
     try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 1)).string);
+    try std.testing.expect(try refl.setRepeatedValue(&user, "tags", 1, .{ .string = try allocator.dupe(u8, "pbz") }));
+    try std.testing.expectEqualStrings("pbz", (try refl.repeatedValue(&user, "tags", 1)).string);
+    try std.testing.expect(!try refl.setRepeatedValue(&user, "tags", 9, .{ .string = try allocator.dupe(u8, "missing") }));
+    try std.testing.expectError(error.TypeMismatch, refl.setRepeatedValue(&user, "tags", 0, .{ .int32 = 1 }));
     try std.testing.expect(try refl.swapRepeatedValues(&user, "tags", 0, 1));
-    try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 0)).string);
+    try std.testing.expectEqualStrings("pbz", (try refl.repeatedValue(&user, "tags", 0)).string);
     try std.testing.expect(!try refl.swapRepeatedValues(&user, "tags", 0, 5));
     try std.testing.expect(try refl.removeRepeatedValue(&user, "tags", 0));
     try std.testing.expectEqual(@as(usize, 1), try refl.repeatedLen(&user, "tags"));
