@@ -31,6 +31,7 @@ library API.
 - `generated_unpacked.zig` — generated repeated scalar `[packed = false]` encoding plus packed/unpacked merge parsing from `proto/unpacked.proto`.
 - `generated_public_imports.zig` — generated public-import re-export type references from `proto/public_app.proto` / `proto/public_mid.proto` / `proto/public_leaf.proto`.
 - `generated_merge_semantics.zig` — generated decode merge/last-wins semantics for singular messages, repeated fields, maps, oneof, and decode reuse.
+- `generated_unknown_mutation.zig` — generated unknown-field append/query/clear APIs over exact raw-field storage.
 - `generated_imports.zig` — multi-file generated modules using proto imports with typed imported singular, repeated, map value, and oneof message fields from `proto/imported_app.proto` / `proto/imported_common.proto`.
 - `generated_groups.zig` — typed proto2 group fields, repeated groups, oneof group message arms, and JSON/TextFormat round-trips from `proto/groups.proto`.
 - `generated_recursive.zig` — generated self-recursive message usage from `proto/recursive.proto`, including raw-payload singular recursion, typed repeated recursion, and decode recursion-limit enforcement.
