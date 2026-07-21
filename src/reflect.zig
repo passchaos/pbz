@@ -642,6 +642,30 @@ pub const Reflection = struct {
         return try self.enumValueByNumber(descriptor, number);
     }
 
+    pub fn setMessageOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: *dynamic.DynamicMessage) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .message = value });
+    }
+
+    pub fn addMessageOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: *dynamic.DynamicMessage) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .message = value });
+    }
+
+    pub fn getMessage(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
+        return try self.getScalar(*dynamic.DynamicMessage, message_value, name, .message);
+    }
+
+    pub fn setGroupOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: *dynamic.DynamicMessage) Error!void {
+        try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .group = value });
+    }
+
+    pub fn addGroupOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: *dynamic.DynamicMessage) Error!void {
+        try self.add(message_value, try self.fieldByName(message_value.descriptor, name), .{ .group = value });
+    }
+
+    pub fn getGroup(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
+        return try self.getScalar(*dynamic.DynamicMessage, message_value, name, .group);
+    }
+
     pub fn putMapEntryOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: dynamic.Value, value: dynamic.Value) Error!void {
         var owned_key = key;
         var owns_key = true;

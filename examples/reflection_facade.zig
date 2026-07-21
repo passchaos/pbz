@@ -130,7 +130,7 @@ pub fn main() !void {
     profile.* = pbz.DynamicMessage.init(allocator, profile_desc);
     try refl.setInt64(profile, "created_at", 123456);
     try refl.setBytes(profile, "avatar", &.{ 0xde, 0xad, 0xbe, 0xef });
-    try refl.set(&user, try refl.fieldByName(user_desc, "profile"), .{ .message = profile });
+    try refl.setMessageOwned(&user, "profile", profile);
 
     try std.testing.expect(try refl.hasField(&user, "id"));
     try std.testing.expectEqual(@as(i32, 7), try refl.getInt32(&user, "id"));
@@ -173,7 +173,7 @@ pub fn main() !void {
     try std.testing.expect((try refl.getField(&user, "counts")) == null);
     try refl.putStringInt32MapEntry(&user, "counts", "red", 2);
 
-    const profile_value = (try refl.getField(&user, "profile")).?.values.items[0].message;
+    const profile_value = try refl.getMessage(&user, "profile");
     try std.testing.expectEqual(@as(i64, 123456), try refl.getInt64(profile_value, "created_at"));
     try std.testing.expectEqualSlices(u8, &.{ 0xde, 0xad, 0xbe, 0xef }, try refl.getBytes(profile_value, "avatar"));
 
@@ -259,12 +259,12 @@ pub fn main() !void {
     const child_desc = try required_refl.message(".demo.required_reflect.Child");
     const child = try allocator.create(pbz.DynamicMessage);
     child.* = pbz.DynamicMessage.init(allocator, child_desc);
-    try required_refl.set(&parent, try required_refl.fieldByName(parent.descriptor, "child"), .{ .message = child });
+    try required_refl.setMessageOwned(&parent, "child", child);
     const missing_child = (try required_refl.missingRequiredFieldPath(&parent)).?;
     defer allocator.free(missing_child);
     try std.testing.expectEqualStrings("child.id", missing_child);
 
-    try required_refl.setInt32(parent.get("child").?.values.items[0].message, "id", 1);
+    try required_refl.setInt32(try required_refl.getMessage(&parent, "child"), "id", 1);
     try required_refl.validateInitialized(&parent);
     try std.testing.expect(required_refl.isInitialized(&parent));
     try std.testing.expect((try required_refl.missingRequiredFieldPath(&parent)) == null);
