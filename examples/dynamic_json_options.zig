@@ -32,6 +32,13 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Ada", parsed.get("display_name").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 1), parsed.get("kind").?.values.items[0].enumeration);
 
+    var duplicate_keys = try pbz.parseJsonAlloc(allocator, &file, desc,
+        \\{"userId":1,"userId":2,"displayName":"first","displayName":"last"}
+    , .{});
+    defer duplicate_keys.deinit();
+    try std.testing.expectEqual(@as(i32, 2), duplicate_keys.get("user_id").?.values.items[0].int32);
+    try std.testing.expectEqualStrings("last", duplicate_keys.get("display_name").?.values.items[0].string);
+
     const camel_json = try pbz.stringifyJsonAlloc(allocator, &file, &parsed, .{});
     defer allocator.free(camel_json);
     try std.testing.expect(std.mem.indexOf(u8, camel_json, "\"userId\":7") != null);

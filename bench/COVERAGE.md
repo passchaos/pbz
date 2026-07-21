@@ -277,7 +277,8 @@ benchmark harness.
   invalid raw-field rejection.
 - `examples/dynamic_json_options.zig` covers dynamic JSON parse/stringify
   options: ignore-unknown parsing, proto-name field output/input,
-  always-print default values, and enum-number output.
+  always-print default values, enum-number output, and duplicate-key
+  last-wins parsing.
 - `examples/dynamic_text_options.zig` covers dynamic TextFormat formatting
   options: enum-number output, custom indentation, unknown-field printing, and
   numeric enum input.

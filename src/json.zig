@@ -103,7 +103,7 @@ pub fn parseAllocWithRegistry(
     bytes: []const u8,
     options: Options,
 ) anyerror!dynamic.DynamicMessage {
-    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{ .duplicate_field_behavior = .use_last });
     defer parsed.deinit();
 
     var message = dynamic.DynamicMessage.init(allocator, descriptor);
@@ -1834,6 +1834,25 @@ test "json parse dynamic message with scalars repeated maps enums and nested mes
     const rendered = try stringifyAlloc(allocator, &file, &bag, .{});
     defer allocator.free(rendered);
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", rendered);
+}
+
+test "json parse dynamic message uses last duplicate object key" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { int32 id = 1; map<string, int32> counts = 2; }
+    );
+    defer file.deinit();
+    const desc = file.findMessage("M").?;
+
+    var msg = try parseAlloc(allocator, &file, desc,
+        \\{"id":1,"id":2,"counts":{"red":1,"red":3}}
+    , .{});
+    defer msg.deinit();
+
+    try std.testing.expectEqual(@as(i32, 2), msg.get("id").?.values.items[0].int32);
+    try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
+    try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
 }
 
 test "json parseInitialized validates required fields recursively" {
