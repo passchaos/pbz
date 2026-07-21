@@ -357,6 +357,16 @@ pub const Reflection = struct {
         const owned_key = try self.allocator.dupe(u8, key);
         try self.putMapEntryOwned(message_value, name, .{ .string = owned_key }, .{ .int32 = value });
     }
+
+    pub fn clearMapEntry(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!bool {
+        return message_value.clearMapEntry(try self.fieldByName(message_value.descriptor, name), key);
+    }
+
+    pub fn clearStringMapEntry(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!bool {
+        const owned_key = try self.allocator.dupe(u8, key);
+        defer self.allocator.free(owned_key);
+        return try self.clearMapEntry(message_value, name, .{ .string = owned_key });
+    }
 };
 
 fn lastValue(message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) ?dynamic.Value {

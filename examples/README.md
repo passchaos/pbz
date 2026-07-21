@@ -11,9 +11,9 @@ library API.
 
 - `wire.zig` — low-level wire writer/reader usage.
 - `dynamic_message.zig` — runtime schema parsing, dynamic fields,
-  repeated/map/oneof handling, field clear helpers, deterministic
-  encode/decode, decode reuse clearing semantics, and dynamic unknown-field
-  query/mutation APIs.
+  repeated/map/oneof handling, field and map-entry clear helpers,
+  deterministic encode/decode, decode reuse clearing semantics, and dynamic
+  unknown-field query/mutation APIs.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
 - `dynamic_json_options.zig` — dynamic JSON parse/stringify options:
   ignore-unknown, proto-name fields, always-print defaults, enum-number output,

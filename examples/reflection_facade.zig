@@ -126,6 +126,9 @@ pub fn main() !void {
     const count_field = (try refl.getField(&user, "counts")).?;
     try std.testing.expectEqual(@as(usize, 1), count_field.values.items.len);
     try std.testing.expectEqual(@as(i32, 2), count_field.values.items[0].map_entry.value.int32);
+    try std.testing.expect(try refl.clearStringMapEntry(&user, "counts", "red"));
+    try std.testing.expect((try refl.getField(&user, "counts")) == null);
+    try refl.putStringInt32MapEntry(&user, "counts", "red", 2);
 
     const profile_value = (try refl.getField(&user, "profile")).?.values.items[0].message;
     try std.testing.expectEqual(@as(i64, 123456), try refl.getInt64(profile_value, "created_at"));

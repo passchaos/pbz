@@ -271,7 +271,7 @@ benchmark harness.
   append/query/clear APIs, by-number extraction, sidecar counts, exact raw-byte
   round-trip, and invalid raw-field rejection.
 - `examples/dynamic_message.zig` covers dynamic runtime schema usage,
-  repeated/map/oneof mutation, field clear helpers, deterministic
+  repeated/map/oneof mutation, field and map-entry clear helpers, deterministic
   encode/decode, decode reuse clearing semantics for absent fields, and dynamic
   unknown-field query/mutation APIs including append, by-number extraction,
   sidecar counts, clear, and invalid raw-field rejection.

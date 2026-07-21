@@ -156,6 +156,36 @@ pub const DynamicMessage = struct {
         return self.clearField(field);
     }
 
+    pub fn clearMapEntry(self: *DynamicMessage, field: *const schema.FieldDescriptor, key: Value) bool {
+        if (field.kind != .map) return false;
+        const field_value = self.getMutableByNumber(field.number) orelse return false;
+        var index: usize = 0;
+        while (index < field_value.values.items.len) : (index += 1) {
+            const value = &field_value.values.items[index];
+            if (value.* != .map_entry or !valueEqual(value.map_entry.key, key)) continue;
+
+            deinitValue(value, self.allocator);
+            const tail = field_value.values.items[index + 1 ..];
+            std.mem.copyForwards(Value, field_value.values.items[index .. index + tail.len], tail);
+            field_value.values.items.len -= 1;
+            if (field_value.values.items.len == 0) _ = self.clearField(field);
+            return true;
+        }
+        return false;
+    }
+
+    pub fn clearMapEntryByName(self: *DynamicMessage, name: []const u8, key: Value) bool {
+        const field = self.descriptor.findField(name) orelse return false;
+        return self.clearMapEntry(field, key);
+    }
+
+    fn getMutableByNumber(self: *DynamicMessage, number: wire.FieldNumber) ?*FieldValue {
+        for (self.fields.items) |*field| {
+            if (field.descriptor.number == number) return field;
+        }
+        return null;
+    }
+
     pub fn has(self: *const DynamicMessage, field: *const schema.FieldDescriptor) bool {
         return if (self.getByNumber(field.number)) |value| value.values.items.len != 0 else false;
     }
@@ -2449,6 +2479,11 @@ test "dynamic map fields replace duplicate keys with last value" {
     try msg.add(field, .{ .map_entry = second });
     try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
     try std.testing.expectEqual(@as(i32, 7), msg.get("counts").?.values.items[0].map_entry.value.int32);
+    const red_key = try allocator.dupe(u8, "red");
+    defer allocator.free(red_key);
+    try std.testing.expect(msg.clearMapEntry(field, .{ .string = red_key }));
+    try std.testing.expect(msg.get("counts") == null);
+    try std.testing.expect(!msg.clearMapEntryByName("counts", .{ .string = red_key }));
 
     var first_entry = wire.Writer.init(allocator);
     defer first_entry.deinit();

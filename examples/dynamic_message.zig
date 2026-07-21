@@ -41,6 +41,16 @@ pub fn main() !void {
     try event.add(event_desc.findField("counts").?, .{ .map_entry = replacement_count });
     std.debug.assert(event.get("counts").?.values.items.len == 1);
     std.debug.assert(event.get("counts").?.values.items[0].map_entry.value.int32 == 9);
+    const red_key = try allocator.dupe(u8, "red");
+    defer allocator.free(red_key);
+    std.debug.assert(event.clearMapEntryByName("counts", .{ .string = red_key }));
+    std.debug.assert(event.get("counts") == null);
+    const restored_count = try allocator.create(pbz.dynamic.MapEntry);
+    restored_count.* = .{
+        .key = .{ .string = try allocator.dupe(u8, "red") },
+        .value = .{ .int32 = 9 },
+    };
+    try event.add(event_desc.findField("counts").?, .{ .map_entry = restored_count });
     std.debug.assert(event.clearFieldByName("tags"));
     std.debug.assert(event.get("tags") == null);
     try event.add(event_desc.findField("tags").?, .{ .string = try allocator.dupe(u8, "zig") });
