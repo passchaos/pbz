@@ -98,6 +98,9 @@ pub fn main() !void {
 
     const declared_desc = file.findMessage("DeclaredHost").?;
     const range = declared_desc.extension_ranges.items[0];
+    std.debug.assert(refl.messageIsExtensionNumber(declared_desc, 200));
+    std.debug.assert(!refl.messageIsExtensionNumber(declared_desc, 199));
+    std.debug.assert((refl.messageExtensionRange(declared_desc, 200) orelse return error.MissingExtensionRange).verification.? == .declaration);
     std.debug.assert(range.verification.? == .declaration);
     std.debug.assert(range.declarations.items.len == 2);
     std.debug.assert(std.mem.eql(u8, range.declarations.items[0].full_name, ".demo.declared_priority"));

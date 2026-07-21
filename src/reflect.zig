@@ -226,6 +226,14 @@ pub const Reflection = struct {
         return descriptor.isReservedNumber(number);
     }
 
+    pub fn messageExtensionRange(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) ?*const schema.ExtensionRange {
+        return descriptor.extensionRangeForNumber(number);
+    }
+
+    pub fn messageIsExtensionNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
+        return descriptor.isExtensionNumber(number);
+    }
+
     pub fn hasField(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!bool {
         return self.has(message_value, try self.fieldByName(message_value.descriptor, name));
     }

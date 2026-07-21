@@ -369,6 +369,11 @@ pub const ExtensionRange = struct {
         self.declarations.deinit(allocator);
         self.* = undefined;
     }
+
+    pub fn contains(self: ExtensionRange, number: i64) bool {
+        const end = self.end orelse std.math.maxInt(i64);
+        return number >= self.start and number < end;
+    }
 };
 
 pub const ExtensionDeclaration = struct {
@@ -557,6 +562,17 @@ pub const MessageDescriptor = struct {
 
     pub fn isReservedNumber(self: *const MessageDescriptor, number: i64) bool {
         return reservedNumberMatches(self.reserved_ranges.items, number);
+    }
+
+    pub fn extensionRangeForNumber(self: *const MessageDescriptor, number: i64) ?*const ExtensionRange {
+        for (self.extension_ranges.items) |*range| {
+            if (range.contains(number)) return range;
+        }
+        return null;
+    }
+
+    pub fn isExtensionNumber(self: *const MessageDescriptor, number: i64) bool {
+        return self.extensionRangeForNumber(number) != null;
     }
 
     pub fn findOneof(self: *const MessageDescriptor, name: []const u8) ?*const OneofDescriptor {
