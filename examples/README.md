@@ -13,6 +13,9 @@ library API.
 - `dynamic_message.zig` — runtime schema parsing, dynamic fields, repeated/map/oneof handling, deterministic encode/decode.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
 - `registry_loader.zig` — `MemorySourceTree`, recursive imports, and registry lookup.
+- `dynamic_editions_features.zig` — dynamic protobuf editions features:
+  explicit/implicit/legacy-required presence, packed/expanded repeated scalars,
+  delimited message encoding, relaxed UTF-8, and closed enum preservation.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
 - `descriptors_codegen.zig` — descriptor encode/decode, descriptor sets, direct codegen, and plugin request generation.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`

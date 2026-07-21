@@ -37,7 +37,7 @@ has current, repository-verifiable evidence:
 | Requirement | Current evidence | Audit status |
 |---|---|---|
 | Generated-code workflow is C++/Rust-style and ergonomic. | `examples/generated_types.zig`, `examples/generated_imports.zig`, `examples/generated_groups.zig`, `examples/generated_required.zig`, `examples/generated_defaults.zig`, `examples/generated_extensions.zig`, `examples/generated_identifiers.zig`, `examples/generated_enum_alias.zig`, `examples/generated_json_names.zig`, `examples/generated_messageset.zig`, `examples/generated_map_keys.zig`, `examples/generated_nested_types.zig`, `examples/generated_unpacked.zig`, `examples/generated_public_imports.zig`, `examples/generated_proto3_optional.zig`, `examples/generated_merge_semantics.zig`, `examples/generated_clone_owned.zig`, `examples/generated_unknown_mutation.zig`, `examples/generated_closed_enum.zig`, `examples/generated_recursive.zig`, `examples/generated_streaming.zig`, and `build.zig`'s `generateProtobuf` helper exercise checked-in and build-generated modules. | Covered for the examples in this repo; continue expanding when new schema shapes are added. |
-| Generated/runtime functionality covers protobuf surfaces used by examples, benchmarks, and conformance. | `zig build check` runs library tests, examples, summarizer self-test, and conformance smoke; `/tmp/pbz-upstream-conformance-after-textbytes-slices.log` records upstream Binary/JSON/TextFormat conformance with zero skips and zero unexpected failures. | Strong for current covered surfaces; not a proof of every possible protobuf edge case. |
+| Generated/runtime functionality covers protobuf surfaces used by examples, benchmarks, and conformance. | `zig build check` runs library tests, examples, summarizer self-test, and conformance smoke; `examples/dynamic_editions_features.zig` covers dynamic protobuf editions feature interactions; `/tmp/pbz-upstream-conformance-after-textbytes-slices.log` records upstream Binary/JSON/TextFormat conformance with zero skips and zero unexpected failures. | Strong for current covered surfaces; not a proof of every possible protobuf edge case. |
 | pbz beats C++ protobuf and other tracked baselines on every parsed row. | `/tmp/pbz-compare-current-cpu3.log` summarized by `/tmp/pbz-summary-current-cpu3.txt`; fail-on-loss summary ends with `All parsed cross-language rows are pbz wins.` | Covered for the 417 workloads currently tracked by `bench/summarize_compare.py`. |
 | Performance wins come from public APIs, not benchmark-only one-offs. | `bench/summarize_compare.py` chooses public generated/runtime rows such as `encodeIntoAssumeCapacity`, `writeToAssumeCapacity`, `decodeKnownReuse`, field views/slices, packed iterators, and unknown-field sidecars; `examples/generated_performance.zig` demonstrates those APIs outside the benchmark harness. | Covered for the current matrix; new rows must keep using public APIs. |
 | JSON parsing avoids avoidable nested reserialization. | Generated nested-message JSON parsers use `jsonParseValueWithOptions`; complex JSON and proto-name JSON rows are in the cross-language matrix. | Covered for generated nested-message paths exercised by the matrix. |
@@ -232,6 +232,11 @@ benchmark harness.
   TextFormat, merge, and borrowed view helpers.
 - `examples/dynamic_public_imports.zig` covers dynamic registry public-import
   chain lookup and binary/JSON round-trips through public re-exported types.
+- `examples/dynamic_editions_features.zig` covers dynamic protobuf editions
+  feature interactions: explicit/implicit/legacy-required presence,
+  packed-vs-expanded repeated scalar encoding, delimited message encoding,
+  relaxed UTF-8 strings, closed enum unknown preservation, and TextFormat
+  round-trip.
 - `examples/generated_merge_semantics.zig` covers generated binary decode merge
   semantics for repeated singular messages, repeated fields, map last-wins,
   oneof last-wins, and decode reuse.

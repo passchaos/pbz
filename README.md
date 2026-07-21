@@ -22,7 +22,9 @@ It provides:
 The current implementation covers the protobuf surfaces used by the examples,
 benchmarks, and upstream conformance suite:
 
-- proto2, proto3, and protobuf editions metadata/features used by the test set
+- proto2, proto3, and protobuf editions metadata/features used by the test set,
+  including dynamic editions presence, repeated encoding, message encoding,
+  UTF-8 validation, and enum openness behavior
 - scalar fields, repeated fields, packed fields, maps, nested messages, groups,
   oneof, proto3 optional, required-field validation
 - unknown field preservation, deterministic encoding, MessageSet support, and
