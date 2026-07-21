@@ -237,6 +237,10 @@ benchmark harness.
   packed-vs-expanded repeated scalar encoding, delimited message encoding,
   relaxed UTF-8 strings, closed enum unknown preservation, and TextFormat
   round-trip.
+- `examples/dynamic_defaults.zig` covers dynamic proto2 default values,
+  explicit presence via `has`, `getOrDefault`, enum-name helpers, JSON null
+  reset behavior, TextFormat parsing, and imported enum defaults resolved
+  through a registry.
 - `examples/dynamic_groups.zig` covers dynamic proto2 group fields, repeated
   groups, JSON/TextFormat round-trips, singular group merge semantics, and
   unknown group preservation.

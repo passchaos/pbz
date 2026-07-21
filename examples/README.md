@@ -20,6 +20,9 @@ library API.
 - `dynamic_editions_features.zig` — dynamic protobuf editions features:
   explicit/implicit/legacy-required presence, packed/expanded repeated scalars,
   delimited message encoding, relaxed UTF-8, and closed enum preservation.
+- `dynamic_defaults.zig` — dynamic proto2 default values, has/getOrDefault
+  behavior, enum-name helpers, JSON null reset, TextFormat parsing, and imported
+  enum defaults resolved through a registry.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
 - `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present
   and missing proto2 weak imports, including descriptor-set, binary, JSON, and
