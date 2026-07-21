@@ -230,6 +230,10 @@ pub const Reflection = struct {
         return descriptor.extensionRangeForNumber(number);
     }
 
+    pub fn extensionDeclaration(_: Reflection, range: *const schema.ExtensionRange, number: i32) ?schema.ExtensionDeclaration {
+        return range.declarationForNumber(number);
+    }
+
     pub fn messageIsExtensionNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
         return descriptor.isExtensionNumber(number);
     }

@@ -315,7 +315,7 @@ benchmark harness.
   both generated and dynamic messages, and generated decode reuse.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
   range declarations/verification, repeated message extensions with recursive
-  required-field validation, reflection extension/range lookup, descriptor round-trips,
+  required-field validation, reflection extension/range/declaration lookup, descriptor round-trips,
   JSON/TextFormat extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and

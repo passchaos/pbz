@@ -374,6 +374,13 @@ pub const ExtensionRange = struct {
         const end = self.end orelse std.math.maxInt(i64);
         return number >= self.start and number < end;
     }
+
+    pub fn declarationForNumber(self: ExtensionRange, number: i32) ?ExtensionDeclaration {
+        for (self.declarations.items) |declaration| {
+            if (declaration.number == number) return declaration;
+        }
+        return null;
+    }
 };
 
 pub const ExtensionDeclaration = struct {

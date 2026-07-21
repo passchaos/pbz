@@ -94,6 +94,6 @@ library API.
 - `any_type_url.zig` — custom `Any` type URL prefixes, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON,
   repeated message extensions with required-field validation, extension range
-  declarations/verification, reflection extension/range lookup, descriptor
+  declarations/verification, reflection extension/range/declaration lookup, descriptor
   round-trips, and preserved unknown storage.
 - `conformance.zig` — conformance-style JSON-to-protobuf conversion.

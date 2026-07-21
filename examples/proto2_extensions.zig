@@ -100,7 +100,11 @@ pub fn main() !void {
     const range = declared_desc.extension_ranges.items[0];
     std.debug.assert(refl.messageIsExtensionNumber(declared_desc, 200));
     std.debug.assert(!refl.messageIsExtensionNumber(declared_desc, 199));
-    std.debug.assert((refl.messageExtensionRange(declared_desc, 200) orelse return error.MissingExtensionRange).verification.? == .declaration);
+    const reflected_range = refl.messageExtensionRange(declared_desc, 200) orelse return error.MissingExtensionRange;
+    std.debug.assert(reflected_range.verification.? == .declaration);
+    std.debug.assert(std.mem.eql(u8, (refl.extensionDeclaration(reflected_range, 200) orelse return error.MissingExtensionDeclaration).full_name, ".demo.declared_priority"));
+    std.debug.assert((refl.extensionDeclaration(reflected_range, 201) orelse return error.MissingExtensionDeclaration).reserved);
+    std.debug.assert(refl.extensionDeclaration(reflected_range, 202) == null);
     std.debug.assert(range.verification.? == .declaration);
     std.debug.assert(range.declarations.items.len == 2);
     std.debug.assert(std.mem.eql(u8, range.declarations.items[0].full_name, ".demo.declared_priority"));
