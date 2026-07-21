@@ -15,7 +15,8 @@ library API.
   unknown-field query/mutation APIs.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
-  recursive imports, registry lookup, and registry-backed dynamic JSON output.
+  recursive imports, message/service registry lookup, and registry-backed
+  dynamic JSON output.
 - `dynamic_groups.zig` — dynamic proto2 group fields, repeated groups, JSON and
   TextFormat round-trips, singular group merge semantics, and unknown group
   preservation.

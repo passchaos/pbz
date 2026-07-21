@@ -270,6 +270,16 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findService(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.ServiceDescriptor {
+        const normalized = normalizeName(name);
+        for (self.files.items) |file| {
+            for (file.services.items) |*service| {
+                if (serviceNameMatches(file.package, service.name, normalized, scope)) return service;
+            }
+        }
+        return null;
+    }
+
     pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
         if (self.findMessage(extendee, null)) |message| return self.findExtensionForMessage(message, number);
         const normalized = normalizeName(extendee);
@@ -765,6 +775,19 @@ fn normalizeName(name: []const u8) []const u8 {
     return if (std.mem.startsWith(u8, name, ".")) name[1..] else name;
 }
 
+fn serviceNameMatches(package: []const u8, service_name: []const u8, query: []const u8, scope: ?[]const u8) bool {
+    if (std.mem.indexOfScalar(u8, query, '.')) |_| {
+        return package.len != 0 and
+            query.len == package.len + 1 + service_name.len and
+            std.mem.eql(u8, query[0..package.len], package) and
+            query[package.len] == '.' and
+            std.mem.eql(u8, query[package.len + 1 ..], service_name);
+    }
+    if (!std.mem.eql(u8, service_name, query)) return false;
+    const owner_scope = scope orelse return true;
+    return package.len == 0 or std.mem.eql(u8, normalizeName(owner_scope), package);
+}
+
 fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
     if (field.full_name) |full_name| {
         const normalized = normalizeName(full_name);
@@ -878,6 +901,7 @@ test "registry resolves absolute relative nested and imported types" {
         \\package demo.app;
         \\import "common.proto";
         \\message Request { demo.common.User user = 1; .demo.common.User.Profile profile = 2; }
+        \\service Requests { rpc Get (Request) returns (Request); }
     );
     defer app.deinit();
 
@@ -891,6 +915,9 @@ test "registry resolves absolute relative nested and imported types" {
     try std.testing.expect(registry.findEnum("Role", "demo.common.User") != null);
     try std.testing.expect(registry.findMessage("Request", "demo.app") != null);
     try std.testing.expect(registry.findMessage("demo.common.User", "demo.app.Request") != null);
+    try std.testing.expect(registry.findService(".demo.app.Requests", null) != null);
+    try std.testing.expect(registry.findService("Requests", "demo.app") != null);
+    try std.testing.expect(registry.findService("Requests", "demo.common") == null);
 }
 
 test "registry rejects unqualified imported leaf references" {

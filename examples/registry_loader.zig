@@ -18,6 +18,7 @@ pub fn main() !void {
         \\package demo.app;
         \\import "common.proto";
         \\message Event { demo.common.User user = 1; }
+        \\service Events { rpc Get (Event) returns (Event); }
     );
 
     var loaded = try pbz.loadMemory(allocator, &tree, "app.proto");
@@ -25,8 +26,10 @@ pub fn main() !void {
 
     const event_desc = loaded.registry.findMessage(".demo.app.Event", null).?;
     const user_desc = loaded.registry.findMessage(".demo.common.User", null).?;
+    const events_service = loaded.registry.findService(".demo.app.Events", null).?;
     std.debug.assert(std.mem.eql(u8, event_desc.name, "Event"));
     std.debug.assert(std.mem.eql(u8, user_desc.name, "User"));
+    std.debug.assert(std.mem.eql(u8, events_service.methods.items[0].name, "Get"));
 
     // The filesystem loader follows the same recursive import and registry
     // validation path as MemorySourceTree, but exercises the public loadDir API

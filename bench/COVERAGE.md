@@ -250,8 +250,8 @@ benchmark harness.
   registry-backed binary/JSON/TextFormat round-trips when the weak import is
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
-  loading (`MemorySourceTree` and `loadDir`), recursive imports, registry lookup,
-  and registry-backed dynamic JSON output.
+  loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
+  registry lookup, and registry-backed dynamic JSON output.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
   dynamic schemas, descriptor round-trips, parser rejection of reserved
   declarations, and TextFormat's protobuf-compatible reserved-name ignore
