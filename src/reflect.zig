@@ -38,6 +38,10 @@ pub const Reflection = struct {
         return file_descriptor.edition;
     }
 
+    pub fn sourceLocation(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const i32) Error!*const schema.SourceCodeInfo.Location {
+        return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
+    }
+
     pub fn fileCanSee(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
         return self.registry.fileCanSee(from, to);
     }

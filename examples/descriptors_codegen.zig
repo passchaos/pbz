@@ -28,12 +28,16 @@ pub fn main() !void {
     );
     defer file.deinit();
     file.name = "event.proto";
+    var registry = pbz.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const refl = pbz.Reflection.init(allocator, &registry);
 
-    const syntax_location = sourceLocation(&file, &.{12}) orelse return error.MissingSourceInfo;
+    const syntax_location = try refl.sourceLocation(&file, &.{12});
     try std.testing.expectEqualStrings("Syntax leading comment.\n", syntax_location.leading_comments.?);
-    const event_location = sourceLocation(&file, &.{ 4, 0 }) orelse return error.MissingSourceInfo;
+    const event_location = file.source_code_info.location(&.{ 4, 0 }) orelse return error.MissingSourceInfo;
     try std.testing.expectEqualStrings("Event leading comment.\n", event_location.leading_comments.?);
-    const id_location = sourceLocation(&file, &.{ 4, 0, 2, 0 }) orelse return error.MissingSourceInfo;
+    const id_location = try refl.sourceLocation(&file, &.{ 4, 0, 2, 0 });
     try std.testing.expectEqualStrings("id leading comment.\n", id_location.leading_comments.?);
     try std.testing.expectEqualStrings("id trailing comment.\n", id_location.trailing_comments.?);
 
@@ -48,7 +52,7 @@ pub fn main() !void {
     const decoded_field = decoded_file.findMessage("Event").?.findField("id") orelse return error.MissingField;
     try std.testing.expectEqualStrings("(demo.field_opt).nested.leaf", decoded_field.options.items[0].name);
     try std.testing.expectEqual(@as(i64, 123), decoded_field.options.items[0].value.integer);
-    const decoded_id_location = sourceLocation(&decoded_file, &.{ 4, 0, 2, 0 }) orelse return error.MissingSourceInfo;
+    const decoded_id_location = decoded_file.source_code_info.location(&.{ 4, 0, 2, 0 }) orelse return error.MissingSourceInfo;
     try std.testing.expectEqualStrings("id trailing comment.\n", decoded_id_location.trailing_comments.?);
     const decoded_service = decoded_file.services.items[0];
     try std.testing.expect(optionValue(decoded_service.options.items, "deprecated").?.boolean);
@@ -87,13 +91,6 @@ pub fn main() !void {
     defer allocator.free(response_bytes);
     std.debug.assert(response_bytes.len != 0);
     try expectPluginResponseMetadata(allocator, response_bytes, file.name);
-}
-
-fn sourceLocation(file: *const pbz.FileDescriptor, path: []const i32) ?*const pbz.SourceCodeInfo.Location {
-    for (file.source_code_info.locations.items) |*location| {
-        if (std.mem.eql(i32, location.path.items, path)) return location;
-    }
-    return null;
 }
 
 fn optionValue(options: []const pbz.schema.FieldOption, name: []const u8) ?pbz.schema.OptionValue {

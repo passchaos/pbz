@@ -415,13 +415,20 @@ pub const SourceCodeInfo = struct {
     };
 
     pub fn deinit(self: *SourceCodeInfo, allocator: std.mem.Allocator) void {
-        for (self.locations.items) |*location| location.deinit(allocator);
+        for (self.locations.items) |*loc| loc.deinit(allocator);
         self.locations.deinit(allocator);
         self.* = undefined;
     }
 
     pub fn isEmpty(self: *const SourceCodeInfo) bool {
         return self.locations.items.len == 0;
+    }
+
+    pub fn location(self: *const SourceCodeInfo, path: []const i32) ?*const Location {
+        for (self.locations.items) |*loc| {
+            if (std.mem.eql(i32, loc.path.items, path)) return loc;
+        }
+        return null;
     }
 };
 
