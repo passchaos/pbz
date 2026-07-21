@@ -580,9 +580,12 @@ fn presenceChild(id: i32, label: []const u8) person_pb.demo.PresenceMix.Child {
 fn makeGeneratedPresenceMix(allocator: std.mem.Allocator) !person_pb.demo.PresenceMix {
     var msg = person_pb.demo.PresenceMix.init();
     errdefer msg.deinit(allocator);
-    msg._count = .{ .count = 0 };
-    msg._note = .{ .note = "" };
-    msg._raw = .{ .raw = "presence-raw" };
+    msg.count = 0;
+    msg.has_count = true;
+    msg.note = "";
+    msg.has_note = true;
+    msg.raw = "presence-raw";
+    msg.has_raw = true;
     msg.child = try presenceChild(7, "child").cloneOwned(allocator);
     msg.pick = .{ .nested = try presenceChild(11, "nested").cloneOwned(allocator) };
     return msg;
@@ -2702,9 +2705,9 @@ pub fn main() !void {
     std.debug.assert(std.mem.indexOf(u8, generated_presence_mix_json, "\"name\":") == null);
     var generated_presence_mix_from_json = try person_pb.demo.PresenceMix.jsonParse(allocator, generated_presence_mix_json);
     defer generated_presence_mix_from_json.deinit(allocator);
-    std.debug.assert(generated_presence_mix_from_json._count == .count and generated_presence_mix_from_json._count.count == 0);
-    std.debug.assert(generated_presence_mix_from_json._note == .note and generated_presence_mix_from_json._note.note.len == 0);
-    std.debug.assert(generated_presence_mix_from_json._raw == .raw and std.mem.eql(u8, generated_presence_mix_from_json._raw.raw, "presence-raw"));
+    std.debug.assert(generated_presence_mix_from_json.has_count and generated_presence_mix_from_json.count == 0);
+    std.debug.assert(generated_presence_mix_from_json.has_note and generated_presence_mix_from_json.note.len == 0);
+    std.debug.assert(generated_presence_mix_from_json.has_raw and std.mem.eql(u8, generated_presence_mix_from_json.raw, "presence-raw"));
     std.debug.assert(generated_presence_mix_from_json.child != null);
     std.debug.assert(generated_presence_mix_from_json.child.?.id == 7);
     std.debug.assert(std.mem.eql(u8, generated_presence_mix_from_json.child.?.label, "child"));

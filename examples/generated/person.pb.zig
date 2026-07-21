@@ -5703,26 +5703,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             code: i64,
         };
 
-        pub const _countOneof = union(enum) {
-            none,
-            count: i32,
-        };
-
-        pub const _noteOneof = union(enum) {
-            none,
-            note: []const u8,
-        };
-
-        pub const _rawOneof = union(enum) {
-            none,
-            raw: []const u8,
-        };
-
+        count: i32 = 0,
+        has_count: bool = false,
+        note: []const u8 = "",
+        has_note: bool = false,
+        raw: []const u8 = "",
+        has_raw: bool = false,
         child: ?Child = null,
         pick: pickOneof = .none,
-        _count: _countOneof = .none,
-        _note: _noteOneof = .none,
-        _raw: _rawOneof = .none,
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
 
@@ -5742,6 +5730,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var out = @This().init();
             errdefer out.deinit(allocator);
             const owned_allocator = try out._pbzOwnedAllocator(allocator);
+            out.count = self.count;
+            out.has_count = self.has_count;
+            out.note = try owned_allocator.dupe(u8, self.note);
+            out.has_note = self.has_note;
+            out.raw = try owned_allocator.dupe(u8, self.raw);
+            out.has_raw = self.has_raw;
             if (self.child) |value| out.child = try value.cloneOwned(allocator);
             out.pick = switch (self.pick) {
                 .none => .none,
@@ -5749,18 +5743,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .token => |value| .{ .token = try owned_allocator.dupe(u8, value) },
                 .nested => |value| .{ .nested = try value.cloneOwned(allocator) },
                 .code => |value| .{ .code = value },
-            };
-            out._count = switch (self._count) {
-                .none => .none,
-                .count => |value| .{ .count = value },
-            };
-            out._note = switch (self._note) {
-                .none => .none,
-                .note => |value| .{ .note = try owned_allocator.dupe(u8, value) },
-            };
-            out._raw = switch (self._raw) {
-                .none => .none,
-                .raw => |value| .{ .raw = try owned_allocator.dupe(u8, value) },
             };
             out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);
             return out;
@@ -5824,26 +5806,46 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.pick = .none;
         }
 
-        fn _pbzDeinitOneof__count(self: *@This(), allocator: std.mem.Allocator) void {
-            _ = allocator;
-            self._count = .none;
+
+        pub fn noteFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 2);
         }
 
-        fn _pbzDeinitOneof__note(self: *@This(), allocator: std.mem.Allocator) void {
-            _ = allocator;
-            self._note = .none;
+        pub fn noteFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 2, value);
         }
 
-        fn _pbzDeinitOneof__raw(self: *@This(), allocator: std.mem.Allocator) void {
-            _ = allocator;
-            self._raw = .none;
+        pub fn noteStringView(bytes: []const u8) !?[]const u8 {
+            return try noteFieldView(bytes);
         }
 
+        pub fn noteStringSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try noteFieldSlices(header, value);
+        }
+
+        pub fn rawFieldView(bytes: []const u8) !?[]const u8 {
+            return try pbz.wire.bytesFieldView(bytes, 3);
+        }
+
+        pub fn rawFieldSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return pbz.wire.lengthDelimitedFieldSlicesAssumeValid(header, 3, value);
+        }
+
+        pub fn rawBytesView(bytes: []const u8) !?[]const u8 {
+            return try rawFieldView(bytes);
+        }
+
+        pub fn rawBytesSlices(header: *[20]u8, value: []const u8) !pbz.wire.BorrowedFieldSlices {
+            return try rawFieldSlices(header, value);
+        }
 
 
         // no same-file extension accessors
 
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+            if (other.has_count) { self.count = other.count; self.has_count = true; }
+            if (other.has_note) { self.note = other.note; self.has_note = true; }
+            if (other.has_raw) { self.raw = other.raw; self.has_raw = true; }
             if (other.child) |other_value| {
                 if (self.child) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.child = try other_value.cloneOwned(allocator); }
             }
@@ -5854,23 +5856,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .nested => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = owned_value }; },
                 .code => |value| { self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = value }; },
             }
-            switch (other._count) {
-                .none => {},
-                .count => |value| { self._pbzDeinitOneof__count(allocator); self._count = .{ .count = value }; },
-            }
-            switch (other._note) {
-                .none => {},
-                .note => |value| { self._pbzDeinitOneof__note(allocator); self._note = .{ .note = value }; },
-            }
-            switch (other._raw) {
-                .none => {},
-                .raw => |value| { self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = value }; },
-            }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
         }
 
         pub fn encodedSize(self: @This()) usize {
             var size: usize = 0;
+            if (self.has_count) size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, self.count))));
+            if (self.has_note) size += 1 + pbz.wire.encodedVarintSize(self.note.len) + self.note.len;
+            if (self.has_raw) size += 1 + pbz.wire.encodedVarintSize(self.raw.len) + self.raw.len;
             if (self.child) |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; }
             switch (self.pick) {
                 .none => {},
@@ -5879,23 +5872,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .nested => |value| { const payload_len = value.encodedSize(); size += 1 + pbz.wire.encodedVarintSize(payload_len) + payload_len; },
                 .code => |value| size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(value))),
             }
-            switch (self._count) {
-                .none => {},
-                .count => |value| size += 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value)))),
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| size += 1 + pbz.wire.encodedVarintSize(value.len) + value.len,
-            }
             for (self._unknown_fields) |raw| size += raw.len;
             return size;
         }
 
         pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
+            if (self.has_count) try w.writeInt32(1, self.count);
+            if (self.has_note) { if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; try w.writeString(2, self.note); }
+            if (self.has_raw) try w.writeBytes(3, self.raw);
             if (self.child) |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); }
             switch (self.pick) {
                 .none => {},
@@ -5904,22 +5888,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .nested => |value| { const payload_len = value.encodedSize(); try w.writeTag(7, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },
                 .code => |value| try w.writeInt64(8, value),
             }
-            switch (self._count) {
-                .none => {},
-                .count => |value| try w.writeInt32(1, value),
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(2, value); },
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| try w.writeBytes(3, value),
-            }
             for (self._unknown_fields) |raw| try w.appendSlice(raw);
         }
 
         pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
+            if (self.has_count) w.writeInt32AssumeCapacity(1, self.count);
+            if (self.has_note) { if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.note); }
+            if (self.has_raw) w.writeBytesAssumeCapacity(3, self.raw);
             if (self.child) |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(4, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); }
             switch (self.pick) {
                 .none => {},
@@ -5927,18 +5902,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .token => |value| w.writeBytesAssumeCapacity(6, value),
                 .nested => |value| { const payload_len = value.encodedSize(); w.writeTagAssumeCapacity(7, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try value.writeToAssumeCapacity(w); },
                 .code => |value| w.writeInt64AssumeCapacity(8, value),
-            }
-            switch (self._count) {
-                .none => {},
-                .count => |value| w.writeInt32AssumeCapacity(1, value),
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, value); },
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| w.writeBytesAssumeCapacity(3, value),
             }
             for (self._unknown_fields) |raw| w.appendSliceAssumeCapacity(raw);
         }
@@ -5961,6 +5924,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
+            if (self.has_count) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.count)))); }
+            if (self.has_note) { if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.note.len); @memcpy(buffer[index..][0..self.note.len], self.note); index += self.note.len; }
+            if (self.has_raw) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.raw.len); @memcpy(buffer[index..][0..self.raw.len], self.raw); index += self.raw.len; }
             if (self.child) |value| { const payload_len = value.encodedSize(); buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
             switch (self.pick) {
                 .none => {},
@@ -5969,24 +5935,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .nested => |value| { const payload_len = value.encodedSize(); buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; },
                 .code => |value| { buffer[index] = 64; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(value))); },
             }
-            switch (self._count) {
-                .none => {},
-                .count => |value| { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
-            }
             for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
             return buffer[0..index];
         }
 
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
+            if (self.has_count) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.count)))); }
+            if (self.has_note) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.note.len); @memcpy(buffer[index..][0..self.note.len], self.note); index += self.note.len; }
+            if (self.has_raw) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.raw.len); @memcpy(buffer[index..][0..self.raw.len], self.raw); index += self.raw.len; }
             if (self.child) |value| { const payload_len = value.encodedSize(); buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
             switch (self.pick) {
                 .none => {},
@@ -5995,35 +5952,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .nested => |value| { const payload_len = value.encodedSize(); buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; },
                 .code => |value| { buffer[index] = 64; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(value))); },
             }
-            switch (self._count) {
-                .none => {},
-                .count => |value| { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
-            }
             for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
             return buffer[0..index];
         }
 
         pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-            switch (self._count) {
-                .count => |value| try w.writeInt32(1, value),
-                else => {},
-            }
-            switch (self._note) {
-                .note => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(2, value); },
-                else => {},
-            }
-            switch (self._raw) {
-                .raw => |value| try w.writeBytes(3, value),
-                else => {},
-            }
+            if (self.has_count) try w.writeInt32(1, self.count);
+            if (self.has_note) { if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; try w.writeString(2, self.note); }
+            if (self.has_raw) try w.writeBytes(3, self.raw);
             if (self.child) |item| { const payload_len = item.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try item.writeDeterministicTo(allocator, w); }
             switch (self.pick) {
                 .name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try w.writeString(5, value); },
@@ -6045,18 +5981,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
-            switch (self._count) {
-                .count => |value| w.writeInt32AssumeCapacity(1, value),
-                else => {},
-            }
-            switch (self._note) {
-                .note => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, value); },
-                else => {},
-            }
-            switch (self._raw) {
-                .raw => |value| w.writeBytesAssumeCapacity(3, value),
-                else => {},
-            }
+            if (self.has_count) w.writeInt32AssumeCapacity(1, self.count);
+            if (self.has_note) { if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; w.writeStringAssumeCapacity(2, self.note); }
+            if (self.has_raw) w.writeBytesAssumeCapacity(3, self.raw);
             if (self.child) |item| { const payload_len = item.encodedSize(); w.writeTagAssumeCapacity(4, .length_delimited); w.writeVarintAssumeCapacity(payload_len); try item.writeDeterministicToAssumeCapacity(allocator, w); }
             switch (self.pick) {
                 .name => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; w.writeStringAssumeCapacity(5, value); },
@@ -6121,9 +6048,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
-                    1 => { const value = try r.readInt32(); self._pbzDeinitOneof__count(allocator); self._count = .{ .count = value }; },
-                    2 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof__note(allocator); self._note = .{ .note = value }; },
-                    3 => { const value = try r.readBytes(); self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = value }; },
+                    1 => { self.count = try r.readInt32(); self.has_count = true; },
+                    2 => { self.note = try r.readBytes(); if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; self.has_note = true; },
+                    3 => { self.raw = try r.readBytes(); self.has_raw = true; },
                     4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; } },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = value }; },
                     6 => { const value = try r.readBytes(); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = value }; },
@@ -6139,10 +6066,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             self._pbzDeinitOneof_pick(allocator);
-            self._pbzDeinitOneof__count(allocator);
-            self._pbzDeinitOneof__note(allocator);
-            self._pbzDeinitOneof__raw(allocator);
             if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            self.count = 0;
+            self.has_count = false;
+            self.note = "";
+            self.has_note = false;
+            self.raw = "";
+            self.has_raw = false;
             if (self.child) |*value| value.deinit(allocator);
             self.child = null;
             errdefer self.deinit(allocator);
@@ -6151,9 +6081,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
                 switch (tag.number) {
-                    1 => { const value = try r.readInt32(); self._pbzDeinitOneof__count(allocator); self._count = .{ .count = value }; },
-                    2 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof__note(allocator); self._note = .{ .note = value }; },
-                    3 => { const value = try r.readBytes(); self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = value }; },
+                    1 => { self.count = try r.readInt32(); self.has_count = true; },
+                    2 => { self.note = try r.readBytes(); if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; self.has_note = true; },
+                    3 => { self.raw = try r.readBytes(); self.has_raw = true; },
                     4 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Child.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; } },
                     5 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = value }; },
                     6 => { const value = try r.readBytes(); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = value }; },
@@ -6242,6 +6172,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
             try writer.writeAll("{");
             var first = true;
+            if (self.has_count or options.always_print_primitive_fields) {
+                try writer.writeAll(if (first) "\"count\":" else ",\"count\":"); first = false;
+                const value = self.count;
+                try writer.print("{d}", .{value});
+            }
+            if (self.has_note or options.always_print_primitive_fields) {
+                try writer.writeAll(if (first) "\"note\":" else ",\"note\":"); first = false;
+                const value = self.note;
+                try @This().jsonWriteString(writer, value);
+            }
+            if (self.has_raw or options.always_print_primitive_fields) {
+                try writer.writeAll(if (first) "\"raw\":" else ",\"raw\":"); first = false;
+                const value = self.raw;
+                try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
+            }
             if (self.child) |_pbz_nested| {
                 try writer.writeAll(if (first) "\"child\":" else ",\"child\":"); first = false;
                 try _pbz_nested.jsonStringifyWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name, .preserve_proto_field_names = options.preserve_proto_field_names, .always_print_primitive_fields = options.always_print_primitive_fields });
@@ -6263,27 +6208,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 .code => |value| {
                     try writer.writeAll(if (first) "\"code\":" else ",\"code\":"); first = false;
                     try writer.print("\"{d}\"", .{value});
-                },
-            }
-            switch (self._count) {
-                .none => {},
-                .count => |value| {
-                    try writer.writeAll(if (first) "\"count\":" else ",\"count\":"); first = false;
-                    try writer.print("{d}", .{value});
-                },
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| {
-                    try writer.writeAll(if (first) "\"note\":" else ",\"note\":"); first = false;
-                    try @This().jsonWriteString(writer, value);
-                },
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| {
-                    try writer.writeAll(if (first) "\"raw\":" else ",\"raw\":"); first = false;
-                    try writer.writeByte('"'); try std.base64.standard.Encoder.encodeWriter(writer, value); try writer.writeByte('"');
                 },
             }
             try writer.writeAll("}");
@@ -6341,6 +6265,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key_ptr.*;
                 const value = entry.value_ptr.*;
                 if (value == .null) {
+                    if (std.mem.eql(u8, key, "count")) {
+                        self.count = 0;
+                        self.has_count = false;
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "note")) {
+                        self.note = "";
+                        self.has_note = false;
+                        continue;
+                    }
+                    if (std.mem.eql(u8, key, "raw")) {
+                        self.raw = "";
+                        self.has_raw = false;
+                        continue;
+                    }
                     if (std.mem.eql(u8, key, "child")) {
                         if (self.child) |*old_value| old_value.deinit(allocator); self.child = null;
                         continue;
@@ -6349,11 +6288,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (std.mem.eql(u8, key, "token")) { self._pbzDeinitOneof_pick(allocator); continue; }
                     if (std.mem.eql(u8, key, "nested")) { self._pbzDeinitOneof_pick(allocator); continue; }
                     if (std.mem.eql(u8, key, "code")) { self._pbzDeinitOneof_pick(allocator); continue; }
-                    if (std.mem.eql(u8, key, "count")) { self._pbzDeinitOneof__count(allocator); continue; }
-                    if (std.mem.eql(u8, key, "note")) { self._pbzDeinitOneof__note(allocator); continue; }
-                    if (std.mem.eql(u8, key, "raw")) { self._pbzDeinitOneof__raw(allocator); continue; }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
+                }
+                if (std.mem.eql(u8, key, "count")) {
+                    self.count = try @This().jsonInt(i32, value);
+                    self.has_count = true;
+                    continue;
+                }
+                if (std.mem.eql(u8, key, "note")) {
+                    self.note = try @This().jsonString(value);
+                    self.has_note = true;
+                    continue;
+                }
+                if (std.mem.eql(u8, key, "raw")) {
+                    self.raw = try @This().jsonBytes(arena_allocator, value);
+                    self.has_raw = true;
+                    continue;
                 }
                 if (std.mem.eql(u8, key, "child")) {
                     var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -6375,18 +6326,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
                 if (std.mem.eql(u8, key, "code")) {
                     self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = try @This().jsonInt(i64, value) };
-                    continue;
-                }
-                if (std.mem.eql(u8, key, "count")) {
-                    self._pbzDeinitOneof__count(allocator); self._count = .{ .count = try @This().jsonInt(i32, value) };
-                    continue;
-                }
-                if (std.mem.eql(u8, key, "note")) {
-                    self._pbzDeinitOneof__note(allocator); self._note = .{ .note = try @This().jsonString(value) };
-                    continue;
-                }
-                if (std.mem.eql(u8, key, "raw")) {
-                    self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = try @This().jsonBytes(arena_allocator, value) };
                     continue;
                 }
                 if (options.ignore_unknown_fields) continue;
@@ -6917,6 +6856,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
+            if (self.has_count) { try writer.writeAll("count: "); const value = self.count; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
+            if (self.has_note) { try writer.writeAll("note: "); const value = self.note; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
+            if (self.has_raw) { try writer.writeAll("raw: "); const value = self.raw; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
             if (self.child) |_pbz_nested| {
                 try writer.writeAll("child {\n");
                 try _pbz_nested.formatTextWithOptions(allocator, writer, .{ .enum_as_name = options.enum_as_name });
@@ -6937,24 +6879,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 },
                 .code => |value| {
                     try writer.writeAll("code: "); try writer.print("{d}", .{value}); try writer.writeByte('\n');
-                },
-            }
-            switch (self._count) {
-                .none => {},
-                .count => |value| {
-                    try writer.writeAll("count: "); try writer.print("{d}", .{value}); try writer.writeByte('\n');
-                },
-            }
-            switch (self._note) {
-                .none => {},
-                .note => |value| {
-                    try writer.writeAll("note: "); try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n');
-                },
-            }
-            switch (self._raw) {
-                .none => {},
-                .raw => |value| {
-                    try writer.writeAll("raw: "); try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n');
                 },
             }
             for (self._unknown_fields) |raw| {
@@ -6981,6 +6905,21 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             while (lines.next()) |raw_line| {
                 const line = @This().textCleanLine(raw_line, text_has_comments);
                 if (line.len == 0) continue;
+                if (@This().textFieldValue(line, "count")) |raw_value| {
+                    self.count = try @This().textInt(i32, raw_value);
+                    self.has_count = true;
+                    continue;
+                }
+                if (@This().textFieldValue(line, "note")) |raw_value| {
+                    self.note = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; };
+                    self.has_note = true;
+                    continue;
+                }
+                if (@This().textFieldValue(line, "raw")) |raw_value| {
+                    self.raw = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value);
+                    self.has_raw = true;
+                    continue;
+                }
                 if (@This().textBlockField(line, "child")) {
                     const block = try @This().textBlock(allocator, &lines, text_has_comments);
                     defer allocator.free(block);
@@ -7002,9 +6941,6 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     continue;
                 }
                 if (@This().textFieldValue(line, "code")) |raw_value| { self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = try @This().textInt(i64, raw_value) }; continue; }
-                if (@This().textFieldValue(line, "count")) |raw_value| { self._pbzDeinitOneof__count(allocator); self._count = .{ .count = try @This().textInt(i32, raw_value) }; continue; }
-                if (@This().textFieldValue(line, "note")) |raw_value| { self._pbzDeinitOneof__note(allocator); self._note = .{ .note = blk: { const decoded = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value); if (!pbz.validateUtf8(decoded)) return error.InvalidUtf8; break :blk decoded; } }; continue; }
-                if (@This().textFieldValue(line, "raw")) |raw_value| { self._pbzDeinitOneof__raw(allocator); self._raw = .{ .raw = try @This().textUnquote(try self._pbzOwnedAllocator(allocator), raw_value) }; continue; }
                 if (try @This().textUnknownField(allocator, line)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                 if (try @This().textUnknownGroup(allocator, line, &lines, text_has_comments)) |raw| { try pbz.wire.appendOwnedRawField(allocator, &_unknown_fields_list, raw); continue; }
                 if (options.ignore_unknown_fields) continue;

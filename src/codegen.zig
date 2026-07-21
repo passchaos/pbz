@@ -29,12 +29,12 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     var arena = std.heap.ArenaAllocator.init(ctx.allocator);
     defer arena.deinit();
     var active_ctx = ctx;
-    var resolved_file: schema.FileDescriptor = undefined;
+    var resolved_file = try cloneFileForCodegen(arena.allocator(), ctx.file);
+    normalizeSyntheticProto3OptionalOneofsForCodegen(&resolved_file);
     if (ctx.registry) |registry| {
-        resolved_file = try cloneFileForCodegen(arena.allocator(), ctx.file);
         try resolveImportedEnumsForCodegen(arena.allocator(), &resolved_file, registry);
-        active_ctx.file = &resolved_file;
     }
+    active_ctx.file = &resolved_file;
 
     var out: std.Io.Writer.Allocating = .init(ctx.allocator);
     errdefer out.deinit();
@@ -206,12 +206,49 @@ fn cloneFileForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDes
 fn cloneMessageForCodegen(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor) std.mem.Allocator.Error!schema.MessageDescriptor {
     var out = message.*;
     out.fields = .empty;
+    out.oneofs = .empty;
     out.messages = .empty;
     out.extensions = .empty;
     for (message.fields.items) |*field| try out.fields.append(allocator, try cloneFieldForCodegen(allocator, field));
+    for (message.oneofs.items) |oneof| try out.oneofs.append(allocator, oneof);
     for (message.messages.items) |*nested| try out.messages.append(allocator, try cloneMessageForCodegen(allocator, nested));
     for (message.extensions.items) |*field| try out.extensions.append(allocator, try cloneFieldForCodegen(allocator, field));
     return out;
+}
+
+fn normalizeSyntheticProto3OptionalOneofsForCodegen(file: *schema.FileDescriptor) void {
+    for (file.messages.items) |*message| normalizeMessageSyntheticProto3OptionalOneofsForCodegen(message);
+}
+
+fn normalizeMessageSyntheticProto3OptionalOneofsForCodegen(message: *schema.MessageDescriptor) void {
+    // protoc represents `optional` proto3 scalars as single-field synthetic
+    // oneofs in FileDescriptorProto for reflection compatibility. Generated
+    // Zig should expose the source-level field shape instead of leaking those
+    // implementation details into public APIs, so codegen rewrites synthetic
+    // oneofs back to ordinary proto3-optional fields before emitting structs.
+    var write_index: usize = 0;
+    for (message.oneofs.items, 0..) |oneof, read_index| {
+        if (syntheticProto3OptionalFieldIndex(message, oneof.name)) |field_index| {
+            message.fields.items[field_index].oneof_name = null;
+            continue;
+        }
+        if (write_index != read_index) message.oneofs.items[write_index] = oneof;
+        write_index += 1;
+    }
+    message.oneofs.items.len = write_index;
+    for (message.messages.items) |*nested| normalizeMessageSyntheticProto3OptionalOneofsForCodegen(nested);
+}
+
+fn syntheticProto3OptionalFieldIndex(message: *const schema.MessageDescriptor, oneof_name: []const u8) ?usize {
+    var found: ?usize = null;
+    for (message.fields.items, 0..) |field, index| {
+        const field_oneof = field.oneof_name orelse continue;
+        if (!std.mem.eql(u8, field_oneof, oneof_name)) continue;
+        if (found != null) return null;
+        if (!field.proto3_optional) return null;
+        found = index;
+    }
+    return found;
 }
 
 fn cloneFieldForCodegen(allocator: std.mem.Allocator, field: *const schema.FieldDescriptor) std.mem.Allocator.Error!schema.FieldDescriptor {
@@ -13806,6 +13843,41 @@ test "codegen emits presence flags for optional required and proto3 optional fie
     defer allocator.free(content3);
     try std.testing.expect(std.mem.indexOf(u8, content3, "has_a: bool = false") != null);
     try std.testing.expect(std.mem.indexOf(u8, content3, "has_b: bool = false") == null);
+}
+
+test "codegen hides protoc synthetic oneofs for proto3 optional fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  optional int32 count = 1;
+        \\  optional string note = 2;
+        \\  oneof pick { string name = 3; }
+        \\}
+    );
+    defer file.deinit();
+    file.name = "optional.proto";
+
+    const descriptor_bytes = try @import("descriptor.zig").encodeFileDescriptorProto(allocator, &file, file.name);
+    defer allocator.free(descriptor_bytes);
+    var decoded = try @import("descriptor.zig").decodeFileDescriptorProto(allocator, descriptor_bytes);
+    defer decoded.deinit();
+
+    const decoded_message = decoded.findMessage("M").?;
+    try std.testing.expectEqual(@as(usize, 3), decoded_message.oneofs.items.len);
+    try std.testing.expectEqualStrings("_count", decoded_message.findField("count").?.oneof_name.?);
+    try std.testing.expect(decoded_message.findField("count").?.proto3_optional);
+
+    const content = try generateZigFile(allocator, &decoded);
+    defer allocator.free(content);
+    try std.testing.expect(std.mem.indexOf(u8, content, "count: i32 = 0,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "has_count: bool = false,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "note: []const u8 = \"\",") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "has_note: bool = false,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const pickOneof = union(enum)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const _countOneof") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const _noteOneof") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof__count") == null);
 }
 
 test "codegen emits proto2 scalar and enum defaults" {

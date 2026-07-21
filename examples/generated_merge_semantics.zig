@@ -7,7 +7,8 @@ const demo = person_pb.demo;
 fn encodePresenceMixName(allocator: std.mem.Allocator, count: i32, name: []const u8) ![]u8 {
     var msg = demo.PresenceMix.init();
     defer msg.deinit(allocator);
-    msg._count = .{ .count = count };
+    msg.count = count;
+    msg.has_count = true;
     msg.pick = .{ .name = name };
     return try msg.encode(allocator);
 }
@@ -61,7 +62,8 @@ pub fn main() !void {
     @memcpy(oneof_payload[first_oneof.len..], second_oneof);
     var decoded_oneof = try demo.PresenceMix.decodeOwnedInitialized(allocator, oneof_payload);
     defer decoded_oneof.deinit(allocator);
-    try std.testing.expectEqual(@as(i32, 1), decoded_oneof._count.count);
+    try std.testing.expect(decoded_oneof.has_count);
+    try std.testing.expectEqual(@as(i32, 1), decoded_oneof.count);
     switch (decoded_oneof.pick) {
         .nested => |child| {
             try std.testing.expectEqual(@as(i32, 3), child.id);

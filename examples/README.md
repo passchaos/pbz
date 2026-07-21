@@ -31,6 +31,8 @@ library API.
 - `generated_nested_types.zig` — generated nested message/enum type references and round-trips from `proto/nested_types.proto`.
 - `generated_unpacked.zig` — generated repeated scalar `[packed = false]` encoding plus packed/unpacked merge parsing from `proto/unpacked.proto`.
 - `generated_public_imports.zig` — generated public-import re-export type references from `proto/public_app.proto` / `proto/public_mid.proto` / `proto/public_leaf.proto`.
+- `generated_proto3_optional.zig` — generated proto3 optional fields exposed as
+  plain fields plus `has_*` presence bits instead of protoc synthetic oneofs.
 - `generated_merge_semantics.zig` — generated decode merge/last-wins semantics for singular messages, repeated fields, maps, oneof, and decode reuse.
 - `generated_clone_owned.zig` — generated deep-clone ownership handoff for nested messages, maps, oneof payloads, and raw unknown fields.
 - `generated_unknown_mutation.zig` — generated unknown-field append/query/clear APIs over exact raw-field storage.

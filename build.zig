@@ -171,6 +171,7 @@ pub fn build(b: *std.Build) void {
         "generated_nested_types",
         "generated_unpacked",
         "generated_public_imports",
+        "generated_proto3_optional",
         "generated_merge_semantics",
         "generated_clone_owned",
         "generated_unknown_mutation",

@@ -31,6 +31,8 @@ benchmarks, and upstream conformance suite:
 - reflection helpers for runtime message creation, field lookup, typed
   get/set/add/clear, repeated fields, maps, and oneof inspection
 - generated Zig structs with public fields and package-mirrored namespaces
+- generated proto3 optional fields as ordinary fields plus `has_*` bits, without
+  leaking protoc's descriptor-only synthetic oneofs into public APIs
 - generated imports, generated enum helpers, service metadata, and lightweight
   service client/handler adapters
 - dynamic JSON and TextFormat parse/format
