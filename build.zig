@@ -179,6 +179,7 @@ pub fn build(b: *std.Build) void {
         "generated_streaming",
         "ownership_patterns",
         "well_known_types",
+        "any_dynamic",
         "proto2_extensions",
         "conformance",
     };

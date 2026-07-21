@@ -672,6 +672,7 @@ Important examples:
 - `examples/generated_closed_enum.zig` — proto2 closed enum unknown preservation
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
+- `examples/any_dynamic.zig` — dynamic-message Any helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion
 
 ## Validation commands

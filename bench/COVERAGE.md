@@ -251,6 +251,9 @@ benchmark harness.
   preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   standalone `Any` JSON mapping for embedded WKT payload values.
+- `examples/any_dynamic.zig` covers custom dynamic-message `Any`
+  pack/unpack with registry lookup, type-url matching, required-field
+  validation on pack and unpack, and type mismatch errors.
 - `src/pbz_conformance.zig`, `tools/smoke_conformance.py`,
   `tools/fetch_conformance_runner.sh`, and `tools/run_conformance.sh` provide a
   conformance-test-runner-compatible subprocess executable, descriptor-set
