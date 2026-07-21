@@ -237,6 +237,9 @@ benchmark harness.
   packed-vs-expanded repeated scalar encoding, delimited message encoding,
   relaxed UTF-8 strings, closed enum unknown preservation, and TextFormat
   round-trip.
+- `examples/dynamic_groups.zig` covers dynamic proto2 group fields, repeated
+  groups, JSON/TextFormat round-trips, singular group merge semantics, and
+  unknown group preservation.
 - `examples/dynamic_weak_imports.zig` covers dynamic loader/registry behavior
   for present and missing proto2 weak imports, including descriptor-set
   preservation, usable local fields when a weak import is absent, and

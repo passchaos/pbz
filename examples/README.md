@@ -14,6 +14,9 @@ library API.
 - `json_text.zig` — dynamic JSON and TextFormat parse/format round-trips.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
   recursive imports, registry lookup, and registry-backed dynamic JSON output.
+- `dynamic_groups.zig` — dynamic proto2 group fields, repeated groups, JSON and
+  TextFormat round-trips, singular group merge semantics, and unknown group
+  preservation.
 - `dynamic_editions_features.zig` — dynamic protobuf editions features:
   explicit/implicit/legacy-required presence, packed/expanded repeated scalars,
   delimited message encoding, relaxed UTF-8, and closed enum preservation.
