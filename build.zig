@@ -163,6 +163,7 @@ pub fn build(b: *std.Build) void {
         "generated_defaults",
         "generated_extensions",
         "generated_identifiers",
+        "generated_enum_alias",
         "generated_imports",
         "generated_groups",
         "generated_recursive",

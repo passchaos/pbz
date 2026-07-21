@@ -660,6 +660,7 @@ Important examples:
 - `examples/generated_defaults.zig` — proto2 default values and has-bit semantics
 - `examples/generated_extensions.zig` — generated proto2 extension accessors
 - `examples/generated_identifiers.zig` — quoted generated identifiers for Zig keyword collisions
+- `examples/generated_enum_alias.zig` — generated enum alias handling
 - `examples/proto2_extensions.zig` — proto2 extensions
 - `examples/well_known_types.zig` — selected WKT helpers
 - `examples/conformance.zig` — conformance-style dynamic conversion

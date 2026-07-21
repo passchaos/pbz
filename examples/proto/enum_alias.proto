@@ -1,0 +1,15 @@
+syntax = "proto3";
+package demo.alias;
+
+enum Status {
+  option allow_alias = true;
+  STATUS_UNKNOWN = 0;
+  STATUS_STARTED = 1;
+  STATUS_RUNNING = 1;
+  STATUS_DONE = 2;
+}
+
+message Job {
+  Status status = 1;
+  repeated Status history = 2;
+}
