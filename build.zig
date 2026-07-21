@@ -159,6 +159,7 @@ pub fn build(b: *std.Build) void {
         "generated_types",
         "generated_performance",
         "generated_advanced",
+        "generated_required",
         "generated_imports",
         "generated_groups",
         "generated_recursive",

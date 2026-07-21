@@ -1,0 +1,13 @@
+syntax = "proto2";
+package demo.required;
+
+message Child {
+  required int32 id = 1;
+  optional string label = 2;
+}
+
+message Parent {
+  required string name = 1;
+  optional Child child = 2;
+  repeated Child history = 3;
+}
