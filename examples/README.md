@@ -89,7 +89,7 @@ library API.
   clone-to-long-lived allocator handoff for generated and dynamic messages, and
   generated decode reuse patterns.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask path access/index, Empty,
-  Struct field access/index, Value/ListValue, scalar wrappers, bytes wrappers, and Any including
+  Struct field access/index, Value/ListValue access/index, scalar wrappers, bytes wrappers, and Any including
   embedded WKT JSON values plus descriptor well-known-type reflection.
 - `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup and required-field validation.
 - `any_type_url.zig` — custom `Any` type URL prefixes, leading-dot type names, JSON parse, and type mismatch behavior.

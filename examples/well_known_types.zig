@@ -98,6 +98,11 @@ pub fn main() !void {
         \\[null,true,{"nested":["owned"]}]
     );
     defer list.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 3), list.valueCount());
+    try std.testing.expectEqual(pbz.wkt.Value.null_value, try list.valueAt(0));
+    try std.testing.expectEqual(@as(usize, 1), try list.valueIndex(.{ .bool_value = true }));
+    try std.testing.expectError(error.UnknownField, list.valueAt(3));
+    try std.testing.expectError(error.UnknownField, list.valueIndex(.{ .string_value = "missing" }));
     const list_json = try list.jsonStringifyAlloc(allocator);
     defer allocator.free(list_json);
     std.debug.assert(std.mem.indexOf(u8, list_json, "\"owned\"") != null);

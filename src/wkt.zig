@@ -1664,6 +1664,22 @@ pub const Struct = struct {
 pub const ListValue = struct {
     values: []const Value = &.{},
 
+    pub fn valueCount(self: ListValue) usize {
+        return self.values.len;
+    }
+
+    pub fn valueAt(self: ListValue, index: usize) !Value {
+        if (index >= self.values.len) return error.UnknownField;
+        return self.values[index];
+    }
+
+    pub fn valueIndex(self: ListValue, value: Value) !usize {
+        for (self.values, 0..) |candidate, index| {
+            if (valueEqual(candidate, value)) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn encode(self: ListValue, allocator: std.mem.Allocator) anyerror![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
@@ -1903,6 +1919,34 @@ pub const Value = union(enum) {
 
 fn parseJsonValueForStruct(allocator: std.mem.Allocator, text: []const u8) !std.json.Parsed(std.json.Value) {
     return try std.json.parseFromSlice(std.json.Value, allocator, text, .{ .duplicate_field_behavior = .use_last });
+}
+
+fn valueEqual(a: Value, b: Value) bool {
+    return switch (a) {
+        .null_value => b == .null_value,
+        .number_value => |value| b == .number_value and value == b.number_value,
+        .string_value => |value| b == .string_value and std.mem.eql(u8, value, b.string_value),
+        .bool_value => |value| b == .bool_value and value == b.bool_value,
+        .struct_value => |value| b == .struct_value and structEqual(value.*, b.struct_value.*),
+        .list_value => |value| b == .list_value and listValueEqual(value.*, b.list_value.*),
+    };
+}
+
+fn structEqual(a: Struct, b: Struct) bool {
+    if (a.fields.len != b.fields.len) return false;
+    for (a.fields, b.fields) |lhs, rhs| {
+        if (!std.mem.eql(u8, lhs.key, rhs.key)) return false;
+        if (!valueEqual(lhs.value, rhs.value)) return false;
+    }
+    return true;
+}
+
+fn listValueEqual(a: ListValue, b: ListValue) bool {
+    if (a.values.len != b.values.len) return false;
+    for (a.values, b.values) |lhs, rhs| {
+        if (!valueEqual(lhs, rhs)) return false;
+    }
+    return true;
 }
 
 fn replaceDecodedValue(out: *Value, has_value: *bool, allocator: std.mem.Allocator, next: Value) void {
