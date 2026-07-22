@@ -179,33 +179,39 @@ pub const DynamicMessage = struct {
         // matching protobuf reflection rather than mutation/storage order.  Keep
         // the scalar at/index helpers on the same ordering without allocating by
         // selecting the Nth present descriptor by field number.
-        var selected: ?*const schema.FieldDescriptor = null;
-        var selected_rank: usize = 0;
-        for (self.fields.items) |*entry| {
-            if (entry.values.items.len == 0) continue;
-            var rank: usize = 0;
-            for (self.fields.items) |*other| {
-                if (other.values.items.len == 0) continue;
-                if (other.descriptor.number < entry.descriptor.number) rank += 1;
+        var lower_bound: wire.FieldNumber = 0;
+        var remaining = index;
+        while (true) {
+            var best: ?*const schema.FieldDescriptor = null;
+            for (self.fields.items) |*entry| {
+                if (entry.values.items.len == 0) continue;
+                const number = entry.descriptor.number;
+                if (number <= lower_bound) continue;
+                if (best == null or number < best.?.number) best = entry.descriptor;
             }
-            if (rank == index) {
-                selected = entry.descriptor;
-                selected_rank = rank;
-                break;
-            }
+            const current = best orelse return null;
+            if (remaining == 0) return current;
+            lower_bound = current.number;
+            remaining -= 1;
         }
-        return if (selected_rank == index) selected else null;
     }
 
     pub fn listFieldIndex(self: *const DynamicMessage, descriptor: *const schema.FieldDescriptor) ?usize {
-        if (!self.has(descriptor)) return null;
-        var order_index: usize = 0;
-        for (self.fields.items) |*entry| {
-            if (entry.values.items.len == 0) continue;
-            if (entry.descriptor == descriptor) continue;
-            if (entry.descriptor.number < descriptor.number) order_index += 1;
+        var index: usize = 0;
+        var lower_bound: wire.FieldNumber = 0;
+        while (true) {
+            var best: ?*const schema.FieldDescriptor = null;
+            for (self.fields.items) |*entry| {
+                if (entry.values.items.len == 0) continue;
+                const number = entry.descriptor.number;
+                if (number <= lower_bound) continue;
+                if (best == null or number < best.?.number) best = entry.descriptor;
+            }
+            const current = best orelse return null;
+            if (current == descriptor) return index;
+            lower_bound = current.number;
+            index += 1;
         }
-        return order_index;
     }
 
     pub fn clearField(self: *DynamicMessage, field: *const schema.FieldDescriptor) bool {
