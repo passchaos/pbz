@@ -12,8 +12,16 @@ pub fn main() !void {
         \\option features.field_presence = EXPLICIT;
         \\option features.repeated_field_encoding = EXPANDED;
         \\option features.enum_type = OPEN;
-        \\message Child { string label = 1; int32 id = 2; }
-        \\enum Role { option features.enum_type = CLOSED; ROLE_UNKNOWN = 0; ROLE_ADMIN = 1; }
+        \\message Child {
+        \\  option features.message_encoding = DELIMITED;
+        \\  string label = 1;
+        \\  int32 id = 2;
+        \\}
+        \\enum Role {
+        \\  option features.enum_type = CLOSED;
+        \\  ROLE_UNKNOWN = 0;
+        \\  ROLE_ADMIN = 1 [features.enforce_naming_style = STYLE2026];
+        \\}
         \\message Editions {
         \\  int32 explicit_zero = 1;
         \\  int32 implicit_zero = 2 [features.field_presence = IMPLICIT];
@@ -41,8 +49,23 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.length_prefixed, refl.fileMessageEncoding(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.allow, refl.fileJsonFormat(&file));
     try std.testing.expect(refl.fileFeatures(&file).eql(file.features));
+    try std.testing.expect(refl.messageHasExplicitFeatures(child_desc));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);
+    try std.testing.expect(!refl.messageHasExplicitFeatures(desc));
+    try std.testing.expectError(error.MissingField, refl.messageExplicitFeatures(desc));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, try refl.enumType(file.findEnum("Role") orelse return error.MissingDescriptor));
+    const role_desc = file.findEnum("Role") orelse return error.MissingDescriptor;
+    try std.testing.expect(refl.enumHasExplicitFeatures(role_desc));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, (try refl.enumExplicitFeatures(role_desc)).enum_type);
+    const role_admin = try refl.enumValueByName(role_desc, "ROLE_ADMIN");
+    try std.testing.expect(refl.enumValueHasExplicitFeatures(role_admin));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style2026, (try refl.enumValueExplicitFeatures(role_admin)).enforce_naming_style);
+    try std.testing.expect(!refl.enumValueHasExplicitFeatures(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
     try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (desc.findField("packed") orelse return error.MissingField).features.?.repeated_field_encoding);
+    try std.testing.expect(refl.fieldHasExplicitFeatures(desc.findField("packed") orelse return error.MissingField));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (try refl.fieldExplicitFeatures(desc.findField("packed") orelse return error.MissingField)).repeated_field_encoding);
+    try std.testing.expect(!refl.fieldHasExplicitFeatures(desc.findField("expanded") orelse return error.MissingField));
+    try std.testing.expectError(error.MissingField, refl.fieldExplicitFeatures(desc.findField("expanded") orelse return error.MissingField));
     try std.testing.expect(try refl.fieldIsPacked(desc, desc.findField("packed") orelse return error.MissingField));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, try refl.fieldMessageEncoding(desc, desc.findField("delimited_child") orelse return error.MissingField));
     try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.none, try refl.fieldUtf8Validation(desc, desc.findField("relaxed") orelse return error.MissingField));

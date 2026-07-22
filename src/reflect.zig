@@ -185,6 +185,14 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn messageHasExplicitFeatures(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
+        return descriptor.features != null;
+    }
+
+    pub fn messageExplicitFeatures(_: Reflection, descriptor: *const schema.MessageDescriptor) Error!schema.FeatureSet {
+        return descriptor.features orelse error.MissingField;
+    }
+
     pub fn messageFullName(self: Reflection, descriptor: *const schema.MessageDescriptor) Error![]u8 {
         const owner_file = try self.fileOfMessage(descriptor);
         return try messageFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownMessage;
@@ -254,6 +262,14 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn enumHasExplicitFeatures(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
+        return descriptor.features != null;
+    }
+
+    pub fn enumExplicitFeatures(_: Reflection, descriptor: *const schema.EnumDescriptor) Error!schema.FeatureSet {
+        return descriptor.features orelse error.MissingField;
+    }
+
     pub fn enumFullName(self: Reflection, descriptor: *const schema.EnumDescriptor) Error![]u8 {
         const owner_file = try self.fileOfEnum(descriptor);
         return try enumFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownEnum;
@@ -281,6 +297,14 @@ pub const Reflection = struct {
 
     pub fn enumValueFeatureSupport(_: Reflection, descriptor: *const schema.EnumValueDescriptor) Error!schema.FeatureSupport {
         return descriptor.feature_support orelse error.MissingField;
+    }
+
+    pub fn enumValueHasExplicitFeatures(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
+        return descriptor.features != null;
+    }
+
+    pub fn enumValueExplicitFeatures(_: Reflection, descriptor: *const schema.EnumValueDescriptor) Error!schema.FeatureSet {
+        return descriptor.features orelse error.MissingField;
     }
 
     pub fn enumValueFullName(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error![]u8 {
@@ -587,6 +611,14 @@ pub const Reflection = struct {
 
     pub fn fieldFeatureSupport(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.FeatureSupport {
         return field.feature_support orelse error.MissingField;
+    }
+
+    pub fn fieldHasExplicitFeatures(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.features != null;
+    }
+
+    pub fn fieldExplicitFeatures(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.FeatureSet {
+        return field.features orelse error.MissingField;
     }
 
     pub fn fieldIsMap(_: Reflection, field: *const schema.FieldDescriptor) bool {
