@@ -338,6 +338,12 @@ pub fn main() !void {
     try std.testing.expect((try refl.fieldDirectContainingFile(id_field)) == app_file);
     try std.testing.expectError(error.UnknownField, refl.fieldContainingType(profile_desc, id_field));
     const id_options = refl.fieldOptions(id_field);
+    try std.testing.expectEqual(@as(usize, 11), refl.optionCount(id_options));
+    try std.testing.expectEqualStrings("deprecated", (try refl.optionAt(id_options, 0)).name);
+    try std.testing.expectEqual(@as(usize, 1), try refl.optionIndex(id_options, "note"));
+    try std.testing.expectEqual(@as(usize, 1), try refl.optionIndex(id_options, "(demo.note)"));
+    try std.testing.expectError(error.UnknownField, refl.optionAt(id_options, refl.optionCount(id_options)));
+    try std.testing.expectError(error.UnknownField, refl.optionIndex(id_options, "missing"));
     try std.testing.expect(refl.optionBool(id_options, "deprecated").?);
     try std.testing.expectEqualStrings("primary id", refl.optionString(id_options, "note").?);
     try std.testing.expectEqual(@as(i64, 42), refl.optionInteger(id_options, "answer").?);

@@ -309,7 +309,7 @@ benchmark harness.
   last-wins mutation, map key/value metadata, map size/key/value/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output/explicitness, explicit/effective typed default/index metadata and enum default value/name lookup, field presence/packing/packed-override/reserved range/name lookup/enumeration/index/accessor metadata,
   message/enum legacy-json-conflict metadata, feature-support lifecycle metadata/accessors, ordered file/message/nested-type/enum/service descriptor enumeration/index lookup, file/message-local descriptor/value lookup/index, descriptor name/full-name/containing-type/value-owner/direct field-type identity and placeholder metadata lookup,
   file metadata/import/dependency/import-kind dependency index/import-chain/symbol-containing-file lookup, enum descriptor/value registry lookup and enum-name writes, oneof field enumeration/index plus descriptor-direct oneof field access/index and oneof
-  lookup/fields/presence/inspection/clearing plus real-vs-synthetic proto3-optional oneof/direct-owner/index metadata, imported message fields, descriptor option slices and typed option lookup,
+  lookup/fields/presence/inspection/clearing plus real-vs-synthetic proto3-optional oneof/direct-owner/index metadata, imported message fields, descriptor option slices/access/index and typed option lookup,
   file-local service lookup, registry field/oneof/method lookup, service/method owner/type/deprecation metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
   query/mutation and record accessors, required-field initialization checks, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for

@@ -1649,6 +1649,22 @@ pub const Reflection = struct {
         return field.messageEncoding(try self.fileForFieldContext(descriptor, field));
     }
 
+    pub fn optionCount(_: Reflection, options: []const schema.FieldOption) usize {
+        return options.len;
+    }
+
+    pub fn optionAt(_: Reflection, options: []const schema.FieldOption, index: usize) Error!schema.FieldOption {
+        if (index >= options.len) return error.UnknownField;
+        return options[index];
+    }
+
+    pub fn optionIndex(_: Reflection, options: []const schema.FieldOption, name: []const u8) Error!usize {
+        for (options, 0..) |option, index| {
+            if (std.mem.eql(u8, option.name, name) or std.mem.eql(u8, schema.optionLeaf(option.name), name)) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn optionValue(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?schema.OptionValue {
         return schema.optionValue(options, name);
     }
