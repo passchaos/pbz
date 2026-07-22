@@ -58,6 +58,33 @@ pub const Reflection = struct {
         return file_descriptor.importAt(index) orelse error.UnknownFile;
     }
 
+    pub fn fileDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.imports.items.len;
+    }
+
+    pub fn fileDependency(self: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FileDescriptor {
+        if (index >= file_descriptor.imports.items.len) return error.UnknownFile;
+        return try self.file(file_descriptor.imports.items[index].path);
+    }
+
+    pub fn filePublicDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return importKindCount(file_descriptor, .public);
+    }
+
+    pub fn filePublicDependency(self: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FileDescriptor {
+        const import = importOfKindAt(file_descriptor, .public, index) orelse return error.UnknownFile;
+        return try self.file(import.path);
+    }
+
+    pub fn fileWeakDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return importKindCount(file_descriptor, .weak);
+    }
+
+    pub fn fileWeakDependency(self: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FileDescriptor {
+        const import = importOfKindAt(file_descriptor, .weak, index) orelse return error.UnknownFile;
+        return try self.file(import.path);
+    }
+
     pub fn fileMessageCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return file_descriptor.messageCount();
     }
@@ -1754,6 +1781,24 @@ fn valueMatchesScalar(scalar: schema.ScalarType, value: dynamic.Value) bool {
         .string => value == .string,
         .bytes => value == .bytes,
     };
+}
+
+fn importKindCount(file: *const schema.FileDescriptor, kind: schema.Import.Kind) usize {
+    var count: usize = 0;
+    for (file.imports.items) |import| {
+        if (import.kind == kind) count += 1;
+    }
+    return count;
+}
+
+fn importOfKindAt(file: *const schema.FileDescriptor, kind: schema.Import.Kind, index: usize) ?schema.Import {
+    var seen: usize = 0;
+    for (file.imports.items) |import| {
+        if (import.kind != kind) continue;
+        if (seen == index) return import;
+        seen += 1;
+    }
+    return null;
 }
 
 fn messageDirectlyContainsField(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) bool {

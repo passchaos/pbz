@@ -16,7 +16,7 @@ pub fn main() !void {
     try tree.add("app.proto",
         \\syntax = "proto3";
         \\package demo.app;
-        \\import "common.proto";
+        \\import public "common.proto";
         \\message Event { demo.common.User user = 1; }
         \\service Events { rpc Get (Event) returns (Event); }
     );
@@ -30,7 +30,15 @@ pub fn main() !void {
     const refl = pbz.Reflection.init(allocator, &loaded.registry);
     const app_file = try refl.file("app.proto");
     const common_file = try refl.file("common.proto");
-    std.debug.assert((try refl.fileImport(app_file, "common.proto")).kind == .normal);
+    std.debug.assert((try refl.fileImport(app_file, "common.proto")).kind == .public);
+    std.debug.assert(refl.fileDependencyCount(app_file) == 1);
+    std.debug.assert((try refl.fileDependency(app_file, 0)) == common_file);
+    try std.testing.expectError(error.UnknownFile, refl.fileDependency(app_file, 9));
+    std.debug.assert(refl.filePublicDependencyCount(app_file) == 1);
+    std.debug.assert((try refl.filePublicDependency(app_file, 0)) == common_file);
+    try std.testing.expectError(error.UnknownFile, refl.filePublicDependency(app_file, 9));
+    std.debug.assert(refl.fileWeakDependencyCount(app_file) == 0);
+    try std.testing.expectError(error.UnknownFile, refl.fileWeakDependency(app_file, 0));
     std.debug.assert(!refl.fileHasMissingWeakImport(app_file, "common.proto"));
     std.debug.assert(refl.fileCanSee(app_file, common_file));
     const chain = (try refl.importChainByPath("app.proto", "common.proto")).?;
