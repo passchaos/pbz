@@ -59,7 +59,10 @@ pub fn main() !void {
     std.debug.assert(!refl.fileHasMissingWeakImport(app_file, "common.proto"));
     std.debug.assert(refl.fileCanSee(app_file, common_file));
     const chain = (try refl.importChainByPath("app.proto", "common.proto")).?;
-    std.debug.assert(chain.len == 1 and std.mem.eql(u8, chain.paths[0], "common.proto"));
+    std.debug.assert(refl.importChainLength(chain) == 1);
+    std.debug.assert(std.mem.eql(u8, try refl.importChainPathAt(chain, 0), "common.proto"));
+    std.debug.assert(std.mem.eql(u8, refl.importChainPaths(chain)[0], "common.proto"));
+    try std.testing.expectError(error.UnknownFile, refl.importChainPathAt(chain, 1));
     std.debug.assert(std.mem.eql(u8, event_desc.name, "Event"));
     std.debug.assert(std.mem.eql(u8, user_desc.name, "User"));
     std.debug.assert(std.mem.eql(u8, events_service.findMethod("Get").?.name, "Get"));

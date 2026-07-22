@@ -305,6 +305,19 @@ pub const Reflection = struct {
         return self.importChain(try self.file(from_path), try self.file(to_path));
     }
 
+    pub fn importChainLength(_: Reflection, chain: registry_mod.ImportChain) usize {
+        return chain.len;
+    }
+
+    pub fn importChainPathAt(_: Reflection, chain: registry_mod.ImportChain, index: usize) Error![]const u8 {
+        if (index >= chain.len) return error.UnknownFile;
+        return chain.paths[index];
+    }
+
+    pub fn importChainPaths(_: Reflection, chain: registry_mod.ImportChain) []const []const u8 {
+        return chain.slice();
+    }
+
     pub fn message(self: Reflection, name: []const u8) Error!*const schema.MessageDescriptor {
         return self.registry.findMessage(name, null) orelse error.UnknownMessage;
     }
@@ -2688,14 +2701,16 @@ test "reflection facade resolves files and import chains" {
     try std.testing.expect(!refl.fileCanSee(leaf_file, app_file));
 
     const direct = refl.importChain(app_file, bridge_file).?;
-    try std.testing.expectEqual(@as(usize, 1), direct.len);
-    try std.testing.expectEqualStrings("bridge.proto", direct.paths[0]);
+    try std.testing.expectEqual(@as(usize, 1), refl.importChainLength(direct));
+    try std.testing.expectEqualStrings("bridge.proto", try refl.importChainPathAt(direct, 0));
 
     const public_chain = (try refl.importChainByPath("app.proto", "leaf.proto")).?;
-    try std.testing.expectEqual(@as(usize, 2), public_chain.len);
-    try std.testing.expectEqualStrings("bridge.proto", public_chain.paths[0]);
-    try std.testing.expectEqualStrings("leaf.proto", public_chain.paths[1]);
-    try std.testing.expectEqual(@as(usize, 0), refl.importChain(app_file, app_file).?.len);
+    try std.testing.expectEqual(@as(usize, 2), refl.importChainLength(public_chain));
+    try std.testing.expectEqualStrings("bridge.proto", try refl.importChainPathAt(public_chain, 0));
+    try std.testing.expectEqualStrings("leaf.proto", try refl.importChainPathAt(public_chain, 1));
+    try std.testing.expectEqualStrings("leaf.proto", refl.importChainPaths(public_chain)[1]);
+    try std.testing.expectError(error.UnknownFile, refl.importChainPathAt(public_chain, 2));
+    try std.testing.expectEqual(@as(usize, 0), refl.importChainLength(refl.importChain(app_file, app_file).?));
     try std.testing.expectError(error.UnknownFile, refl.file("missing.proto"));
     try std.testing.expectError(error.UnknownFile, refl.importChainByPath("app.proto", "missing.proto"));
 }
