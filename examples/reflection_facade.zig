@@ -50,6 +50,16 @@ pub fn main() !void {
         \\  repeated sint64 deltas = 23;
         \\  string display_name = 24 [json_name = "shownName"];
         \\  map<string, Role> roles_by_key = 25;
+        \\  repeated int32 more_ids = 26;
+        \\  repeated int64 more_totals = 27;
+        \\  repeated uint64 more_unsigned = 28;
+        \\  repeated sint32 more_deltas = 29;
+        \\  repeated fixed32 more_fixed32 = 30;
+        \\  repeated fixed64 more_fixed64 = 31;
+        \\  repeated sfixed32 more_sfixed32 = 32;
+        \\  repeated sfixed64 more_sfixed64 = 33;
+        \\  repeated float more_floats = 34;
+        \\  repeated double more_doubles = 35;
         \\  message Audit { int32 id = 1; }
         \\  enum LocalStatus { LOCAL_UNKNOWN = 0; }
         \\}
@@ -96,7 +106,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownService, refl.fileServiceAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 0), refl.fileExtensionCount(app_file));
     try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(app_file, 0));
-    try std.testing.expectEqual(@as(usize, 25), refl.messageFieldCount(user_desc));
+    try std.testing.expectEqual(@as(usize, 35), refl.messageFieldCount(user_desc));
     try std.testing.expect((try refl.messageFieldAt(user_desc, 0)) == try refl.fieldByName(user_desc, "id"));
     try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
@@ -246,6 +256,16 @@ pub fn main() !void {
     try refl.addUInt32(&user, "samples", 20);
     try refl.addSInt64(&user, "deltas", -1);
     try refl.addSInt64(&user, "deltas", -2);
+    try refl.addInt32(&user, "more_ids", 3);
+    try refl.addInt64(&user, "more_totals", -4);
+    try refl.addUInt64(&user, "more_unsigned", 5);
+    try refl.addSInt32(&user, "more_deltas", -6);
+    try refl.addFixed32(&user, "more_fixed32", 7);
+    try refl.addFixed64(&user, "more_fixed64", 8);
+    try refl.addSFixed32(&user, "more_sfixed32", -9);
+    try refl.addSFixed64(&user, "more_sfixed64", -10);
+    try refl.addFloat(&user, "more_floats", 1.25);
+    try refl.addDouble(&user, "more_doubles", 2.5);
 
     const profile = try refl.mutableMessage(&user, "profile");
     try std.testing.expect(profile.descriptor == profile_desc);
@@ -257,17 +277,19 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 7), try refl.getInt32(&user, "id"));
     try std.testing.expectEqualStrings("Ada", try refl.getString(&user, "name"));
     try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&user, "tags"));
-    try std.testing.expectEqualStrings("protobuf", (try refl.repeatedValue(&user, "tags", 1)).string);
+    try std.testing.expectEqualStrings("protobuf", try refl.repeatedString(&user, "tags", 1));
     try std.testing.expect(try refl.setRepeatedValue(&user, "tags", 1, .{ .string = try allocator.dupe(u8, "pbz") }));
-    try std.testing.expectEqualStrings("pbz", (try refl.repeatedValue(&user, "tags", 1)).string);
+    try std.testing.expectEqualStrings("pbz", try refl.repeatedString(&user, "tags", 1));
+    try std.testing.expectError(error.TypeMismatch, refl.repeatedInt32(&user, "tags", 1));
     try std.testing.expect(!try refl.setRepeatedValue(&user, "tags", 9, .{ .string = try allocator.dupe(u8, "missing") }));
     try std.testing.expectError(error.TypeMismatch, refl.setRepeatedValue(&user, "tags", 0, .{ .int32 = 1 }));
     try std.testing.expect(try refl.swapRepeatedValues(&user, "tags", 0, 1));
-    try std.testing.expectEqualStrings("pbz", (try refl.repeatedValue(&user, "tags", 0)).string);
+    try std.testing.expectEqualStrings("pbz", try refl.repeatedString(&user, "tags", 0));
     try std.testing.expect(!try refl.swapRepeatedValues(&user, "tags", 0, 5));
     try std.testing.expect(try refl.removeRepeatedValue(&user, "tags", 0));
     try std.testing.expectEqual(@as(usize, 1), try refl.repeatedLen(&user, "tags"));
-    try std.testing.expectEqualStrings("zig", (try refl.repeatedValue(&user, "tags", 0)).string);
+    try std.testing.expectEqualStrings("zig", try refl.repeatedString(&user, "tags", 0));
+    try std.testing.expectError(error.MissingField, refl.repeatedString(&user, "tags", 5));
     try std.testing.expect(!try refl.removeRepeatedValue(&user, "tags", 5));
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "role"));
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnumOrDefault(&user, "role"));
@@ -285,16 +307,27 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(f32, 1.5), try refl.getFloat(&user, "ratio"));
     try std.testing.expectEqual(@as(f64, 9.25), try refl.getDouble(&user, "score"));
     try std.testing.expect(try refl.getBool(&user, "flags"));
-    try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, try refl.getBytes(&user, "blobs"));
-    try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "roles"));
+    try std.testing.expect(try refl.repeatedBool(&user, "flags", 1));
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, try refl.repeatedBytes(&user, "blobs", 1));
+    try std.testing.expectEqual(@as(i32, 1), try refl.repeatedEnum(&user, "roles", 1));
     const repeated_role_names = try refl.repeatedEnumNames(&user, "roles");
     defer allocator.free(repeated_role_names);
     try std.testing.expectEqual(@as(usize, 2), repeated_role_names.len);
     try std.testing.expectEqualStrings("ROLE_UNKNOWN", repeated_role_names[0]);
     try std.testing.expectEqualStrings("ROLE_ADMIN", repeated_role_names[1]);
     try std.testing.expectError(error.TypeMismatch, refl.repeatedEnumNames(&user, "name"));
-    try std.testing.expectEqual(@as(u32, 20), (try refl.repeatedValue(&user, "samples", 1)).uint32);
-    try std.testing.expectEqual(@as(i64, -2), (try refl.repeatedValue(&user, "deltas", 1)).sint64);
+    try std.testing.expectEqual(@as(u32, 20), try refl.repeatedUInt32(&user, "samples", 1));
+    try std.testing.expectEqual(@as(i64, -2), try refl.repeatedSInt64(&user, "deltas", 1));
+    try std.testing.expectEqual(@as(i32, 3), try refl.repeatedInt32(&user, "more_ids", 0));
+    try std.testing.expectEqual(@as(i64, -4), try refl.repeatedInt64(&user, "more_totals", 0));
+    try std.testing.expectEqual(@as(u64, 5), try refl.repeatedUInt64(&user, "more_unsigned", 0));
+    try std.testing.expectEqual(@as(i32, -6), try refl.repeatedSInt32(&user, "more_deltas", 0));
+    try std.testing.expectEqual(@as(u32, 7), try refl.repeatedFixed32(&user, "more_fixed32", 0));
+    try std.testing.expectEqual(@as(u64, 8), try refl.repeatedFixed64(&user, "more_fixed64", 0));
+    try std.testing.expectEqual(@as(i32, -9), try refl.repeatedSFixed32(&user, "more_sfixed32", 0));
+    try std.testing.expectEqual(@as(i64, -10), try refl.repeatedSFixed64(&user, "more_sfixed64", 0));
+    try std.testing.expectEqual(@as(f32, 1.25), try refl.repeatedFloat(&user, "more_floats", 0));
+    try std.testing.expectEqual(@as(f64, 2.5), try refl.repeatedDouble(&user, "more_doubles", 0));
     try std.testing.expectEqualStrings("email", refl.whichOneof(&user, "contact").?.name);
     try std.testing.expectEqualStrings("ada@example.test", try refl.getString(&user, "email"));
 

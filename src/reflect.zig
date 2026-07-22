@@ -663,6 +663,70 @@ pub const Reflection = struct {
         return try self.repeatedGroup(message_value, name, index);
     }
 
+    pub fn repeatedInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i32 {
+        return try self.getRepeatedScalar(i32, message_value, name, index, .int32);
+    }
+
+    pub fn repeatedInt64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i64 {
+        return try self.getRepeatedScalar(i64, message_value, name, index, .int64);
+    }
+
+    pub fn repeatedUInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!u32 {
+        return try self.getRepeatedScalar(u32, message_value, name, index, .uint32);
+    }
+
+    pub fn repeatedUInt64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!u64 {
+        return try self.getRepeatedScalar(u64, message_value, name, index, .uint64);
+    }
+
+    pub fn repeatedSInt32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i32 {
+        return try self.getRepeatedScalar(i32, message_value, name, index, .sint32);
+    }
+
+    pub fn repeatedSInt64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i64 {
+        return try self.getRepeatedScalar(i64, message_value, name, index, .sint64);
+    }
+
+    pub fn repeatedFixed32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!u32 {
+        return try self.getRepeatedScalar(u32, message_value, name, index, .fixed32);
+    }
+
+    pub fn repeatedFixed64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!u64 {
+        return try self.getRepeatedScalar(u64, message_value, name, index, .fixed64);
+    }
+
+    pub fn repeatedSFixed32(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i32 {
+        return try self.getRepeatedScalar(i32, message_value, name, index, .sfixed32);
+    }
+
+    pub fn repeatedSFixed64(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i64 {
+        return try self.getRepeatedScalar(i64, message_value, name, index, .sfixed64);
+    }
+
+    pub fn repeatedFloat(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!f32 {
+        return try self.getRepeatedScalar(f32, message_value, name, index, .float);
+    }
+
+    pub fn repeatedDouble(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!f64 {
+        return try self.getRepeatedScalar(f64, message_value, name, index, .double);
+    }
+
+    pub fn repeatedBool(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!bool {
+        return try self.getRepeatedScalar(bool, message_value, name, index, .boolean);
+    }
+
+    pub fn repeatedString(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error![]const u8 {
+        return try self.getRepeatedScalar([]const u8, message_value, name, index, .string);
+    }
+
+    pub fn repeatedBytes(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error![]const u8 {
+        return try self.getRepeatedScalar([]const u8, message_value, name, index, .bytes);
+    }
+
+    pub fn repeatedEnum(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!i32 {
+        return try self.getRepeatedScalar(i32, message_value, name, index, .enumeration);
+    }
+
     pub fn removeRepeatedValue(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, index: usize) Error!bool {
         return message_value.removeRepeatedValue(try self.fieldByName(message_value.descriptor, name), index);
     }
@@ -811,6 +875,12 @@ pub const Reflection = struct {
     fn getScalar(self: Reflection, comptime T: type, message_value: *const dynamic.DynamicMessage, name: []const u8, comptime tag: ValueTag) Error!T {
         const field = try self.fieldByName(message_value.descriptor, name);
         const value = lastValue(message_value, field) orelse return error.MissingField;
+        if (std.meta.activeTag(value) != tag) return error.TypeMismatch;
+        return @field(value, @tagName(tag));
+    }
+
+    fn getRepeatedScalar(self: Reflection, comptime T: type, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize, comptime tag: ValueTag) Error!T {
+        const value = try self.repeatedValue(message_value, name, index);
         if (std.meta.activeTag(value) != tag) return error.TypeMismatch;
         return @field(value, @tagName(tag));
     }
