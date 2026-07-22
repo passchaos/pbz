@@ -33,6 +33,8 @@ pub const MapType = schema.MapType;
 pub const FieldOption = schema.FieldOption;
 pub const OptionValue = schema.OptionValue;
 pub const OptionList = schema.OptionList;
+pub const FieldCType = schema.FieldCType;
+pub const FieldJSType = schema.FieldJSType;
 pub const FileDescriptor = schema.FileDescriptor;
 pub const MessageDescriptor = schema.MessageDescriptor;
 pub const FieldDescriptor = schema.FieldDescriptor;
@@ -181,6 +183,8 @@ test "root exports descriptor schema support types" {
     const option_value = OptionValue{ .integer = 7 };
     const option = FieldOption{ .name = "answer", .value = option_value };
     try std.testing.expectEqual(@as(i64, 7), option.value.integer);
+    try std.testing.expectEqual(FieldCType.string, schema.optionAsKnownEnum(FieldCType, .{ .identifier = "STRING" }).?);
+    try std.testing.expectEqual(FieldJSType.js_string, schema.optionAsKnownEnum(FieldJSType, .{ .identifier = "JS_STRING" }).?);
     const kind = FieldKind{ .scalar = .int32 };
     try std.testing.expectEqual(wire.WireType.varint, kind.wireType());
     var value_kind = FieldKind{ .scalar = .string };

@@ -758,6 +758,14 @@ pub const Reflection = struct {
         return field.isDebugRedacted();
     }
 
+    pub fn fieldCType(_: Reflection, field: *const schema.FieldDescriptor) ?schema.FieldCType {
+        return field.cType();
+    }
+
+    pub fn fieldJSType(_: Reflection, field: *const schema.FieldDescriptor) ?schema.FieldJSType {
+        return field.jsType();
+    }
+
     pub fn fieldIsWeak(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isWeak();
     }

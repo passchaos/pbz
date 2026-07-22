@@ -234,6 +234,10 @@ pub const OptionValue = union(enum) {
 
 pub const OptionList = std.ArrayList(FieldOption);
 
+pub const FieldCType = enum(i32) { string = 0, cord = 1, string_piece = 2 };
+
+pub const FieldJSType = enum(i32) { js_normal = 0, js_string = 1, js_number = 2 };
+
 pub const FieldDescriptor = struct {
     name: []const u8,
     full_name: ?[]const u8 = null,
@@ -317,6 +321,14 @@ pub const FieldDescriptor = struct {
 
     pub fn isDebugRedacted(self: FieldDescriptor) bool {
         return optionBool(self.options.items, "debug_redact") orelse false;
+    }
+
+    pub fn cType(self: FieldDescriptor) ?FieldCType {
+        return optionKnownEnum(FieldCType, self.options.items, "ctype");
+    }
+
+    pub fn jsType(self: FieldDescriptor) ?FieldJSType {
+        return optionKnownEnum(FieldJSType, self.options.items, "jstype");
     }
 
     pub fn hasDefaultValue(self: FieldDescriptor) bool {
@@ -1340,6 +1352,35 @@ pub fn optionAsAggregate(value: OptionValue) ?[]const u8 {
         .aggregate => |s| s,
         else => null,
     };
+}
+
+pub fn optionKnownEnum(comptime T: type, options: []const FieldOption, name: []const u8) ?T {
+    return if (optionValue(options, name)) |value| optionAsKnownEnum(T, value) else null;
+}
+
+pub fn optionAsKnownEnum(comptime T: type, value: OptionValue) ?T {
+    switch (value) {
+        .integer => |v| return if (std.enums.fromInt(T, v)) |known| known else null,
+        .unsigned_integer => |v| {
+            const signed = std.math.cast(i32, v) orelse return null;
+            return std.enums.fromInt(T, signed);
+        },
+        .identifier, .string => |text| return optionKnownEnumFromName(T, text),
+        else => return null,
+    }
+}
+
+fn optionKnownEnumFromName(comptime T: type, text: []const u8) ?T {
+    if (T == FieldCType) {
+        if (std.ascii.eqlIgnoreCase(text, "STRING")) return .string;
+        if (std.ascii.eqlIgnoreCase(text, "CORD")) return .cord;
+        if (std.ascii.eqlIgnoreCase(text, "STRING_PIECE")) return .string_piece;
+    } else if (T == FieldJSType) {
+        if (std.ascii.eqlIgnoreCase(text, "JS_NORMAL")) return .js_normal;
+        if (std.ascii.eqlIgnoreCase(text, "JS_STRING")) return .js_string;
+        if (std.ascii.eqlIgnoreCase(text, "JS_NUMBER")) return .js_number;
+    }
+    return null;
 }
 
 pub fn optionValue(options: []const FieldOption, name: []const u8) ?OptionValue {

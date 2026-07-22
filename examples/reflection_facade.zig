@@ -60,7 +60,7 @@ pub fn main() !void {
         \\    bool disabled = 8;
         \\  }
         \\  uint32 quota = 9;
-        \\  uint64 total = 10;
+        \\  uint64 total = 10 [jstype = JS_STRING];
         \\  sint32 delta = 11;
         \\  sint64 big_delta = 12;
         \\  fixed32 checksum = 13;
@@ -221,6 +221,7 @@ pub fn main() !void {
     const role_field = try refl.fieldByName(user_desc, "role");
     const local_status_field = try refl.fieldByName(user_desc, "local_status");
     const profile_field = try refl.fieldByName(user_desc, "profile");
+    const total_field = try refl.fieldByName(user_desc, "total");
     const email_field = try refl.fieldByName(user_desc, "email");
     const nickname_field = try refl.fieldByName(user_desc, "nickname");
     const samples_field = try refl.fieldByName(user_desc, "samples");
@@ -236,9 +237,13 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.WireType.varint, try refl.fieldEncodedWireType(user_desc, id_field));
     try std.testing.expect(refl.fieldIsDeprecated(id_field));
     try std.testing.expect(refl.fieldIsDebugRedacted(id_field));
+    try std.testing.expect(refl.fieldCType(id_field) == null);
+    try std.testing.expect(refl.fieldJSType(id_field) == null);
     try std.testing.expect(refl.fieldIsScalar(id_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
     try std.testing.expectEqualStrings("int32", try refl.fieldScalarTypeName(id_field));
+    try std.testing.expectEqual(pbz.FieldCType.string, refl.fieldCType(try refl.fieldByName(user_desc, "name")).?);
+    try std.testing.expectEqual(pbz.FieldJSType.js_string, refl.fieldJSType(total_field).?);
     try std.testing.expect(!refl.fieldIsMessage(id_field));
     try std.testing.expect(!refl.fieldIsEnum(id_field));
     try std.testing.expect(!refl.fieldIsGroup(id_field));
