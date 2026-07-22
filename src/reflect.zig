@@ -438,6 +438,30 @@ pub const Reflection = struct {
         return schema.optionBool(options, name);
     }
 
+    pub fn optionIdentifier(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?[]const u8 {
+        return schema.optionIdentifier(options, name);
+    }
+
+    pub fn optionString(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?[]const u8 {
+        return schema.optionString(options, name);
+    }
+
+    pub fn optionInteger(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?i64 {
+        return schema.optionInteger(options, name);
+    }
+
+    pub fn optionUnsignedInteger(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?u64 {
+        return schema.optionUnsignedInteger(options, name);
+    }
+
+    pub fn optionFloat(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?f64 {
+        return schema.optionFloat(options, name);
+    }
+
+    pub fn optionAggregate(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?[]const u8 {
+        return schema.optionAggregate(options, name);
+    }
+
     pub fn fieldByNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByNumber(number) orelse error.UnknownField;
     }

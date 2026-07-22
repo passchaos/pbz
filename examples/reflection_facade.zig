@@ -26,8 +26,15 @@ pub fn main() !void {
         \\message User {
         \\  reserved 100 to 110;
         \\  reserved "legacy";
-        \\  int32 id = 1;
-        \\  string name = 2;
+        \\  int32 id = 1 [
+        \\    deprecated = true,
+        \\    (demo.note) = "primary id",
+        \\    (demo.answer) = 42,
+        \\    (demo.max_u64) = 18446744073709551615,
+        \\    (demo.ratio) = 1.5,
+        \\    (demo.meta) = { label: "id" }
+        \\  ];
+        \\  string name = 2 [ctype = STRING];
         \\  repeated string tags = 3;
         \\  map<string, int32> counts = 4;
         \\  Role role = 5;
@@ -159,6 +166,13 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
+    try std.testing.expect(refl.optionBool(id_field.options.items, "deprecated").?);
+    try std.testing.expectEqualStrings("primary id", refl.optionString(id_field.options.items, "note").?);
+    try std.testing.expectEqual(@as(i64, 42), refl.optionInteger(id_field.options.items, "answer").?);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), refl.optionUnsignedInteger(id_field.options.items, "max_u64").?);
+    try std.testing.expectEqual(@as(f64, 1.5), refl.optionFloat(id_field.options.items, "ratio").?);
+    try std.testing.expect(std.mem.indexOf(u8, refl.optionAggregate(id_field.options.items, "meta").?, "label") != null);
+    try std.testing.expect(refl.optionString(id_field.options.items, "missing") == null);
     try std.testing.expectError(error.TypeMismatch, refl.fieldTypeName(id_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldMessageType(user_desc, id_field));
     try std.testing.expectEqualStrings("Role", try refl.fieldTypeName(role_field));
@@ -214,6 +228,7 @@ pub fn main() !void {
     try std.testing.expect(!refl.methodClientStreaming(get_method));
     try std.testing.expect(!refl.methodServerStreaming(get_method));
     try std.testing.expect(refl.optionBool(users_service.options.items, "deprecated").?);
+    try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionIdentifier(get_method.options.items, "idempotency_level").?);
     try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionValue(get_method.options.items, "idempotency_level").?.identifier);
 
     var user = try refl.newMessage("demo.reflect.User");

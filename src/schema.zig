@@ -1176,6 +1176,45 @@ pub fn optionAsIdentifier(value: OptionValue) ?[]const u8 {
     };
 }
 
+pub fn optionAsString(value: OptionValue) ?[]const u8 {
+    return switch (value) {
+        .string => |s| s,
+        else => null,
+    };
+}
+
+pub fn optionAsInteger(value: OptionValue) ?i64 {
+    return switch (value) {
+        .integer => |v| v,
+        .unsigned_integer => |v| std.math.cast(i64, v),
+        else => null,
+    };
+}
+
+pub fn optionAsUnsignedInteger(value: OptionValue) ?u64 {
+    return switch (value) {
+        .unsigned_integer => |v| v,
+        .integer => |v| if (v >= 0) @intCast(v) else null,
+        else => null,
+    };
+}
+
+pub fn optionAsFloat(value: OptionValue) ?f64 {
+    return switch (value) {
+        .float => |v| v,
+        .integer => |v| @floatFromInt(v),
+        .unsigned_integer => |v| @floatFromInt(v),
+        else => null,
+    };
+}
+
+pub fn optionAsAggregate(value: OptionValue) ?[]const u8 {
+    return switch (value) {
+        .aggregate => |s| s,
+        else => null,
+    };
+}
+
 pub fn optionValue(options: []const FieldOption, name: []const u8) ?OptionValue {
     for (options) |option| {
         if (std.mem.eql(u8, option.name, name) or std.mem.eql(u8, optionLeaf(option.name), name)) return option.value;
@@ -1187,10 +1226,36 @@ pub fn optionBool(options: []const FieldOption, name: []const u8) ?bool {
     return if (optionValue(options, name)) |value| optionAsBool(value) else null;
 }
 
+pub fn optionIdentifier(options: []const FieldOption, name: []const u8) ?[]const u8 {
+    return if (optionValue(options, name)) |value| optionAsIdentifier(value) else null;
+}
+
+pub fn optionString(options: []const FieldOption, name: []const u8) ?[]const u8 {
+    return if (optionValue(options, name)) |value| optionAsString(value) else null;
+}
+
+pub fn optionInteger(options: []const FieldOption, name: []const u8) ?i64 {
+    return if (optionValue(options, name)) |value| optionAsInteger(value) else null;
+}
+
+pub fn optionUnsignedInteger(options: []const FieldOption, name: []const u8) ?u64 {
+    return if (optionValue(options, name)) |value| optionAsUnsignedInteger(value) else null;
+}
+
+pub fn optionFloat(options: []const FieldOption, name: []const u8) ?f64 {
+    return if (optionValue(options, name)) |value| optionAsFloat(value) else null;
+}
+
+pub fn optionAggregate(options: []const FieldOption, name: []const u8) ?[]const u8 {
+    return if (optionValue(options, name)) |value| optionAsAggregate(value) else null;
+}
+
 pub fn optionLeaf(name: []const u8) []const u8 {
     const trimmed = std.mem.trim(u8, name, " \t\r\n");
-    if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| return trimmed[idx + 1 ..];
-    return trimmed;
+    const dotted_leaf = if (std.mem.lastIndexOfScalar(u8, trimmed, '.')) |idx| trimmed[idx + 1 ..] else trimmed;
+    if (dotted_leaf.len >= 2 and dotted_leaf[0] == '(' and dotted_leaf[dotted_leaf.len - 1] == ')') return dotted_leaf[1 .. dotted_leaf.len - 1];
+    if (dotted_leaf.len != 0 and dotted_leaf[dotted_leaf.len - 1] == ')') return dotted_leaf[0 .. dotted_leaf.len - 1];
+    return dotted_leaf;
 }
 
 fn reservedNameMatches(names: []const []const u8, name: []const u8) bool {

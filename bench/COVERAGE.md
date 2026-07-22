@@ -309,7 +309,7 @@ benchmark harness.
   last-wins mutation, map key/value metadata, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved metadata,
   ordered file/message/enum/service descriptor enumeration, descriptor name/full-name identity lookup,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
-  lookup/fields/presence/inspection/clearing, imported message fields, option lookup,
+  lookup/fields/presence/inspection/clearing, imported message fields, typed option lookup,
   file-local service lookup, service/method type metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
   query/mutation, required-field initialization checks, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
