@@ -66,12 +66,28 @@ pub const Reflection = struct {
         return file_descriptor.messageAt(index) orelse error.UnknownMessage;
     }
 
+    pub fn fileMessage(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.MessageDescriptor {
+        return file_descriptor.findMessage(name) orelse error.UnknownMessage;
+    }
+
+    pub fn fileMessageDeep(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.MessageDescriptor {
+        return file_descriptor.findMessageDeep(name) orelse error.UnknownMessage;
+    }
+
     pub fn fileEnumCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return file_descriptor.enumCount();
     }
 
     pub fn fileEnumAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.EnumDescriptor {
         return file_descriptor.enumAt(index) orelse error.UnknownEnum;
+    }
+
+    pub fn fileEnum(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
+        return file_descriptor.findEnum(name) orelse error.UnknownEnum;
+    }
+
+    pub fn fileEnumDeep(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
+        return file_descriptor.findEnumDeep(name) orelse error.UnknownEnum;
     }
 
     pub fn fileServiceCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
@@ -143,12 +159,28 @@ pub const Reflection = struct {
         return descriptor.nestedMessageAt(index) orelse error.UnknownMessage;
     }
 
+    pub fn messageNestedMessage(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.MessageDescriptor {
+        return descriptor.findMessage(name) orelse error.UnknownMessage;
+    }
+
+    pub fn messageNestedMessageDeep(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.MessageDescriptor {
+        return descriptor.findMessageDeep(name) orelse error.UnknownMessage;
+    }
+
     pub fn messageNestedEnumCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
         return descriptor.nestedEnumCount();
     }
 
     pub fn messageNestedEnumAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.EnumDescriptor {
         return descriptor.nestedEnumAt(index) orelse error.UnknownEnum;
+    }
+
+    pub fn messageNestedEnum(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
+        return descriptor.findEnum(name) orelse error.UnknownEnum;
+    }
+
+    pub fn messageNestedEnumDeep(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
+        return descriptor.findEnumDeep(name) orelse error.UnknownEnum;
     }
 
     pub fn enumeration(self: Reflection, name: []const u8) Error!*const schema.EnumDescriptor {
