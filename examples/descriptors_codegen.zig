@@ -60,7 +60,9 @@ pub fn main() !void {
     try std.testing.expectEqual(try refl.sourceLocationSpanAt(syntax_location, 3), try refl.sourceLocationEndColumn(syntax_location));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationSpanAt(syntax_location, 4));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationSpanIndex(syntax_location, 9999));
+    try std.testing.expect(refl.sourceLocationHasLeadingComments(syntax_location));
     try std.testing.expectEqualStrings("Syntax leading comment.\n", refl.sourceLocationLeadingComments(syntax_location).?);
+    try std.testing.expect(!refl.sourceLocationHasTrailingComments(syntax_location));
     try std.testing.expect(refl.sourceLocationTrailingComments(syntax_location) == null);
     try std.testing.expectEqual(@as(usize, 0), refl.sourceLocationLeadingDetachedCommentCount(syntax_location));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentAt(syntax_location, 0));
@@ -74,7 +76,9 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentIndex(event_location, "missing\n"));
     const id_location = try refl.sourceLocation(&file, &.{ 4, 0, 2, 0 });
     try std.testing.expectEqualSlices(i32, &.{ 4, 0, 2, 0 }, refl.sourceLocationPath(id_location));
+    try std.testing.expect(refl.sourceLocationHasLeadingComments(id_location));
     try std.testing.expectEqualStrings("id leading comment.\n", refl.sourceLocationLeadingComments(id_location).?);
+    try std.testing.expect(refl.sourceLocationHasTrailingComments(id_location));
     try std.testing.expectEqualStrings("id trailing comment.\n", refl.sourceLocationTrailingComments(id_location).?);
 
     const descriptor_bytes = try pbz.encodeFileDescriptorProto(allocator, &file, file.name);

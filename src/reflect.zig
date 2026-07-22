@@ -243,8 +243,16 @@ pub const Reflection = struct {
         return if (location.span.items.len == 3) location.span.items[2] else location.span.items[3];
     }
 
+    pub fn sourceLocationHasLeadingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) bool {
+        return location.leading_comments != null;
+    }
+
     pub fn sourceLocationLeadingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
         return location.leading_comments;
+    }
+
+    pub fn sourceLocationHasTrailingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) bool {
+        return location.trailing_comments != null;
     }
 
     pub fn sourceLocationTrailingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
