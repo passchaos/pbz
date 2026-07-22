@@ -476,6 +476,16 @@ pub const Reflection = struct {
         return try joinNameAlloc(self.allocator, parent_scope, value.name);
     }
 
+    pub fn enumValueContainingEnum(_: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error!*const schema.EnumDescriptor {
+        if (enum_descriptor.findValue(value.name) != value) return error.UnknownEnum;
+        return enum_descriptor;
+    }
+
+    pub fn enumValueContainingFile(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error!*const schema.FileDescriptor {
+        _ = try self.enumValueContainingEnum(enum_descriptor, value);
+        return try self.fileOfEnum(enum_descriptor);
+    }
+
     pub fn enumValueCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {
         return descriptor.valueCount();
     }

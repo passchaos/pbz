@@ -182,6 +182,8 @@ pub fn main() !void {
     const role_unknown_value = try refl.enumValueAt(role_desc, 0);
     try std.testing.expectEqualStrings("ROLE_UNKNOWN", refl.enumValueName(role_unknown_value));
     try std.testing.expectEqual(@as(i32, 0), refl.enumValueNumber(role_unknown_value));
+    try std.testing.expect((try refl.enumValueContainingEnum(role_desc, role_unknown_value)) == role_desc);
+    try std.testing.expect((try refl.enumValueContainingFile(role_desc, role_unknown_value)) == role_file);
     try std.testing.expect(!refl.enumIsDeprecated(role_desc));
     try std.testing.expect(!refl.enumValueIsDeprecated(role_unknown_value));
     const role_unknown_full_name = try refl.enumValueFullName(role_desc, role_unknown_value);
