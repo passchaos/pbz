@@ -52,7 +52,7 @@ library API.
   dynamic messages, including typed get/set/add/get-default/clear helpers,
   present-field listing, type-checked writes, repeated field replacement/reordering/removal, all scalar families,
   typed message/group creation/access/mutation, maps, map key/value metadata, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved
-  metadata, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
+  metadata, ordered file/message/enum/service descriptor enumeration, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/fields/presence/inspection/clearing, imported message fields, option lookup,
   file-local service lookup, service/method type metadata, and extension descriptor lookup, unknown-field query/mutation,
   required-field initialization checks, binary, and JSON round-trips.

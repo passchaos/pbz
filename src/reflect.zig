@@ -50,6 +50,46 @@ pub const Reflection = struct {
         return file_descriptor.hasMissingWeakImport(path);
     }
 
+    pub fn fileImportCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.importCount();
+    }
+
+    pub fn fileImportAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!schema.Import {
+        return file_descriptor.importAt(index) orelse error.UnknownFile;
+    }
+
+    pub fn fileMessageCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.messageCount();
+    }
+
+    pub fn fileMessageAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.MessageDescriptor {
+        return file_descriptor.messageAt(index) orelse error.UnknownMessage;
+    }
+
+    pub fn fileEnumCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.enumCount();
+    }
+
+    pub fn fileEnumAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.EnumDescriptor {
+        return file_descriptor.enumAt(index) orelse error.UnknownEnum;
+    }
+
+    pub fn fileServiceCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.serviceCount();
+    }
+
+    pub fn fileServiceAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.ServiceDescriptor {
+        return file_descriptor.serviceAt(index) orelse error.UnknownService;
+    }
+
+    pub fn fileExtensionCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.extensionCount();
+    }
+
+    pub fn fileExtensionAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FieldDescriptor {
+        return file_descriptor.extensionAt(index) orelse error.UnknownField;
+    }
+
     pub fn fileCanSee(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
         return self.registry.fileCanSee(from, to);
     }
@@ -70,12 +110,52 @@ pub const Reflection = struct {
         return self.registry.fileContainingMessage(descriptor) orelse error.UnknownMessage;
     }
 
+    pub fn messageFieldCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.fieldCount();
+    }
+
+    pub fn messageFieldAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.FieldDescriptor {
+        return descriptor.fieldAt(index) orelse error.UnknownField;
+    }
+
+    pub fn messageOneofCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.oneofCount();
+    }
+
+    pub fn messageOneofAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.OneofDescriptor {
+        return descriptor.oneofAt(index) orelse error.UnknownField;
+    }
+
+    pub fn messageNestedMessageCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.nestedMessageCount();
+    }
+
+    pub fn messageNestedMessageAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.MessageDescriptor {
+        return descriptor.nestedMessageAt(index) orelse error.UnknownMessage;
+    }
+
+    pub fn messageNestedEnumCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.nestedEnumCount();
+    }
+
+    pub fn messageNestedEnumAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.EnumDescriptor {
+        return descriptor.nestedEnumAt(index) orelse error.UnknownEnum;
+    }
+
     pub fn enumeration(self: Reflection, name: []const u8) Error!*const schema.EnumDescriptor {
         return self.registry.findEnum(name, null) orelse error.UnknownEnum;
     }
 
     pub fn fileOfEnum(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingEnum(descriptor) orelse error.UnknownEnum;
+    }
+
+    pub fn enumValueCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {
+        return descriptor.valueCount();
+    }
+
+    pub fn enumValueAt(_: Reflection, descriptor: *const schema.EnumDescriptor, index: usize) Error!*const schema.EnumValueDescriptor {
+        return descriptor.valueAt(index) orelse error.UnknownEnum;
     }
 
     pub fn service(self: Reflection, name: []const u8) Error!*const schema.ServiceDescriptor {
@@ -88,6 +168,14 @@ pub const Reflection = struct {
 
     pub fn fileOfService(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
+    }
+
+    pub fn serviceMethodCount(_: Reflection, descriptor: *const schema.ServiceDescriptor) usize {
+        return descriptor.methodCount();
+    }
+
+    pub fn serviceMethodAt(_: Reflection, descriptor: *const schema.ServiceDescriptor, index: usize) Error!*const schema.MethodDescriptor {
+        return descriptor.methodAt(index) orelse error.UnknownField;
     }
 
     pub fn methodByName(_: Reflection, descriptor: *const schema.ServiceDescriptor, name: []const u8) Error!*const schema.MethodDescriptor {

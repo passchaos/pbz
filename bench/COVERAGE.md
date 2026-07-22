@@ -307,6 +307,7 @@ benchmark harness.
   and clear helpers across all scalar families, present-field listing, immediate
   type-checked writes, repeated field replacement/reordering/removal, typed message/group creation/access/mutation, map
   last-wins mutation, map key/value metadata, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved metadata,
+  ordered file/message/enum/service descriptor enumeration,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/fields/presence/inspection/clearing, imported message fields, option lookup,
   file-local service lookup, service/method type metadata lookup, extension descriptor lookup, unknown-field

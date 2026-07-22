@@ -546,6 +546,15 @@ pub const EnumDescriptor = struct {
         return null;
     }
 
+    pub fn valueCount(self: *const EnumDescriptor) usize {
+        return self.values.items.len;
+    }
+
+    pub fn valueAt(self: *const EnumDescriptor, index: usize) ?*const EnumValueDescriptor {
+        if (index >= self.values.items.len) return null;
+        return &self.values.items[index];
+    }
+
     pub fn valuesByNumberAlloc(self: *const EnumDescriptor, allocator: std.mem.Allocator, number: i32) std.mem.Allocator.Error![]*const EnumValueDescriptor {
         var values: std.ArrayList(*const EnumValueDescriptor) = .empty;
         errdefer values.deinit(allocator);
@@ -627,6 +636,42 @@ pub const MessageDescriptor = struct {
             if (field.number == number) return field;
         }
         return null;
+    }
+
+    pub fn fieldCount(self: *const MessageDescriptor) usize {
+        return self.fields.items.len;
+    }
+
+    pub fn fieldAt(self: *const MessageDescriptor, index: usize) ?*const FieldDescriptor {
+        if (index >= self.fields.items.len) return null;
+        return &self.fields.items[index];
+    }
+
+    pub fn oneofCount(self: *const MessageDescriptor) usize {
+        return self.oneofs.items.len;
+    }
+
+    pub fn oneofAt(self: *const MessageDescriptor, index: usize) ?*const OneofDescriptor {
+        if (index >= self.oneofs.items.len) return null;
+        return &self.oneofs.items[index];
+    }
+
+    pub fn nestedMessageCount(self: *const MessageDescriptor) usize {
+        return self.messages.items.len;
+    }
+
+    pub fn nestedMessageAt(self: *const MessageDescriptor, index: usize) ?*const MessageDescriptor {
+        if (index >= self.messages.items.len) return null;
+        return &self.messages.items[index];
+    }
+
+    pub fn nestedEnumCount(self: *const MessageDescriptor) usize {
+        return self.enums.items.len;
+    }
+
+    pub fn nestedEnumAt(self: *const MessageDescriptor, index: usize) ?*const EnumDescriptor {
+        if (index >= self.enums.items.len) return null;
+        return &self.enums.items[index];
     }
 
     pub fn isReservedName(self: *const MessageDescriptor, name: []const u8) bool {
@@ -719,6 +764,15 @@ pub const ServiceDescriptor = struct {
             if (std.mem.eql(u8, method.name, name)) return method;
         }
         return null;
+    }
+
+    pub fn methodCount(self: *const ServiceDescriptor) usize {
+        return self.methods.items.len;
+    }
+
+    pub fn methodAt(self: *const ServiceDescriptor, index: usize) ?*const MethodDescriptor {
+        if (index >= self.methods.items.len) return null;
+        return &self.methods.items[index];
     }
 
     pub fn deinit(self: *ServiceDescriptor, allocator: std.mem.Allocator) void {
@@ -970,6 +1024,51 @@ pub const FileDescriptor = struct {
         errdefer if (option.name_owned) self.allocator.free(option.name);
         try self.options.append(self.allocator, option);
         if (std.mem.startsWith(u8, option.name, "features.")) self.features.applyOption(option.name, option.value);
+    }
+
+    pub fn importCount(self: *const FileDescriptor) usize {
+        return self.imports.items.len;
+    }
+
+    pub fn importAt(self: *const FileDescriptor, index: usize) ?Import {
+        if (index >= self.imports.items.len) return null;
+        return self.imports.items[index];
+    }
+
+    pub fn messageCount(self: *const FileDescriptor) usize {
+        return self.messages.items.len;
+    }
+
+    pub fn messageAt(self: *const FileDescriptor, index: usize) ?*const MessageDescriptor {
+        if (index >= self.messages.items.len) return null;
+        return &self.messages.items[index];
+    }
+
+    pub fn enumCount(self: *const FileDescriptor) usize {
+        return self.enums.items.len;
+    }
+
+    pub fn enumAt(self: *const FileDescriptor, index: usize) ?*const EnumDescriptor {
+        if (index >= self.enums.items.len) return null;
+        return &self.enums.items[index];
+    }
+
+    pub fn serviceCount(self: *const FileDescriptor) usize {
+        return self.services.items.len;
+    }
+
+    pub fn serviceAt(self: *const FileDescriptor, index: usize) ?*const ServiceDescriptor {
+        if (index >= self.services.items.len) return null;
+        return &self.services.items[index];
+    }
+
+    pub fn extensionCount(self: *const FileDescriptor) usize {
+        return self.extensions.items.len;
+    }
+
+    pub fn extensionAt(self: *const FileDescriptor, index: usize) ?*const FieldDescriptor {
+        if (index >= self.extensions.items.len) return null;
+        return &self.extensions.items[index];
     }
 
     pub fn findMessage(self: *const FileDescriptor, name: []const u8) ?*const MessageDescriptor {

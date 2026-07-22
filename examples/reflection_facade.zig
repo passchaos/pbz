@@ -50,6 +50,8 @@ pub fn main() !void {
         \\  repeated sint64 deltas = 23;
         \\  string display_name = 24 [json_name = "shownName"];
         \\  map<string, Role> roles_by_key = 25;
+        \\  message Audit { int32 id = 1; }
+        \\  enum LocalStatus { LOCAL_UNKNOWN = 0; }
         \\}
         \\service Users {
         \\  option deprecated = true;
@@ -71,6 +73,37 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Syntax.proto3, refl.fileSyntax(app_file));
     try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));
     try std.testing.expectEqualStrings("common.proto", role_file.name);
+    try std.testing.expectEqual(@as(usize, 1), refl.fileImportCount(app_file));
+    try std.testing.expectEqualStrings("common.proto", (try refl.fileImportAt(app_file, 0)).path);
+    try std.testing.expectError(error.UnknownFile, refl.fileImportAt(app_file, 9));
+    try std.testing.expectEqual(@as(usize, 1), refl.fileMessageCount(app_file));
+    try std.testing.expect((try refl.fileMessageAt(app_file, 0)) == user_desc);
+    try std.testing.expectEqualStrings("User", (try refl.fileMessageAt(app_file, 0)).name);
+    try std.testing.expectError(error.UnknownMessage, refl.fileMessageAt(app_file, 9));
+    try std.testing.expectEqual(@as(usize, 1), refl.fileEnumCount(app_file));
+    try std.testing.expectEqualStrings("Status", (try refl.fileEnumAt(app_file, 0)).name);
+    try std.testing.expectError(error.UnknownEnum, refl.fileEnumAt(app_file, 9));
+    try std.testing.expectEqual(@as(usize, 1), refl.fileServiceCount(app_file));
+    try std.testing.expectEqualStrings("Users", (try refl.fileServiceAt(app_file, 0)).name);
+    try std.testing.expectError(error.UnknownService, refl.fileServiceAt(app_file, 9));
+    try std.testing.expectEqual(@as(usize, 0), refl.fileExtensionCount(app_file));
+    try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(app_file, 0));
+    try std.testing.expectEqual(@as(usize, 25), refl.messageFieldCount(user_desc));
+    try std.testing.expect((try refl.messageFieldAt(user_desc, 0)) == try refl.fieldByName(user_desc, "id"));
+    try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
+    try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
+    try std.testing.expectEqual(@as(usize, 1), refl.messageOneofCount(user_desc));
+    try std.testing.expectEqualStrings("contact", (try refl.messageOneofAt(user_desc, 0)).name);
+    try std.testing.expectError(error.UnknownField, refl.messageOneofAt(user_desc, 9));
+    try std.testing.expectEqual(@as(usize, 1), refl.messageNestedMessageCount(user_desc));
+    try std.testing.expectEqualStrings("Audit", (try refl.messageNestedMessageAt(user_desc, 0)).name);
+    try std.testing.expectError(error.UnknownMessage, refl.messageNestedMessageAt(user_desc, 9));
+    try std.testing.expectEqual(@as(usize, 1), refl.messageNestedEnumCount(user_desc));
+    try std.testing.expectEqualStrings("LocalStatus", (try refl.messageNestedEnumAt(user_desc, 0)).name);
+    try std.testing.expectError(error.UnknownEnum, refl.messageNestedEnumAt(user_desc, 9));
+    try std.testing.expectEqual(@as(usize, 2), refl.enumValueCount(role_desc));
+    try std.testing.expectEqualStrings("ROLE_UNKNOWN", (try refl.enumValueAt(role_desc, 0)).name);
+    try std.testing.expectError(error.UnknownEnum, refl.enumValueAt(role_desc, 9));
     try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.enumValueByNumber(role_desc, 1)).name);
     try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
     try std.testing.expectEqualStrings("display_name", (try refl.fieldByJsonName(user_desc, "shownName")).name);
@@ -110,6 +143,9 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownService, refl.fileService(app_file, "Missing"));
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
+    try std.testing.expectEqual(@as(usize, 1), refl.serviceMethodCount(users_service));
+    try std.testing.expectEqualStrings("Get", (try refl.serviceMethodAt(users_service, 0)).name);
+    try std.testing.expectError(error.UnknownField, refl.serviceMethodAt(users_service, 9));
     const get_method = try refl.methodByName(users_service, "Get");
     try std.testing.expectEqualStrings("Get", get_method.name);
     try std.testing.expect(try refl.methodInputType(users_service, get_method) == user_desc);
