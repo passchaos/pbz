@@ -2234,8 +2234,37 @@ pub const Reflection = struct {
         return try message_value.unknownFieldNumbersAlloc(self.allocator);
     }
 
+    pub fn unknownFieldNumberAt(_: Reflection, message_value: *const dynamic.DynamicMessage, index: usize) Error!wire.FieldNumber {
+        const fields = message_value.unknownFields();
+        if (index >= fields.len) return error.UnknownField;
+        return fields[index].number;
+    }
+
+    pub fn unknownFieldNumberIndex(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) Error!usize {
+        for (message_value.unknownFields(), 0..) |field, index| {
+            if (field.number == number) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn unknownFieldNumberRuns(self: Reflection, message_value: *const dynamic.DynamicMessage) Error![]wire.RawFieldNumberRun {
         return try message_value.unknownFieldNumberRunsAlloc(self.allocator);
+    }
+
+    pub fn unknownFieldNumberRunAt(self: Reflection, message_value: *const dynamic.DynamicMessage, index: usize) Error!wire.RawFieldNumberRun {
+        const runs = try self.unknownFieldNumberRuns(message_value);
+        defer self.allocator.free(runs);
+        if (index >= runs.len) return error.UnknownField;
+        return runs[index];
+    }
+
+    pub fn unknownFieldNumberRunIndex(self: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) Error!usize {
+        const runs = try self.unknownFieldNumberRuns(message_value);
+        defer self.allocator.free(runs);
+        for (runs, 0..) |run, index| {
+            if (run.number == number) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn unknownFieldNumberRunNumber(_: Reflection, run: wire.RawFieldNumberRun) wire.FieldNumber {
