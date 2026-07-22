@@ -55,6 +55,11 @@ pub const ExtensionDeclaration = schema.ExtensionDeclaration;
 pub const ExtensionRangeVerification = schema.ExtensionRangeVerification;
 pub const ProtoParser = parser.Parser;
 pub const DynamicMessage = dynamic.DynamicMessage;
+pub const DynamicValue = dynamic.Value;
+pub const DynamicDefaultValue = dynamic.DefaultValue;
+pub const DynamicFieldValue = dynamic.FieldValue;
+pub const DynamicMapEntry = dynamic.MapEntry;
+pub const DynamicUnknownField = dynamic.UnknownField;
 pub const encodeFileDescriptorProto = descriptor.encodeFileDescriptorProto;
 pub const encodeFileDescriptorProtoWithRegistry = descriptor.encodeFileDescriptorProtoWithRegistry;
 pub const encodeFileDescriptorSet = descriptor.encodeFileDescriptorSet;
@@ -186,6 +191,21 @@ test "root exports descriptor schema support types" {
     try std.testing.expect((ReservedRange{ .start = 10, .end = 20 }).containsWithMax(19, 100));
     try std.testing.expect((ExtensionRange{ .start = 100, .end = 200 }).containsWithMax(199, 1000));
     try std.testing.expectEqual(ExtensionRangeVerification.declaration, .declaration);
+}
+
+test "root exports dynamic support types" {
+    const std = @import("std");
+    const value = DynamicValue{ .int32 = 7 };
+    try std.testing.expectEqual(@as(i32, 7), value.int32);
+    const default_value = DynamicDefaultValue{ .string = "ok" };
+    try std.testing.expectEqualStrings("ok", default_value.string);
+    var field_value = DynamicFieldValue{ .descriptor = undefined };
+    field_value.values = .empty;
+    try std.testing.expectEqual(@as(usize, 0), field_value.values.items.len);
+    const entry = DynamicMapEntry{ .key = .{ .string = @constCast("k") }, .value = .{ .int32 = 1 } };
+    try std.testing.expectEqualStrings("k", entry.key.string);
+    const unknown = DynamicUnknownField{ .number = 7, .wire_type = .varint, .data = @constCast(&[_]u8{ 0x38, 0x01 }) };
+    try std.testing.expectEqual(@as(FieldNumber, 7), unknown.number);
 }
 
 test "root exports registry-aware codegen" {
