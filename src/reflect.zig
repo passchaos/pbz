@@ -103,6 +103,22 @@ pub const Reflection = struct {
         return defaults.defaultsForEdition(edition) orelse error.UnknownField;
     }
 
+    pub fn featureSetDefaultsHasOverridableFeaturesForEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults, edition: schema.Edition) bool {
+        return defaults.overridableFeaturesForEdition(edition) != null;
+    }
+
+    pub fn featureSetDefaultsOverridableFeaturesForEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults, edition: schema.Edition) Error!schema.FeatureSet {
+        return defaults.overridableFeaturesForEdition(edition) orelse error.MissingField;
+    }
+
+    pub fn featureSetDefaultsHasFixedFeaturesForEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults, edition: schema.Edition) bool {
+        return defaults.fixedFeaturesForEdition(edition) != null;
+    }
+
+    pub fn featureSetDefaultsFixedFeaturesForEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults, edition: schema.Edition) Error!schema.FeatureSet {
+        return defaults.fixedFeaturesForEdition(edition) orelse error.MissingField;
+    }
+
     pub fn featureSetDefaultsHasMinimumEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults) bool {
         return defaults.minimum_edition != null;
     }

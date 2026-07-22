@@ -104,6 +104,10 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.legacy_best_effort, refl.featureSetJsonFormat(try refl.featureSetEditionDefaultFixedFeatures(legacy_defaults)));
     const edition_2024_defaults = try refl.featureSetDefaultsAt(&defaults, 1);
     try std.testing.expectEqual(edition_2024_defaults, try refl.featureSetDefaultsForEdition(&defaults, .edition_2026));
+    try std.testing.expect(refl.featureSetDefaultsHasOverridableFeaturesForEdition(&defaults, .edition_2026));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.open, refl.featureSetEnumType(try refl.featureSetDefaultsOverridableFeaturesForEdition(&defaults, .edition_2026)));
+    try std.testing.expect(refl.featureSetDefaultsHasFixedFeaturesForEdition(&defaults, .edition_2026));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, refl.featureSetEnforceProtoLimits(try refl.featureSetDefaultsFixedFeaturesForEdition(&defaults, .edition_2026)));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, refl.featureSetEnforceProtoLimits(try refl.featureSetEditionDefaultFixedFeatures(edition_2024_defaults)));
     try std.testing.expect(refl.featureSetDefaultsHasMinimumEdition(&defaults));
     try std.testing.expectEqual(pbz.schema.Edition.legacy, try refl.featureSetDefaultsMinimumEdition(&defaults));
@@ -111,6 +115,8 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Edition.edition_2026, try refl.featureSetDefaultsMaximumEdition(&defaults));
     try std.testing.expectError(error.UnknownField, refl.featureSetDefaultsAt(&defaults, 2));
     try std.testing.expectError(error.UnknownField, refl.featureSetDefaultsForEdition(&defaults, .unknown));
+    try std.testing.expect(!refl.featureSetDefaultsHasOverridableFeaturesForEdition(&defaults, .unknown));
+    try std.testing.expectError(error.MissingField, refl.featureSetDefaultsFixedFeaturesForEdition(&defaults, .unknown));
     try std.testing.expect(refl.messageHasExplicitFeatures(child_desc));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);
     try std.testing.expect(!refl.messageHasExplicitFeatures(desc));
