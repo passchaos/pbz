@@ -181,6 +181,70 @@ pub fn main() !void {
     defer from_text.deinit();
     try std.testing.expect(from_text.has(desc.findField("required_id") orelse return error.MissingField));
     try std.testing.expectEqualStrings(&.{0xc0}, from_text.get("relaxed").?.values.items[0].string);
+
+    var extension_tree = pbz.MemorySourceTree.init(allocator);
+    defer extension_tree.deinit();
+    try extension_tree.add("host.proto",
+        \\syntax = "proto2";
+        \\package demo.editions_ext;
+        \\message Host { extensions 100 to max; }
+    );
+    try extension_tree.add("ext.proto",
+        \\edition = "2023";
+        \\package demo.editions_ext;
+        \\import "host.proto";
+        \\message Payload { string label = 1; }
+        \\extend Host {
+        \\  repeated int32 samples = 100;
+        \\  string relaxed = 101 [features.utf8_validation = NONE];
+        \\  Payload delimited = 102 [features.message_encoding = DELIMITED];
+        \\  int32 explicit_zero = 103;
+        \\}
+    );
+    var extension_loaded = try pbz.loadMemory(allocator, &extension_tree, "ext.proto");
+    defer extension_loaded.deinit();
+    const host_file = extension_loaded.registry.findFile("host.proto") orelse return error.MissingDescriptor;
+    const ext_file = extension_loaded.registry.findFile("ext.proto") orelse return error.MissingDescriptor;
+    const host_desc = extension_loaded.registry.findMessage(".demo.editions_ext.Host", null) orelse return error.MissingDescriptor;
+    const payload_desc = extension_loaded.registry.findMessage(".demo.editions_ext.Payload", null) orelse return error.MissingDescriptor;
+    const samples_ext = extension_loaded.registry.findExtensionForMessage(host_desc, 100) orelse return error.MissingDescriptor;
+    const relaxed_ext = extension_loaded.registry.findExtensionForMessage(host_desc, 101) orelse return error.MissingDescriptor;
+    const delimited_ext = extension_loaded.registry.findExtensionForMessage(host_desc, 102) orelse return error.MissingDescriptor;
+    const explicit_zero_ext = extension_loaded.registry.findExtensionForMessage(host_desc, 103) orelse return error.MissingDescriptor;
+    const extension_refl = pbz.Reflection.init(allocator, &extension_loaded.registry);
+    try std.testing.expect((try extension_refl.fileOfExtension(samples_ext)) == ext_file);
+    try std.testing.expect(try extension_refl.fieldIsPacked(host_desc, samples_ext));
+    try std.testing.expectEqual(pbz.WireType.length_delimited, try extension_refl.fieldEncodedWireType(host_desc, samples_ext));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.none, try extension_refl.fieldUtf8Validation(host_desc, relaxed_ext));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, try extension_refl.fieldMessageEncoding(host_desc, delimited_ext));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, try extension_refl.fieldPresence(host_desc, explicit_zero_ext));
+
+    var extension_host = pbz.DynamicMessage.init(allocator, host_desc);
+    defer extension_host.deinit();
+    try extension_host.add(samples_ext, .{ .int32 = 3 });
+    try extension_host.add(samples_ext, .{ .int32 = 4 });
+    try extension_host.add(relaxed_ext, .{ .string = try allocator.dupe(u8, &.{0xc0}) });
+    const extension_payload = try allocator.create(pbz.DynamicMessage);
+    extension_payload.* = pbz.DynamicMessage.init(allocator, payload_desc);
+    try extension_payload.add(payload_desc.findField("label") orelse return error.MissingField, .{ .string = try allocator.dupe(u8, "owned") });
+    try extension_host.add(delimited_ext, .{ .message = extension_payload });
+    try extension_host.add(explicit_zero_ext, .{ .int32 = 0 });
+
+    const extension_encoded = try extension_host.encodedWithRegistry(host_file, &extension_loaded.registry);
+    defer allocator.free(extension_encoded);
+    try std.testing.expect(std.mem.indexOf(u8, extension_encoded, &.{ 0xa2, 0x06, 0x02, 0x03, 0x04 }) != null);
+    try std.testing.expect(std.mem.indexOf(u8, extension_encoded, &.{ 0xaa, 0x06, 0x01, 0xc0 }) != null);
+    try std.testing.expect(std.mem.indexOf(u8, extension_encoded, &.{ 0xb3, 0x06 }) != null);
+    try std.testing.expect(std.mem.indexOf(u8, extension_encoded, &.{ 0xb4, 0x06 }) != null);
+    try std.testing.expect(std.mem.indexOf(u8, extension_encoded, &.{ 0xb8, 0x06, 0x00 }) != null);
+
+    var decoded_extension_host = pbz.DynamicMessage.init(allocator, host_desc);
+    defer decoded_extension_host.deinit();
+    try decoded_extension_host.decodeWithRegistry(host_file, &extension_loaded.registry, extension_encoded);
+    try std.testing.expectEqual(@as(usize, 2), decoded_extension_host.get("samples").?.values.items.len);
+    try std.testing.expectEqualStrings(&.{0xc0}, decoded_extension_host.get("relaxed").?.values.items[0].string);
+    try std.testing.expectEqualStrings("owned", decoded_extension_host.get("delimited").?.values.items[0].message.get("label").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 0), decoded_extension_host.get("explicit_zero").?.values.items[0].int32);
 }
 
 comptime {

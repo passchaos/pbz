@@ -1112,7 +1112,7 @@ pub const Reflection = struct {
     }
 
     pub fn fieldEncodedWireType(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!wire.WireType {
-        return field.encodedWireType(try self.fileOfMessage(descriptor));
+        return field.encodedWireType(try self.fileForFieldContext(descriptor, field));
     }
 
     pub fn fieldIsScalar(_: Reflection, field: *const schema.FieldDescriptor) bool {
@@ -1294,11 +1294,11 @@ pub const Reflection = struct {
     }
 
     pub fn fieldHasPresence(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
-        return field.hasPresence(try self.fileOfMessage(descriptor));
+        return field.hasPresence(try self.fileForFieldContext(descriptor, field));
     }
 
     pub fn fieldPresence(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!schema.FeatureSet.FieldPresence {
-        return field.fieldPresence(try self.fileOfMessage(descriptor));
+        return field.fieldPresence(try self.fileForFieldContext(descriptor, field));
     }
 
     pub fn fieldIsRequired(_: Reflection, field: *const schema.FieldDescriptor) bool {
@@ -1474,15 +1474,15 @@ pub const Reflection = struct {
     }
 
     pub fn fieldIsPacked(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
-        return field.resolvedPacked(try self.fileOfMessage(descriptor));
+        return field.resolvedPacked(try self.fileForFieldContext(descriptor, field));
     }
 
     pub fn fieldUtf8Validation(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!schema.FeatureSet.Utf8Validation {
-        return field.utf8Validation(try self.fileOfMessage(descriptor));
+        return field.utf8Validation(try self.fileForFieldContext(descriptor, field));
     }
 
     pub fn fieldMessageEncoding(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!schema.FeatureSet.MessageEncoding {
-        return field.messageEncoding(try self.fileOfMessage(descriptor));
+        return field.messageEncoding(try self.fileForFieldContext(descriptor, field));
     }
 
     pub fn optionValue(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?schema.OptionValue {

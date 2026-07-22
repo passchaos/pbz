@@ -29,7 +29,7 @@ library API.
   preservation.
 - `dynamic_editions_features.zig` — dynamic protobuf editions features:
   explicit/implicit/legacy-required presence, packed/expanded repeated scalars,
-  delimited message encoding, relaxed UTF-8, reflection file/message/field/oneof/enum/enum-value/service/method/extension-range feature metadata, and closed enum preservation.
+  delimited message encoding, relaxed UTF-8, reflection file/message/field/oneof/enum/enum-value/service/method/extension-range feature metadata, cross-file extension owner-file feature defaults, and closed enum preservation.
 - `dynamic_defaults.zig` — dynamic proto2 default values, has/getOrDefault
   behavior, enum-name helpers, JSON null reset, TextFormat parsing, and imported
   enum defaults resolved through a registry.
