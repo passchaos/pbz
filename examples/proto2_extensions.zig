@@ -25,6 +25,7 @@ pub fn main() !void {
         \\  optional int32 priority = 100;
         \\  repeated Payload payloads = 101;
         \\}
+        \\message Scope { extend Host { optional string scoped = 102; } }
         \\extend DeclaredHost { optional int32 declared_priority = 200; }
     );
     defer file.deinit();
@@ -46,7 +47,12 @@ pub fn main() !void {
     std.debug.assert(refl.fieldIsExtension(priority_ext));
     std.debug.assert(std.mem.eql(u8, try refl.fieldExtendeeName(priority_ext), "Host"));
     std.debug.assert((try refl.fieldExtendeeType(priority_ext)) == host_desc);
+    std.debug.assert((try refl.fieldContainingType(host_desc, priority_ext)) == host_desc);
+    std.debug.assert((try refl.fieldExtensionScope(priority_ext)) == null);
     std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
+    const scoped_ext = try refl.extensionForMessage(host_desc, 102);
+    const scope_desc = try refl.message(".demo.Scope");
+    std.debug.assert((try refl.fieldExtensionScope(scoped_ext)).? == scope_desc);
 
     var host = try pbz.parseTextAllocWithRegistry(
         allocator,

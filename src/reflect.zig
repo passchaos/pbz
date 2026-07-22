@@ -374,6 +374,24 @@ pub const Reflection = struct {
         return error.UnknownMessage;
     }
 
+    pub fn fieldContainingType(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        if (field.extendee != null) return try self.fieldExtendeeType(field);
+        if (!messageDirectlyContainsField(descriptor, field)) return error.UnknownField;
+        return descriptor;
+    }
+
+    pub fn fieldContainingFile(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
+        if (field.extendee != null) return try self.fileOfExtension(field);
+        if (!messageDirectlyContainsField(descriptor, field)) return error.UnknownField;
+        return try self.fileOfMessage(descriptor);
+    }
+
+    pub fn fieldExtensionScope(self: Reflection, field: *const schema.FieldDescriptor) Error!?*const schema.MessageDescriptor {
+        if (field.extendee == null) return error.TypeMismatch;
+        const owner_file = try self.fileOfExtension(field);
+        return extensionScopeMessageInFile(owner_file, field);
+    }
+
     pub fn fieldByJsonName(_: Reflection, descriptor: *const schema.MessageDescriptor, json_name: []const u8) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByJsonName(json_name) orelse error.UnknownField;
     }
@@ -1604,6 +1622,33 @@ fn valueMatchesScalar(scalar: schema.ScalarType, value: dynamic.Value) bool {
         .string => value == .string,
         .bytes => value == .bytes,
     };
+}
+
+fn messageDirectlyContainsField(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) bool {
+    for (message.fields.items) |*field| {
+        if (field == target) return true;
+    }
+    return false;
+}
+
+fn extensionScopeMessageInFile(file: *const schema.FileDescriptor, target: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+    for (file.extensions.items) |*field| {
+        if (field == target) return null;
+    }
+    for (file.messages.items) |*message| {
+        if (extensionScopeMessageInMessage(message, target)) |scope| return scope;
+    }
+    return null;
+}
+
+fn extensionScopeMessageInMessage(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+    for (message.extensions.items) |*field| {
+        if (field == target) return message;
+    }
+    for (message.messages.items) |*nested| {
+        if (extensionScopeMessageInMessage(nested, target)) |scope| return scope;
+    }
+    return null;
 }
 
 fn fieldLookupScope(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, buf: *[512]u8) ?[]const u8 {

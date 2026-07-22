@@ -166,6 +166,9 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
+    try std.testing.expect((try refl.fieldContainingType(user_desc, id_field)) == user_desc);
+    try std.testing.expect((try refl.fieldContainingFile(user_desc, id_field)) == app_file);
+    try std.testing.expectError(error.UnknownField, refl.fieldContainingType(profile_desc, id_field));
     try std.testing.expect(refl.optionBool(id_field.options.items, "deprecated").?);
     try std.testing.expectEqualStrings("primary id", refl.optionString(id_field.options.items, "note").?);
     try std.testing.expectEqual(@as(i64, 42), refl.optionInteger(id_field.options.items, "answer").?);

@@ -305,7 +305,7 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/get-default
   and clear helpers across all scalar families, present-field listing, immediate
-  type-checked writes, typed repeated scalar access/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, typed singular/repeated message/group creation/access/mutation including typed repeated element access, field type/extendee/oneof metadata, map
+  type-checked writes, typed repeated scalar access/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, typed singular/repeated message/group creation/access/mutation including typed repeated element access, field type/containing/extendee/oneof metadata, map
   last-wins mutation, map key/value metadata, map size/key/value/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved metadata,
   ordered file/message/enum/service descriptor enumeration, descriptor name/full-name identity lookup,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
@@ -317,7 +317,7 @@ benchmark harness.
   both generated and dynamic messages, and generated decode reuse.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
   range declarations/verification, repeated message extensions with recursive
-  required-field validation, reflection extension/range/declaration/full-name/extendee lookup, descriptor round-trips,
+  required-field validation, reflection extension/range/declaration/full-name/extendee/scope lookup, descriptor round-trips,
   JSON/TextFormat extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and
