@@ -83,6 +83,12 @@ pub fn main() !void {
     }
     try std.testing.expectError(error.UnknownField, object.fieldAt(2));
     try std.testing.expectError(error.UnknownField, object.fieldIndex("missing"));
+    var object_reordered = try pbz.Struct.jsonParse(allocator,
+        \\{"items":[null,"zig"],"enabled":true}
+    );
+    defer object_reordered.deinit(allocator);
+    try std.testing.expect(object.eql(object_reordered));
+    try std.testing.expect((pbz.wkt.Value{ .struct_value = &object }).eql(.{ .struct_value = &object_reordered }));
     const object_json = try object.jsonStringifyAlloc(allocator);
     defer allocator.free(object_json);
     std.debug.assert(std.mem.indexOf(u8, object_json, "enabled") != null);

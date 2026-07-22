@@ -1629,6 +1629,10 @@ pub const Struct = struct {
         return (try self.fieldAt(try self.fieldIndex(key))).value;
     }
 
+    pub fn eql(self: Struct, other: Struct) bool {
+        return structEqual(self, other);
+    }
+
     pub fn encode(self: Struct, allocator: std.mem.Allocator) anyerror![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
@@ -2045,9 +2049,9 @@ fn valueEqual(a: Value, b: Value) bool {
 
 fn structEqual(a: Struct, b: Struct) bool {
     if (a.fields.len != b.fields.len) return false;
-    for (a.fields, b.fields) |lhs, rhs| {
-        if (!std.mem.eql(u8, lhs.key, rhs.key)) return false;
-        if (!valueEqual(lhs.value, rhs.value)) return false;
+    for (a.fields) |lhs| {
+        const rhs = b.fieldValue(lhs.key) catch return false;
+        if (!valueEqual(lhs.value, rhs)) return false;
     }
     return true;
 }
