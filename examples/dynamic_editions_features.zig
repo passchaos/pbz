@@ -193,11 +193,13 @@ pub fn main() !void {
         \\edition = "2023";
         \\package demo.editions_ext;
         \\import "host.proto";
+        \\option features.utf8_validation = NONE;
+        \\option features.message_encoding = DELIMITED;
         \\message Payload { string label = 1; }
         \\extend Host {
         \\  repeated int32 samples = 100;
-        \\  string relaxed = 101 [features.utf8_validation = NONE];
-        \\  Payload delimited = 102 [features.message_encoding = DELIMITED];
+        \\  string relaxed = 101;
+        \\  Payload delimited = 102;
         \\  int32 explicit_zero = 103;
         \\}
     );
@@ -245,6 +247,19 @@ pub fn main() !void {
     try std.testing.expectEqualStrings(&.{0xc0}, decoded_extension_host.get("relaxed").?.values.items[0].string);
     try std.testing.expectEqualStrings("owned", decoded_extension_host.get("delimited").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 0), decoded_extension_host.get("explicit_zero").?.values.items[0].int32);
+
+    const extension_text = try pbz.formatTextAllocWithRegistry(allocator, host_file, &extension_loaded.registry, &extension_host, .{});
+    defer allocator.free(extension_text);
+    try std.testing.expect(std.mem.indexOf(u8, extension_text, "[demo.editions_ext.samples]: 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, extension_text, "[demo.editions_ext.relaxed]: \"\\300\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, extension_text, "[demo.editions_ext.delimited] {") != null);
+
+    var extension_from_text = try pbz.parseTextAllocWithRegistry(allocator, host_file, &extension_loaded.registry, host_desc, extension_text);
+    defer extension_from_text.deinit();
+    try std.testing.expectEqual(@as(usize, 2), extension_from_text.get("samples").?.values.items.len);
+    try std.testing.expectEqualStrings(&.{0xc0}, extension_from_text.get("relaxed").?.values.items[0].string);
+    try std.testing.expectEqualStrings("owned", extension_from_text.get("delimited").?.values.items[0].message.get("label").?.values.items[0].string);
+    try std.testing.expectEqual(@as(i32, 0), extension_from_text.get("explicit_zero").?.values.items[0].int32);
 }
 
 comptime {

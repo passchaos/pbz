@@ -169,8 +169,8 @@ fn writeMapEntry(
     try writeIndent(writer, options, depth);
     try writeFieldName(file, field, field.name, writer);
     try writer.writeAll(" {\n");
-    try validateTextFormatUtf8(file, field, .{ .scalar = map_type.key }, entry.key);
-    try validateTextFormatUtf8(file, field, map_type.value.*, entry.value);
+    try validateTextFormatUtf8(file, registry, field, .{ .scalar = map_type.key }, entry.key);
+    try validateTextFormatUtf8(file, registry, field, map_type.value.*, entry.value);
     try writeField(file, registry, current, null, "key", .{ .scalar = map_type.key }, entry.key, options, writer, depth + 1);
     try writeField(file, registry, current, null, "value", map_type.value.*, entry.value, options, writer, depth + 1);
     try writeIndent(writer, options, depth);
@@ -189,14 +189,15 @@ fn writeField(
     writer: *std.Io.Writer,
     depth: usize,
 ) Error!void {
+    const field_file = fieldDefiningFile(file, registry, field);
     try writeIndent(writer, options, depth);
     switch (kind) {
         .message => |type_name| {
             if (value == .enumeration) {
-                if (registryEnumDescriptor(file, registry, current, field, type_name)) |_| {
+                if (registryEnumDescriptor(field_file, registry, current, field, type_name)) |_| {
                     try writeFieldName(file, field, name, writer);
                     try writer.writeAll(": ");
-                    try writeEnum(file, registry, current, type_name, value, options, writer);
+                    try writeEnum(field_file, registry, current, type_name, value, options, writer);
                     try writer.writeAll("\n");
                     return;
                 }
@@ -205,8 +206,8 @@ fn writeField(
                 .message => |message| {
                     try writeFieldName(file, field, name, writer);
                     try writer.writeAll(" {\n");
-                    if (!try writeAnyContents(file, registry, message, options, writer, depth + 1)) {
-                        try writeMessageFields(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer, depth + 1);
+                    if (!try writeAnyContents(field_file, registry, message, options, writer, depth + 1)) {
+                        try writeMessageFields(messageDescriptorFile(field_file, registry, message.descriptor), registry, message, options, writer, depth + 1);
                     }
                     try writeIndent(writer, options, depth);
                     try writer.writeAll("}\n");
@@ -222,17 +223,17 @@ fn writeField(
                 } else name;
                 try writeFieldName(file, field, group_name, writer);
                 try writer.writeAll(" {\n");
-                try writeMessageFields(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer, depth + 1);
+                try writeMessageFields(messageDescriptorFile(field_file, registry, message.descriptor), registry, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
                 try writer.writeAll("}\n");
             },
             else => return error.TypeMismatch,
         },
         else => {
-            try validateTextFormatUtf8(file, field, kind, value);
+            try validateTextFormatUtf8(file, registry, field, kind, value);
             try writeFieldName(file, field, name, writer);
             try writer.writeAll(": ");
-            try writeValue(file, registry, current, kind, value, options, writer);
+            try writeValue(field_file, registry, current, kind, value, options, writer);
             try writer.writeAll("\n");
         },
     }
@@ -317,8 +318,8 @@ fn writeFieldName(file: *const schema.FileDescriptor, field: ?*const schema.Fiel
     try writer.writeByte(']');
 }
 
-fn validateTextFormatUtf8(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value: dynamic.Value) Error!void {
-    if (fieldUtf8Validation(file, field) != .verify) return;
+fn validateTextFormatUtf8(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value: dynamic.Value) Error!void {
+    if (fieldUtf8Validation(fieldDefiningFile(file, registry, field), field) != .verify) return;
     switch (kind) {
         .scalar => |scalar| if (scalar == .string and value == .string and !std.unicode.utf8ValidateSlice(value.string)) return error.InvalidUtf8,
         else => {},
@@ -891,15 +892,18 @@ const TextParser = struct {
                 if (field == null) {
                     try self.parseUnknownField(message, unknown_number.?);
                     self.consumeSeparator();
-                } else if (field.?.kind == .map or field.?.kind == .group or (field.?.kind == .message and !self.fieldIsRegistryEnum(file, message.descriptor, field.?))) {
-                    const close = try self.consumeAggregateStart();
-                    try self.parseAggregateField(file, message, field.?, close);
-                } else if (field.?.cardinality == .repeated and self.peek() == '[') {
-                    try self.parseRepeatedList(file, message, field.?);
-                    self.consumeSeparator();
                 } else {
-                    try self.addOwnedValue(message, field.?, try self.parseValue(file, message.descriptor, field.?, field.?.kind));
-                    self.consumeSeparator();
+                    const field_file = fieldDefiningFile(file, self.registry, field);
+                    if (field.?.kind == .map or field.?.kind == .group or (field.?.kind == .message and !self.fieldIsRegistryEnum(field_file, message.descriptor, field.?))) {
+                        const close = try self.consumeAggregateStart();
+                        try self.parseAggregateField(field_file, message, field.?, close);
+                    } else if (field.?.cardinality == .repeated and self.peek() == '[') {
+                        try self.parseRepeatedList(field_file, message, field.?);
+                        self.consumeSeparator();
+                    } else {
+                        try self.addOwnedValue(message, field.?, try self.parseValue(field_file, message.descriptor, field.?, field.?.kind));
+                        self.consumeSeparator();
+                    }
                 }
             } else if (self.peek() == '{' or self.peek() == '<') {
                 const close = try self.consumeAggregateStart();
@@ -907,7 +911,7 @@ const TextParser = struct {
                     try self.parseUnknownGroup(message, unknown_number.?, close);
                     self.consumeSeparator();
                 } else {
-                    try self.parseAggregateField(file, message, field.?, close);
+                    try self.parseAggregateField(fieldDefiningFile(file, self.registry, field), message, field.?, close);
                 }
             } else return error.UnexpectedToken;
         }
@@ -1595,6 +1599,14 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
         if (value.number == number) return true;
     }
     return false;
+}
+
+fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor) *const schema.FileDescriptor {
+    const descriptor = field orelse return default_file;
+    if (registry) |reg| {
+        if (reg.fileContainingExtension(descriptor)) |file| return file;
+    }
+    return default_file;
 }
 
 fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {
