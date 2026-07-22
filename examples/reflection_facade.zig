@@ -41,6 +41,9 @@ pub fn main() !void {
         \\    (demo.ratio) = 1.5,
         \\    (demo.meta) = { label: "id" },
         \\    debug_redact = true,
+        \\    retention = RETENTION_SOURCE,
+        \\    targets = TARGET_TYPE_FIELD,
+        \\    targets = TARGET_TYPE_MESSAGE,
         \\    feature_support = {
         \\      edition_introduced: EDITION_2023
         \\      edition_deprecated: EDITION_2024
@@ -241,6 +244,11 @@ pub fn main() !void {
     try std.testing.expect(refl.fieldIsDebugRedacted(id_field));
     try std.testing.expect(refl.fieldCType(id_field) == null);
     try std.testing.expect(refl.fieldJSType(id_field) == null);
+    try std.testing.expectEqual(pbz.FieldRetention.retention_source, refl.fieldRetention(id_field).?);
+    try std.testing.expectEqual(@as(usize, 2), refl.fieldTargetCount(id_field));
+    try std.testing.expectEqual(pbz.FieldTargetType.target_type_field, try refl.fieldTargetAt(id_field, 0));
+    try std.testing.expectEqual(pbz.FieldTargetType.target_type_message, try refl.fieldTargetAt(id_field, 1));
+    try std.testing.expectError(error.MissingField, refl.fieldTargetAt(id_field, 2));
     try std.testing.expect(refl.fieldIsScalar(id_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
     try std.testing.expectEqualStrings("int32", try refl.fieldScalarTypeName(id_field));

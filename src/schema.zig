@@ -240,6 +240,21 @@ pub const FieldJSType = enum(i32) { js_normal = 0, js_string = 1, js_number = 2 
 
 pub const MethodIdempotencyLevel = enum(i32) { idempotency_unknown = 0, no_side_effects = 1, idempotent = 2 };
 
+pub const FieldRetention = enum(i32) { retention_unknown = 0, retention_runtime = 1, retention_source = 2 };
+
+pub const FieldTargetType = enum(i32) {
+    target_type_unknown = 0,
+    target_type_file = 1,
+    target_type_extension_range = 2,
+    target_type_message = 3,
+    target_type_field = 4,
+    target_type_oneof = 5,
+    target_type_enum = 6,
+    target_type_enum_entry = 7,
+    target_type_service = 8,
+    target_type_method = 9,
+};
+
 pub const FieldDescriptor = struct {
     name: []const u8,
     full_name: ?[]const u8 = null,
@@ -339,6 +354,28 @@ pub const FieldDescriptor = struct {
 
     pub fn jsType(self: FieldDescriptor) ?FieldJSType {
         return optionKnownEnum(FieldJSType, self.options.items, "jstype");
+    }
+
+    pub fn retention(self: FieldDescriptor) ?FieldRetention {
+        return optionKnownEnum(FieldRetention, self.options.items, "retention");
+    }
+
+    pub fn targetCount(self: FieldDescriptor) usize {
+        var count: usize = 0;
+        for (self.options.items) |option| {
+            if (std.mem.eql(u8, optionLeaf(option.name), "targets")) count += 1;
+        }
+        return count;
+    }
+
+    pub fn targetAt(self: FieldDescriptor, index: usize) ?FieldTargetType {
+        var seen: usize = 0;
+        for (self.options.items) |option| {
+            if (!std.mem.eql(u8, optionLeaf(option.name), "targets")) continue;
+            if (seen == index) return optionAsKnownEnum(FieldTargetType, option.value);
+            seen += 1;
+        }
+        return null;
     }
 
     pub fn hasDefaultValue(self: FieldDescriptor) bool {
@@ -1397,6 +1434,21 @@ fn optionKnownEnumFromName(comptime T: type, text: []const u8) ?T {
         if (std.ascii.eqlIgnoreCase(text, "IDEMPOTENCY_UNKNOWN")) return .idempotency_unknown;
         if (std.ascii.eqlIgnoreCase(text, "NO_SIDE_EFFECTS")) return .no_side_effects;
         if (std.ascii.eqlIgnoreCase(text, "IDEMPOTENT")) return .idempotent;
+    } else if (T == FieldRetention) {
+        if (std.ascii.eqlIgnoreCase(text, "RETENTION_UNKNOWN")) return .retention_unknown;
+        if (std.ascii.eqlIgnoreCase(text, "RETENTION_RUNTIME")) return .retention_runtime;
+        if (std.ascii.eqlIgnoreCase(text, "RETENTION_SOURCE")) return .retention_source;
+    } else if (T == FieldTargetType) {
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_UNKNOWN")) return .target_type_unknown;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_FILE")) return .target_type_file;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_EXTENSION_RANGE")) return .target_type_extension_range;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_MESSAGE")) return .target_type_message;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_FIELD")) return .target_type_field;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_ONEOF")) return .target_type_oneof;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_ENUM")) return .target_type_enum;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_ENUM_ENTRY")) return .target_type_enum_entry;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_SERVICE")) return .target_type_service;
+        if (std.ascii.eqlIgnoreCase(text, "TARGET_TYPE_METHOD")) return .target_type_method;
     }
     return null;
 }

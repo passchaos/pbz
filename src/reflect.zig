@@ -770,6 +770,18 @@ pub const Reflection = struct {
         return field.jsType();
     }
 
+    pub fn fieldRetention(_: Reflection, field: *const schema.FieldDescriptor) ?schema.FieldRetention {
+        return field.retention();
+    }
+
+    pub fn fieldTargetCount(_: Reflection, field: *const schema.FieldDescriptor) usize {
+        return field.targetCount();
+    }
+
+    pub fn fieldTargetAt(_: Reflection, field: *const schema.FieldDescriptor, index: usize) Error!schema.FieldTargetType {
+        return field.targetAt(index) orelse error.MissingField;
+    }
+
     pub fn fieldIsWeak(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isWeak();
     }
