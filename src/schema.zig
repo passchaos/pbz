@@ -317,6 +317,14 @@ pub const FieldDescriptor = struct {
         return file.features.message_encoding;
     }
 
+    pub fn hasExplicitJsonName(self: FieldDescriptor) bool {
+        return self.json_name != null;
+    }
+
+    pub fn explicitJsonName(self: FieldDescriptor) ?[]const u8 {
+        return self.json_name;
+    }
+
     pub fn jsonName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
         if (self.json_name) |explicit| return try allocator.dupe(u8, explicit);
         var out: std.ArrayList(u8) = .empty;

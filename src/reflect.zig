@@ -617,6 +617,14 @@ pub const Reflection = struct {
         return try field.jsonName(self.allocator);
     }
 
+    pub fn fieldHasExplicitJsonName(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.hasExplicitJsonName();
+    }
+
+    pub fn fieldExplicitJsonName(_: Reflection, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return field.explicitJsonName() orelse error.MissingField;
+    }
+
     pub fn fieldHasPresence(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
         return field.hasPresence(try self.fileOfMessage(descriptor));
     }

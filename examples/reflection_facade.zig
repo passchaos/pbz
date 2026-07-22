@@ -187,10 +187,16 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
     try std.testing.expectEqualStrings("display_name", (try refl.fieldByJsonName(user_desc, "shownName")).name);
     try std.testing.expectEqualStrings("big_delta", (try refl.fieldByJsonName(user_desc, "bigDelta")).name);
-    const explicit_json_name = try refl.fieldJsonName(try refl.fieldByName(user_desc, "display_name"));
+    const display_name_field = try refl.fieldByName(user_desc, "display_name");
+    try std.testing.expect(refl.fieldHasExplicitJsonName(display_name_field));
+    try std.testing.expectEqualStrings("shownName", try refl.fieldExplicitJsonName(display_name_field));
+    const explicit_json_name = try refl.fieldJsonName(display_name_field);
     defer allocator.free(explicit_json_name);
     try std.testing.expectEqualStrings("shownName", explicit_json_name);
-    const default_json_name = try refl.fieldJsonName(try refl.fieldByName(user_desc, "big_delta"));
+    const big_delta_field = try refl.fieldByName(user_desc, "big_delta");
+    try std.testing.expect(!refl.fieldHasExplicitJsonName(big_delta_field));
+    try std.testing.expectError(error.MissingField, refl.fieldExplicitJsonName(big_delta_field));
+    const default_json_name = try refl.fieldJsonName(big_delta_field);
     defer allocator.free(default_json_name);
     try std.testing.expectEqualStrings("bigDelta", default_json_name);
     const id_field = try refl.fieldByName(user_desc, "id");
