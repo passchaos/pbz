@@ -2546,6 +2546,19 @@ pub const Reflection = struct {
         };
     }
 
+    pub fn mapEntryIndex(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, entry: *const dynamic.MapEntry) Error!usize {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.kind != .map) return error.TypeMismatch;
+        const value = message_value.getByNumber(field.number) orelse return error.MissingField;
+        for (value.values.items, 0..) |item, index| {
+            switch (item) {
+                .map_entry => |candidate| if (candidate == entry) return index,
+                else => return error.TypeMismatch,
+            }
+        }
+        return error.MissingField;
+    }
+
     pub fn mapEntryKey(_: Reflection, entry: *const dynamic.MapEntry) dynamic.Value {
         return entry.key;
     }
@@ -2578,6 +2591,24 @@ pub const Reflection = struct {
         return keys;
     }
 
+    pub fn mapKeyAt(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!dynamic.Value {
+        return (try self.mapEntryAt(message_value, name, index)).key;
+    }
+
+    pub fn mapKeyIndex(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!usize {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        try self.validateMapKey(field, key);
+        const value = message_value.getByNumber(field.number) orelse return error.MissingField;
+        for (value.values.items, 0..) |item, index| {
+            const entry = switch (item) {
+                .map_entry => |entry| entry,
+                else => return error.TypeMismatch,
+            };
+            if (dynamic.valueEqual(entry.key, key)) return index;
+        }
+        return error.MissingField;
+    }
+
     pub fn mapValues(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]dynamic.Value {
         const entries = try self.mapEntries(message_value, name);
         defer self.allocator.free(entries);
@@ -2585,6 +2616,28 @@ pub const Reflection = struct {
         errdefer self.allocator.free(values);
         for (entries, 0..) |entry, index| values[index] = entry.value;
         return values;
+    }
+
+    pub fn mapValueAt(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!dynamic.Value {
+        return (try self.mapEntryAt(message_value, name, index)).value;
+    }
+
+    pub fn mapValueIndex(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, value_to_find: dynamic.Value) Error!usize {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const map_type = switch (field.kind) {
+            .map => |map_type| map_type,
+            else => return error.TypeMismatch,
+        };
+        try self.validateValueForKind(message_value.descriptor, field, map_type.value.*, value_to_find);
+        const value = message_value.getByNumber(field.number) orelse return error.MissingField;
+        for (value.values.items, 0..) |item, index| {
+            const entry = switch (item) {
+                .map_entry => |entry| entry,
+                else => return error.TypeMismatch,
+            };
+            if (dynamic.valueEqual(entry.value, value_to_find)) return index;
+        }
+        return error.MissingField;
     }
 
     pub fn mapContains(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!bool {
