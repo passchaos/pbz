@@ -44,6 +44,20 @@ pub fn main() !void {
     defer any.deinit(allocator);
     try std.testing.expect(any.isType("demo.any.Payload"));
     try std.testing.expectEqualStrings("demo.any.Payload", any.typeName());
+    try std.testing.expectEqualStrings(pbz.Any.default_type_url_prefix, any.typeUrlPrefix());
+
+    var custom_prefix_any = try pbz.Any.packDynamicInitializedWithRegistryAndPrefix(
+        allocator,
+        "example.test/any",
+        &file,
+        &registry,
+        "demo.any.Payload",
+        &payload,
+    );
+    defer custom_prefix_any.deinit(allocator);
+    try std.testing.expectEqualStrings("example.test/any/demo.any.Payload", custom_prefix_any.typeUrl());
+    try std.testing.expect(custom_prefix_any.typeNameIs(".demo.any.Payload"));
+    try std.testing.expect(custom_prefix_any.typeUrlPrefixIs("example.test/any/"));
 
     var unpacked = try any.unpackDynamicInitializedWithRegistry(
         allocator,

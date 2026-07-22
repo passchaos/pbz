@@ -91,7 +91,7 @@ library API.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask path presence/access/index, Empty,
   Struct field presence/access/index, Value equality/typed accessors, ListValue presence/access/index, scalar wrappers, bytes wrappers, and Any including
   embedded WKT JSON values plus descriptor well-known-type reflection.
-- `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup and required-field validation.
+- `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup, custom type URL prefixes, and required-field validation.
 - `any_type_url.zig` — custom `Any` type URL/name prefixes/accessors/matching, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON,
   repeated message extensions with required-field validation, extension range

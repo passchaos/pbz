@@ -324,7 +324,7 @@ benchmark harness.
   bytes wrappers, standalone `Any` JSON mapping for embedded WKT payload
   values, descriptor well-known-type reflection, and WKT wire round-trips.
 - `examples/any_dynamic.zig` covers custom dynamic-message `Any`
-  pack/unpack with registry lookup, type-url matching, required-field
+  pack/unpack with registry lookup, custom type URL prefixes, type-url matching, required-field
   validation on pack and unpack, and type mismatch errors.
 - `examples/any_type_url.zig` covers custom `Any` type URL/name prefixes/accessors/matching, leading-dot
   protobuf type names, JSON parse for custom prefixes, default prefix

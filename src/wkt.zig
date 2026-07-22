@@ -853,20 +853,36 @@ pub const Any = struct {
         return try packDynamicWithRegistry(allocator, file, null, full_name, message);
     }
 
+    pub fn packDynamicWithPrefix(allocator: std.mem.Allocator, prefix: []const u8, file: *const schema_mod.FileDescriptor, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
+        return try packDynamicWithRegistryAndPrefix(allocator, prefix, file, null, full_name, message);
+    }
+
     pub fn packDynamicWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
+        return try packDynamicWithRegistryAndPrefix(allocator, default_type_url_prefix, file, registry, full_name, message);
+    }
+
+    pub fn packDynamicWithRegistryAndPrefix(allocator: std.mem.Allocator, prefix: []const u8, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
         const payload = try message.encodedWithRegistry(registry_mod.messageDefiningFile(file, registry, message.descriptor), registry);
         defer message.allocator.free(payload);
-        return try packBytes(allocator, full_name, payload);
+        return try packBytesWithPrefix(allocator, prefix, full_name, payload);
     }
 
     pub fn packDynamicInitialized(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
         return try packDynamicInitializedWithRegistry(allocator, file, null, full_name, message);
     }
 
+    pub fn packDynamicInitializedWithPrefix(allocator: std.mem.Allocator, prefix: []const u8, file: *const schema_mod.FileDescriptor, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
+        return try packDynamicInitializedWithRegistryAndPrefix(allocator, prefix, file, null, full_name, message);
+    }
+
     pub fn packDynamicInitializedWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
+        return try packDynamicInitializedWithRegistryAndPrefix(allocator, default_type_url_prefix, file, registry, full_name, message);
+    }
+
+    pub fn packDynamicInitializedWithRegistryAndPrefix(allocator: std.mem.Allocator, prefix: []const u8, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
         const payload = try message.encodedInitializedWithRegistry(registry_mod.messageDefiningFile(file, registry, message.descriptor), registry);
         defer message.allocator.free(payload);
-        return try packBytes(allocator, full_name, payload);
+        return try packBytesWithPrefix(allocator, prefix, full_name, payload);
     }
 
     pub fn typeName(self: Any) []const u8 {
