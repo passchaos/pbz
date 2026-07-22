@@ -24,6 +24,7 @@ pub fn main() !void {
         \\option java_package = "com.example.demo";
         \\option java_outer_classname = "DemoApp";
         \\option java_multiple_files = true;
+        \\option java_generate_equals_and_hash = true;
         \\option java_string_check_utf8 = true;
         \\option go_package = "example.com/demo;demopb";
         \\option cc_enable_arenas = true;
@@ -32,6 +33,7 @@ pub fn main() !void {
         \\option swift_prefix = "Demo";
         \\option php_class_prefix = "Demo";
         \\option php_namespace = "Example\\Demo";
+        \\option php_metadata_namespace = "Example\\Demo\\Metadata";
         \\option ruby_package = "Example::Demo";
         \\option cc_generic_services = true;
         \\option java_generic_services = true;
@@ -56,6 +58,7 @@ pub fn main() !void {
     std.debug.assert(std.mem.eql(u8, refl.fileJavaPackage(app_file).?, "com.example.demo"));
     std.debug.assert(std.mem.eql(u8, refl.fileJavaOuterClassname(app_file).?, "DemoApp"));
     std.debug.assert(refl.fileJavaMultipleFiles(app_file));
+    std.debug.assert(refl.fileJavaGenerateEqualsAndHash(app_file));
     std.debug.assert(refl.fileJavaStringCheckUtf8(app_file));
     std.debug.assert(std.mem.eql(u8, refl.fileGoPackage(app_file).?, "example.com/demo;demopb"));
     std.debug.assert(refl.fileCcEnableArenas(app_file));
@@ -64,6 +67,7 @@ pub fn main() !void {
     std.debug.assert(std.mem.eql(u8, refl.fileSwiftPrefix(app_file).?, "Demo"));
     std.debug.assert(std.mem.eql(u8, refl.filePhpClassPrefix(app_file).?, "Demo"));
     std.debug.assert(std.mem.eql(u8, refl.filePhpNamespace(app_file).?, "Example\\Demo"));
+    std.debug.assert(std.mem.eql(u8, refl.filePhpMetadataNamespace(app_file).?, "Example\\Demo\\Metadata"));
     std.debug.assert(std.mem.eql(u8, refl.fileRubyPackage(app_file).?, "Example::Demo"));
     std.debug.assert(refl.fileCcGenericServices(app_file));
     std.debug.assert(refl.fileJavaGenericServices(app_file));

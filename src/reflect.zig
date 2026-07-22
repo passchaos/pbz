@@ -90,6 +90,10 @@ pub const Reflection = struct {
         return schema.optionBool(file_descriptor.options.items, "java_string_check_utf8") orelse false;
     }
 
+    pub fn fileJavaGenerateEqualsAndHash(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
+        return schema.optionBool(file_descriptor.options.items, "java_generate_equals_and_hash") orelse false;
+    }
+
     pub fn fileCcEnableArenas(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
         return schema.optionBool(file_descriptor.options.items, "cc_enable_arenas") orelse false;
     }
@@ -112,6 +116,10 @@ pub const Reflection = struct {
 
     pub fn filePhpNamespace(_: Reflection, file_descriptor: *const schema.FileDescriptor) ?[]const u8 {
         return schema.optionString(file_descriptor.options.items, "php_namespace");
+    }
+
+    pub fn filePhpMetadataNamespace(_: Reflection, file_descriptor: *const schema.FileDescriptor) ?[]const u8 {
+        return schema.optionString(file_descriptor.options.items, "php_metadata_namespace");
     }
 
     pub fn fileRubyPackage(_: Reflection, file_descriptor: *const schema.FileDescriptor) ?[]const u8 {
