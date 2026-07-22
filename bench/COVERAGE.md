@@ -301,7 +301,7 @@ benchmark harness.
 - `examples/descriptors_codegen.zig` covers descriptor encode/decode,
   descriptor sets, source-code info lookup/accessors, uninterpreted custom options,
   service/method options including idempotency levels, direct codegen, plugin
-  request generation, and generated-code info annotation lookup.
+  request generation, and generated-code info annotation lookup/accessors.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/get-default
   and clear helpers across all scalar families, present-field listing, immediate

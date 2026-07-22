@@ -99,6 +99,55 @@ pub const Reflection = struct {
         return location.leading_detached_comments.items[index];
     }
 
+    pub fn generatedAnnotation(_: Reflection, generated_code_info: *const schema.GeneratedCodeInfo, path: []const i32) Error!*const schema.GeneratedCodeInfo.Annotation {
+        return generated_code_info.annotation(path) orelse error.UnknownField;
+    }
+
+    pub fn generatedAnnotationCount(_: Reflection, generated_code_info: *const schema.GeneratedCodeInfo) usize {
+        return generated_code_info.annotations.items.len;
+    }
+
+    pub fn generatedAnnotationAt(_: Reflection, generated_code_info: *const schema.GeneratedCodeInfo, index: usize) Error!*const schema.GeneratedCodeInfo.Annotation {
+        if (index >= generated_code_info.annotations.items.len) return error.UnknownField;
+        return &generated_code_info.annotations.items[index];
+    }
+
+    pub fn generatedAnnotationPath(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) []const i32 {
+        return annotation.path.items;
+    }
+
+    pub fn generatedAnnotationHasSourceFile(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) bool {
+        return annotation.source_file != null;
+    }
+
+    pub fn generatedAnnotationSourceFile(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) Error![]const u8 {
+        return annotation.source_file orelse error.MissingField;
+    }
+
+    pub fn generatedAnnotationHasBegin(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) bool {
+        return annotation.begin != null;
+    }
+
+    pub fn generatedAnnotationBegin(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) Error!i32 {
+        return annotation.begin orelse error.MissingField;
+    }
+
+    pub fn generatedAnnotationHasEnd(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) bool {
+        return annotation.end != null;
+    }
+
+    pub fn generatedAnnotationEnd(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) Error!i32 {
+        return annotation.end orelse error.MissingField;
+    }
+
+    pub fn generatedAnnotationHasSemantic(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) bool {
+        return annotation.semantic != null;
+    }
+
+    pub fn generatedAnnotationSemantic(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) Error!schema.GeneratedCodeInfo.Semantic {
+        return annotation.semantic orelse error.MissingField;
+    }
+
     pub fn fileImport(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) Error!schema.Import {
         return file_descriptor.findImport(path) orelse error.UnknownFile;
     }

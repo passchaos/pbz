@@ -96,7 +96,7 @@ pub fn main() !void {
     const response_bytes = try pbz.generatePluginResponseFromRequest(allocator, &request);
     defer allocator.free(response_bytes);
     std.debug.assert(response_bytes.len != 0);
-    try expectPluginResponseMetadata(allocator, response_bytes, file.name);
+    try expectPluginResponseMetadata(allocator, refl, response_bytes, file.name);
 }
 
 fn optionValue(options: []const pbz.schema.FieldOption, name: []const u8) ?pbz.schema.OptionValue {
@@ -106,7 +106,7 @@ fn optionValue(options: []const pbz.schema.FieldOption, name: []const u8) ?pbz.s
     return null;
 }
 
-fn expectPluginResponseMetadata(allocator: std.mem.Allocator, response_bytes: []const u8, source_file: []const u8) !void {
+fn expectPluginResponseMetadata(allocator: std.mem.Allocator, refl: pbz.Reflection, response_bytes: []const u8, source_file: []const u8) !void {
     var reader = pbz.Reader.init(response_bytes);
     var saw_features = false;
     var saw_minimum_edition = false;
@@ -133,9 +133,13 @@ fn expectPluginResponseMetadata(allocator: std.mem.Allocator, response_bytes: []
                             saw_generated_info = true;
                             var info = try pbz.decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
                             defer info.deinit(allocator);
-                            saw_file_annotation = saw_file_annotation or generatedAnnotationMatches(info.annotation(&.{}) orelse return error.MissingGeneratedAnnotation, source_file);
-                            saw_message_annotation = saw_message_annotation or generatedAnnotationMatches(info.annotation(&.{ 4, 0 }) orelse return error.MissingGeneratedAnnotation, source_file);
-                            saw_field_annotation = saw_field_annotation or generatedAnnotationMatches(info.annotation(&.{ 4, 0, 2, 0 }) orelse return error.MissingGeneratedAnnotation, source_file);
+                            const annotation_count = refl.generatedAnnotationCount(&info);
+                            try std.testing.expect(annotation_count >= 3);
+                            _ = try refl.generatedAnnotationAt(&info, 0);
+                            try std.testing.expectError(error.UnknownField, refl.generatedAnnotationAt(&info, annotation_count));
+                            saw_file_annotation = saw_file_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{}), &.{}, source_file);
+                            saw_message_annotation = saw_message_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{ 4, 0 }), &.{ 4, 0 }, source_file);
+                            saw_field_annotation = saw_field_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{ 4, 0, 2, 0 }), &.{ 4, 0, 2, 0 }, source_file);
                         },
                         else => try file_reader.skipValue(file_tag),
                     }
@@ -155,9 +159,13 @@ fn expectPluginResponseMetadata(allocator: std.mem.Allocator, response_bytes: []
     try std.testing.expect(saw_field_annotation);
 }
 
-fn generatedAnnotationMatches(annotation: *const pbz.GeneratedCodeInfo.Annotation, source_file: []const u8) bool {
-    return std.mem.eql(u8, annotation.source_file orelse "", source_file) and
-        annotation.begin.? >= 0 and
-        annotation.end.? > annotation.begin.? and
-        annotation.semantic.? == .set;
+fn generatedAnnotationMatches(refl: pbz.Reflection, annotation: *const pbz.GeneratedCodeInfo.Annotation, expected_path: []const i32, source_file: []const u8) bool {
+    if (!std.mem.eql(i32, refl.generatedAnnotationPath(annotation), expected_path)) return false;
+    if (!refl.generatedAnnotationHasSourceFile(annotation) or !refl.generatedAnnotationHasBegin(annotation) or !refl.generatedAnnotationHasEnd(annotation) or !refl.generatedAnnotationHasSemantic(annotation)) return false;
+    const begin = refl.generatedAnnotationBegin(annotation) catch return false;
+    const end = refl.generatedAnnotationEnd(annotation) catch return false;
+    return std.mem.eql(u8, refl.generatedAnnotationSourceFile(annotation) catch return false, source_file) and
+        begin >= 0 and
+        end > begin and
+        (refl.generatedAnnotationSemantic(annotation) catch return false) == .set;
 }
