@@ -281,6 +281,11 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, try refl.fieldMapValueKind(counts_desc_field));
     try std.testing.expect(refl.fieldIsRepeatedLike(counts_desc_field));
     try std.testing.expect(!refl.fieldIsPackable(counts_desc_field));
+    try std.testing.expectEqual(@as(i32, 0), (try refl.fieldDefaultValue(user_desc, id_field)).int32);
+    try std.testing.expectEqualStrings("", (try refl.fieldDefaultValue(user_desc, try refl.fieldByName(user_desc, "name"))).string);
+    try std.testing.expectEqual(@as(i32, 0), (try refl.fieldDefaultValue(user_desc, role_field)).enumeration);
+    try std.testing.expectEqual(pbz.dynamic.DefaultValue.none, try refl.fieldDefaultValue(user_desc, tags_field));
+    try std.testing.expectEqual(pbz.dynamic.DefaultValue.none, try refl.fieldDefaultValue(user_desc, profile_field));
     try std.testing.expect(refl.messageReservedName(user_desc, "legacy"));
     try std.testing.expectEqual(@as(usize, 1), refl.messageReservedNameCount(user_desc));
     try std.testing.expectEqualStrings("legacy", try refl.messageReservedNameAt(user_desc, 0));
@@ -668,6 +673,7 @@ pub fn main() !void {
     const priority_field = try required_refl.fieldByName(parent.descriptor, "priority");
     try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
     try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
+    try std.testing.expectEqual(@as(i32, 7), (try required_refl.fieldDefaultValue(parent.descriptor, priority_field)).int32);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.getFieldOrDefault(&parent, "priority")).int32);
     const required_child_field = try required_refl.fieldByName(parent.descriptor, "child");
     try std.testing.expectEqualStrings("Child", try required_refl.fieldTypeName(required_child_field));
@@ -686,6 +692,7 @@ pub fn main() !void {
     try std.testing.expect(!required_refl.fieldIsOptional(required_name_field));
     try std.testing.expect(!required_refl.fieldHasDefaultValue(required_name_field));
     try std.testing.expectError(error.MissingField, required_refl.fieldExplicitDefaultValue(required_name_field));
+    try std.testing.expectEqualStrings("", (try required_refl.fieldDefaultValue(parent.descriptor, required_name_field)).string);
     try std.testing.expect(!required_refl.isInitialized(&parent));
     try std.testing.expectError(error.MissingRequiredField, required_refl.validateInitialized(&parent));
     const missing_name = (try required_refl.missingRequiredFieldPath(&parent)).?;

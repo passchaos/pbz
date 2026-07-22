@@ -77,6 +77,20 @@ pub const FieldValue = struct {
     }
 };
 
+pub fn defaultValueForField(field: *const schema.FieldDescriptor) DefaultValue {
+    if (field.isRepeatedLike()) return .none;
+    return defaultForField(field);
+}
+
+pub fn defaultValueForFieldWithFile(file: *const schema.FileDescriptor, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) DefaultValue {
+    return defaultValueForFieldWithRegistry(file, null, current, field);
+}
+
+pub fn defaultValueForFieldWithRegistry(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) DefaultValue {
+    if (field.isRepeatedLike()) return .none;
+    return defaultForFieldWithRegistry(file, registry, current, field);
+}
+
 pub const UnknownField = struct {
     number: wire.FieldNumber,
     wire_type: wire.WireType,

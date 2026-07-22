@@ -657,6 +657,12 @@ pub const Reflection = struct {
         return field.explicitDefaultValue() orelse error.MissingField;
     }
 
+    pub fn fieldDefaultValue(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!dynamic.DefaultValue {
+        const owner_file = try self.fileForFieldContext(descriptor, field);
+        const default_scope = if (field.extendee != null) (try self.fieldExtensionScope(field)) orelse descriptor else descriptor;
+        return dynamic.defaultValueForFieldWithRegistry(owner_file, self.registry, default_scope, field);
+    }
+
     pub fn fieldHasFeatureSupport(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.feature_support != null;
     }
