@@ -782,6 +782,10 @@ pub const Reflection = struct {
         return field.wireType();
     }
 
+    pub fn fieldEncodedWireType(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!wire.WireType {
+        return field.encodedWireType(try self.fileOfMessage(descriptor));
+    }
+
     pub fn fieldIsScalar(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.kind == .scalar;
     }

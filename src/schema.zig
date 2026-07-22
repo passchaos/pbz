@@ -270,6 +270,11 @@ pub const FieldDescriptor = struct {
         return self.kind.wireType();
     }
 
+    pub fn encodedWireType(self: FieldDescriptor, file: *const FileDescriptor) wire.WireType {
+        if (self.resolvedPacked(file)) return .length_delimited;
+        return self.wireType();
+    }
+
     pub fn mapKeyType(self: FieldDescriptor) ?ScalarType {
         return switch (self.kind) {
             .map => |map_type| map_type.key,

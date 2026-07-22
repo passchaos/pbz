@@ -231,6 +231,7 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
     try std.testing.expectEqual(pbz.WireType.varint, refl.fieldWireType(id_field));
+    try std.testing.expectEqual(pbz.WireType.varint, try refl.fieldEncodedWireType(user_desc, id_field));
     try std.testing.expect(refl.fieldIsDeprecated(id_field));
     try std.testing.expect(refl.fieldIsScalar(id_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
@@ -272,6 +273,7 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Profile", try refl.fieldTypeName(profile_field));
     try std.testing.expect(refl.fieldIsMessage(profile_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(profile_field));
+    try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, profile_field));
     try std.testing.expect(profile_desc == try refl.fieldMessageType(user_desc, profile_field));
     try std.testing.expect(refl.fieldIsProto3Optional(nickname_field));
     try std.testing.expect(refl.fieldHasOptionalKeyword(nickname_field));
@@ -297,8 +299,11 @@ pub fn main() !void {
     try std.testing.expect(!refl.fieldIsPackable(tags_field));
     try std.testing.expect(refl.fieldIsPackable(samples_field));
     try std.testing.expect(try refl.fieldIsPacked(user_desc, samples_field));
+    try std.testing.expectEqual(pbz.WireType.varint, refl.fieldWireType(samples_field));
+    try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, samples_field));
     try std.testing.expect(refl.fieldIsMap(counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(counts_desc_field));
+    try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, counts_desc_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.string, try refl.fieldMapKeyType(counts_desc_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, try refl.fieldMapValueKind(counts_desc_field));
     try std.testing.expect(refl.fieldIsRepeatedLike(counts_desc_field));
