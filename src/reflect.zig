@@ -207,6 +207,13 @@ pub const Reflection = struct {
         return location.leading_detached_comments.items[index];
     }
 
+    pub fn sourceLocationLeadingDetachedCommentIndex(_: Reflection, location: *const schema.SourceCodeInfo.Location, comment: []const u8) Error!usize {
+        for (location.leading_detached_comments.items, 0..) |candidate, index| {
+            if (std.mem.eql(u8, candidate, comment)) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn generatedAnnotation(_: Reflection, generated_code_info: *const schema.GeneratedCodeInfo, path: []const i32) Error!*const schema.GeneratedCodeInfo.Annotation {
         return generated_code_info.annotation(path) orelse error.UnknownField;
     }

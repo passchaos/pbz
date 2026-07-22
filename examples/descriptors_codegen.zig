@@ -12,6 +12,8 @@ pub fn main() !void {
         \\package demo;
         \\option (demo.file_opt).child = "file-value";
         \\
+        \\// Detached Event paragraph.
+        \\
         \\// Event leading comment.
         \\message Event {
         \\  // id leading comment.
@@ -47,8 +49,14 @@ pub fn main() !void {
     try std.testing.expect(refl.sourceLocationTrailingComments(syntax_location) == null);
     try std.testing.expectEqual(@as(usize, 0), refl.sourceLocationLeadingDetachedCommentCount(syntax_location));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentAt(syntax_location, 0));
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentIndex(syntax_location, "missing\n"));
     const event_location = file.source_code_info.location(&.{ 4, 0 }) orelse return error.MissingSourceInfo;
     try std.testing.expectEqualStrings("Event leading comment.\n", refl.sourceLocationLeadingComments(event_location).?);
+    try std.testing.expectEqual(@as(usize, 1), refl.sourceLocationLeadingDetachedCommentCount(event_location));
+    try std.testing.expectEqualStrings("Detached Event paragraph.\n", try refl.sourceLocationLeadingDetachedCommentAt(event_location, 0));
+    try std.testing.expectEqual(@as(usize, 0), try refl.sourceLocationLeadingDetachedCommentIndex(event_location, "Detached Event paragraph.\n"));
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentAt(event_location, 1));
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentIndex(event_location, "missing\n"));
     const id_location = try refl.sourceLocation(&file, &.{ 4, 0, 2, 0 });
     try std.testing.expectEqualSlices(i32, &.{ 4, 0, 2, 0 }, refl.sourceLocationPath(id_location));
     try std.testing.expectEqualStrings("id leading comment.\n", refl.sourceLocationLeadingComments(id_location).?);
