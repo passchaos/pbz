@@ -1274,6 +1274,14 @@ pub const Reflection = struct {
         return try message_value.getEnumNamesWithRegistry(self.allocator, owner_file, self.registry, field);
     }
 
+    pub fn repeatedEnumName(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!?[]const u8 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const number = try self.repeatedEnum(message_value, name, index);
+        const descriptor = try self.enumForField(message_value.descriptor, field);
+        if (descriptor.findValueByNumber(number)) |value| return value.name;
+        return null;
+    }
+
     pub fn getEnumValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*const schema.EnumValueDescriptor {
         const field = try self.fieldByName(message_value.descriptor, name);
         const number = try self.getEnum(message_value, name);
@@ -1284,6 +1292,13 @@ pub const Reflection = struct {
     pub fn getEnumValueOrDefault(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*const schema.EnumValueDescriptor {
         const field = try self.fieldByName(message_value.descriptor, name);
         const number = try self.getEnumOrDefault(message_value, name);
+        const descriptor = try self.enumForField(message_value.descriptor, field);
+        return try self.enumValueByNumber(descriptor, number);
+    }
+
+    pub fn repeatedEnumValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!*const schema.EnumValueDescriptor {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        const number = try self.repeatedEnum(message_value, name, index);
         const descriptor = try self.enumForField(message_value.descriptor, field);
         return try self.enumValueByNumber(descriptor, number);
     }

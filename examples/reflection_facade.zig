@@ -316,7 +316,13 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 1), try refl.repeatedEnum(&user, "roles", 1));
     try std.testing.expect(try refl.setRepeatedEnumByName(&user, "roles", 0, "ROLE_ADMIN"));
     try std.testing.expectEqual(@as(i32, 1), try refl.repeatedEnum(&user, "roles", 0));
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.repeatedEnumName(&user, "roles", 0)).?);
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.repeatedEnumValue(&user, "roles", 0)).name);
     try std.testing.expectError(error.UnknownEnum, refl.setRepeatedEnumByName(&user, "roles", 0, "ROLE_MISSING"));
+    try std.testing.expect(try refl.setRepeatedEnum(&user, "roles", 1, 123));
+    try std.testing.expectEqual(@as(?[]const u8, null), try refl.repeatedEnumName(&user, "roles", 1));
+    try std.testing.expectError(error.UnknownEnum, refl.repeatedEnumValue(&user, "roles", 1));
+    try std.testing.expect(try refl.setRepeatedEnumByName(&user, "roles", 1, "ROLE_ADMIN"));
     const repeated_role_names = try refl.repeatedEnumNames(&user, "roles");
     defer allocator.free(repeated_role_names);
     try std.testing.expectEqual(@as(usize, 2), repeated_role_names.len);
