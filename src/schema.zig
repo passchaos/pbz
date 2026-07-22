@@ -315,6 +315,10 @@ pub const FieldDescriptor = struct {
         return optionBool(self.options.items, "unverified_lazy") orelse false;
     }
 
+    pub fn isDebugRedacted(self: FieldDescriptor) bool {
+        return optionBool(self.options.items, "debug_redact") orelse false;
+    }
+
     pub fn hasDefaultValue(self: FieldDescriptor) bool {
         return self.default_value != null;
     }
@@ -584,6 +588,10 @@ pub const EnumValueDescriptor = struct {
     pub fn deinit(self: *EnumValueDescriptor, allocator: std.mem.Allocator) void {
         deinitOptions(&self.options, allocator);
         self.* = undefined;
+    }
+
+    pub fn isDebugRedacted(self: EnumValueDescriptor) bool {
+        return optionBool(self.options.items, "debug_redact") orelse false;
     }
 };
 

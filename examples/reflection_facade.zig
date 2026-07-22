@@ -25,6 +25,7 @@ pub fn main() !void {
         \\  reserved "STATUS_OLD";
         \\  STATUS_UNKNOWN = 0 [
         \\    deprecated = true,
+        \\    debug_redact = true,
         \\    feature_support = { edition_removed: EDITION_2026 removal_error: "removed status" }
         \\  ];
         \\}
@@ -39,6 +40,7 @@ pub fn main() !void {
         \\    (demo.max_u64) = 18446744073709551615,
         \\    (demo.ratio) = 1.5,
         \\    (demo.meta) = { label: "id" },
+        \\    debug_redact = true,
         \\    feature_support = {
         \\      edition_introduced: EDITION_2023
         \\      edition_deprecated: EDITION_2024
@@ -233,6 +235,7 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.WireType.varint, refl.fieldWireType(id_field));
     try std.testing.expectEqual(pbz.WireType.varint, try refl.fieldEncodedWireType(user_desc, id_field));
     try std.testing.expect(refl.fieldIsDeprecated(id_field));
+    try std.testing.expect(refl.fieldIsDebugRedacted(id_field));
     try std.testing.expect(refl.fieldIsScalar(id_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
     try std.testing.expectEqualStrings("int32", try refl.fieldScalarTypeName(id_field));
@@ -334,6 +337,7 @@ pub fn main() !void {
     try std.testing.expect(refl.optionBool(refl.enumOptions(status_desc), "deprecated").?);
     const status_unknown_value = try refl.enumValueByName(status_desc, "STATUS_UNKNOWN");
     try std.testing.expect(refl.enumValueIsDeprecated(status_unknown_value));
+    try std.testing.expect(refl.enumValueIsDebugRedacted(status_unknown_value));
     try std.testing.expect(refl.optionBool(refl.enumValueOptions(status_unknown_value), "deprecated").?);
     try std.testing.expect(refl.enumValueHasFeatureSupport(status_unknown_value));
     const status_support = try refl.enumValueFeatureSupport(status_unknown_value);
@@ -341,6 +345,7 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("removed status", status_support.removal_error);
     try std.testing.expect(!refl.enumValueHasFeatureSupport(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
     try std.testing.expectError(error.MissingField, refl.enumValueFeatureSupport(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
+    try std.testing.expect(!refl.enumValueIsDebugRedacted(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
     try std.testing.expect(refl.enumReservedName(status_desc, "STATUS_OLD"));
     try std.testing.expectEqual(@as(usize, 1), refl.enumReservedNameCount(status_desc));
     try std.testing.expectEqualStrings("STATUS_OLD", try refl.enumReservedNameAt(status_desc, 0));

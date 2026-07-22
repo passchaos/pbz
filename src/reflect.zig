@@ -527,6 +527,10 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn enumValueIsDebugRedacted(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
+        return descriptor.isDebugRedacted();
+    }
+
     pub fn enumValueOptions(_: Reflection, descriptor: *const schema.EnumValueDescriptor) []const schema.FieldOption {
         return descriptor.options.items;
     }
@@ -748,6 +752,10 @@ pub const Reflection = struct {
 
     pub fn fieldIsDeprecated(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return schema.optionBool(field.options.items, "deprecated") orelse false;
+    }
+
+    pub fn fieldIsDebugRedacted(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isDebugRedacted();
     }
 
     pub fn fieldIsWeak(_: Reflection, field: *const schema.FieldDescriptor) bool {
