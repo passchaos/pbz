@@ -120,6 +120,8 @@ pub fn main() !void {
     std.debug.assert(refl.messageExtensionRangeCount(declared_desc) == 1);
     const reflected_range = refl.messageExtensionRange(declared_desc, 200) orelse return error.MissingExtensionRange;
     std.debug.assert(reflected_range == try refl.messageExtensionRangeAt(declared_desc, 0));
+    std.debug.assert(try refl.messageExtensionRangeIndex(declared_desc, reflected_range) == 0);
+    std.debug.assert(try refl.extensionRangeContainingType(declared_desc, reflected_range) == declared_desc);
     try std.testing.expectError(error.UnknownField, refl.messageExtensionRangeAt(declared_desc, 9));
     std.debug.assert(refl.extensionRangeStart(reflected_range) == 200);
     std.debug.assert(try refl.extensionRangeEnd(declared_desc, reflected_range) == 250);

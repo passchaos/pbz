@@ -1194,6 +1194,18 @@ pub const Reflection = struct {
         return &descriptor.extension_ranges.items[index];
     }
 
+    pub fn messageExtensionRangeIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, range: *const schema.ExtensionRange) Error!usize {
+        for (descriptor.extension_ranges.items, 0..) |*candidate, index| {
+            if (candidate == range) return index;
+        }
+        return error.UnknownField;
+    }
+
+    pub fn extensionRangeContainingType(_: Reflection, descriptor: *const schema.MessageDescriptor, range: *const schema.ExtensionRange) Error!*const schema.MessageDescriptor {
+        if (!messageDirectlyContainsExtensionRange(descriptor, range)) return error.UnknownField;
+        return descriptor;
+    }
+
     pub fn messageExtensionRangeMaxExclusive(_: Reflection, descriptor: *const schema.MessageDescriptor) i64 {
         return descriptor.extensionRangeMaxExclusive();
     }
