@@ -21,6 +21,9 @@ pub fn main() !void {
     const host_desc = file.findMessage("Host") orelse return error.MissingDescriptor;
     const ext_desc = file.findMessage("Ext") orelse return error.MissingDescriptor;
     const ext_field = registry.findExtension("demo.dynamicms.Host", 100) orelse return error.MissingField;
+    const refl = pbz.Reflection.init(allocator, &registry);
+    try std.testing.expect(refl.messageIsMessageSetWireFormat(host_desc));
+    try std.testing.expect(!refl.messageIsMessageSetWireFormat(ext_desc));
 
     const ext_msg = try allocator.create(pbz.DynamicMessage);
     ext_msg.* = pbz.DynamicMessage.init(allocator, ext_desc);

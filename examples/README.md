@@ -43,7 +43,7 @@ library API.
 - `dynamic_reserved_text.zig` — reserved field names/ranges in dynamic schemas,
   descriptor round-trips, and TextFormat's reserved-name ignore semantics.
 - `dynamic_messageset.zig` — dynamic proto2 MessageSet encode/decode,
-  JSON/TextFormat mapping, payload-before-type-id parsing, and unknown item
+  reflection MessageSet wire-format metadata, JSON/TextFormat mapping, payload-before-type-id parsing, and unknown item
   preservation.
 - `descriptors_codegen.zig` — descriptor encode/decode, source-code info lookup/enumeration/accessors,
   uninterpreted custom options, service/method options, descriptor sets, direct

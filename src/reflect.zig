@@ -346,6 +346,10 @@ pub const Reflection = struct {
         return descriptor.isMapEntry();
     }
 
+    pub fn messageIsMessageSetWireFormat(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
+        return descriptor.messageSetWireFormat();
+    }
+
     pub fn messageOptions(_: Reflection, descriptor: *const schema.MessageDescriptor) []const schema.FieldOption {
         return descriptor.options.items;
     }

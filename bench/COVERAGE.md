@@ -262,7 +262,7 @@ benchmark harness.
   declarations, and TextFormat's protobuf-compatible reserved-name ignore
   semantics.
 - `examples/dynamic_messageset.zig` covers dynamic proto2 MessageSet
-  encode/decode, JSON/TextFormat extension mapping, payload-before-type-id
+  encode/decode, reflection MessageSet wire-format metadata, JSON/TextFormat extension mapping, payload-before-type-id
   parsing, and unknown MessageSet item preservation.
 - `examples/generated_merge_semantics.zig` covers generated binary decode merge
   semantics for repeated singular messages, repeated fields, map last-wins,
