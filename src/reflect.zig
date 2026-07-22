@@ -537,6 +537,16 @@ pub const Reflection = struct {
         return try joinNameAlloc(self.allocator, service_full_name, method.name);
     }
 
+    pub fn methodContainingService(_: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.ServiceDescriptor {
+        if (service_descriptor.findMethod(method.name) != method) return error.UnknownField;
+        return service_descriptor;
+    }
+
+    pub fn methodContainingFile(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.FileDescriptor {
+        _ = try self.methodContainingService(service_descriptor, method);
+        return try self.fileOfService(service_descriptor);
+    }
+
     pub fn serviceMethodCount(_: Reflection, descriptor: *const schema.ServiceDescriptor) usize {
         return descriptor.methodCount();
     }
