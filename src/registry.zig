@@ -396,6 +396,18 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn extensionsForMessageAlloc(self: *const Registry, allocator: std.mem.Allocator, message: *const schema.MessageDescriptor) std.mem.Allocator.Error![]*const schema.FieldDescriptor {
+        var out: std.ArrayList(*const schema.FieldDescriptor) = .empty;
+        errdefer out.deinit(allocator);
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (self.extensionTargetsMessage(field, message, field.number)) try out.append(allocator, field);
+            }
+            for (file.messages.items) |*scope| try self.collectExtensionsForMessageInScope(allocator, scope, message, &out);
+        }
+        return try out.toOwnedSlice(allocator);
+    }
+
     fn findExtensionForMessageInScope(self: *const Registry, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
         for (scope.extensions.items) |*field| {
             if (self.extensionTargetsMessage(field, message, number)) return field;
@@ -404,6 +416,13 @@ pub const Registry = struct {
             if (self.findExtensionForMessageInScope(nested, message, number)) |field| return field;
         }
         return null;
+    }
+
+    fn collectExtensionsForMessageInScope(self: *const Registry, allocator: std.mem.Allocator, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, out: *std.ArrayList(*const schema.FieldDescriptor)) std.mem.Allocator.Error!void {
+        for (scope.extensions.items) |*field| {
+            if (self.extensionTargetsMessage(field, message, field.number)) try out.append(allocator, field);
+        }
+        for (scope.messages.items) |*nested| try self.collectExtensionsForMessageInScope(allocator, nested, message, out);
     }
 
     fn extensionTargetsMessage(self: *const Registry, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) bool {

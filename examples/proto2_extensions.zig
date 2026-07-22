@@ -62,6 +62,12 @@ pub fn main() !void {
     std.debug.assert(!(try refl.fieldHasExtensionScope(priority_ext)));
     std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
     const scoped_ext = try refl.extensionForMessage(host_desc, 102);
+    const host_extensions = try refl.extensionsForMessage(host_desc);
+    defer allocator.free(host_extensions);
+    std.debug.assert(host_extensions.len == 3);
+    std.debug.assert(host_extensions[0] == priority_ext);
+    std.debug.assert(host_extensions[1] == registry.findExtension("demo.Host", 101).?);
+    std.debug.assert(host_extensions[2] == scoped_ext);
     const scope_desc = try refl.message(".demo.Scope");
     std.debug.assert((try refl.fieldExtensionScope(scoped_ext)).? == scope_desc);
     std.debug.assert(try refl.fieldHasExtensionScope(scoped_ext));

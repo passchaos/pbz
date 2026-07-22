@@ -1529,6 +1529,10 @@ pub const Reflection = struct {
         return self.registry.findExtensionForMessage(descriptor, number) orelse error.UnknownField;
     }
 
+    pub fn extensionsForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) Error![]*const schema.FieldDescriptor {
+        return try self.registry.extensionsForMessageAlloc(self.allocator, descriptor);
+    }
+
     pub fn extensionByName(self: Reflection, extendee: []const u8, name: []const u8) Error!*const schema.FieldDescriptor {
         return self.registry.findExtensionByName(extendee, name) orelse error.UnknownField;
     }
