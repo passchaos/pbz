@@ -421,6 +421,20 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn serviceContainingMethod(self: *const Registry, target: *const schema.MethodDescriptor) ?*const schema.ServiceDescriptor {
+        for (self.files.items) |file| {
+            for (file.services.items) |*service| {
+                if (serviceContainsMethod(service, target)) return service;
+            }
+        }
+        return null;
+    }
+
+    pub fn fileContainingMethod(self: *const Registry, target: *const schema.MethodDescriptor) ?*const schema.FileDescriptor {
+        const service = self.serviceContainingMethod(target) orelse return null;
+        return self.fileContainingService(service);
+    }
+
     pub fn validateAllFileReferences(self: *const Registry) Error!void {
         for (self.files.items) |file| try self.validateFileReferences(file);
     }
@@ -699,6 +713,13 @@ fn messageContainsExtension(message: *const schema.MessageDescriptor, target: *c
     }
     for (message.messages.items) |*nested| {
         if (messageContainsExtension(nested, target)) return true;
+    }
+    return false;
+}
+
+fn serviceContainsMethod(service: *const schema.ServiceDescriptor, target: *const schema.MethodDescriptor) bool {
+    for (service.methods.items) |*method| {
+        if (method == target) return true;
     }
     return false;
 }

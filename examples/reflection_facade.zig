@@ -490,12 +490,18 @@ pub fn main() !void {
     const get_method_full_name = try refl.methodFullName(users_service, get_method);
     defer allocator.free(get_method_full_name);
     try std.testing.expectEqualStrings("demo.reflect.Users.Get", get_method_full_name);
+    const direct_method_full_name = try refl.methodDirectFullName(get_method);
+    defer allocator.free(direct_method_full_name);
+    try std.testing.expectEqualStrings("demo.reflect.Users.Get", direct_method_full_name);
+    try std.testing.expectEqual(@as(usize, 0), try refl.methodDirectIndex(get_method));
     try std.testing.expectEqualStrings("User", refl.methodInputTypeName(get_method));
     try std.testing.expectEqualStrings("User", refl.methodOutputTypeName(get_method));
     try std.testing.expect(try refl.methodInputType(users_service, get_method) == user_desc);
     try std.testing.expect(try refl.methodOutputType(users_service, get_method) == user_desc);
     try std.testing.expect(try refl.methodContainingService(users_service, get_method) == users_service);
+    try std.testing.expect(try refl.methodService(get_method) == users_service);
     try std.testing.expect(try refl.methodContainingFile(users_service, get_method) == app_file);
+    try std.testing.expect(try refl.methodFile(get_method) == app_file);
     try std.testing.expect(!refl.methodClientStreaming(get_method));
     try std.testing.expect(!refl.methodServerStreaming(get_method));
     try std.testing.expect(refl.optionBool(refl.serviceOptions(users_service), "deprecated").?);

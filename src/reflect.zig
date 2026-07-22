@@ -877,14 +877,26 @@ pub const Reflection = struct {
         return try joinNameAlloc(self.allocator, service_full_name, method.name);
     }
 
+    pub fn methodDirectFullName(self: Reflection, method: *const schema.MethodDescriptor) Error![]u8 {
+        return try self.methodFullName(try self.methodService(method), method);
+    }
+
     pub fn methodContainingService(_: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.ServiceDescriptor {
         if (service_descriptor.findMethod(method.name) != method) return error.UnknownField;
         return service_descriptor;
     }
 
+    pub fn methodService(self: Reflection, method: *const schema.MethodDescriptor) Error!*const schema.ServiceDescriptor {
+        return self.registry.serviceContainingMethod(method) orelse error.UnknownService;
+    }
+
     pub fn methodContainingFile(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.FileDescriptor {
         _ = try self.methodContainingService(service_descriptor, method);
         return try self.fileOfService(service_descriptor);
+    }
+
+    pub fn methodFile(self: Reflection, method: *const schema.MethodDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingMethod(method) orelse error.UnknownService;
     }
 
     pub fn serviceMethodCount(_: Reflection, descriptor: *const schema.ServiceDescriptor) usize {
@@ -900,6 +912,10 @@ pub const Reflection = struct {
             if (candidate == method) return index;
         }
         return error.UnknownField;
+    }
+
+    pub fn methodDirectIndex(self: Reflection, method: *const schema.MethodDescriptor) Error!usize {
+        return try self.methodIndex(try self.methodService(method), method);
     }
 
     pub fn methodByName(_: Reflection, descriptor: *const schema.ServiceDescriptor, name: []const u8) Error!*const schema.MethodDescriptor {
