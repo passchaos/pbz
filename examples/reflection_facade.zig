@@ -97,6 +97,7 @@ pub fn main() !void {
         \\  enum LocalStatus { LOCAL_UNKNOWN = 0; }
         \\  LocalStatus local_status = 37;
         \\  repeated int32 unpacked_samples = 38 [packed = false];
+        \\  int32 FooBar = 39;
         \\}
         \\service Users {
         \\  option deprecated = true;
@@ -160,7 +161,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownService, refl.fileServiceAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 0), refl.fileExtensionCount(app_file));
     try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(app_file, 0));
-    try std.testing.expectEqual(@as(usize, 38), refl.messageFieldCount(user_desc));
+    try std.testing.expectEqual(@as(usize, 39), refl.messageFieldCount(user_desc));
     try std.testing.expect((try refl.messageFieldAt(user_desc, 0)) == try refl.fieldByName(user_desc, "id"));
     try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
@@ -225,6 +226,24 @@ pub fn main() !void {
     const explicit_json_name = try refl.fieldJsonName(display_name_field);
     defer allocator.free(explicit_json_name);
     try std.testing.expectEqualStrings("shownName", explicit_json_name);
+    const display_name_camel = try refl.fieldCamelcaseName(display_name_field);
+    defer allocator.free(display_name_camel);
+    try std.testing.expectEqualStrings("displayName", display_name_camel);
+    try std.testing.expect((try refl.fieldByCamelcaseName(user_desc, "displayName")) == display_name_field);
+    const foobar_field = try refl.fieldByName(user_desc, "FooBar");
+    const foobar_lowercase = try refl.fieldLowercaseName(foobar_field);
+    defer allocator.free(foobar_lowercase);
+    try std.testing.expectEqualStrings("foobar", foobar_lowercase);
+    const foobar_camelcase = try refl.fieldCamelcaseName(foobar_field);
+    defer allocator.free(foobar_camelcase);
+    try std.testing.expectEqualStrings("fooBar", foobar_camelcase);
+    const foobar_json_name = try refl.fieldJsonName(foobar_field);
+    defer allocator.free(foobar_json_name);
+    try std.testing.expectEqualStrings("FooBar", foobar_json_name);
+    try std.testing.expect((try refl.fieldByLowercaseName(user_desc, "foobar")) == foobar_field);
+    try std.testing.expect((try refl.fieldByCamelcaseName(user_desc, "fooBar")) == foobar_field);
+    try std.testing.expectError(error.UnknownField, refl.fieldByLowercaseName(user_desc, "missing"));
+    try std.testing.expectError(error.UnknownField, refl.fieldByCamelcaseName(user_desc, "missing"));
     const big_delta_field = try refl.fieldByName(user_desc, "big_delta");
     try std.testing.expect(!refl.fieldHasExplicitJsonName(big_delta_field));
     try std.testing.expectError(error.MissingField, refl.fieldExplicitJsonName(big_delta_field));

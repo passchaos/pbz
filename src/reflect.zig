@@ -896,8 +896,24 @@ pub const Reflection = struct {
         return descriptor.findField(name) orelse error.UnknownField;
     }
 
+    pub fn fieldByLowercaseName(_: Reflection, descriptor: *const schema.MessageDescriptor, lowercase_name: []const u8) Error!*const schema.FieldDescriptor {
+        return descriptor.findFieldByLowercaseName(lowercase_name) orelse error.UnknownField;
+    }
+
+    pub fn fieldByCamelcaseName(_: Reflection, descriptor: *const schema.MessageDescriptor, camelcase_name: []const u8) Error!*const schema.FieldDescriptor {
+        return descriptor.findFieldByCamelcaseName(camelcase_name) orelse error.UnknownField;
+    }
+
     pub fn fieldName(_: Reflection, field: *const schema.FieldDescriptor) []const u8 {
         return field.name;
+    }
+
+    pub fn fieldLowercaseName(self: Reflection, field: *const schema.FieldDescriptor) Error![]u8 {
+        return try field.lowercaseName(self.allocator);
+    }
+
+    pub fn fieldCamelcaseName(self: Reflection, field: *const schema.FieldDescriptor) Error![]u8 {
+        return try field.camelcaseName(self.allocator);
     }
 
     pub fn fieldIsDeprecated(_: Reflection, field: *const schema.FieldDescriptor) bool {

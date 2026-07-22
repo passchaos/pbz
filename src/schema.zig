@@ -454,6 +454,14 @@ pub const FieldDescriptor = struct {
         return self.json_name;
     }
 
+    pub fn lowercaseName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+        return try lowercaseNameAlloc(allocator, self.name);
+    }
+
+    pub fn camelcaseName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
+        return try camelcaseNameAlloc(allocator, self.name);
+    }
+
     pub fn jsonName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
         if (self.json_name) |explicit| return try allocator.dupe(u8, explicit);
         var out: std.ArrayList(u8) = .empty;
@@ -802,6 +810,20 @@ pub const MessageDescriptor = struct {
     pub fn findField(self: *const MessageDescriptor, name: []const u8) ?*const FieldDescriptor {
         for (self.fields.items) |*field| {
             if (std.mem.eql(u8, field.name, name)) return field;
+        }
+        return null;
+    }
+
+    pub fn findFieldByLowercaseName(self: *const MessageDescriptor, lowercase_name: []const u8) ?*const FieldDescriptor {
+        for (self.fields.items) |*field| {
+            if (eqlLowercaseName(field.name, lowercase_name)) return field;
+        }
+        return null;
+    }
+
+    pub fn findFieldByCamelcaseName(self: *const MessageDescriptor, camelcase_name: []const u8) ?*const FieldDescriptor {
+        for (self.fields.items) |*field| {
+            if (eqlCamelcaseName(field.name, camelcase_name)) return field;
         }
         return null;
     }
@@ -1667,6 +1689,56 @@ pub fn jsonNameLooksLikeExtension(json_name: []const u8) bool {
     return json_name.len >= 2 and json_name[0] == '[' and json_name[json_name.len - 1] == ']';
 }
 
+pub fn lowercaseNameAlloc(allocator: std.mem.Allocator, field_name: []const u8) std.mem.Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var index: usize = 0;
+    while (nextLowercaseNameChar(field_name, &index)) |c| try out.append(allocator, c);
+    return try out.toOwnedSlice(allocator);
+}
+
+pub fn camelcaseNameAlloc(allocator: std.mem.Allocator, field_name: []const u8) std.mem.Allocator.Error![]u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    var index: usize = 0;
+    var upper_next = false;
+    var first = true;
+    while (nextCamelcaseNameChar(field_name, &index, &upper_next, &first)) |c| try out.append(allocator, c);
+    return try out.toOwnedSlice(allocator);
+}
+
+pub fn eqlLowercaseName(field_name: []const u8, candidate: []const u8) bool {
+    var index: usize = 0;
+    for (candidate) |expected| {
+        const actual = nextLowercaseNameChar(field_name, &index) orelse return false;
+        if (actual != expected) return false;
+    }
+    return nextLowercaseNameChar(field_name, &index) == null;
+}
+
+pub fn eqlCamelcaseName(field_name: []const u8, candidate: []const u8) bool {
+    var index: usize = 0;
+    var upper_next = false;
+    var first = true;
+    for (candidate) |expected| {
+        const actual = nextCamelcaseNameChar(field_name, &index, &upper_next, &first) orelse return false;
+        if (actual != expected) return false;
+    }
+    return nextCamelcaseNameChar(field_name, &index, &upper_next, &first) == null;
+}
+
+pub fn writeLowercaseName(field_name: []const u8, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    var index: usize = 0;
+    while (nextLowercaseNameChar(field_name, &index)) |c| try writer.writeByte(c);
+}
+
+pub fn writeCamelcaseName(field_name: []const u8, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    var index: usize = 0;
+    var upper_next = false;
+    var first = true;
+    while (nextCamelcaseNameChar(field_name, &index, &upper_next, &first)) |c| try writer.writeByte(c);
+}
+
 pub fn eqlDefaultJsonName(field_name: []const u8, candidate: []const u8) bool {
     var field_index: usize = 0;
     var upper_next = false;
@@ -1737,6 +1809,34 @@ fn enumValueWithoutPrefix(allocator: std.mem.Allocator, enum_name: []const u8, v
     return value_name[i..];
 }
 
+fn nextLowercaseNameChar(name: []const u8, index: *usize) ?u8 {
+    if (index.* >= name.len) return null;
+    const c = name[index.*];
+    index.* += 1;
+    return std.ascii.toLower(c);
+}
+
+fn nextCamelcaseNameChar(name: []const u8, index: *usize, upper_next: *bool, first: *bool) ?u8 {
+    while (index.* < name.len) {
+        const c = name[index.*];
+        index.* += 1;
+        if (c == '_') {
+            upper_next.* = true;
+            continue;
+        }
+        const out = if (first.*)
+            std.ascii.toLower(c)
+        else if (upper_next.*)
+            std.ascii.toUpper(c)
+        else
+            c;
+        first.* = false;
+        upper_next.* = false;
+        return out;
+    }
+    return null;
+}
+
 fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?u8 {
     while (index.* < name.len) {
         const c = name[index.*];
@@ -1750,6 +1850,37 @@ fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?
         return out;
     }
     return null;
+}
+
+test "schema mirrors C++ field lowercase and camelcase names" {
+    const allocator = std.testing.allocator;
+
+    const cases = [_]struct { source: []const u8, lower: []const u8, camel: []const u8 }{
+        .{ .source = "FooBar", .lower = "foobar", .camel = "fooBar" },
+        .{ .source = "foo_bar", .lower = "foo_bar", .camel = "fooBar" },
+        .{ .source = "fooBar", .lower = "foobar", .camel = "fooBar" },
+        .{ .source = "foo__bar", .lower = "foo__bar", .camel = "fooBar" },
+        .{ .source = "_foo", .lower = "_foo", .camel = "foo" },
+        .{ .source = "foo_", .lower = "foo_", .camel = "foo" },
+        .{ .source = "FOO_BAR", .lower = "foo_bar", .camel = "fOOBAR" },
+        .{ .source = "foo2_bar", .lower = "foo2_bar", .camel = "foo2Bar" },
+        .{ .source = "foo_2bar", .lower = "foo_2bar", .camel = "foo2bar" },
+        .{ .source = "URL_value", .lower = "url_value", .camel = "uRLValue" },
+    };
+
+    for (cases) |case| {
+        const lower = try lowercaseNameAlloc(allocator, case.source);
+        defer allocator.free(lower);
+        try std.testing.expectEqualStrings(case.lower, lower);
+        try std.testing.expect(eqlLowercaseName(case.source, case.lower));
+        try std.testing.expect(!eqlLowercaseName(case.source, case.camel));
+
+        const camel = try camelcaseNameAlloc(allocator, case.source);
+        defer allocator.free(camel);
+        try std.testing.expectEqualStrings(case.camel, camel);
+        try std.testing.expect(eqlCamelcaseName(case.source, case.camel));
+        try std.testing.expect(!eqlCamelcaseName(case.source, case.lower));
+    }
 }
 
 test "schema resolves feature defaults for proto2 proto3 and editions" {
