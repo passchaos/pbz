@@ -286,6 +286,13 @@ pub const Reflection = struct {
         return file_descriptor.extensionAt(index) orelse error.UnknownField;
     }
 
+    pub fn fileExtensionIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        for (file_descriptor.extensions.items, 0..) |*candidate, index| {
+            if (candidate == field) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn fileCanSee(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
         return self.registry.fileCanSee(from, to);
     }
@@ -375,6 +382,13 @@ pub const Reflection = struct {
 
     pub fn messageExtensionAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.FieldDescriptor {
         return descriptor.extensionAt(index) orelse error.UnknownField;
+    }
+
+    pub fn messageExtensionIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        for (descriptor.extensions.items, 0..) |*candidate, index| {
+            if (candidate == field) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn messageOneofCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
@@ -2601,6 +2615,7 @@ test "reflection facade finds extension descriptors" {
     const note = try refl.extensionForMessage(host_desc, 100);
     try std.testing.expectEqual(@as(usize, 1), refl.fileExtensionCount(&file));
     try std.testing.expect(note == try refl.fileExtensionAt(&file, 0));
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileExtensionIndex(&file, note));
     try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(&file, 9));
     try std.testing.expect(note == try refl.extension(".demo.Host", 100));
     try std.testing.expect(note == try refl.extensionByName(".demo.Host", ".demo.note"));
@@ -2611,6 +2626,7 @@ test "reflection facade finds extension descriptors" {
     const scope_desc = try refl.message(".demo.Scope");
     try std.testing.expectEqual(@as(usize, 1), refl.messageExtensionCount(scope_desc));
     try std.testing.expect(code == try refl.messageExtensionAt(scope_desc, 0));
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageExtensionIndex(scope_desc, code));
     try std.testing.expectError(error.UnknownField, refl.messageExtensionAt(scope_desc, 9));
     try std.testing.expectEqual(@as(usize, 0), refl.messageExtensionCount(host_desc));
     try std.testing.expect(code == try refl.extensionForMessage(host_desc, 101));
