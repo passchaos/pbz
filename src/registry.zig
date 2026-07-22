@@ -1,5 +1,6 @@
 const std = @import("std");
 const schema = @import("schema.zig");
+const wire = @import("wire.zig");
 
 pub const TypeKind = enum { message, enumeration };
 
@@ -375,7 +376,7 @@ pub const Registry = struct {
         return null;
     }
 
-    pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+    pub fn findExtension(self: *const Registry, extendee: []const u8, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
         if (self.findMessage(extendee, null)) |message| return self.findExtensionForMessage(message, number);
         const normalized = normalizeName(extendee);
         for (self.files.items) |file| {
@@ -389,7 +390,7 @@ pub const Registry = struct {
         return null;
     }
 
-    pub fn findExtensionForMessage(self: *const Registry, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+    pub fn findExtensionForMessage(self: *const Registry, message: *const schema.MessageDescriptor, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
         for (self.files.items) |file| {
             for (file.extensions.items) |*field| {
                 if (self.extensionTargetsMessage(field, message, number)) return field;
@@ -413,7 +414,17 @@ pub const Registry = struct {
         return try out.toOwnedSlice(allocator);
     }
 
-    fn findExtensionForMessageInScope(self: *const Registry, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+    pub fn findFileContainingExtension(self: *const Registry, extendee: []const u8, number: wire.FieldNumber) ?*const schema.FileDescriptor {
+        const field = self.findExtension(extendee, number) orelse return null;
+        return self.fileContainingExtension(field);
+    }
+
+    pub fn findFileContainingExtensionForMessage(self: *const Registry, message: *const schema.MessageDescriptor, number: wire.FieldNumber) ?*const schema.FileDescriptor {
+        const field = self.findExtensionForMessage(message, number) orelse return null;
+        return self.fileContainingExtension(field);
+    }
+
+    fn findExtensionForMessageInScope(self: *const Registry, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
         for (scope.extensions.items) |*field| {
             if (self.extensionTargetsMessage(field, message, number)) return field;
         }
@@ -430,7 +441,7 @@ pub const Registry = struct {
         for (scope.messages.items) |*nested| try self.collectExtensionsForMessageInScope(allocator, nested, message, out);
     }
 
-    fn extensionTargetsMessage(self: *const Registry, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, number: @import("wire.zig").FieldNumber) bool {
+    fn extensionTargetsMessage(self: *const Registry, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, number: wire.FieldNumber) bool {
         if (field.number != number) return false;
         const owner = self.fileContainingExtension(field) orelse return false;
         const resolved = resolveExtensionExtendee(self, owner, field) orelse return false;
@@ -988,7 +999,7 @@ fn findExtensionBySymbolNameInMessage(package: []const u8, message: *const schem
     return null;
 }
 
-fn findExtensionInMessage(message: *const schema.MessageDescriptor, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
+fn findExtensionInMessage(message: *const schema.MessageDescriptor, extendee: []const u8, number: wire.FieldNumber) ?*const schema.FieldDescriptor {
     for (message.extensions.items) |*field| {
         if (field.number == number and field.extendee != null and namesMatch(field.extendee.?, extendee)) return field;
     }
@@ -1363,8 +1374,13 @@ test "registry resolves same-package and scoped extension extendees" {
     try registry.addFile(&extension);
     try registry.validateFileReferences(&extension);
 
+    const host_desc = registry.findMessage(".demo.Host", null).?;
     try std.testing.expect(registry.findExtension(".demo.Host", 100) != null);
+    try std.testing.expect(registry.findFileContainingExtension(".demo.Host", 100).? == &extension);
+    try std.testing.expect(registry.findFileContainingExtensionForMessage(host_desc, 100).? == &extension);
     try std.testing.expect(registry.findExtension(".demo.Scope.Nested", 100) != null);
+    try std.testing.expect(registry.findFileContainingExtension(".demo.Scope.Nested", 100).? == &extension);
+    try std.testing.expect(registry.findFileContainingExtension(".demo.Host", 101) == null);
 }
 
 test "registry computes direct and public import chains" {
@@ -1490,7 +1506,7 @@ test "registry finds extension fields" {
     const ext = registry.findExtension(".demo.Host", 100).?;
     try std.testing.expectEqualStrings("note", ext.name);
     const scoped = registry.findExtensionByName(".demo.Host", "demo.Scope.scoped_note").?;
-    try std.testing.expectEqual(@as(@import("wire.zig").FieldNumber, 101), scoped.number);
+    try std.testing.expectEqual(@as(wire.FieldNumber, 101), scoped.number);
     try std.testing.expectEqualStrings("demo.Scope.scoped_note", scoped.full_name.?);
 }
 

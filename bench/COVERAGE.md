@@ -317,7 +317,7 @@ benchmark harness.
   both generated and dynamic messages, and generated decode reuse.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
   range declarations/verification, repeated message extensions with recursive
-  required-field validation, reflection extension/all-extensions/range/declaration/full-name/extendee/scope/containing-type lookup/enumeration/index and lowercase/camelcase/printable name lookup, extension-range bounds/verification/declaration metadata and range/declaration enumeration, descriptor round-trips,
+  required-field validation, reflection extension/all-extensions/containing-file/range/declaration/full-name/extendee/scope/containing-type lookup/enumeration/index and lowercase/camelcase/printable name lookup, extension-range bounds/verification/declaration metadata and range/declaration enumeration, descriptor round-trips,
   JSON/TextFormat extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and

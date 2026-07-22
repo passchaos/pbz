@@ -1529,6 +1529,14 @@ pub const Reflection = struct {
         return self.registry.findExtensionForMessage(descriptor, number) orelse error.UnknownField;
     }
 
+    pub fn fileContainingExtension(self: Reflection, descriptor: *const schema.MessageDescriptor, number: wire.FieldNumber) Error!*const schema.FileDescriptor {
+        return self.registry.findFileContainingExtensionForMessage(descriptor, number) orelse error.UnknownFile;
+    }
+
+    pub fn fileContainingExtensionByName(self: Reflection, extendee: []const u8, number: wire.FieldNumber) Error!*const schema.FileDescriptor {
+        return self.registry.findFileContainingExtension(extendee, number) orelse error.UnknownFile;
+    }
+
     pub fn extensionsForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) Error![]*const schema.FieldDescriptor {
         return try self.registry.extensionsForMessageAlloc(self.allocator, descriptor);
     }
