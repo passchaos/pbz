@@ -409,6 +409,10 @@ pub const Reflection = struct {
         return self.registry.fileCanSee(from, to);
     }
 
+    pub fn fileContainingSymbol(self: Reflection, symbol_name: []const u8) Error!*const schema.FileDescriptor {
+        return self.registry.findFileContainingSymbol(symbol_name) orelse error.UnknownFile;
+    }
+
     pub fn importChain(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) ?registry_mod.ImportChain {
         return self.registry.importChain(from, to);
     }

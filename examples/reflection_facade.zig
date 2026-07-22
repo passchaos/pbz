@@ -119,6 +119,12 @@ pub fn main() !void {
     const role_file = try refl.fileOfEnum(role_desc);
     try std.testing.expectEqualStrings("app.proto", refl.fileName(app_file));
     try std.testing.expect(!refl.fileIsPlaceholder(app_file));
+    try std.testing.expect((try refl.fileContainingSymbol(".demo.reflect.User")) == app_file);
+    try std.testing.expect((try refl.fileContainingSymbol(".demo.reflect.User.id")) == app_file);
+    try std.testing.expect((try refl.fileContainingSymbol(".demo.reflect.User.contact")) == app_file);
+    try std.testing.expect((try refl.fileContainingSymbol(".demo.reflect.ROLE_UNKNOWN")) == role_file);
+    try std.testing.expect((try refl.fileContainingSymbol(".demo.reflect.Users.Get")) == app_file);
+    try std.testing.expectError(error.UnknownFile, refl.fileContainingSymbol(".demo.reflect.Missing"));
     try std.testing.expectEqualStrings("demo.reflect", refl.filePackage(app_file));
     try std.testing.expectEqual(pbz.schema.Syntax.proto3, refl.fileSyntax(app_file));
     try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));

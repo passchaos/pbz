@@ -255,6 +255,19 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findExtensionBySymbolName(self: *const Registry, name: []const u8) ?*const schema.FieldDescriptor {
+        const normalized_name = normalizeName(name);
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (schema.extensionNameMatches(file.package, field, normalized_name)) return field;
+            }
+            for (file.messages.items) |*message| {
+                if (findExtensionBySymbolNameInMessage(file.package, message, normalized_name)) |field| return field;
+            }
+        }
+        return null;
+    }
+
     pub fn findExtensionByNameForMessage(self: *const Registry, message: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
         const normalized_name = normalizeName(name);
         for (self.files.items) |file| {
@@ -418,6 +431,19 @@ pub const Registry = struct {
 
     pub fn fileCanSee(self: *const Registry, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
         return sameFile(from, to) or self.importChain(from, to) != null;
+    }
+
+    pub fn findFileContainingSymbol(self: *const Registry, symbol_name: []const u8) ?*const schema.FileDescriptor {
+        const name = normalizeName(symbol_name);
+        if (self.findMessage(name, null)) |descriptor| return self.fileContainingMessage(descriptor);
+        if (self.findField(name, null)) |descriptor| return self.fileContainingField(descriptor);
+        if (self.findExtensionBySymbolName(name)) |descriptor| return self.fileContainingExtension(descriptor);
+        if (self.findOneof(name, null)) |descriptor| return self.fileContainingOneof(descriptor);
+        if (self.findEnum(name, null)) |descriptor| return self.fileContainingEnum(descriptor);
+        if (self.findEnumValue(name, null)) |descriptor| return self.fileContainingEnumValue(descriptor);
+        if (self.findService(name, null)) |descriptor| return self.fileContainingService(descriptor);
+        if (self.findMethod(name, null)) |descriptor| return self.fileContainingMethod(descriptor);
+        return null;
     }
 
     pub fn fileContainingMessage(self: *const Registry, target: *const schema.MessageDescriptor) ?*const schema.FileDescriptor {
@@ -924,6 +950,16 @@ fn findExtensionByNameInMessage(package: []const u8, message: *const schema.Mess
     }
     for (message.messages.items) |*nested| {
         if (findExtensionByNameInMessage(package, nested, extendee, name)) |field| return field;
+    }
+    return null;
+}
+
+fn findExtensionBySymbolNameInMessage(package: []const u8, message: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
+    for (message.extensions.items) |*field| {
+        if (schema.extensionNameMatches(package, field, name)) return field;
+    }
+    for (message.messages.items) |*nested| {
+        if (findExtensionBySymbolNameInMessage(package, nested, name)) |field| return field;
     }
     return null;
 }
