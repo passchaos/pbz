@@ -46,6 +46,8 @@ pub fn main() !void {
     std.debug.assert(priority_ext == try refl.extension("demo.Host", 100));
     std.debug.assert(priority_ext == try refl.extensionByName("demo.Host", ".demo.priority"));
     std.debug.assert(priority_ext == try refl.extensionByNameForMessage(host_desc, "priority"));
+    std.debug.assert(priority_ext == try refl.extensionByPrintableNameForMessage(host_desc, "[demo.priority]"));
+    try std.testing.expectError(error.UnknownField, refl.extensionByPrintableNameForMessage(host_desc, "demo.priority"));
     const priority_full_name = try refl.extensionFullName(priority_ext);
     defer allocator.free(priority_full_name);
     std.debug.assert(std.mem.eql(u8, priority_full_name, "demo.priority"));

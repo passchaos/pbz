@@ -1857,6 +1857,13 @@ pub fn jsonNameLooksLikeExtension(json_name: []const u8) bool {
     return json_name.len >= 2 and json_name[0] == '[' and json_name[json_name.len - 1] == ']';
 }
 
+pub fn printableExtensionName(printable_name: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, printable_name, " \t\r\n");
+    if (!jsonNameLooksLikeExtension(trimmed)) return null;
+    const inner = trimmed[1 .. trimmed.len - 1];
+    return if (inner.len == 0) null else inner;
+}
+
 pub fn lowercaseNameAlloc(allocator: std.mem.Allocator, field_name: []const u8) std.mem.Allocator.Error![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
@@ -2066,6 +2073,14 @@ test "schema mirrors C++ field lowercase and camelcase names" {
         try std.testing.expect(eqlCamelcaseName(case.source, case.camel));
         try std.testing.expect(!eqlCamelcaseName(case.source, case.lower));
     }
+}
+
+test "schema extracts printable extension names" {
+    try std.testing.expectEqualStrings("demo.priority", printableExtensionName("[demo.priority]").?);
+    try std.testing.expectEqualStrings(".demo.priority", printableExtensionName(" \t[.demo.priority]\n").?);
+    try std.testing.expect(printableExtensionName("demo.priority") == null);
+    try std.testing.expect(printableExtensionName("[demo.priority") == null);
+    try std.testing.expect(printableExtensionName("[]") == null);
 }
 
 test "schema resolves feature defaults for proto2 proto3 and editions" {
