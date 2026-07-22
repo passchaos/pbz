@@ -38,6 +38,34 @@ pub const Reflection = struct {
         return file_descriptor.edition;
     }
 
+    pub fn fileFeatures(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet {
+        return file_descriptor.features;
+    }
+
+    pub fn fileFieldPresence(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.FieldPresence {
+        return file_descriptor.features.field_presence;
+    }
+
+    pub fn fileEnumType(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.EnumType {
+        return file_descriptor.features.enum_type;
+    }
+
+    pub fn fileRepeatedFieldEncoding(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.RepeatedFieldEncoding {
+        return file_descriptor.features.repeated_field_encoding;
+    }
+
+    pub fn fileUtf8Validation(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.Utf8Validation {
+        return file_descriptor.features.utf8_validation;
+    }
+
+    pub fn fileMessageEncoding(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.MessageEncoding {
+        return file_descriptor.features.message_encoding;
+    }
+
+    pub fn fileJsonFormat(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.JsonFormat {
+        return file_descriptor.features.json_format;
+    }
+
     pub fn sourceLocation(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const i32) Error!*const schema.SourceCodeInfo.Location {
         return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
     }

@@ -34,6 +34,13 @@ pub fn main() !void {
     defer registry.deinit();
     try registry.addFile(&file);
     const refl = pbz.Reflection.init(allocator, &registry);
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, refl.fileFieldPresence(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.expanded, refl.fileRepeatedFieldEncoding(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.open, refl.fileEnumType(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.verify, refl.fileUtf8Validation(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.length_prefixed, refl.fileMessageEncoding(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.allow, refl.fileJsonFormat(&file));
+    try std.testing.expect(refl.fileFeatures(&file).eql(file.features));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, try refl.enumType(file.findEnum("Role") orelse return error.MissingDescriptor));
     try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (desc.findField("packed") orelse return error.MissingField).features.?.repeated_field_encoding);
     try std.testing.expect(try refl.fieldIsPacked(desc, desc.findField("packed") orelse return error.MissingField));
