@@ -161,6 +161,26 @@ pub const Reflection = struct {
         return file_descriptor.findImport(path) orelse error.UnknownFile;
     }
 
+    pub fn importPath(_: Reflection, import: schema.Import) []const u8 {
+        return import.path;
+    }
+
+    pub fn importKind(_: Reflection, import: schema.Import) schema.Import.Kind {
+        return import.kind;
+    }
+
+    pub fn importIsPublic(_: Reflection, import: schema.Import) bool {
+        return import.kind == .public;
+    }
+
+    pub fn importIsWeak(_: Reflection, import: schema.Import) bool {
+        return import.kind == .weak;
+    }
+
+    pub fn importIsOption(_: Reflection, import: schema.Import) bool {
+        return import.kind == .option;
+    }
+
     pub fn fileHasMissingWeakImport(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) bool {
         return file_descriptor.hasMissingWeakImport(path);
     }

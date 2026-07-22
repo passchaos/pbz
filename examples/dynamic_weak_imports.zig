@@ -30,7 +30,12 @@ fn missingWeakImportStillLoads(allocator: std.mem.Allocator) !void {
     const refl = pbz.Reflection.init(allocator, &loaded.registry);
     try std.testing.expectEqual(@as(usize, 1), root_file.imports.items.len);
     try std.testing.expectEqual(pbz.schema.Import.Kind.weak, root_file.imports.items[0].kind);
-    try std.testing.expectEqual(pbz.schema.Import.Kind.weak, (try refl.fileImport(root_file, "missing.proto")).kind);
+    const missing_import = try refl.fileImport(root_file, "missing.proto");
+    try std.testing.expectEqualStrings("missing.proto", refl.importPath(missing_import));
+    try std.testing.expectEqual(pbz.schema.Import.Kind.weak, refl.importKind(missing_import));
+    try std.testing.expect(refl.importIsWeak(missing_import));
+    try std.testing.expect(!refl.importIsPublic(missing_import));
+    try std.testing.expect(!refl.importIsOption(missing_import));
     try std.testing.expectEqual(@as(usize, 1), root_file.missing_weak_imports.items.len);
     try std.testing.expectEqualStrings("missing.proto", root_file.missing_weak_imports.items[0]);
     try std.testing.expect(refl.fileHasMissingWeakImport(root_file, "missing.proto"));

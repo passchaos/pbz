@@ -30,7 +30,12 @@ pub fn main() !void {
     const refl = pbz.Reflection.init(allocator, &loaded.registry);
     const app_file = try refl.file("app.proto");
     const common_file = try refl.file("common.proto");
-    std.debug.assert((try refl.fileImport(app_file, "common.proto")).kind == .public);
+    const common_import = try refl.fileImport(app_file, "common.proto");
+    std.debug.assert(std.mem.eql(u8, refl.importPath(common_import), "common.proto"));
+    std.debug.assert(refl.importKind(common_import) == .public);
+    std.debug.assert(refl.importIsPublic(common_import));
+    std.debug.assert(!refl.importIsWeak(common_import));
+    std.debug.assert(!refl.importIsOption(common_import));
     std.debug.assert(refl.fileDependencyCount(app_file) == 1);
     std.debug.assert((try refl.fileDependency(app_file, 0)) == common_file);
     try std.testing.expectError(error.UnknownFile, refl.fileDependency(app_file, 9));
