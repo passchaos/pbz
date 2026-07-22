@@ -2279,6 +2279,24 @@ pub const Reflection = struct {
         return message_value.unknownByNumber(number);
     }
 
+    pub fn unknownByNumberAt(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber, index: usize) Error!dynamic.UnknownField {
+        const fields = message_value.unknownByNumber(number);
+        if (index >= fields.len) return error.UnknownField;
+        return fields[index];
+    }
+
+    pub fn unknownByNumberIndex(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber, unknown: dynamic.UnknownField) Error!usize {
+        for (message_value.unknownByNumber(number), 0..) |candidate, index| {
+            if (candidate.number == unknown.number and
+                candidate.wire_type == unknown.wire_type and
+                std.mem.eql(u8, candidate.data, unknown.data))
+            {
+                return index;
+            }
+        }
+        return error.UnknownField;
+    }
+
     pub fn unknownByNumberAlloc(self: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) Error![]dynamic.UnknownField {
         return try message_value.unknownByNumberAlloc(self.allocator, number);
     }

@@ -865,6 +865,11 @@ pub fn main() !void {
     try std.testing.expectEqualSlices(u8, raw_unknown.slice(), refl.unknownFieldData(unknown_field));
     try std.testing.expectError(error.UnknownField, refl.unknownAt(&decoded, 1));
     try std.testing.expectEqualSlices(u8, raw_unknown.slice(), refl.unknownFieldData(refl.unknownByNumber(&decoded, 100)[0]));
+    const unknown_by_number = try refl.unknownByNumberAt(&decoded, 100, 0);
+    try std.testing.expectEqualSlices(u8, raw_unknown.slice(), refl.unknownFieldData(unknown_by_number));
+    try std.testing.expectEqual(@as(usize, 0), try refl.unknownByNumberIndex(&decoded, 100, unknown_by_number));
+    try std.testing.expectError(error.UnknownField, refl.unknownByNumberAt(&decoded, 100, 1));
+    try std.testing.expectError(error.UnknownField, refl.unknownByNumberIndex(&decoded, 101, unknown_by_number));
     const owned_unknown = try refl.unknownByNumberAlloc(&decoded, 100);
     defer allocator.free(owned_unknown);
     try std.testing.expectEqual(@as(usize, 1), owned_unknown.len);
