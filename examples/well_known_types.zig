@@ -31,6 +31,9 @@ pub fn main() !void {
     defer allocator.free(empty_bytes);
     std.debug.assert(empty_bytes.len == 0);
     _ = try pbz.Empty.decode(empty_bytes);
+    const empty_json = try pbz.Empty.jsonStringifyAlloc(allocator);
+    defer allocator.free(empty_json);
+    try std.testing.expectEqualStrings("{}", empty_json);
     try std.testing.expectError(error.UnknownField, pbz.Empty.jsonParse(allocator, "{\"unexpected\":true}"));
 
     var title = try pbz.StringValue.jsonParseOwned(allocator, "\"hello\"");

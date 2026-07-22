@@ -88,7 +88,7 @@ library API.
 - `ownership_patterns.zig` — generated and dynamic arena-style ownership,
   clone-to-long-lived allocator handoff for generated and dynamic messages, and
   generated decode reuse patterns.
-- `well_known_types.zig` — Timestamp, Duration, FieldMask path presence/access/index, Empty,
+- `well_known_types.zig` — Timestamp, Duration, FieldMask path presence/access/index, Empty JSON allocation helper,
   Struct field presence/access/index/equality, Value equality/typed accessors, ListValue presence/access/index, scalar wrappers, bytes wrappers, and Any including
   embedded WKT JSON values plus descriptor well-known-type reflection.
 - `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup, custom type URL prefixes, and required-field validation.

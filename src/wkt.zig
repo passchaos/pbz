@@ -2387,6 +2387,13 @@ pub const Empty = struct {
         try writer.writeAll("{}");
     }
 
+    pub fn jsonStringifyAlloc(allocator: std.mem.Allocator) ![]u8 {
+        var out: std.Io.Writer.Allocating = .init(allocator);
+        errdefer out.deinit();
+        try jsonStringify(&out.writer);
+        return try out.toOwnedSlice();
+    }
+
     pub fn jsonParse(allocator: std.mem.Allocator, text: []const u8) !Empty {
         var parsed = try std.json.parseFromSlice(std.json.Value, allocator, text, .{});
         defer parsed.deinit();
@@ -2404,6 +2411,9 @@ test "empty wire and json helper" {
     defer out.deinit();
     try Empty.jsonStringify(&out.writer);
     try std.testing.expectEqualSlices(u8, "{}", out.written());
+    const json = try Empty.jsonStringifyAlloc(allocator);
+    defer allocator.free(json);
+    try std.testing.expectEqualSlices(u8, "{}", json);
     _ = try Empty.jsonParse(allocator, "{}");
     try std.testing.expectError(error.UnknownField, Empty.jsonParse(allocator, "{\"x\":1}"));
 }
