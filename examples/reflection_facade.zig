@@ -304,6 +304,9 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 0), (try refl.fieldDefaultValue(user_desc, id_field)).int32);
     try std.testing.expectEqualStrings("", (try refl.fieldDefaultValue(user_desc, try refl.fieldByName(user_desc, "name"))).string);
     try std.testing.expectEqual(@as(i32, 0), (try refl.fieldDefaultValue(user_desc, role_field)).enumeration);
+    try std.testing.expect((try refl.fieldDefaultEnumValue(user_desc, role_field)) == role_unknown_value);
+    try std.testing.expectEqualStrings("ROLE_UNKNOWN", try refl.fieldDefaultEnumName(user_desc, role_field));
+    try std.testing.expectError(error.TypeMismatch, refl.fieldDefaultEnumValue(user_desc, id_field));
     try std.testing.expectEqual(pbz.dynamic.DefaultValue.none, try refl.fieldDefaultValue(user_desc, tags_field));
     try std.testing.expectEqual(pbz.dynamic.DefaultValue.none, try refl.fieldDefaultValue(user_desc, profile_field));
     try std.testing.expect(refl.messageReservedName(user_desc, "legacy"));

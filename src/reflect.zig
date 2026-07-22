@@ -929,6 +929,19 @@ pub const Reflection = struct {
         return dynamic.defaultValueForFieldWithRegistry(owner_file, self.registry, default_scope, field);
     }
 
+    pub fn fieldDefaultEnumValue(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumValueDescriptor {
+        const enum_desc = try self.fieldEnumType(descriptor, field);
+        const value = switch (try self.fieldDefaultValue(descriptor, field)) {
+            .enumeration => |number| number,
+            else => return error.TypeMismatch,
+        };
+        return try self.enumValueByNumber(enum_desc, value);
+    }
+
+    pub fn fieldDefaultEnumName(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return (try self.fieldDefaultEnumValue(descriptor, field)).name;
+    }
+
     pub fn fieldHasFeatureSupport(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.feature_support != null;
     }
