@@ -162,6 +162,14 @@ pub const Reflection = struct {
         return field.isRequired();
     }
 
+    pub fn fieldHasDefaultValue(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.hasDefaultValue();
+    }
+
+    pub fn fieldExplicitDefaultValue(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.OptionValue {
+        return field.explicitDefaultValue() orelse error.MissingField;
+    }
+
     pub fn fieldIsMap(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isMap();
     }

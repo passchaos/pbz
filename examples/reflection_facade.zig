@@ -300,7 +300,7 @@ pub fn main() !void {
         \\syntax = "proto2";
         \\package demo.required_reflect;
         \\message Child { required int32 id = 1; }
-        \\message Parent { required string name = 1; optional Child child = 2; }
+        \\message Parent { required string name = 1; optional Child child = 2; optional int32 priority = 3 [default = 7]; }
     );
     defer required_file.deinit();
     required_file.name = "required-reflect.proto";
@@ -311,6 +311,13 @@ pub fn main() !void {
     const required_refl = pbz.Reflection.init(allocator, &required_registry);
     var parent = try required_refl.newMessage(".demo.required_reflect.Parent");
     defer parent.deinit();
+    const priority_field = try required_refl.fieldByName(parent.descriptor, "priority");
+    try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
+    try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
+    try std.testing.expectEqual(@as(i32, 7), (try required_refl.getFieldOrDefault(&parent, "priority")).int32);
+    const required_name_field = try required_refl.fieldByName(parent.descriptor, "name");
+    try std.testing.expect(!required_refl.fieldHasDefaultValue(required_name_field));
+    try std.testing.expectError(error.MissingField, required_refl.fieldExplicitDefaultValue(required_name_field));
     try std.testing.expect(!required_refl.isInitialized(&parent));
     try std.testing.expectError(error.MissingRequiredField, required_refl.validateInitialized(&parent));
     const missing_name = (try required_refl.missingRequiredFieldPath(&parent)).?;

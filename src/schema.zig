@@ -290,6 +290,16 @@ pub const FieldDescriptor = struct {
         return false;
     }
 
+    pub fn hasDefaultValue(self: FieldDescriptor) bool {
+        return self.default_value != null;
+    }
+
+    /// Return the parsed default option exactly as stored on the descriptor.
+    /// Slices inside the returned value are owned by the descriptor graph.
+    pub fn explicitDefaultValue(self: FieldDescriptor) ?OptionValue {
+        return self.default_value;
+    }
+
     pub fn hasPresence(self: FieldDescriptor, file: *const FileDescriptor) bool {
         if (self.isRequired() or self.proto3_optional or self.oneof_name != null or self.kind == .message or self.kind == .group) return true;
         if (self.cardinality == .repeated or self.kind == .map) return false;
