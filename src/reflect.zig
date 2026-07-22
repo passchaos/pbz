@@ -337,6 +337,14 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn serviceHasExplicitFeatures(_: Reflection, descriptor: *const schema.ServiceDescriptor) bool {
+        return descriptor.features != null;
+    }
+
+    pub fn serviceExplicitFeatures(_: Reflection, descriptor: *const schema.ServiceDescriptor) Error!schema.FeatureSet {
+        return descriptor.features orelse error.MissingField;
+    }
+
     pub fn fileService(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.ServiceDescriptor {
         return file_descriptor.findService(name) orelse error.UnknownService;
     }
@@ -356,6 +364,14 @@ pub const Reflection = struct {
 
     pub fn methodIsDeprecated(_: Reflection, method: *const schema.MethodDescriptor) bool {
         return schema.optionBool(method.options.items, "deprecated") orelse false;
+    }
+
+    pub fn methodHasExplicitFeatures(_: Reflection, method: *const schema.MethodDescriptor) bool {
+        return method.features != null;
+    }
+
+    pub fn methodExplicitFeatures(_: Reflection, method: *const schema.MethodDescriptor) Error!schema.FeatureSet {
+        return method.features orelse error.MissingField;
     }
 
     pub fn methodFullName(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error![]u8 {
@@ -717,6 +733,14 @@ pub const Reflection = struct {
         return descriptor.name;
     }
 
+    pub fn oneofHasExplicitFeatures(_: Reflection, descriptor: *const schema.OneofDescriptor) bool {
+        return descriptor.features != null;
+    }
+
+    pub fn oneofExplicitFeatures(_: Reflection, descriptor: *const schema.OneofDescriptor) Error!schema.FeatureSet {
+        return descriptor.features orelse error.MissingField;
+    }
+
     pub fn oneofFullName(self: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error![]u8 {
         const message_full_name = try self.messageFullName(message_descriptor);
         defer self.allocator.free(message_full_name);
@@ -837,6 +861,14 @@ pub const Reflection = struct {
     pub fn messageExtensionRangeAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.ExtensionRange {
         if (index >= descriptor.extension_ranges.items.len) return error.UnknownField;
         return &descriptor.extension_ranges.items[index];
+    }
+
+    pub fn extensionRangeHasExplicitFeatures(_: Reflection, range: *const schema.ExtensionRange) bool {
+        return range.features != null;
+    }
+
+    pub fn extensionRangeExplicitFeatures(_: Reflection, range: *const schema.ExtensionRange) Error!schema.FeatureSet {
+        return range.features orelse error.MissingField;
     }
 
     pub fn extensionDeclaration(_: Reflection, range: *const schema.ExtensionRange, number: i32) ?schema.ExtensionDeclaration {

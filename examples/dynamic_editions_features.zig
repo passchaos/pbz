@@ -32,6 +32,19 @@ pub fn main() !void {
         \\  string relaxed = 7 [features.utf8_validation = NONE];
         \\  Role role = 8;
         \\  int32 required_id = 9 [features.field_presence = LEGACY_REQUIRED];
+        \\  oneof choice {
+        \\    option features.field_presence = EXPLICIT;
+        \\    int32 picked = 10;
+        \\  }
+        \\}
+        \\service EditionsApi {
+        \\  option features.enforce_naming_style = STYLE2024;
+        \\  rpc Get (Editions) returns (Editions) {
+        \\    option features.enforce_proto_limits = PROTO_LIMITS2026;
+        \\  }
+        \\}
+        \\message FeatureHost {
+        \\  extensions 100 to max [features.repeated_field_encoding = PACKED];
         \\}
     );
     defer file.deinit();
@@ -42,6 +55,10 @@ pub fn main() !void {
     defer registry.deinit();
     try registry.addFile(&file);
     const refl = pbz.Reflection.init(allocator, &registry);
+    const choice_oneof = desc.findOneof("choice") orelse return error.MissingDescriptor;
+    const service_desc = try refl.fileService(&file, "EditionsApi");
+    const get_method = try refl.methodByName(service_desc, "Get");
+    const feature_range = try refl.messageExtensionRangeAt(try refl.fileMessage(&file, "FeatureHost"), 0);
     try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, refl.fileFieldPresence(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.expanded, refl.fileRepeatedFieldEncoding(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.open, refl.fileEnumType(&file));
@@ -53,6 +70,14 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);
     try std.testing.expect(!refl.messageHasExplicitFeatures(desc));
     try std.testing.expectError(error.MissingField, refl.messageExplicitFeatures(desc));
+    try std.testing.expect(refl.oneofHasExplicitFeatures(choice_oneof));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, (try refl.oneofExplicitFeatures(choice_oneof)).field_presence);
+    try std.testing.expect(refl.serviceHasExplicitFeatures(service_desc));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style2024, (try refl.serviceExplicitFeatures(service_desc)).enforce_naming_style);
+    try std.testing.expect(refl.methodHasExplicitFeatures(get_method));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, (try refl.methodExplicitFeatures(get_method)).enforce_proto_limits);
+    try std.testing.expect(refl.extensionRangeHasExplicitFeatures(feature_range));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (try refl.extensionRangeExplicitFeatures(feature_range)).repeated_field_encoding);
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, try refl.enumType(file.findEnum("Role") orelse return error.MissingDescriptor));
     const role_desc = file.findEnum("Role") orelse return error.MissingDescriptor;
     try std.testing.expect(refl.enumHasExplicitFeatures(role_desc));
