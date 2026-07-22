@@ -90,7 +90,7 @@ library API.
   generated decode reuse patterns.
 - `well_known_types.zig` — Timestamp, Duration, FieldMask, Empty,
   Struct/Value/ListValue, scalar wrappers, bytes wrappers, and Any including
-  embedded WKT JSON values.
+  embedded WKT JSON values plus descriptor well-known-type reflection.
 - `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup and required-field validation.
 - `any_type_url.zig` — custom `Any` type URL prefixes, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON,

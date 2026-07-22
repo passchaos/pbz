@@ -103,4 +103,26 @@ pub fn main() !void {
     defer empty_any.deinit(allocator);
     std.debug.assert(empty_any.isType("google.protobuf.Empty"));
     _ = try pbz.Empty.decode(empty_any.value);
+
+    var descriptor_file = try pbz.ProtoParser.parse(allocator,
+        \\syntax = "proto3";
+        \\package google.protobuf;
+        \\message Any {}
+        \\message Timestamp {}
+        \\message Empty {}
+        \\message Custom {}
+    );
+    defer descriptor_file.deinit();
+    var registry = pbz.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&descriptor_file);
+    const refl = pbz.Reflection.init(allocator, &registry);
+    try std.testing.expectEqual(pbz.WellKnownType.any, try refl.messageWellKnownType(try refl.message(".google.protobuf.Any")));
+    try std.testing.expectEqual(pbz.WellKnownType.timestamp, try refl.messageWellKnownType(try refl.message(".google.protobuf.Timestamp")));
+    try std.testing.expectEqual(pbz.WellKnownType.unspecified, try refl.messageWellKnownType(try refl.message(".google.protobuf.Custom")));
+    // Match C++ Descriptor::WellKnownType exactly: Empty has special JSON
+    // handling in Any, but it is not part of descriptor.h's WellKnownType enum.
+    try std.testing.expectEqual(pbz.WellKnownType.unspecified, try refl.messageWellKnownType(try refl.message(".google.protobuf.Empty")));
+    try std.testing.expect(try refl.messageIsWellKnownType(try refl.message(".google.protobuf.Any")));
+    try std.testing.expect(!(try refl.messageIsWellKnownType(try refl.message(".google.protobuf.Empty"))));
 }

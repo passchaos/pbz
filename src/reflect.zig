@@ -455,6 +455,16 @@ pub const Reflection = struct {
         return try messageFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownMessage;
     }
 
+    pub fn messageWellKnownType(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!schema.WellKnownType {
+        const full_name = try self.messageFullName(descriptor);
+        defer self.allocator.free(full_name);
+        return schema.wellKnownTypeFromFullName(full_name);
+    }
+
+    pub fn messageIsWellKnownType(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!bool {
+        return (try self.messageWellKnownType(descriptor)) != .unspecified;
+    }
+
     pub fn messageIndex(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!usize {
         const owner_file = try self.fileOfMessage(descriptor);
         if (containingMessageForMessage(owner_file, descriptor)) |parent| {

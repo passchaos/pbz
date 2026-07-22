@@ -135,6 +135,26 @@ pub const FieldCppType = enum {
     message,
 };
 
+pub const WellKnownType = enum {
+    unspecified,
+    double_value,
+    float_value,
+    int64_value,
+    uint64_value,
+    int32_value,
+    uint32_value,
+    string_value,
+    bytes_value,
+    bool_value,
+    any,
+    field_mask,
+    duration,
+    timestamp,
+    value,
+    list_value,
+    @"struct",
+};
+
 pub fn scalarTypeName(scalar: ScalarType) []const u8 {
     return switch (scalar) {
         .double => "double",
@@ -153,6 +173,35 @@ pub fn scalarTypeName(scalar: ScalarType) []const u8 {
         .string => "string",
         .bytes => "bytes",
     };
+}
+
+pub fn wellKnownTypeFromFullName(full_name: []const u8) WellKnownType {
+    const normalized = normalizeProtoName(full_name);
+    inline for (.{
+        .{ "google.protobuf.DoubleValue", WellKnownType.double_value },
+        .{ "google.protobuf.FloatValue", WellKnownType.float_value },
+        .{ "google.protobuf.Int64Value", WellKnownType.int64_value },
+        .{ "google.protobuf.UInt64Value", WellKnownType.uint64_value },
+        .{ "google.protobuf.Int32Value", WellKnownType.int32_value },
+        .{ "google.protobuf.UInt32Value", WellKnownType.uint32_value },
+        .{ "google.protobuf.StringValue", WellKnownType.string_value },
+        .{ "google.protobuf.BytesValue", WellKnownType.bytes_value },
+        .{ "google.protobuf.BoolValue", WellKnownType.bool_value },
+        .{ "google.protobuf.Any", WellKnownType.any },
+        .{ "google.protobuf.FieldMask", WellKnownType.field_mask },
+        .{ "google.protobuf.Duration", WellKnownType.duration },
+        .{ "google.protobuf.Timestamp", WellKnownType.timestamp },
+        .{ "google.protobuf.Value", WellKnownType.value },
+        .{ "google.protobuf.ListValue", WellKnownType.list_value },
+        .{ "google.protobuf.Struct", WellKnownType.@"struct" },
+    }) |entry| {
+        if (std.mem.eql(u8, normalized, entry[0])) return entry[1];
+    }
+    return .unspecified;
+}
+
+pub fn isWellKnownTypeFullName(full_name: []const u8) bool {
+    return wellKnownTypeFromFullName(full_name) != .unspecified;
 }
 
 pub fn declarationTypeNameIsScalar(type_name: []const u8) bool {
@@ -1850,6 +1899,23 @@ fn nextDefaultJsonNameChar(name: []const u8, index: *usize, upper_next: *bool) ?
         return out;
     }
     return null;
+}
+
+test "schema identifies C++ descriptor well known types" {
+    try std.testing.expectEqual(WellKnownType.any, wellKnownTypeFromFullName("google.protobuf.Any"));
+    try std.testing.expectEqual(WellKnownType.any, wellKnownTypeFromFullName(".google.protobuf.Any"));
+    try std.testing.expectEqual(WellKnownType.timestamp, wellKnownTypeFromFullName("google.protobuf.Timestamp"));
+    try std.testing.expectEqual(WellKnownType.duration, wellKnownTypeFromFullName("google.protobuf.Duration"));
+    try std.testing.expectEqual(WellKnownType.field_mask, wellKnownTypeFromFullName("google.protobuf.FieldMask"));
+    try std.testing.expectEqual(WellKnownType.@"struct", wellKnownTypeFromFullName("google.protobuf.Struct"));
+    try std.testing.expectEqual(WellKnownType.value, wellKnownTypeFromFullName("google.protobuf.Value"));
+    try std.testing.expectEqual(WellKnownType.list_value, wellKnownTypeFromFullName("google.protobuf.ListValue"));
+    try std.testing.expectEqual(WellKnownType.double_value, wellKnownTypeFromFullName("google.protobuf.DoubleValue"));
+    try std.testing.expectEqual(WellKnownType.bytes_value, wellKnownTypeFromFullName("google.protobuf.BytesValue"));
+    try std.testing.expectEqual(WellKnownType.unspecified, wellKnownTypeFromFullName("google.protobuf.Empty"));
+    try std.testing.expectEqual(WellKnownType.unspecified, wellKnownTypeFromFullName("demo.Any"));
+    try std.testing.expect(isWellKnownTypeFullName("google.protobuf.BoolValue"));
+    try std.testing.expect(!isWellKnownTypeFullName("google.protobuf.Empty"));
 }
 
 test "schema mirrors C++ field lowercase and camelcase names" {

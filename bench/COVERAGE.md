@@ -322,7 +322,7 @@ benchmark harness.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and
   bytes wrappers, standalone `Any` JSON mapping for embedded WKT payload
-  values, and WKT wire round-trips.
+  values, descriptor well-known-type reflection, and WKT wire round-trips.
 - `examples/any_dynamic.zig` covers custom dynamic-message `Any`
   pack/unpack with registry lookup, type-url matching, required-field
   validation on pack and unpack, and type mismatch errors.
