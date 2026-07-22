@@ -303,6 +303,10 @@ pub const FieldDescriptor = struct {
         return self.cardinality == .optional;
     }
 
+    pub fn isWeak(self: FieldDescriptor) bool {
+        return optionBool(self.options.items, "weak") orelse false;
+    }
+
     pub fn hasDefaultValue(self: FieldDescriptor) bool {
         return self.default_value != null;
     }

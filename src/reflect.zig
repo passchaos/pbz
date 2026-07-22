@@ -750,6 +750,10 @@ pub const Reflection = struct {
         return schema.optionBool(field.options.items, "deprecated") orelse false;
     }
 
+    pub fn fieldIsWeak(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isWeak();
+    }
+
     pub fn fieldOptions(_: Reflection, field: *const schema.FieldDescriptor) []const schema.FieldOption {
         return field.options.items;
     }

@@ -704,6 +704,7 @@ pub fn main() !void {
         \\  optional group Legacy = 4 { optional int32 code = 5; }
         \\  repeated Child children = 6;
         \\  repeated group Item = 7 { optional int32 code = 8; }
+        \\  optional Child weak_child = 9 [weak = true];
         \\}
     );
     defer required_file.deinit();
@@ -717,14 +718,18 @@ pub fn main() !void {
     defer parent.deinit();
     const priority_field = try required_refl.fieldByName(parent.descriptor, "priority");
     try std.testing.expect(required_refl.fieldHasOptionalKeyword(priority_field));
+    try std.testing.expect(!required_refl.fieldIsWeak(priority_field));
     try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
     try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.fieldDefaultValue(parent.descriptor, priority_field)).int32);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.getFieldOrDefault(&parent, "priority")).int32);
     const required_child_field = try required_refl.fieldByName(parent.descriptor, "child");
-    try std.testing.expectEqualStrings("Child", try required_refl.fieldTypeName(required_child_field));
     const child_desc = try required_refl.message(".demo.required_reflect.Child");
-    try std.testing.expect(child_desc == try required_refl.fieldMessageType(parent.descriptor, required_child_field));
+    try std.testing.expect(try required_refl.fieldMessageType(parent.descriptor, required_child_field) == child_desc);
+    const weak_child_field = try required_refl.fieldByName(parent.descriptor, "weak_child");
+    try std.testing.expect(required_refl.fieldIsWeak(weak_child_field));
+    try std.testing.expect(try required_refl.fieldMessageType(parent.descriptor, weak_child_field) == child_desc);
+    try std.testing.expectEqualStrings("Child", try required_refl.fieldTypeName(required_child_field));
     const legacy_field = try required_refl.fieldByName(parent.descriptor, "legacy");
     try std.testing.expectEqualStrings("Legacy", try required_refl.fieldTypeName(legacy_field));
     try std.testing.expect(required_refl.fieldIsGroup(legacy_field));
