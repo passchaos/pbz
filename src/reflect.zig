@@ -1256,6 +1256,14 @@ pub const Reflection = struct {
         return self.registry.findMessageVisible(owner_file, method.output_type, owner_file.package) orelse error.UnknownMessage;
     }
 
+    pub fn methodDirectInputType(self: Reflection, method: *const schema.MethodDescriptor) Error!*const schema.MessageDescriptor {
+        return try self.methodInputType(try self.methodService(method), method);
+    }
+
+    pub fn methodDirectOutputType(self: Reflection, method: *const schema.MethodDescriptor) Error!*const schema.MessageDescriptor {
+        return try self.methodOutputType(try self.methodService(method), method);
+    }
+
     pub fn methodClientStreaming(_: Reflection, method: *const schema.MethodDescriptor) bool {
         return method.client_streaming;
     }

@@ -599,6 +599,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("User", refl.methodOutputTypeName(get_method));
     try std.testing.expect(try refl.methodInputType(users_service, get_method) == user_desc);
     try std.testing.expect(try refl.methodOutputType(users_service, get_method) == user_desc);
+    try std.testing.expect(try refl.methodDirectInputType(get_method) == user_desc);
+    try std.testing.expect(try refl.methodDirectOutputType(get_method) == user_desc);
     try std.testing.expect(try refl.methodContainingService(users_service, get_method) == users_service);
     try std.testing.expect(try refl.methodService(get_method) == users_service);
     try std.testing.expect(try refl.methodContainingFile(users_service, get_method) == app_file);
