@@ -146,6 +146,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("demo.reflect.Role", role_full_name);
     try std.testing.expectEqual(@as(usize, 1), refl.fileImportCount(app_file));
     try std.testing.expectEqualStrings("common.proto", (try refl.fileImportAt(app_file, 0)).path);
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileImportIndex(app_file, "common.proto"));
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileDependencyIndex(app_file, role_file));
     try std.testing.expectError(error.UnknownFile, refl.fileImportAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 1), refl.fileMessageCount(app_file));
     try std.testing.expect((try refl.fileMessageAt(app_file, 0)) == user_desc);

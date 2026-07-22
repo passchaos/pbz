@@ -312,6 +312,13 @@ pub const Reflection = struct {
         return file_descriptor.importAt(index) orelse error.UnknownFile;
     }
 
+    pub fn fileImportIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) Error!usize {
+        for (file_descriptor.imports.items, 0..) |import, index| {
+            if (std.mem.eql(u8, import.path, path)) return index;
+        }
+        return error.UnknownFile;
+    }
+
     pub fn fileDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return file_descriptor.imports.items.len;
     }
@@ -319,6 +326,14 @@ pub const Reflection = struct {
     pub fn fileDependency(self: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FileDescriptor {
         if (index >= file_descriptor.imports.items.len) return error.UnknownFile;
         return try self.file(file_descriptor.imports.items[index].path);
+    }
+
+    pub fn fileDependencyIndex(self: Reflection, file_descriptor: *const schema.FileDescriptor, dependency: *const schema.FileDescriptor) Error!usize {
+        for (file_descriptor.imports.items, 0..) |import, index| {
+            const imported = self.registry.findFile(import.path) orelse continue;
+            if (registry_mod.sameFile(imported, dependency)) return index;
+        }
+        return error.UnknownFile;
     }
 
     pub fn filePublicDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {

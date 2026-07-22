@@ -782,7 +782,7 @@ pub const Registry = struct {
     }
 };
 
-fn sameFile(a: *const schema.FileDescriptor, b: *const schema.FileDescriptor) bool {
+pub fn sameFile(a: *const schema.FileDescriptor, b: *const schema.FileDescriptor) bool {
     if (a == b) return true;
     if (a.name.len != 0 and b.name.len != 0 and std.mem.eql(u8, a.name, b.name)) return true;
     return false;
