@@ -1895,6 +1895,26 @@ pub const Reflection = struct {
         return try self.registry.extensionsForMessageAlloc(self.allocator, descriptor);
     }
 
+    pub fn extensionCountForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return self.registry.extensionCountForMessage(descriptor);
+    }
+
+    pub fn extensionAtForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.FieldDescriptor {
+        const extensions = try self.extensionsForMessage(descriptor);
+        defer self.allocator.free(extensions);
+        if (index >= extensions.len) return error.UnknownField;
+        return extensions[index];
+    }
+
+    pub fn extensionIndexForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        const extensions = try self.extensionsForMessage(descriptor);
+        defer self.allocator.free(extensions);
+        for (extensions, 0..) |candidate, index| {
+            if (candidate == field) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn extensionByName(self: Reflection, extendee: []const u8, name: []const u8) Error!*const schema.FieldDescriptor {
         return self.registry.findExtensionByName(extendee, name) orelse error.UnknownField;
     }

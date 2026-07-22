@@ -69,11 +69,18 @@ pub fn main() !void {
     const scoped_ext = try refl.extensionForMessage(host_desc, 102);
     const host_extensions = try refl.extensionsForMessage(host_desc);
     defer allocator.free(host_extensions);
+    try std.testing.expectEqual(host_extensions.len, refl.extensionCountForMessage(host_desc));
     std.debug.assert(host_extensions.len == 3);
     std.debug.assert(host_extensions[0] == priority_ext);
     std.debug.assert(host_extensions[1] == registry.findExtension("demo.Host", 101).?);
     std.debug.assert(host_extensions[2] == scoped_ext);
+    try std.testing.expect((try refl.extensionAtForMessage(host_desc, 0)) == priority_ext);
+    try std.testing.expect((try refl.extensionAtForMessage(host_desc, 2)) == scoped_ext);
+    try std.testing.expectEqual(@as(usize, 0), try refl.extensionIndexForMessage(host_desc, priority_ext));
+    try std.testing.expectEqual(@as(usize, 2), try refl.extensionIndexForMessage(host_desc, scoped_ext));
+    try std.testing.expectError(error.UnknownField, refl.extensionAtForMessage(host_desc, host_extensions.len));
     const scope_desc = try refl.message(".demo.Scope");
+    try std.testing.expectError(error.UnknownField, refl.extensionIndexForMessage(scope_desc, priority_ext));
     std.debug.assert((try refl.fieldExtensionScope(scoped_ext)).? == scope_desc);
     std.debug.assert(try refl.fieldHasExtensionScope(scoped_ext));
     std.debug.assert(scoped_ext == try refl.messageExtension(scope_desc, "scoped_value"));

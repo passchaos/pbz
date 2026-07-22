@@ -430,6 +430,17 @@ pub const Registry = struct {
         return try out.toOwnedSlice(allocator);
     }
 
+    pub fn extensionCountForMessage(self: *const Registry, message: *const schema.MessageDescriptor) usize {
+        var count: usize = 0;
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (self.extensionTargetsMessage(field, message, field.number)) count += 1;
+            }
+            for (file.messages.items) |*scope| count += self.extensionCountForMessageInScope(scope, message);
+        }
+        return count;
+    }
+
     pub fn findFileContainingExtension(self: *const Registry, extendee: []const u8, number: wire.FieldNumber) ?*const schema.FileDescriptor {
         const field = self.findExtension(extendee, number) orelse return null;
         return self.fileContainingExtension(field);
@@ -455,6 +466,15 @@ pub const Registry = struct {
             if (self.extensionTargetsMessage(field, message, field.number)) try out.append(allocator, field);
         }
         for (scope.messages.items) |*nested| try self.collectExtensionsForMessageInScope(allocator, nested, message, out);
+    }
+
+    fn extensionCountForMessageInScope(self: *const Registry, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor) usize {
+        var count: usize = 0;
+        for (scope.extensions.items) |*field| {
+            if (self.extensionTargetsMessage(field, message, field.number)) count += 1;
+        }
+        for (scope.messages.items) |*nested| count += self.extensionCountForMessageInScope(nested, message);
+        return count;
     }
 
     fn extensionTargetsMessage(self: *const Registry, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, number: wire.FieldNumber) bool {
