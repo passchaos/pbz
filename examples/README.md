@@ -34,7 +34,7 @@ library API.
   behavior, enum-name helpers, JSON null reset, TextFormat parsing, and imported
   enum defaults resolved through a registry.
 - `dynamic_enum_alias.zig` — dynamic enum alias parsing, reflection alias
-  metadata lookup, and canonical JSON/TextFormat output for singular, repeated,
+  metadata lookup/access/index, and canonical JSON/TextFormat output for singular, repeated,
   and map enum fields.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
 - `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present

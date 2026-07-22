@@ -36,6 +36,13 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 2), aliases_for_one.len);
     try std.testing.expectEqualStrings("STATUS_STARTED", aliases_for_one[0].name);
     try std.testing.expectEqualStrings("STATUS_RUNNING", aliases_for_one[1].name);
+    try std.testing.expectEqual(@as(usize, 2), refl.enumValueCountByNumber(status_desc, 1));
+    try std.testing.expect((try refl.enumValueAtByNumber(status_desc, 1, 0)) == aliases_for_one[0]);
+    try std.testing.expect((try refl.enumValueAtByNumber(status_desc, 1, 1)) == aliases_for_one[1]);
+    try std.testing.expectEqual(@as(usize, 0), try refl.enumValueIndexByNumber(status_desc, 1, aliases_for_one[0]));
+    try std.testing.expectEqual(@as(usize, 1), try refl.enumValueIndexByNumber(status_desc, 1, aliases_for_one[1]));
+    try std.testing.expectError(error.UnknownEnum, refl.enumValueAtByNumber(status_desc, 1, 2));
+    try std.testing.expectError(error.UnknownEnum, refl.enumValueIndexByNumber(status_desc, 2, aliases_for_one[0]));
 
     const status_field = desc.findField("status") orelse return error.MissingField;
     const history_field = desc.findField("history") orelse return error.MissingField;

@@ -2032,6 +2032,34 @@ pub const Reflection = struct {
         return try descriptor.valuesByNumberAlloc(self.allocator, number);
     }
 
+    pub fn enumValueCountByNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i32) usize {
+        var count: usize = 0;
+        for (descriptor.values.items) |*value| {
+            if (value.number == number) count += 1;
+        }
+        return count;
+    }
+
+    pub fn enumValueAtByNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i32, index: usize) Error!*const schema.EnumValueDescriptor {
+        var number_index: usize = 0;
+        for (descriptor.values.items) |*value| {
+            if (value.number != number) continue;
+            if (number_index == index) return value;
+            number_index += 1;
+        }
+        return error.UnknownEnum;
+    }
+
+    pub fn enumValueIndexByNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i32, value: *const schema.EnumValueDescriptor) Error!usize {
+        var number_index: usize = 0;
+        for (descriptor.values.items) |*candidate| {
+            if (candidate.number != number) continue;
+            if (candidate == value) return number_index;
+            number_index += 1;
+        }
+        return error.UnknownEnum;
+    }
+
     pub fn enumAllowAlias(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
         return descriptor.allowAlias();
     }

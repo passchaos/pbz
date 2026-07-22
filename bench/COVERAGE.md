@@ -242,7 +242,7 @@ benchmark harness.
   reset behavior, TextFormat parsing, and imported enum defaults resolved
   through a registry.
 - `examples/dynamic_enum_alias.zig` covers dynamic enum alias parsing,
-  reflection alias metadata lookup, and canonical JSON/TextFormat output for
+  reflection alias metadata lookup/access/index, and canonical JSON/TextFormat output for
   singular, repeated, and map enum fields.
 - `examples/dynamic_groups.zig` covers dynamic proto2 group fields, repeated
   groups, JSON/TextFormat round-trips, singular group merge semantics, and
