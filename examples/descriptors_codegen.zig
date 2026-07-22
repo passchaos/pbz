@@ -44,7 +44,14 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownField, refl.sourceLocationAt(&file, refl.sourceLocationCount(&file)));
     const syntax_location = try refl.sourceLocation(&file, &.{12});
     try std.testing.expectEqualSlices(i32, &.{12}, refl.sourceLocationPath(syntax_location));
+    try std.testing.expectEqual(@as(usize, 1), refl.sourceLocationPathCount(syntax_location));
+    try std.testing.expectEqual(@as(i32, 12), try refl.sourceLocationPathAt(syntax_location, 0));
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationPathAt(syntax_location, 1));
     try std.testing.expectEqual(@as(usize, 4), refl.sourceLocationSpan(syntax_location).len);
+    try std.testing.expectEqual(@as(usize, 4), refl.sourceLocationSpanCount(syntax_location));
+    try std.testing.expectEqual(refl.sourceLocationSpan(syntax_location)[0], try refl.sourceLocationSpanAt(syntax_location, 0));
+    try std.testing.expectEqual(refl.sourceLocationSpan(syntax_location)[3], try refl.sourceLocationSpanAt(syntax_location, 3));
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationSpanAt(syntax_location, 4));
     try std.testing.expectEqualStrings("Syntax leading comment.\n", refl.sourceLocationLeadingComments(syntax_location).?);
     try std.testing.expect(refl.sourceLocationTrailingComments(syntax_location) == null);
     try std.testing.expectEqual(@as(usize, 0), refl.sourceLocationLeadingDetachedCommentCount(syntax_location));

@@ -186,8 +186,26 @@ pub const Reflection = struct {
         return location.path.items;
     }
 
+    pub fn sourceLocationPathCount(_: Reflection, location: *const schema.SourceCodeInfo.Location) usize {
+        return location.path.items.len;
+    }
+
+    pub fn sourceLocationPathAt(_: Reflection, location: *const schema.SourceCodeInfo.Location, index: usize) Error!i32 {
+        if (index >= location.path.items.len) return error.UnknownField;
+        return location.path.items[index];
+    }
+
     pub fn sourceLocationSpan(_: Reflection, location: *const schema.SourceCodeInfo.Location) []const i32 {
         return location.span.items;
+    }
+
+    pub fn sourceLocationSpanCount(_: Reflection, location: *const schema.SourceCodeInfo.Location) usize {
+        return location.span.items.len;
+    }
+
+    pub fn sourceLocationSpanAt(_: Reflection, location: *const schema.SourceCodeInfo.Location, index: usize) Error!i32 {
+        if (index >= location.span.items.len) return error.UnknownField;
+        return location.span.items[index];
     }
 
     pub fn sourceLocationLeadingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
