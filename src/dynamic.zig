@@ -1018,7 +1018,7 @@ pub const DynamicMessage = struct {
             // Extensions carry their own defining file in DescriptorPool. Use
             // that file for edition feature defaults instead of the extendee's
             // file so cross-file dynamic decoding matches FieldDescriptor::file().
-            const field_file = fieldDefiningFile(file, registry, field);
+            const field_file = registry_mod.fieldDefiningFile(file, registry, field);
             if (field.kind == .message and registryEnumDescriptor(field_file, registry, self.descriptor, field.kind) == null and field.messageEncoding(field_file) == .delimited) {
                 if (tag.wire_type != .start_group) return error.InvalidWireType;
                 try self.addOwned(field, try decodeDelimitedMessageValue(self.allocator, field_file, registry, self.descriptor, field, reader));
@@ -1239,16 +1239,6 @@ fn registryExtension(registry: ?*const registry_mod.Registry, descriptor: *const
     return reg.findExtensionForMessage(descriptor, number);
 }
 
-fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingMessage(descriptor) orelse default_file;
-}
-
-fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingEnum(descriptor) orelse default_file;
-}
-
 fn validateFieldTargetsMessage(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) EncodeError!void {
     if (field.extendee == null) return;
     if (!extensionFieldTargetsMessage(file, registry, current, field)) return error.TypeMismatch;
@@ -1275,7 +1265,7 @@ fn encodeMessageSetEntry(host: *const schema.MessageDescriptor, entry: *const Fi
             .message => |message_value| message_value,
             else => return error.TypeMismatch,
         };
-        const message_file = messageDescriptorFile(file, registry, message.descriptor);
+        const message_file = registry_mod.messageDefiningFile(file, registry, message.descriptor);
         var payload_writer = wire.Writer.init(writer.allocator);
         defer payload_writer.deinit();
         if (deterministic) {
@@ -1329,7 +1319,7 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
     // Extensions carry their own defining file in DescriptorPool. Use that
     // owner file for edition feature defaults instead of the extendee context
     // so cross-file dynamic encoding matches C++ FieldDescriptor::file().
-    const field_file = fieldDefiningFile(file, registry, field);
+    const field_file = registry_mod.fieldDefiningFile(file, registry, field);
     switch (field.kind) {
         .scalar => |scalar| try encodeScalar(field_file, field, field.number, scalar, value, writer),
         .enumeration => switch (value) {
@@ -1347,7 +1337,7 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
             },
             .message => |message| {
                 if (registryEnumDescriptor(field_file, registry, current, field.kind) != null) return error.TypeMismatch;
-                const message_file = messageDescriptorFile(field_file, registry, message.descriptor);
+                const message_file = registry_mod.messageDefiningFile(field_file, registry, message.descriptor);
                 if (field.messageEncoding(field_file) == .delimited) {
                     try writer.writeTag(field.number, .start_group);
                     if (deterministic) {
@@ -1372,7 +1362,7 @@ fn encodeField(current: *const schema.MessageDescriptor, field: *const schema.Fi
         .group => switch (value) {
             .group => |message| {
                 try writer.writeTag(field.number, .start_group);
-                const message_file = messageDescriptorFile(field_file, registry, message.descriptor);
+                const message_file = registry_mod.messageDefiningFile(field_file, registry, message.descriptor);
                 if (deterministic) {
                     try message.encodeDeterministicWithRegistry(message_file, registry, writer);
                 } else {
@@ -1438,7 +1428,7 @@ fn encodeMapElement(
                 if (registryEnumDescriptor(file, registry, current, kind) != null) return error.TypeMismatch;
                 var nested_writer = wire.Writer.init(writer.allocator);
                 defer nested_writer.deinit();
-                const message_file = messageDescriptorFile(file, registry, message.descriptor);
+                const message_file = registry_mod.messageDefiningFile(file, registry, message.descriptor);
                 if (deterministic) {
                     try message.encodeDeterministicWithRegistry(message_file, registry, &nested_writer);
                 } else {
@@ -1453,7 +1443,7 @@ fn encodeMapElement(
 }
 
 fn encodePackedWithRegistry(current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, values: []const Value, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, writer: *wire.Writer) EncodeError!void {
-    const field_file = fieldDefiningFile(file, registry, field);
+    const field_file = registry_mod.fieldDefiningFile(file, registry, field);
     const kind = scalarLikeKindForEncoding(file, registry, current, field.kind);
     if (kind == .scalar and kind.scalar == .int32) return try encodePackedInt32(field, values, writer);
     if (kind == .scalar and fixedWidthPackedScalarSize(kind.scalar) != null) return try encodePackedFixedWidth(field, values, kind.scalar, writer);
@@ -1600,7 +1590,7 @@ fn decodeMessagePayload(
         message.deinit();
         allocator.destroy(message);
     }
-    const descriptor_file = messageDescriptorFile(file, registry, descriptor);
+    const descriptor_file = registry_mod.messageDefiningFile(file, registry, descriptor);
     try message.decodeStream(descriptor_file, registry, reader, null);
     try message.deduplicateDecodedMapFields();
     return .{ .message = message };
@@ -1725,7 +1715,7 @@ fn decodeGroupValue(
     }
     try reader.enterRecursion();
     defer reader.leaveRecursion();
-    try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
+    try message.decodeStream(registry_mod.messageDefiningFile(file, registry, descriptor), registry, reader, field.number);
     try message.deduplicateDecodedMapFields();
     return .{ .group = message };
 }
@@ -1751,7 +1741,7 @@ fn decodeDelimitedMessageValue(
     }
     try reader.enterRecursion();
     defer reader.leaveRecursion();
-    try message.decodeStream(messageDescriptorFile(file, registry, descriptor), registry, reader, field.number);
+    try message.decodeStream(registry_mod.messageDefiningFile(file, registry, descriptor), registry, reader, field.number);
     try message.deduplicateDecodedMapFields();
     return .{ .message = message };
 }
@@ -1839,18 +1829,11 @@ fn enumNameForNumber(enumeration: *const schema.EnumDescriptor, number: i32) ?[]
 
 fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
-    return enumDescriptorFile(file, registry, enumeration).features.enum_type == .closed;
-}
-
-fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) *const schema.FileDescriptor {
-    if (registry) |reg| {
-        if (reg.fileContainingExtension(field)) |file| return file;
-    }
-    return default_file;
+    return registry_mod.enumDefiningFile(file, registry, enumeration).features.enum_type == .closed;
 }
 
 fn fieldHasPresenceForEncoding(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
-    const field_file = fieldDefiningFile(file, registry, field);
+    const field_file = registry_mod.fieldDefiningFile(file, registry, field);
     if (fieldIsRequired(field) or field.proto3_optional or field.oneof_name != null or field.kind == .group) return true;
     if (field.kind == .message and fieldKindIsRegistryEnum(field_file, registry, current, field.kind) == null) return true;
     if (field.cardinality == .repeated or field.kind == .map) return false;
@@ -1896,14 +1879,14 @@ fn isDefaultSingularValue(field: *const schema.FieldDescriptor, value: Value) bo
 
 fn isDefaultSingularValueForEncoding(file: ?*const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor, value: Value) bool {
     if (field.default_value != null) return false;
-    const field_file = if (file) |f| fieldDefiningFile(f, registry, field) else null;
+    const field_file = if (file) |f| registry_mod.fieldDefiningFile(f, registry, field) else null;
     if (fieldKindIsRegistryEnum(field_file, registry, current, field.kind) == null) return isDefaultSingularValue(field, value);
     return value == .enumeration and value.enumeration == 0;
 }
 
 fn resolvedPackedForEncoding(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: ?*const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
     if (field.cardinality != .repeated) return false;
-    const field_file = fieldDefiningFile(file, registry, field);
+    const field_file = registry_mod.fieldDefiningFile(file, registry, field);
     const kind = scalarLikeKindForEncoding(field_file, registry, current, field.kind);
     if (!kind.packable()) return false;
     if (field.packed_override) |is_packed| return is_packed;

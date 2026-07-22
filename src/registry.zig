@@ -22,6 +22,22 @@ pub const ImportChain = struct {
     }
 };
 
+pub fn messageDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingMessage(descriptor) orelse default_file;
+}
+
+pub fn enumDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
+    const reg = registry orelse return default_file;
+    return reg.fileContainingEnum(descriptor) orelse default_file;
+}
+
+pub fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const Registry, field: ?*const schema.FieldDescriptor) *const schema.FileDescriptor {
+    const descriptor = field orelse return default_file;
+    const reg = registry orelse return default_file;
+    return reg.fileContainingExtension(descriptor) orelse default_file;
+}
+
 pub const Registry = struct {
     allocator: std.mem.Allocator,
     files: std.ArrayList(*const schema.FileDescriptor) = .empty,

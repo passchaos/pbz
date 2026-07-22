@@ -189,7 +189,7 @@ fn writeField(
     writer: *std.Io.Writer,
     depth: usize,
 ) Error!void {
-    const field_file = fieldDefiningFile(file, registry, field);
+    const field_file = registry_mod.fieldDefiningFile(file, registry, field);
     try writeIndent(writer, options, depth);
     switch (kind) {
         .message => |type_name| {
@@ -207,7 +207,7 @@ fn writeField(
                     try writeFieldName(file, field, name, writer);
                     try writer.writeAll(" {\n");
                     if (!try writeAnyContents(field_file, registry, message, options, writer, depth + 1)) {
-                        try writeMessageFields(messageDescriptorFile(field_file, registry, message.descriptor), registry, message, options, writer, depth + 1);
+                        try writeMessageFields(registry_mod.messageDefiningFile(field_file, registry, message.descriptor), registry, message, options, writer, depth + 1);
                     }
                     try writeIndent(writer, options, depth);
                     try writer.writeAll("}\n");
@@ -223,7 +223,7 @@ fn writeField(
                 } else name;
                 try writeFieldName(file, field, group_name, writer);
                 try writer.writeAll(" {\n");
-                try writeMessageFields(messageDescriptorFile(field_file, registry, message.descriptor), registry, message, options, writer, depth + 1);
+                try writeMessageFields(registry_mod.messageDefiningFile(field_file, registry, message.descriptor), registry, message, options, writer, depth + 1);
                 try writeIndent(writer, options, depth);
                 try writer.writeAll("}\n");
             },
@@ -253,7 +253,7 @@ fn writeAnyContents(
     const payload_desc = resolveMessageDescriptorWithRegistry(file, registry, message.descriptor, anyTypeName(type_url)) orelse return false;
     var nested = dynamic.DynamicMessage.init(message.allocator, payload_desc);
     defer nested.deinit();
-    const payload_file = messageDescriptorFile(file, registry, payload_desc);
+    const payload_file = registry_mod.messageDefiningFile(file, registry, payload_desc);
     if (registry) |reg| {
         try nested.decodeWithRegistry(payload_file, reg, value);
     } else {
@@ -319,7 +319,7 @@ fn writeFieldName(file: *const schema.FileDescriptor, field: ?*const schema.Fiel
 }
 
 fn validateTextFormatUtf8(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor, kind: schema.FieldKind, value: dynamic.Value) Error!void {
-    if (fieldUtf8Validation(fieldDefiningFile(file, registry, field), field) != .verify) return;
+    if (fieldUtf8Validation(registry_mod.fieldDefiningFile(file, registry, field), field) != .verify) return;
     switch (kind) {
         .scalar => |scalar| if (scalar == .string and value == .string and !std.unicode.utf8ValidateSlice(value.string)) return error.InvalidUtf8,
         else => {},
@@ -475,11 +475,6 @@ fn messageScopeInMessage(package: []const u8, prefix: []const u8, message: *cons
 fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
     if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
     return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
-}
-
-fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingMessage(descriptor) orelse default_file;
 }
 
 fn writeQuoted(bytes: []const u8, writer: *std.Io.Writer) Error!void {
@@ -893,7 +888,7 @@ const TextParser = struct {
                     try self.parseUnknownField(message, unknown_number.?);
                     self.consumeSeparator();
                 } else {
-                    const field_file = fieldDefiningFile(file, self.registry, field);
+                    const field_file = registry_mod.fieldDefiningFile(file, self.registry, field);
                     if (field.?.kind == .map or field.?.kind == .group or (field.?.kind == .message and !self.fieldIsRegistryEnum(field_file, message.descriptor, field.?))) {
                         const close = try self.consumeAggregateStart();
                         try self.parseAggregateField(field_file, message, field.?, close);
@@ -911,7 +906,7 @@ const TextParser = struct {
                     try self.parseUnknownGroup(message, unknown_number.?, close);
                     self.consumeSeparator();
                 } else {
-                    try self.parseAggregateField(fieldDefiningFile(file, self.registry, field), message, field.?, close);
+                    try self.parseAggregateField(registry_mod.fieldDefiningFile(file, self.registry, field), message, field.?, close);
                 }
             } else return error.UnexpectedToken;
         }
@@ -925,7 +920,7 @@ const TextParser = struct {
         const payload_desc = resolveMessageDescriptorWithRegistry(file, self.registry, message.descriptor, anyTypeName(type_url)) orelse return error.TypeMismatch;
         var payload = dynamic.DynamicMessage.init(self.allocator, payload_desc);
         defer payload.deinit();
-        const payload_file = messageDescriptorFile(file, self.registry, payload_desc);
+        const payload_file = registry_mod.messageDefiningFile(file, self.registry, payload_desc);
         try self.parseMessage(payload_file, &payload, close);
         const encoded = try payload.encodedDeterministicWithRegistry(payload_file, self.registry);
         defer self.allocator.free(encoded);
@@ -1193,7 +1188,7 @@ const TextParser = struct {
                 nested.deinit();
                 self.allocator.destroy(nested);
             }
-            try self.parseMessage(messageDescriptorFile(file, self.registry, nested_desc), nested, close);
+            try self.parseMessage(registry_mod.messageDefiningFile(file, self.registry, nested_desc), nested, close);
             try self.addOrMergeAggregate(message, field, nested);
             self.consumeSeparator();
         }
@@ -1292,7 +1287,7 @@ const TextParser = struct {
                 nested.deinit();
                 self.allocator.destroy(nested);
             }
-            try self.parseMessage(messageDescriptorFile(file, self.registry, descriptor), nested, close);
+            try self.parseMessage(registry_mod.messageDefiningFile(file, self.registry, descriptor), nested, close);
             return .{ .message = nested };
         }
         try self.expect(':');
@@ -1578,14 +1573,9 @@ fn resolveMessageDescriptorWithRegistry(file: *const schema.FileDescriptor, regi
     return resolveMessageDescriptor(file, current, name);
 }
 
-fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingEnum(descriptor) orelse default_file;
-}
-
 fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
-    return enumDescriptorFile(file, registry, enumeration).features.enum_type == .closed;
+    return registry_mod.enumDefiningFile(file, registry, enumeration).features.enum_type == .closed;
 }
 
 fn defaultEnumNumber(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, current: *const schema.MessageDescriptor, name: []const u8) i32 {
@@ -1599,14 +1589,6 @@ fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
         if (value.number == number) return true;
     }
     return false;
-}
-
-fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: ?*const schema.FieldDescriptor) *const schema.FileDescriptor {
-    const descriptor = field orelse return default_file;
-    if (registry) |reg| {
-        if (reg.fileContainingExtension(descriptor)) |file| return file;
-    }
-    return default_file;
 }
 
 fn fieldUtf8Validation(file: *const schema.FileDescriptor, field: ?*const schema.FieldDescriptor) schema.FeatureSet.Utf8Validation {

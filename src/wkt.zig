@@ -833,7 +833,7 @@ pub const Any = struct {
     }
 
     pub fn packDynamicWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
-        const payload = try message.encodedWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry);
+        const payload = try message.encodedWithRegistry(registry_mod.messageDefiningFile(file, registry, message.descriptor), registry);
         defer message.allocator.free(payload);
         return try packBytes(allocator, full_name, payload);
     }
@@ -843,7 +843,7 @@ pub const Any = struct {
     }
 
     pub fn packDynamicInitializedWithRegistry(allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, full_name: []const u8, message: *const dynamic_mod.DynamicMessage) !Any {
-        const payload = try message.encodedInitializedWithRegistry(messageDescriptorFile(file, registry, message.descriptor), registry);
+        const payload = try message.encodedInitializedWithRegistry(registry_mod.messageDefiningFile(file, registry, message.descriptor), registry);
         defer message.allocator.free(payload);
         return try packBytes(allocator, full_name, payload);
     }
@@ -889,7 +889,7 @@ pub const Any = struct {
     pub fn unpackDynamicWithRegistry(self: Any, allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: *const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor, expected_full_name: []const u8) !dynamic_mod.DynamicMessage {
         var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
         errdefer message.deinit();
-        try message.decodeWithRegistry(messageDescriptorFile(file, registry, descriptor), registry, try self.unpackBytes(expected_full_name));
+        try message.decodeWithRegistry(registry_mod.messageDefiningFile(file, registry, descriptor), registry, try self.unpackBytes(expected_full_name));
         return message;
     }
 
@@ -903,7 +903,7 @@ pub const Any = struct {
     pub fn unpackDynamicInitializedWithRegistry(self: Any, allocator: std.mem.Allocator, file: *const schema_mod.FileDescriptor, registry: *const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor, expected_full_name: []const u8) !dynamic_mod.DynamicMessage {
         var message = dynamic_mod.DynamicMessage.init(allocator, descriptor);
         errdefer message.deinit();
-        try message.decodeInitializedWithRegistry(messageDescriptorFile(file, registry, descriptor), registry, try self.unpackBytes(expected_full_name));
+        try message.decodeInitializedWithRegistry(registry_mod.messageDefiningFile(file, registry, descriptor), registry, try self.unpackBytes(expected_full_name));
         return message;
     }
 
@@ -1211,11 +1211,6 @@ fn wrapperJsonValueToBytes(allocator: std.mem.Allocator, comptime WrapperType: t
 fn wrapperFromJsonValue(allocator: std.mem.Allocator, comptime WrapperType: type, comptime T: type, comptime scalar: WrapperScalar, value: std.json.Value) !WrapperType {
     if (value == .null) return .{ .value = defaultWrapperValue(T) };
     return .{ .value = try parseWrapperJsonValue(allocator, T, scalar, value), .owns_value = wrapperValueUsesAllocator(scalar) };
-}
-
-fn messageDescriptorFile(default_file: *const schema_mod.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema_mod.MessageDescriptor) *const schema_mod.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingMessage(descriptor) orelse default_file;
 }
 
 test "any wire and json helpers" {

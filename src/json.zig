@@ -181,7 +181,7 @@ fn fillMessageObject(
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
-        const field_file = fieldDefiningFile(file, registry, field);
+        const field_file = registry_mod.fieldDefiningFile(file, registry, field);
         if (entry.value_ptr.* == .null and jsonNullSkipsField(field_file, registry, message.descriptor, field)) continue;
         if (seenJsonField(seen_fields.items, field.number)) return error.DuplicateField;
         if (field.oneof_name) |oneof_name| {
@@ -327,7 +327,7 @@ fn parseValue(
         .message => |name| blk: {
             if (registryEnumDescriptor(file, registry, current, name)) |_| break :blk try parseEnumWithRegistry(file, registry, current, name, json_value);
             const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
-            const descriptor_file = messageDescriptorFile(file, registry, descriptor);
+            const descriptor_file = registry_mod.messageDefiningFile(file, registry, descriptor);
             if (try parseKnownMessage(allocator, descriptor_file, registry, descriptor, name, json_value, options)) |known| break :blk .{ .message = known };
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
@@ -340,7 +340,7 @@ fn parseValue(
         },
         .group => |name| blk: {
             const descriptor = resolveMessageDescriptorWithRegistry(file, registry, current, name) orelse return error.TypeMismatch;
-            const descriptor_file = messageDescriptorFile(file, registry, descriptor);
+            const descriptor_file = registry_mod.messageDefiningFile(file, registry, descriptor);
             const nested = try allocator.create(dynamic.DynamicMessage);
             nested.* = dynamic.DynamicMessage.init(allocator, descriptor);
             errdefer {
@@ -599,26 +599,9 @@ fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]c
     return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
 }
 
-fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor) *const schema.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingMessage(descriptor) orelse default_file;
-}
-
-fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) *const schema.FileDescriptor {
-    if (registry) |reg| {
-        if (reg.fileContainingExtension(field)) |file| return file;
-    }
-    return default_file;
-}
-
-fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
-    const reg = registry orelse return default_file;
-    return reg.fileContainingEnum(descriptor) orelse default_file;
-}
-
 fn enumIsClosed(file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, enumeration: *const schema.EnumDescriptor) bool {
     if (enumeration.features) |features| return features.enum_type == .closed;
-    return enumDescriptorFile(file, registry, enumeration).features.enum_type == .closed;
+    return registry_mod.enumDefiningFile(file, registry, enumeration).features.enum_type == .closed;
 }
 
 fn enumHasNumber(enumeration: *const schema.EnumDescriptor, number: i32) bool {
@@ -689,7 +672,7 @@ fn writeMessageContents(
 ) Error!void {
     for (message.fields.items) |*entry| {
         if (entry.values.items.len == 0) continue;
-        const field_file = fieldDefiningFile(file, registry, entry.descriptor);
+        const field_file = registry_mod.fieldDefiningFile(file, registry, entry.descriptor);
         if (shouldSkipDefaultJsonField(field_file, registry, message.descriptor, entry)) continue;
         if (!first.*) try writer.writeAll(",");
         first.* = false;
@@ -838,7 +821,7 @@ fn writeValue(
             try writeEnum(file, registry, current, name, value, options, writer)
         else switch (value) {
             .message => |message| {
-                const message_file = messageDescriptorFile(file, registry, message.descriptor);
+                const message_file = registry_mod.messageDefiningFile(file, registry, message.descriptor);
                 if (!try writeKnownMessage(message_file, registry, name, message, options, writer)) {
                     try writeMessage(message_file, registry, message, options, writer);
                 }
@@ -846,7 +829,7 @@ fn writeValue(
             else => return error.TypeMismatch,
         },
         .group => switch (value) {
-            .group => |message| try writeMessage(messageDescriptorFile(file, registry, message.descriptor), registry, message, options, writer),
+            .group => |message| try writeMessage(registry_mod.messageDefiningFile(file, registry, message.descriptor), registry, message, options, writer),
             else => return error.TypeMismatch,
         },
         .map => return error.TypeMismatch,
@@ -1033,7 +1016,7 @@ fn writeKnownMessage(file: *const schema.FileDescriptor, registry: ?*const regis
         if (resolveAnyTypeWithRegistry(file, registry, message.descriptor, any.type_url)) |descriptor| {
             var nested = dynamic.DynamicMessage.init(message.allocator, descriptor);
             defer nested.deinit();
-            const payload_file = messageDescriptorFile(file, registry, descriptor);
+            const payload_file = registry_mod.messageDefiningFile(file, registry, descriptor);
             if (registry) |reg| {
                 try nested.decodeWithRegistry(payload_file, reg, any.value);
             } else {
@@ -1203,7 +1186,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
                 while (it.next()) |entry| {
                     if (!std.mem.eql(u8, entry.key_ptr.*, "@type") and !std.mem.eql(u8, entry.key_ptr.*, "value")) return error.UnknownField;
                 }
-                const payload_file = messageDescriptorFile(file, registry, resolved);
+                const payload_file = registry_mod.messageDefiningFile(file, registry, resolved);
                 const payload = (try parseKnownMessage(allocator, payload_file, registry, resolved, payload_name, value_json, options)) orelse return error.TypeMismatch;
                 defer {
                     payload.deinit();
@@ -1236,7 +1219,7 @@ fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescrip
             payload.deinit();
             allocator.destroy(payload);
         }
-        const payload_file = messageDescriptorFile(file, registry, payload_desc_value);
+        const payload_file = registry_mod.messageDefiningFile(file, registry, payload_desc_value);
         try fillMessageObject(allocator, payload_file, registry, payload, object, options, true);
         if (options.validate_any_payloads) try payload.validateRequired();
         const encoded = try payload.encodedDeterministicWithRegistry(payload_file, registry);
