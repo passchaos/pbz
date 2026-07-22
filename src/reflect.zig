@@ -1156,8 +1156,30 @@ pub const Reflection = struct {
         return try self.messageForFieldType(message_descriptor, field, type_name);
     }
 
+    pub fn fieldDirectMessageType(self: Reflection, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        const owner = try self.fieldDirectContainingType(field);
+        return switch (field.kind) {
+            .message => |type_name| try self.messageForFieldType(owner, field, type_name),
+            .group => |type_name| try self.messageForFieldType(owner, field, type_name),
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDirectGroupType(self: Reflection, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        const owner = try self.fieldDirectContainingType(field);
+        const type_name = switch (field.kind) {
+            .group => |name| name,
+            else => return error.TypeMismatch,
+        };
+        return try self.messageForFieldType(owner, field, type_name);
+    }
+
     pub fn fieldEnumType(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
         return try self.enumForField(message_descriptor, field);
+    }
+
+    pub fn fieldDirectEnumType(self: Reflection, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
+        return try self.enumForField(try self.fieldDirectContainingType(field), field);
     }
 
     fn fieldMessageArmResolvesToEnum(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {

@@ -342,9 +342,11 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("enum", try refl.fieldDeclaredTypeName(user_desc, role_field));
     try std.testing.expectEqualStrings("enum", try refl.fieldCppTypeName(user_desc, role_field));
     try std.testing.expect(role_desc == try refl.fieldEnumType(user_desc, role_field));
+    try std.testing.expect(role_desc == try refl.fieldDirectEnumType(role_field));
     try std.testing.expect(refl.fieldIsEnum(local_status_field));
     try std.testing.expectEqual(pbz.FieldCppType.enumeration, refl.fieldCppType(local_status_field));
     try std.testing.expect((try refl.fieldEnumType(user_desc, local_status_field)) == local_status_desc);
+    try std.testing.expect((try refl.fieldDirectEnumType(local_status_field)) == local_status_desc);
     try std.testing.expectEqualStrings("Profile", try refl.fieldTypeName(profile_field));
     try std.testing.expectEqualStrings("message", try refl.fieldDeclaredTypeName(user_desc, profile_field));
     try std.testing.expectEqualStrings("message", try refl.fieldCppTypeName(user_desc, profile_field));
@@ -353,6 +355,7 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(profile_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, profile_field));
     try std.testing.expect(profile_desc == try refl.fieldMessageType(user_desc, profile_field));
+    try std.testing.expect(profile_desc == try refl.fieldDirectMessageType(profile_field));
     try std.testing.expect(refl.fieldIsProto3Optional(nickname_field));
     try std.testing.expect(refl.fieldHasOptionalKeyword(nickname_field));
     try std.testing.expect(try refl.fieldHasPresence(user_desc, nickname_field));
@@ -893,6 +896,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("message", try required_refl.fieldCppTypeName(parent.descriptor, legacy_field));
     try std.testing.expect(required_refl.fieldIsGroup(legacy_field));
     const legacy_desc = try required_refl.fieldGroupType(parent.descriptor, legacy_field);
+    try std.testing.expect(legacy_desc == try required_refl.fieldDirectGroupType(legacy_field));
+    try std.testing.expect(legacy_desc == try required_refl.fieldDirectMessageType(legacy_field));
     try std.testing.expectEqualStrings("Legacy", legacy_desc.name);
     const legacy_full_name = try required_refl.messageFullName(legacy_desc);
     defer allocator.free(legacy_full_name);
