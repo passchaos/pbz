@@ -1457,6 +1457,10 @@ pub const Reflection = struct {
         return descriptor.isReservedNumber(number);
     }
 
+    pub fn enumReservedRange(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i64) ?*const schema.ReservedRange {
+        return descriptor.reservedRangeForNumber(number);
+    }
+
     pub fn enumReservedRangeCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {
         return descriptor.reserved_ranges.items.len;
     }
@@ -1519,6 +1523,10 @@ pub const Reflection = struct {
 
     pub fn messageReservedNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
         return descriptor.isReservedNumber(number);
+    }
+
+    pub fn messageReservedRange(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) ?*const schema.ReservedRange {
+        return descriptor.reservedRangeForNumber(number);
     }
 
     pub fn messageReservedRangeCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {

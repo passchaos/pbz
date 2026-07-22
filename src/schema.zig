@@ -818,8 +818,12 @@ pub const EnumDescriptor = struct {
         return reservedNameMatches(self.reserved_names.items, name);
     }
 
+    pub fn reservedRangeForNumber(self: *const EnumDescriptor, number: i64) ?*const ReservedRange {
+        return reservedRangeForNumberWithMax(self.reserved_ranges.items, number, std.math.maxInt(i64));
+    }
+
     pub fn isReservedNumber(self: *const EnumDescriptor, number: i64) bool {
-        return reservedNumberMatches(self.reserved_ranges.items, number);
+        return self.reservedRangeForNumber(number) != null;
     }
 };
 
@@ -1006,8 +1010,12 @@ pub const MessageDescriptor = struct {
         return reservedNameMatches(self.reserved_names.items, name);
     }
 
+    pub fn reservedRangeForNumber(self: *const MessageDescriptor, number: i64) ?*const ReservedRange {
+        return reservedRangeForNumberWithMax(self.reserved_ranges.items, number, self.extensionRangeMaxExclusive());
+    }
+
     pub fn isReservedNumber(self: *const MessageDescriptor, number: i64) bool {
-        return reservedNumberMatches(self.reserved_ranges.items, number);
+        return self.reservedRangeForNumber(number) != null;
     }
 
     pub fn isMapEntry(self: *const MessageDescriptor) bool {
@@ -1735,10 +1743,14 @@ fn reservedNameMatches(names: []const []const u8, name: []const u8) bool {
 }
 
 fn reservedNumberMatches(ranges: []const ReservedRange, number: i64) bool {
-    for (ranges) |range| {
-        if (range.containsWithMax(number, std.math.maxInt(i64))) return true;
+    return reservedRangeForNumberWithMax(ranges, number, std.math.maxInt(i64)) != null;
+}
+
+fn reservedRangeForNumberWithMax(ranges: []const ReservedRange, number: i64, max_end: i64) ?*const ReservedRange {
+    for (ranges) |*range| {
+        if (range.containsWithMax(number, max_end)) return range;
     }
-    return false;
+    return null;
 }
 
 pub fn extensionFullName(field: *const FieldDescriptor) []const u8 {
