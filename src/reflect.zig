@@ -406,6 +406,14 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn messageNoStandardDescriptorAccessor(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
+        return descriptor.noStandardDescriptorAccessor();
+    }
+
+    pub fn messageDeprecatedLegacyJsonFieldConflicts(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
+        return descriptor.deprecatedLegacyJsonFieldConflicts();
+    }
+
     pub fn messageIsMapEntry(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
         return descriptor.isMapEntry();
     }
@@ -541,6 +549,10 @@ pub const Reflection = struct {
 
     pub fn enumIsDeprecated(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
+    }
+
+    pub fn enumDeprecatedLegacyJsonFieldConflicts(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
+        return descriptor.deprecatedLegacyJsonFieldConflicts();
     }
 
     pub fn enumOptions(_: Reflection, descriptor: *const schema.EnumDescriptor) []const schema.FieldOption {

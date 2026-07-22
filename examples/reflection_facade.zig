@@ -21,6 +21,7 @@ pub fn main() !void {
         \\option (demo.file_note) = "app";
         \\enum Status {
         \\  option deprecated = true;
+        \\  option deprecated_legacy_json_field_conflicts = true;
         \\  reserved 5 to 9;
         \\  reserved "STATUS_OLD";
         \\  STATUS_UNKNOWN = 0 [
@@ -31,6 +32,8 @@ pub fn main() !void {
         \\}
         \\message User {
         \\  option deprecated = true;
+        \\  option no_standard_descriptor_accessor = true;
+        \\  option deprecated_legacy_json_field_conflicts = true;
         \\  reserved 100 to 110;
         \\  reserved "legacy";
         \\  int32 id = 1 [
@@ -121,6 +124,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("app", refl.optionString(refl.fileOptions(app_file), "file_note").?);
     try std.testing.expectEqualStrings("User", refl.messageName(user_desc));
     try std.testing.expect(refl.messageIsDeprecated(user_desc));
+    try std.testing.expect(refl.messageNoStandardDescriptorAccessor(user_desc));
+    try std.testing.expect(refl.messageDeprecatedLegacyJsonFieldConflicts(user_desc));
     try std.testing.expect(!refl.messageIsMapEntry(user_desc));
     try std.testing.expect(refl.optionBool(refl.messageOptions(user_desc), "deprecated").?);
     const user_full_name = try refl.messageFullName(user_desc);
@@ -361,6 +366,7 @@ pub fn main() !void {
     try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
     const status_desc = try refl.enumeration(".demo.reflect.Status");
     try std.testing.expect(refl.enumIsDeprecated(status_desc));
+    try std.testing.expect(refl.enumDeprecatedLegacyJsonFieldConflicts(status_desc));
     try std.testing.expect(refl.optionBool(refl.enumOptions(status_desc), "deprecated").?);
     const status_unknown_value = try refl.enumValueByName(status_desc, "STATUS_UNKNOWN");
     try std.testing.expect(refl.enumValueIsDeprecated(status_unknown_value));

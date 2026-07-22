@@ -748,6 +748,10 @@ pub const EnumDescriptor = struct {
         return file.features.enum_type;
     }
 
+    pub fn deprecatedLegacyJsonFieldConflicts(self: *const EnumDescriptor) bool {
+        return optionBool(self.options.items, "deprecated_legacy_json_field_conflicts") orelse false;
+    }
+
     pub fn isReservedName(self: *const EnumDescriptor, name: []const u8) bool {
         return reservedNameMatches(self.reserved_names.items, name);
     }
@@ -972,6 +976,14 @@ pub const MessageDescriptor = struct {
             if (std.mem.eql(u8, std.mem.trim(u8, option.name, " \t\r\n"), "message_set_wire_format")) return optionAsBool(option.value) orelse false;
         }
         return false;
+    }
+
+    pub fn noStandardDescriptorAccessor(self: *const MessageDescriptor) bool {
+        return optionBool(self.options.items, "no_standard_descriptor_accessor") orelse false;
+    }
+
+    pub fn deprecatedLegacyJsonFieldConflicts(self: *const MessageDescriptor) bool {
+        return optionBool(self.options.items, "deprecated_legacy_json_field_conflicts") orelse false;
     }
 };
 
