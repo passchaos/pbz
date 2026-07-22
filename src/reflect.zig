@@ -637,6 +637,32 @@ pub const Reflection = struct {
         return value.values.items[index];
     }
 
+    pub fn repeatedMessage(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!*dynamic.DynamicMessage {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.cardinality != .repeated or field.kind != .message) return error.TypeMismatch;
+        return switch (try self.repeatedValue(message_value, name, index)) {
+            .message => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn mutableRepeatedMessage(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, index: usize) Error!*dynamic.DynamicMessage {
+        return try self.repeatedMessage(message_value, name, index);
+    }
+
+    pub fn repeatedGroup(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!*dynamic.DynamicMessage {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.cardinality != .repeated or field.kind != .group) return error.TypeMismatch;
+        return switch (try self.repeatedValue(message_value, name, index)) {
+            .group => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn mutableRepeatedGroup(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, index: usize) Error!*dynamic.DynamicMessage {
+        return try self.repeatedGroup(message_value, name, index);
+    }
+
     pub fn removeRepeatedValue(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, index: usize) Error!bool {
         return message_value.removeRepeatedValue(try self.fieldByName(message_value.descriptor, name), index);
     }
