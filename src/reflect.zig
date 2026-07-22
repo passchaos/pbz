@@ -1581,6 +1581,69 @@ pub const Reflection = struct {
         return std.meta.activeTag(value);
     }
 
+    pub fn defaultValueInt32(_: Reflection, value: dynamic.DefaultValue) Error!i32 {
+        return switch (value) {
+            .int32, .sint32, .sfixed32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueInt64(_: Reflection, value: dynamic.DefaultValue) Error!i64 {
+        return switch (value) {
+            .int64, .sint64, .sfixed64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueUInt32(_: Reflection, value: dynamic.DefaultValue) Error!u32 {
+        return switch (value) {
+            .uint32, .fixed32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueUInt64(_: Reflection, value: dynamic.DefaultValue) Error!u64 {
+        return switch (value) {
+            .uint64, .fixed64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueFloat(_: Reflection, value: dynamic.DefaultValue) Error!f32 {
+        return switch (value) {
+            .float => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueDouble(_: Reflection, value: dynamic.DefaultValue) Error!f64 {
+        return switch (value) {
+            .double => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueBool(_: Reflection, value: dynamic.DefaultValue) Error!bool {
+        return switch (value) {
+            .boolean => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueString(_: Reflection, value: dynamic.DefaultValue) Error![]const u8 {
+        return switch (value) {
+            .string, .bytes => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueEnumNumber(_: Reflection, value: dynamic.DefaultValue) Error!i32 {
+        return switch (value) {
+            .enumeration => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn fieldDefaultEnumValue(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumValueDescriptor {
         const enum_desc = try self.fieldEnumType(descriptor, field);
         const value = switch (try self.fieldDefaultValue(descriptor, field)) {
