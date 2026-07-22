@@ -55,7 +55,7 @@ library API.
   metadata, message/enum legacy-json-conflict metadata, feature-support lifecycle metadata/accessors, ordered file/message/enum/service descriptor enumeration/index lookup, file/message-local descriptor lookup, descriptor name/full-name/containing-type/value-owner identity lookup, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof field enumeration and oneof
   lookup/fields/presence/inspection/clearing, imported message fields, descriptor option slices and typed option lookup,
   file-local service lookup, service/method type/deprecation metadata, and extension descriptor lookup, dynamic merge/copy/clone, unknown-field query/mutation,
-  required-field initialization checks, binary, and JSON round-trips.
+  required-field initialization checks, unknown-field record accessors, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
 - `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.

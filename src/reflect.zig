@@ -1523,6 +1523,18 @@ pub const Reflection = struct {
         return message_value.unknownFields();
     }
 
+    pub fn unknownFieldNumber(_: Reflection, unknown: dynamic.UnknownField) wire.FieldNumber {
+        return unknown.number;
+    }
+
+    pub fn unknownFieldWireType(_: Reflection, unknown: dynamic.UnknownField) wire.WireType {
+        return unknown.wire_type;
+    }
+
+    pub fn unknownFieldData(_: Reflection, unknown: dynamic.UnknownField) []const u8 {
+        return unknown.data;
+    }
+
     pub fn unknownFieldCountByNumber(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) usize {
         return message_value.unknownFieldCountByNumber(number);
     }
