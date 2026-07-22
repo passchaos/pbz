@@ -1770,6 +1770,16 @@ pub const Reflection = struct {
         return descriptor.oneofFieldAt(oneof.name, index) orelse error.UnknownField;
     }
 
+    pub fn oneofFieldIndex(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8, field: *const schema.FieldDescriptor) Error!usize {
+        _ = try self.oneofByName(descriptor, name);
+        return descriptor.oneofFieldIndex(name, field) orelse error.UnknownField;
+    }
+
+    pub fn oneofDescriptorFieldIndex(self: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        _ = try self.oneofContainingType(descriptor, oneof);
+        return descriptor.oneofFieldIndex(oneof.name, field) orelse error.UnknownField;
+    }
+
     pub fn enumValueByName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
         return descriptor.findValue(name) orelse error.UnknownEnum;
     }

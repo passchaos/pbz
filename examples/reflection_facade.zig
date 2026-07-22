@@ -868,8 +868,13 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("disabled", (try refl.oneofFieldAt(user_desc, "contact", 1)).name);
     try std.testing.expect((try refl.oneofDescriptorFieldAt(user_desc, contact_oneof, 0)) == contact_fields[0]);
     try std.testing.expect((try refl.oneofDescriptorFieldAt(user_desc, contact_oneof, 1)) == contact_fields[1]);
+    try std.testing.expectEqual(@as(usize, 0), try refl.oneofFieldIndex(user_desc, "contact", contact_fields[0]));
+    try std.testing.expectEqual(@as(usize, 1), try refl.oneofFieldIndex(user_desc, "contact", contact_fields[1]));
+    try std.testing.expectEqual(@as(usize, 0), try refl.oneofDescriptorFieldIndex(user_desc, contact_oneof, contact_fields[0]));
+    try std.testing.expectEqual(@as(usize, 1), try refl.oneofDescriptorFieldIndex(user_desc, contact_oneof, contact_fields[1]));
     try std.testing.expectError(error.UnknownField, refl.oneofFieldAt(user_desc, "contact", 2));
     try std.testing.expectError(error.UnknownField, refl.oneofDescriptorFieldAt(user_desc, contact_oneof, 2));
+    try std.testing.expectError(error.UnknownField, refl.oneofFieldIndex(user_desc, "missing", contact_fields[0]));
     try std.testing.expectError(error.UnknownField, refl.oneofFieldCount(user_desc, "missing"));
     try std.testing.expect(try refl.clearOneof(&user, "contact"));
     try std.testing.expect(!(try refl.hasOneof(&user, "contact")));
