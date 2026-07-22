@@ -389,9 +389,17 @@ pub fn main() !void {
     const id_default = try refl.fieldDefaultValue(user_desc, id_field);
     try std.testing.expectEqual(.int32, refl.defaultValueTag(id_default));
     try std.testing.expectEqual(@as(i32, 0), id_default.int32);
+    try std.testing.expectEqual(@as(i32, 0), try refl.fieldDefaultInt32(user_desc, id_field));
+    try std.testing.expectError(error.TypeMismatch, refl.fieldDefaultBool(user_desc, id_field));
+    try std.testing.expectEqual(@as(u64, 0), try refl.fieldDefaultUInt64(user_desc, total_field));
+    try std.testing.expectEqual(@as(f32, 0), try refl.fieldDefaultFloat(user_desc, try refl.fieldByName(user_desc, "ratio")));
+    try std.testing.expectEqual(@as(f64, 0), try refl.fieldDefaultDouble(user_desc, try refl.fieldByName(user_desc, "score")));
+    try std.testing.expectEqual(false, try refl.fieldDefaultBool(user_desc, try refl.fieldByName(user_desc, "disabled")));
     const name_default = try refl.fieldDefaultValue(user_desc, try refl.fieldByName(user_desc, "name"));
     try std.testing.expectEqual(.string, refl.defaultValueTag(name_default));
     try std.testing.expectEqualStrings("", name_default.string);
+    try std.testing.expectEqualStrings("", try refl.fieldDefaultString(user_desc, try refl.fieldByName(user_desc, "name")));
+    try std.testing.expectEqualStrings("", try refl.fieldDefaultString(profile_desc, try refl.fieldByName(profile_desc, "avatar")));
     try std.testing.expectEqual(@as(i32, 0), (try refl.fieldDefaultValue(user_desc, role_field)).enumeration);
     try std.testing.expect((try refl.fieldDefaultEnumValue(user_desc, role_field)) == role_unknown_value);
     try std.testing.expectEqualStrings("ROLE_UNKNOWN", try refl.fieldDefaultEnumName(user_desc, role_field));
@@ -833,6 +841,7 @@ pub fn main() !void {
     try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
     try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.fieldDefaultValue(parent.descriptor, priority_field)).int32);
+    try std.testing.expectEqual(@as(i32, 7), try required_refl.fieldDefaultInt32(parent.descriptor, priority_field));
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.getFieldOrDefault(&parent, "priority")).int32);
     const required_child_field = try required_refl.fieldByName(parent.descriptor, "child");
     const child_desc = try required_refl.message(".demo.required_reflect.Child");

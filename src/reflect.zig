@@ -1263,6 +1263,62 @@ pub const Reflection = struct {
         return dynamic.defaultValueForFieldWithRegistry(owner_file, self.registry, default_scope, field);
     }
 
+    pub fn fieldDefaultInt32(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!i32 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .int32, .sint32, .sfixed32 => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultInt64(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!i64 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .int64, .sint64, .sfixed64 => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultUInt32(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!u32 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .uint32, .fixed32 => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultUInt64(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!u64 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .uint64, .fixed64 => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultFloat(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!f32 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .float => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultDouble(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!f64 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .double => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultBool(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .boolean => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldDefaultString(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .string, .bytes => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn defaultValueTag(_: Reflection, value: dynamic.DefaultValue) DefaultTag {
         return std.meta.activeTag(value);
     }
