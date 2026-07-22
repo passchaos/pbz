@@ -395,6 +395,10 @@ pub const FieldMask = struct {
         return self.paths.len;
     }
 
+    pub fn isEmpty(self: FieldMask) bool {
+        return self.paths.len == 0;
+    }
+
     pub fn pathAt(self: FieldMask, index: usize) ![]const u8 {
         if (index >= self.paths.len) return error.UnknownField;
         return self.paths[index];
