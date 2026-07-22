@@ -20,6 +20,7 @@ pub fn main() !void {
     try tree.add("app.proto",
         \\edition = "2024";
         \\package demo.app;
+        \\option optimize_for = CODE_SIZE;
         \\import public "common.proto";
         \\import option "custom_options.proto";
         \\message Event { demo.common.User user = 1; }
@@ -36,6 +37,7 @@ pub fn main() !void {
     const app_file = try refl.file("app.proto");
     const common_file = try refl.file("common.proto");
     const options_file = try refl.file("custom_options.proto");
+    std.debug.assert(refl.fileOptimizeFor(app_file).? == .code_size);
     const common_import = try refl.fileImport(app_file, "common.proto");
     std.debug.assert(std.mem.eql(u8, refl.importPath(common_import), "common.proto"));
     std.debug.assert(refl.importKind(common_import) == .public);

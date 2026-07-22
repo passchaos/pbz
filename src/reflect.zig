@@ -66,6 +66,10 @@ pub const Reflection = struct {
         return file_descriptor.features.json_format;
     }
 
+    pub fn fileOptimizeFor(_: Reflection, file_descriptor: *const schema.FileDescriptor) ?schema.FileOptimizeMode {
+        return file_descriptor.optimizeFor();
+    }
+
     pub fn fileEnforceNamingStyle(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.EnforceNamingStyle {
         return file_descriptor.features.enforce_naming_style;
     }

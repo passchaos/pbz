@@ -36,6 +36,7 @@ pub const OptionList = schema.OptionList;
 pub const FieldCType = schema.FieldCType;
 pub const FieldJSType = schema.FieldJSType;
 pub const MethodIdempotencyLevel = schema.MethodIdempotencyLevel;
+pub const FileOptimizeMode = schema.FileOptimizeMode;
 pub const FieldRetention = schema.FieldRetention;
 pub const FieldTargetType = schema.FieldTargetType;
 pub const FileDescriptor = schema.FileDescriptor;
@@ -189,6 +190,7 @@ test "root exports descriptor schema support types" {
     try std.testing.expectEqual(FieldCType.string, schema.optionAsKnownEnum(FieldCType, .{ .identifier = "STRING" }).?);
     try std.testing.expectEqual(FieldJSType.js_string, schema.optionAsKnownEnum(FieldJSType, .{ .identifier = "JS_STRING" }).?);
     try std.testing.expectEqual(MethodIdempotencyLevel.no_side_effects, schema.optionAsKnownEnum(MethodIdempotencyLevel, .{ .identifier = "NO_SIDE_EFFECTS" }).?);
+    try std.testing.expectEqual(FileOptimizeMode.code_size, schema.optionAsKnownEnum(FileOptimizeMode, .{ .identifier = "CODE_SIZE" }).?);
     try std.testing.expectEqual(FieldRetention.retention_source, schema.optionAsKnownEnum(FieldRetention, .{ .identifier = "RETENTION_SOURCE" }).?);
     try std.testing.expectEqual(FieldTargetType.target_type_message, schema.optionAsKnownEnum(FieldTargetType, .{ .identifier = "TARGET_TYPE_MESSAGE" }).?);
     const kind = FieldKind{ .scalar = .int32 };

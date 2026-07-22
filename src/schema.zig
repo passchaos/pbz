@@ -240,6 +240,8 @@ pub const FieldJSType = enum(i32) { js_normal = 0, js_string = 1, js_number = 2 
 
 pub const MethodIdempotencyLevel = enum(i32) { idempotency_unknown = 0, no_side_effects = 1, idempotent = 2 };
 
+pub const FileOptimizeMode = enum(i32) { speed = 1, code_size = 2, lite_runtime = 3 };
+
 pub const FieldRetention = enum(i32) { retention_unknown = 0, retention_runtime = 1, retention_source = 2 };
 
 pub const FieldTargetType = enum(i32) {
@@ -1289,6 +1291,10 @@ pub const FileDescriptor = struct {
         return null;
     }
 
+    pub fn optimizeFor(self: *const FileDescriptor) ?FileOptimizeMode {
+        return optionKnownEnum(FileOptimizeMode, self.options.items, "optimize_for");
+    }
+
     pub fn hasMissingWeakImport(self: *const FileDescriptor, path: []const u8) bool {
         for (self.missing_weak_imports.items) |missing| {
             if (std.mem.eql(u8, missing, path)) return true;
@@ -1434,6 +1440,10 @@ fn optionKnownEnumFromName(comptime T: type, text: []const u8) ?T {
         if (std.ascii.eqlIgnoreCase(text, "IDEMPOTENCY_UNKNOWN")) return .idempotency_unknown;
         if (std.ascii.eqlIgnoreCase(text, "NO_SIDE_EFFECTS")) return .no_side_effects;
         if (std.ascii.eqlIgnoreCase(text, "IDEMPOTENT")) return .idempotent;
+    } else if (T == FileOptimizeMode) {
+        if (std.ascii.eqlIgnoreCase(text, "SPEED")) return .speed;
+        if (std.ascii.eqlIgnoreCase(text, "CODE_SIZE")) return .code_size;
+        if (std.ascii.eqlIgnoreCase(text, "LITE_RUNTIME")) return .lite_runtime;
     } else if (T == FieldRetention) {
         if (std.ascii.eqlIgnoreCase(text, "RETENTION_UNKNOWN")) return .retention_unknown;
         if (std.ascii.eqlIgnoreCase(text, "RETENTION_RUNTIME")) return .retention_runtime;
