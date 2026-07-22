@@ -504,6 +504,10 @@ pub const Reflection = struct {
         return field.kind;
     }
 
+    pub fn fieldWireType(_: Reflection, field: *const schema.FieldDescriptor) wire.WireType {
+        return field.wireType();
+    }
+
     pub fn fieldIsScalar(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.kind == .scalar;
     }
