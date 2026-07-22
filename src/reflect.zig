@@ -643,6 +643,10 @@ pub const Reflection = struct {
         return method.options.items;
     }
 
+    pub fn methodIdempotencyLevel(_: Reflection, method: *const schema.MethodDescriptor) ?schema.MethodIdempotencyLevel {
+        return method.idempotencyLevel();
+    }
+
     pub fn methodHasExplicitFeatures(_: Reflection, method: *const schema.MethodDescriptor) bool {
         return method.features != null;
     }

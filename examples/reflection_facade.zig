@@ -404,6 +404,7 @@ pub fn main() !void {
     try std.testing.expect(refl.optionBool(refl.serviceOptions(users_service), "deprecated").?);
     const method_options = refl.methodOptions(get_method);
     try std.testing.expect(refl.optionBool(method_options, "deprecated").?);
+    try std.testing.expectEqual(pbz.MethodIdempotencyLevel.no_side_effects, refl.methodIdempotencyLevel(get_method).?);
     try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionIdentifier(method_options, "idempotency_level").?);
     try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionValue(method_options, "idempotency_level").?.identifier);
 

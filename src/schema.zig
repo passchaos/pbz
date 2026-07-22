@@ -238,6 +238,8 @@ pub const FieldCType = enum(i32) { string = 0, cord = 1, string_piece = 2 };
 
 pub const FieldJSType = enum(i32) { js_normal = 0, js_string = 1, js_number = 2 };
 
+pub const MethodIdempotencyLevel = enum(i32) { idempotency_unknown = 0, no_side_effects = 1, idempotent = 2 };
+
 pub const FieldDescriptor = struct {
     name: []const u8,
     full_name: ?[]const u8 = null,
@@ -943,6 +945,10 @@ pub const MethodDescriptor = struct {
         deinitOptions(&self.options, allocator);
         self.* = undefined;
     }
+
+    pub fn idempotencyLevel(self: MethodDescriptor) ?MethodIdempotencyLevel {
+        return optionKnownEnum(MethodIdempotencyLevel, self.options.items, "idempotency_level");
+    }
 };
 
 pub const Import = struct {
@@ -1387,6 +1393,10 @@ fn optionKnownEnumFromName(comptime T: type, text: []const u8) ?T {
         if (std.ascii.eqlIgnoreCase(text, "JS_NORMAL")) return .js_normal;
         if (std.ascii.eqlIgnoreCase(text, "JS_STRING")) return .js_string;
         if (std.ascii.eqlIgnoreCase(text, "JS_NUMBER")) return .js_number;
+    } else if (T == MethodIdempotencyLevel) {
+        if (std.ascii.eqlIgnoreCase(text, "IDEMPOTENCY_UNKNOWN")) return .idempotency_unknown;
+        if (std.ascii.eqlIgnoreCase(text, "NO_SIDE_EFFECTS")) return .no_side_effects;
+        if (std.ascii.eqlIgnoreCase(text, "IDEMPOTENT")) return .idempotent;
     }
     return null;
 }
