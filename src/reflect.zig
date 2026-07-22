@@ -520,6 +520,13 @@ pub const Reflection = struct {
         return chain.paths[index];
     }
 
+    pub fn importChainPathIndex(_: Reflection, chain: registry_mod.ImportChain, path: []const u8) Error!usize {
+        for (chain.slice(), 0..) |candidate, index| {
+            if (std.mem.eql(u8, candidate, path)) return index;
+        }
+        return error.UnknownFile;
+    }
+
     pub fn importChainPaths(_: Reflection, chain: registry_mod.ImportChain) []const []const u8 {
         return chain.slice();
     }

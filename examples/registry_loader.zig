@@ -100,8 +100,10 @@ pub fn main() !void {
     const chain = (try refl.importChainByPath("app.proto", "common.proto")).?;
     std.debug.assert(refl.importChainLength(chain) == 1);
     std.debug.assert(std.mem.eql(u8, try refl.importChainPathAt(chain, 0), "common.proto"));
+    std.debug.assert((try refl.importChainPathIndex(chain, "common.proto")) == 0);
     std.debug.assert(std.mem.eql(u8, refl.importChainPaths(chain)[0], "common.proto"));
     try std.testing.expectError(error.UnknownFile, refl.importChainPathAt(chain, 1));
+    try std.testing.expectError(error.UnknownFile, refl.importChainPathIndex(chain, "missing.proto"));
     std.debug.assert(std.mem.eql(u8, event_desc.name, "Event"));
     std.debug.assert(std.mem.eql(u8, user_desc.name, "User"));
     std.debug.assert(std.mem.eql(u8, events_service.findMethod("Get").?.name, "Get"));
