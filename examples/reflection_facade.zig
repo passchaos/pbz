@@ -487,7 +487,12 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("", name_default.string);
     try std.testing.expectEqualStrings("", try refl.defaultValueString(name_default));
     try std.testing.expectEqualStrings("", try refl.fieldDefaultString(user_desc, try refl.fieldByName(user_desc, "name")));
+    const avatar_default = try refl.fieldDefaultValue(profile_desc, try refl.fieldByName(profile_desc, "avatar"));
+    try std.testing.expectEqual(.bytes, refl.defaultValueTag(avatar_default));
     try std.testing.expectEqualStrings("", try refl.fieldDefaultString(profile_desc, try refl.fieldByName(profile_desc, "avatar")));
+    try std.testing.expectEqualStrings("", try refl.fieldDefaultBytes(profile_desc, try refl.fieldByName(profile_desc, "avatar")));
+    try std.testing.expectEqualStrings("", try refl.defaultValueBytes(avatar_default));
+    try std.testing.expectError(error.TypeMismatch, refl.defaultValueBytes(name_default));
     try std.testing.expectEqual(@as(i32, 0), (try refl.fieldDefaultValue(user_desc, role_field)).enumeration);
     try std.testing.expectEqual(@as(i32, 0), try refl.defaultValueEnumNumber(try refl.fieldDefaultValue(user_desc, role_field)));
     try std.testing.expect((try refl.fieldDefaultEnumValue(user_desc, role_field)) == role_unknown_value);

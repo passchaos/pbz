@@ -1629,6 +1629,13 @@ pub const Reflection = struct {
         };
     }
 
+    pub fn fieldDefaultBytes(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return switch (try self.fieldDefaultValue(descriptor, field)) {
+            .bytes => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn defaultValueTag(_: Reflection, value: dynamic.DefaultValue) DefaultTag {
         return std.meta.activeTag(value);
     }
@@ -1685,6 +1692,13 @@ pub const Reflection = struct {
     pub fn defaultValueString(_: Reflection, value: dynamic.DefaultValue) Error![]const u8 {
         return switch (value) {
             .string, .bytes => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn defaultValueBytes(_: Reflection, value: dynamic.DefaultValue) Error![]const u8 {
+        return switch (value) {
+            .bytes => |v| v,
             else => error.TypeMismatch,
         };
     }
