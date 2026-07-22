@@ -1453,6 +1453,13 @@ pub const Reflection = struct {
         return field.edition_defaults.items[index];
     }
 
+    pub fn fieldEditionDefaultIndex(_: Reflection, field: *const schema.FieldDescriptor, default: schema.FieldEditionDefault) Error!usize {
+        for (field.edition_defaults.items, 0..) |candidate, index| {
+            if (candidate.edition == default.edition and std.mem.eql(u8, candidate.value, default.value)) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn fieldEditionDefaultEdition(_: Reflection, default: schema.FieldEditionDefault) schema.Edition {
         return default.edition;
     }
@@ -3466,9 +3473,11 @@ test "reflection exposes field edition defaults" {
     const presence = try refl.fieldByName(desc, "presence");
     try std.testing.expectEqual(@as(usize, 2), refl.fieldEditionDefaultCount(presence));
     const legacy_default = try refl.fieldEditionDefaultAt(presence, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.fieldEditionDefaultIndex(presence, legacy_default));
     try std.testing.expectEqual(schema.Edition.legacy, refl.fieldEditionDefaultEdition(legacy_default));
     try std.testing.expectEqualStrings("EXPLICIT", refl.fieldEditionDefaultValue(legacy_default));
     const proto3_default = try refl.fieldEditionDefaultAt(presence, 1);
+    try std.testing.expectEqual(@as(usize, 1), try refl.fieldEditionDefaultIndex(presence, proto3_default));
     try std.testing.expectEqual(schema.Edition.proto3, refl.fieldEditionDefaultEdition(proto3_default));
     try std.testing.expectEqualStrings("IMPLICIT", refl.fieldEditionDefaultValue(proto3_default));
     try std.testing.expectError(error.UnknownField, refl.fieldEditionDefaultAt(presence, 2));
