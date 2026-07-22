@@ -368,7 +368,10 @@ pub fn main() !void {
     try std.testing.expectError(error.MissingField, refl.fieldIndexInOneof(user_desc, id_field));
     try std.testing.expectError(error.MissingField, refl.fieldRealContainingOneof(user_desc, id_field));
     try std.testing.expect((try refl.oneofContainingType(user_desc, contact_oneof)) == user_desc);
+    try std.testing.expect((try refl.oneofDirectContainingType(contact_oneof)) == user_desc);
     try std.testing.expect((try refl.oneofContainingFile(user_desc, contact_oneof)) == app_file);
+    try std.testing.expect((try refl.oneofDirectContainingFile(contact_oneof)) == app_file);
+    try std.testing.expectEqual(@as(usize, 0), try refl.oneofDirectIndex(contact_oneof));
     try std.testing.expectEqualStrings("contact", refl.optionString(refl.oneofOptions(contact_oneof), "oneof_note").?);
     try expectDecodedSyntheticOneofReflection(allocator, &loaded.registry, app_file);
     try std.testing.expect(!refl.fieldIsExtension(id_field));
@@ -810,6 +813,9 @@ pub fn main() !void {
     const contact_full_name = try refl.oneofFullName(user_desc, try refl.oneofByName(user_desc, "contact"));
     defer allocator.free(contact_full_name);
     try std.testing.expectEqualStrings("demo.reflect.User.contact", contact_full_name);
+    const contact_direct_full_name = try refl.oneofDirectFullName(contact_oneof);
+    defer allocator.free(contact_direct_full_name);
+    try std.testing.expectEqualStrings("demo.reflect.User.contact", contact_direct_full_name);
     const contact_fields = try refl.oneofFields(user_desc, "contact");
     defer allocator.free(contact_fields);
     const contact_descriptor_fields = try refl.oneofDescriptorFields(user_desc, contact_oneof);

@@ -1542,14 +1542,30 @@ pub const Reflection = struct {
         return try joinNameAlloc(self.allocator, message_full_name, oneof.name);
     }
 
+    pub fn oneofDirectFullName(self: Reflection, oneof: *const schema.OneofDescriptor) Error![]u8 {
+        return try self.oneofFullName(try self.oneofDirectContainingType(oneof), oneof);
+    }
+
     pub fn oneofContainingType(_: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!*const schema.MessageDescriptor {
         if (message_descriptor.findOneof(oneof.name) != oneof) return error.UnknownField;
         return message_descriptor;
     }
 
+    pub fn oneofDirectContainingType(self: Reflection, oneof: *const schema.OneofDescriptor) Error!*const schema.MessageDescriptor {
+        return self.registry.messageContainingOneof(oneof) orelse error.UnknownField;
+    }
+
     pub fn oneofContainingFile(self: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!*const schema.FileDescriptor {
         _ = try self.oneofContainingType(message_descriptor, oneof);
         return try self.fileOfMessage(message_descriptor);
+    }
+
+    pub fn oneofDirectContainingFile(self: Reflection, oneof: *const schema.OneofDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingOneof(oneof) orelse error.UnknownField;
+    }
+
+    pub fn oneofDirectIndex(self: Reflection, oneof: *const schema.OneofDescriptor) Error!usize {
+        return try self.oneofIndex(try self.oneofDirectContainingType(oneof), oneof);
     }
 
     pub fn oneofFields(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error![]*const schema.FieldDescriptor {

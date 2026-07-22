@@ -427,6 +427,20 @@ pub const Registry = struct {
         return self.fileContainingMessage(owner);
     }
 
+    pub fn messageContainingOneof(self: *const Registry, target: *const schema.OneofDescriptor) ?*const schema.MessageDescriptor {
+        for (self.files.items) |file| {
+            for (file.messages.items) |*message| {
+                if (messageContainingOneofInMessage(message, target)) |owner| return owner;
+            }
+        }
+        return null;
+    }
+
+    pub fn fileContainingOneof(self: *const Registry, target: *const schema.OneofDescriptor) ?*const schema.FileDescriptor {
+        const owner = self.messageContainingOneof(target) orelse return null;
+        return self.fileContainingMessage(owner);
+    }
+
     pub fn fileContainingService(self: *const Registry, target: *const schema.ServiceDescriptor) ?*const schema.FileDescriptor {
         for (self.files.items) |file| {
             for (file.services.items) |*service| {
@@ -738,6 +752,16 @@ fn messageContainingFieldInMessage(message: *const schema.MessageDescriptor, tar
     }
     for (message.messages.items) |*nested| {
         if (messageContainingFieldInMessage(nested, target)) |owner| return owner;
+    }
+    return null;
+}
+
+fn messageContainingOneofInMessage(message: *const schema.MessageDescriptor, target: *const schema.OneofDescriptor) ?*const schema.MessageDescriptor {
+    for (message.oneofs.items) |*oneof| {
+        if (oneof == target) return message;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainingOneofInMessage(nested, target)) |owner| return owner;
     }
     return null;
 }
