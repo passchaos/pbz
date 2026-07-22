@@ -5,7 +5,7 @@ const registry_mod = @import("registry.zig");
 const dynamic = @import("dynamic.zig");
 const wire = @import("wire.zig");
 
-pub const Error = dynamic.DecodeError || dynamic.ValidationError || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField };
+pub const Error = dynamic.DecodeError || dynamic.ValidationError || error{ UnknownFile, UnknownMessage, UnknownEnum, UnknownService, UnknownField, MissingField, InvalidEnumValue };
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 const DefaultTag = std.meta.Tag(dynamic.DefaultValue);
@@ -421,6 +421,13 @@ pub const Reflection = struct {
         return entry.value;
     }
 
+    pub fn mapEnumValueName(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!?[]const u8 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        try self.validateMapKey(field, key);
+        const owner_file = try self.fileOfMessage(message_value.descriptor);
+        return try message_value.getEnumMapValueNameWithRegistry(owner_file, self.registry, field, key);
+    }
+
     pub fn stringMapEntry(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?*const dynamic.MapEntry {
         const owned_key = try self.allocator.dupe(u8, key);
         defer self.allocator.free(owned_key);
@@ -430,6 +437,12 @@ pub const Reflection = struct {
     pub fn stringMapValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?dynamic.Value {
         const entry = (try self.stringMapEntry(message_value, name, key)) orelse return null;
         return entry.value;
+    }
+
+    pub fn stringMapEnumValueName(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?[]const u8 {
+        const owned_key = try self.allocator.dupe(u8, key);
+        defer self.allocator.free(owned_key);
+        return try self.mapEnumValueName(message_value, name, .{ .string = owned_key });
     }
 
     /// Replace a singular field or append/replace map entries using an owned
@@ -808,6 +821,13 @@ pub const Reflection = struct {
         const field = try self.fieldByName(message_value.descriptor, name);
         const owner_file = try self.fileOfMessage(message_value.descriptor);
         return message_value.getEnumNameOrDefaultWithRegistry(owner_file, self.registry, field);
+    }
+
+    pub fn repeatedEnumNames(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]const []const u8 {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.cardinality != .repeated or field.kind == .map) return error.TypeMismatch;
+        const owner_file = try self.fileOfMessage(message_value.descriptor);
+        return try message_value.getEnumNamesWithRegistry(self.allocator, owner_file, self.registry, field);
     }
 
     pub fn getEnumValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!*const schema.EnumValueDescriptor {

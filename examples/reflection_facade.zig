@@ -49,6 +49,7 @@ pub fn main() !void {
         \\  repeated uint32 samples = 22;
         \\  repeated sint64 deltas = 23;
         \\  string display_name = 24 [json_name = "shownName"];
+        \\  map<string, Role> roles_by_key = 25;
         \\}
         \\service Users {
         \\  option deprecated = true;
@@ -153,6 +154,7 @@ pub fn main() !void {
     try refl.addEnumByName(&user, "roles", "ROLE_UNKNOWN");
     try refl.addEnumByName(&user, "roles", "ROLE_ADMIN");
     try std.testing.expectError(error.UnknownEnum, refl.addEnumByName(&user, "roles", "ROLE_MISSING"));
+    try refl.putMapEntryOwned(&user, "roles_by_key", .{ .string = try allocator.dupe(u8, "current") }, .{ .enumeration = 1 });
     try refl.addUInt32(&user, "samples", 10);
     try refl.addUInt32(&user, "samples", 20);
     try refl.addSInt64(&user, "deltas", -1);
@@ -198,6 +200,12 @@ pub fn main() !void {
     try std.testing.expect(try refl.getBool(&user, "flags"));
     try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, try refl.getBytes(&user, "blobs"));
     try std.testing.expectEqual(@as(i32, 1), try refl.getEnum(&user, "roles"));
+    const repeated_role_names = try refl.repeatedEnumNames(&user, "roles");
+    defer allocator.free(repeated_role_names);
+    try std.testing.expectEqual(@as(usize, 2), repeated_role_names.len);
+    try std.testing.expectEqualStrings("ROLE_UNKNOWN", repeated_role_names[0]);
+    try std.testing.expectEqualStrings("ROLE_ADMIN", repeated_role_names[1]);
+    try std.testing.expectError(error.TypeMismatch, refl.repeatedEnumNames(&user, "name"));
     try std.testing.expectEqual(@as(u32, 20), (try refl.repeatedValue(&user, "samples", 1)).uint32);
     try std.testing.expectEqual(@as(i64, -2), (try refl.repeatedValue(&user, "deltas", 1)).sint64);
     try std.testing.expectEqualStrings("email", refl.whichOneof(&user, "contact").?.name);
@@ -212,6 +220,12 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 2), (try refl.mapValue(&user, "counts", .{ .string = red_lookup })).?.int32);
     try std.testing.expect((try refl.stringMapEntry(&user, "counts", "missing")) == null);
     try std.testing.expectError(error.TypeMismatch, refl.mapValue(&user, "counts", .{ .int32 = 1 }));
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.stringMapEnumValueName(&user, "roles_by_key", "current")).?);
+    const current_role_lookup = try allocator.dupe(u8, "current");
+    defer allocator.free(current_role_lookup);
+    try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.mapEnumValueName(&user, "roles_by_key", .{ .string = current_role_lookup })).?);
+    try std.testing.expect((try refl.stringMapEnumValueName(&user, "roles_by_key", "missing")) == null);
+    try std.testing.expectError(error.TypeMismatch, refl.stringMapEnumValueName(&user, "counts", "red"));
     try std.testing.expect(try refl.clearStringMapEntry(&user, "counts", "red"));
     try std.testing.expect((try refl.getField(&user, "counts")) == null);
     try refl.putStringInt32MapEntry(&user, "counts", "red", 2);
