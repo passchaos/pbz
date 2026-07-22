@@ -367,6 +367,9 @@ pub fn main() !void {
     try std.testing.expect(refl.fieldHasOneof(email_field));
     try std.testing.expectEqualStrings("contact", try refl.fieldOneofName(email_field));
     const contact_oneof = try refl.oneofByName(user_desc, "contact");
+    try std.testing.expect((try refl.oneofByFullName(".demo.reflect.User.contact")) == contact_oneof);
+    try std.testing.expect((try refl.oneofByFullName("contact")) == contact_oneof);
+    try std.testing.expectError(error.UnknownField, refl.oneofByFullName("missing"));
     try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == contact_oneof);
     try std.testing.expect((try refl.fieldRealContainingOneof(user_desc, email_field)).? == contact_oneof);
     try std.testing.expectEqual(@as(usize, 0), try refl.fieldIndexInOneof(user_desc, email_field));

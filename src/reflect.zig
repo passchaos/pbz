@@ -1541,6 +1541,10 @@ pub const Reflection = struct {
         return descriptor.findOneof(name) orelse error.UnknownField;
     }
 
+    pub fn oneofByFullName(self: Reflection, name: []const u8) Error!*const schema.OneofDescriptor {
+        return self.registry.findOneof(name, null) orelse error.UnknownField;
+    }
+
     pub fn oneofName(_: Reflection, descriptor: *const schema.OneofDescriptor) []const u8 {
         return descriptor.name;
     }

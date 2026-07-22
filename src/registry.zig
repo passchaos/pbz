@@ -332,6 +332,17 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findOneof(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.OneofDescriptor {
+        const normalized = normalizeName(name);
+        for (self.files.items) |file| {
+            const query = fieldLookupNameInFile(file.package, normalized, scope);
+            for (file.messages.items) |*message| {
+                if (findOneofInMessagePath(message, query)) |oneof| return oneof;
+            }
+        }
+        return null;
+    }
+
     pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
         if (self.findMessage(extendee, null)) |message| return self.findExtensionForMessage(message, number);
         const normalized = normalizeName(extendee);
@@ -1012,6 +1023,32 @@ fn findFieldAfterMessage(message: *const schema.MessageDescriptor, rest: []const
         return null;
     }
     return message.findField(rest);
+}
+
+fn findOneofInMessagePath(message: *const schema.MessageDescriptor, query: []const u8) ?*const schema.OneofDescriptor {
+    if (std.mem.indexOfScalar(u8, query, '.')) |idx| {
+        const head = query[0..idx];
+        const rest = query[idx + 1 ..];
+        if (!std.mem.eql(u8, head, message.name)) return null;
+        return findOneofAfterMessage(message, rest);
+    }
+    if (message.findOneof(query)) |oneof| return oneof;
+    for (message.messages.items) |*nested| {
+        if (findOneofInMessagePath(nested, query)) |oneof| return oneof;
+    }
+    return null;
+}
+
+fn findOneofAfterMessage(message: *const schema.MessageDescriptor, rest: []const u8) ?*const schema.OneofDescriptor {
+    if (std.mem.indexOfScalar(u8, rest, '.')) |idx| {
+        const nested_name = rest[0..idx];
+        const nested_rest = rest[idx + 1 ..];
+        for (message.messages.items) |*nested| {
+            if (std.mem.eql(u8, nested.name, nested_name)) return findOneofAfterMessage(nested, nested_rest);
+        }
+        return null;
+    }
+    return message.findOneof(rest);
 }
 
 fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
