@@ -36,8 +36,9 @@ fn missingWeakImportStillLoads(allocator: std.mem.Allocator) !void {
     try std.testing.expect(refl.importIsWeak(missing_import));
     try std.testing.expect(!refl.importIsPublic(missing_import));
     try std.testing.expect(!refl.importIsOption(missing_import));
-    try std.testing.expectEqual(@as(usize, 1), root_file.missing_weak_imports.items.len);
-    try std.testing.expectEqualStrings("missing.proto", root_file.missing_weak_imports.items[0]);
+    try std.testing.expectEqual(@as(usize, 1), refl.fileMissingWeakImportCount(root_file));
+    try std.testing.expectEqualStrings("missing.proto", try refl.fileMissingWeakImportAt(root_file, 0));
+    try std.testing.expectError(error.UnknownFile, refl.fileMissingWeakImportAt(root_file, 1));
     try std.testing.expect(refl.fileHasMissingWeakImport(root_file, "missing.proto"));
 
     const root_desc = root_file.findMessage("Root") orelse return error.MissingDescriptor;
@@ -106,8 +107,10 @@ fn presentWeakImportResolvesNormally(allocator: std.mem.Allocator) !void {
     defer loaded.deinit();
 
     const root_file = loaded.registry.findFile("root.proto") orelse return error.MissingFile;
+    const refl = pbz.Reflection.init(allocator, &loaded.registry);
     try std.testing.expectEqual(schemaImportKindWeak(), root_file.imports.items[0].kind);
-    try std.testing.expectEqual(@as(usize, 0), root_file.missing_weak_imports.items.len);
+    try std.testing.expectEqual(@as(usize, 0), refl.fileMissingWeakImportCount(root_file));
+    try std.testing.expectError(error.UnknownFile, refl.fileMissingWeakImportAt(root_file, 0));
 
     const root_desc = root_file.findMessage("Root") orelse return error.MissingDescriptor;
     const payload_desc = loaded.registry.findMessage(".demo.weakpresent.Payload", null) orelse return error.MissingDescriptor;

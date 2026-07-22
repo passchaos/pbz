@@ -185,6 +185,15 @@ pub const Reflection = struct {
         return file_descriptor.hasMissingWeakImport(path);
     }
 
+    pub fn fileMissingWeakImportCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.missing_weak_imports.items.len;
+    }
+
+    pub fn fileMissingWeakImportAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error![]const u8 {
+        if (index >= file_descriptor.missing_weak_imports.items.len) return error.UnknownFile;
+        return file_descriptor.missing_weak_imports.items[index];
+    }
+
     pub fn fileImportCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return file_descriptor.importCount();
     }
