@@ -22,7 +22,10 @@ pub fn main() !void {
         \\  option deprecated = true;
         \\  reserved 5 to 9;
         \\  reserved "STATUS_OLD";
-        \\  STATUS_UNKNOWN = 0 [deprecated = true];
+        \\  STATUS_UNKNOWN = 0 [
+        \\    deprecated = true,
+        \\    feature_support = { edition_removed: EDITION_2026 removal_error: "removed status" }
+        \\  ];
         \\}
         \\message User {
         \\  option deprecated = true;
@@ -34,7 +37,14 @@ pub fn main() !void {
         \\    (demo.answer) = 42,
         \\    (demo.max_u64) = 18446744073709551615,
         \\    (demo.ratio) = 1.5,
-        \\    (demo.meta) = { label: "id" }
+        \\    (demo.meta) = { label: "id" },
+        \\    feature_support = {
+        \\      edition_introduced: EDITION_2023
+        \\      edition_deprecated: EDITION_2024
+        \\      deprecation_warning: "use new_id"
+        \\      edition_removed: EDITION_2026
+        \\      removal_error: "removed id"
+        \\    }
         \\  ];
         \\  string name = 2 [ctype = STRING];
         \\  repeated string tags = 3;
@@ -213,6 +223,15 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(f64, 1.5), refl.optionFloat(id_field.options.items, "ratio").?);
     try std.testing.expect(std.mem.indexOf(u8, refl.optionAggregate(id_field.options.items, "meta").?, "label") != null);
     try std.testing.expect(refl.optionString(id_field.options.items, "missing") == null);
+    try std.testing.expect(refl.fieldHasFeatureSupport(id_field));
+    const id_support = try refl.fieldFeatureSupport(id_field);
+    try std.testing.expectEqual(pbz.schema.Edition.edition_2023, id_support.edition_introduced.?);
+    try std.testing.expectEqual(pbz.schema.Edition.edition_2024, id_support.edition_deprecated.?);
+    try std.testing.expectEqualStrings("use new_id", id_support.deprecation_warning);
+    try std.testing.expectEqual(pbz.schema.Edition.edition_2026, id_support.edition_removed.?);
+    try std.testing.expectEqualStrings("removed id", id_support.removal_error);
+    try std.testing.expect(!refl.fieldHasFeatureSupport(tags_field));
+    try std.testing.expectError(error.MissingField, refl.fieldFeatureSupport(tags_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldTypeName(id_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldMessageType(user_desc, id_field));
     try std.testing.expectEqualStrings("Role", try refl.fieldTypeName(role_field));
@@ -259,7 +278,14 @@ pub fn main() !void {
     try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
     const status_desc = try refl.enumeration(".demo.reflect.Status");
     try std.testing.expect(refl.enumIsDeprecated(status_desc));
-    try std.testing.expect(refl.enumValueIsDeprecated(try refl.enumValueByName(status_desc, "STATUS_UNKNOWN")));
+    const status_unknown_value = try refl.enumValueByName(status_desc, "STATUS_UNKNOWN");
+    try std.testing.expect(refl.enumValueIsDeprecated(status_unknown_value));
+    try std.testing.expect(refl.enumValueHasFeatureSupport(status_unknown_value));
+    const status_support = try refl.enumValueFeatureSupport(status_unknown_value);
+    try std.testing.expectEqual(pbz.schema.Edition.edition_2026, status_support.edition_removed.?);
+    try std.testing.expectEqualStrings("removed status", status_support.removal_error);
+    try std.testing.expect(!refl.enumValueHasFeatureSupport(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
+    try std.testing.expectError(error.MissingField, refl.enumValueFeatureSupport(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
     try std.testing.expect(refl.enumReservedName(status_desc, "STATUS_OLD"));
     try std.testing.expectEqual(@as(usize, 1), refl.enumReservedNameCount(status_desc));
     try std.testing.expectEqualStrings("STATUS_OLD", try refl.enumReservedNameAt(status_desc, 0));

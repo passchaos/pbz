@@ -247,6 +247,14 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn enumValueHasFeatureSupport(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
+        return descriptor.feature_support != null;
+    }
+
+    pub fn enumValueFeatureSupport(_: Reflection, descriptor: *const schema.EnumValueDescriptor) Error!schema.FeatureSupport {
+        return descriptor.feature_support orelse error.MissingField;
+    }
+
     pub fn enumValueFullName(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error![]u8 {
         const enum_full_name = try self.enumFullName(enum_descriptor);
         defer self.allocator.free(enum_full_name);
@@ -543,6 +551,14 @@ pub const Reflection = struct {
 
     pub fn fieldExplicitDefaultValue(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.OptionValue {
         return field.explicitDefaultValue() orelse error.MissingField;
+    }
+
+    pub fn fieldHasFeatureSupport(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.feature_support != null;
+    }
+
+    pub fn fieldFeatureSupport(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.FeatureSupport {
+        return field.feature_support orelse error.MissingField;
     }
 
     pub fn fieldIsMap(_: Reflection, field: *const schema.FieldDescriptor) bool {
