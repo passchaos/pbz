@@ -133,7 +133,26 @@ pub const FieldCppType = enum {
     enumeration,
     string,
     message,
+
+    pub fn typeName(self: FieldCppType) []const u8 {
+        return fieldCppTypeName(self);
+    }
 };
+
+pub fn fieldCppTypeName(cpp_type: FieldCppType) []const u8 {
+    return switch (cpp_type) {
+        .int32 => "int32",
+        .int64 => "int64",
+        .uint32 => "uint32",
+        .uint64 => "uint64",
+        .double => "double",
+        .float => "float",
+        .bool => "bool",
+        .enumeration => "enum",
+        .string => "string",
+        .message => "message",
+    };
+}
 
 pub const WellKnownType = enum {
     unspecified,
@@ -288,7 +307,20 @@ pub const FieldKind = union(enum) {
             .message, .group, .map => .message,
         };
     }
+
+    pub fn typeName(self: FieldKind) []const u8 {
+        return switch (self) {
+            .scalar => |scalar| scalarTypeName(scalar),
+            .message, .map => "message",
+            .enumeration => "enum",
+            .group => "group",
+        };
+    }
 };
+
+pub fn fieldKindTypeName(kind: FieldKind) []const u8 {
+    return kind.typeName();
+}
 
 pub const MapType = struct {
     key: ScalarType,
@@ -382,6 +414,14 @@ pub const FieldDescriptor = struct {
 
     pub fn cppType(self: FieldDescriptor) FieldCppType {
         return self.kind.cppType();
+    }
+
+    pub fn typeName(self: FieldDescriptor) []const u8 {
+        return self.kind.typeName();
+    }
+
+    pub fn cppTypeName(self: FieldDescriptor) []const u8 {
+        return self.cppType().typeName();
     }
 
     pub fn encodedWireType(self: FieldDescriptor, file: *const FileDescriptor) wire.WireType {

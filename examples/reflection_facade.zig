@@ -273,6 +273,8 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
     try std.testing.expectEqual(pbz.FieldCppType.int32, refl.fieldCppType(id_field));
+    try std.testing.expectEqualStrings("int32", try refl.fieldDeclaredTypeName(user_desc, id_field));
+    try std.testing.expectEqualStrings("int32", try refl.fieldCppTypeName(user_desc, id_field));
     try std.testing.expectEqual(pbz.WireType.varint, refl.fieldWireType(id_field));
     try std.testing.expectEqual(pbz.WireType.varint, try refl.fieldEncodedWireType(user_desc, id_field));
     try std.testing.expect(refl.fieldIsDeprecated(id_field));
@@ -323,11 +325,15 @@ pub fn main() !void {
     try std.testing.expectError(error.TypeMismatch, refl.fieldTypeName(id_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldMessageType(user_desc, id_field));
     try std.testing.expectEqualStrings("Role", try refl.fieldTypeName(role_field));
+    try std.testing.expectEqualStrings("enum", try refl.fieldDeclaredTypeName(user_desc, role_field));
+    try std.testing.expectEqualStrings("enum", try refl.fieldCppTypeName(user_desc, role_field));
     try std.testing.expect(role_desc == try refl.fieldEnumType(user_desc, role_field));
     try std.testing.expect(refl.fieldIsEnum(local_status_field));
     try std.testing.expectEqual(pbz.FieldCppType.enumeration, refl.fieldCppType(local_status_field));
     try std.testing.expect((try refl.fieldEnumType(user_desc, local_status_field)) == local_status_desc);
     try std.testing.expectEqualStrings("Profile", try refl.fieldTypeName(profile_field));
+    try std.testing.expectEqualStrings("message", try refl.fieldDeclaredTypeName(user_desc, profile_field));
+    try std.testing.expectEqualStrings("message", try refl.fieldCppTypeName(user_desc, profile_field));
     try std.testing.expect(refl.fieldIsMessage(profile_field));
     try std.testing.expectEqual(pbz.FieldCppType.message, refl.fieldCppType(profile_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(profile_field));
@@ -369,6 +375,8 @@ pub fn main() !void {
     try std.testing.expect(!(try refl.fieldIsPacked(user_desc, unpacked_samples_field)));
     try std.testing.expect(refl.fieldIsMap(counts_desc_field));
     try std.testing.expectEqual(pbz.FieldCppType.message, refl.fieldCppType(counts_desc_field));
+    try std.testing.expectEqualStrings("message", try refl.fieldDeclaredTypeName(user_desc, counts_desc_field));
+    try std.testing.expectEqualStrings("message", try refl.fieldCppTypeName(user_desc, counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, counts_desc_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.string, try refl.fieldMapKeyType(counts_desc_field));
@@ -834,6 +842,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Child", try required_refl.fieldTypeName(required_child_field));
     const legacy_field = try required_refl.fieldByName(parent.descriptor, "legacy");
     try std.testing.expectEqualStrings("Legacy", try required_refl.fieldTypeName(legacy_field));
+    try std.testing.expectEqualStrings("group", try required_refl.fieldDeclaredTypeName(parent.descriptor, legacy_field));
+    try std.testing.expectEqualStrings("message", try required_refl.fieldCppTypeName(parent.descriptor, legacy_field));
     try std.testing.expect(required_refl.fieldIsGroup(legacy_field));
     const legacy_desc = try required_refl.fieldGroupType(parent.descriptor, legacy_field);
     try std.testing.expectEqualStrings("Legacy", legacy_desc.name);

@@ -132,6 +132,8 @@ pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;
 pub const scalarTypeName = schema.scalarTypeName;
+pub const fieldKindTypeName = schema.fieldKindTypeName;
+pub const fieldCppTypeName = schema.fieldCppTypeName;
 pub const lowercaseNameAlloc = schema.lowercaseNameAlloc;
 pub const camelcaseNameAlloc = schema.camelcaseNameAlloc;
 pub const eqlLowercaseName = schema.eqlLowercaseName;
@@ -191,6 +193,8 @@ test "root exports descriptor schema support types" {
     try std.testing.expectEqual(ScalarType.int32, schema.ScalarType.int32);
     try std.testing.expectEqual(FieldCppType.string, (FieldKind{ .scalar = .bytes }).cppType());
     try std.testing.expectEqualStrings("int32", scalarTypeName(.int32));
+    try std.testing.expectEqualStrings("enum", fieldKindTypeName(.{ .enumeration = "Role" }));
+    try std.testing.expectEqualStrings("string", fieldCppTypeName(.string));
     const camel_name = try camelcaseNameAlloc(std.testing.allocator, "FooBar");
     defer std.testing.allocator.free(camel_name);
     try std.testing.expectEqualStrings("fooBar", camel_name);

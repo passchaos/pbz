@@ -1030,6 +1030,21 @@ pub const Reflection = struct {
         return field.cppType();
     }
 
+    pub fn fieldDeclaredTypeName(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return switch (field.kind) {
+            .scalar => |scalar| schema.scalarTypeName(scalar),
+            .enumeration => "enum",
+            .group => "group",
+            .map => "message",
+            .message => if (try self.fieldMessageArmResolvesToEnum(descriptor, field)) "enum" else "message",
+        };
+    }
+
+    pub fn fieldCppTypeName(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]const u8 {
+        if (try self.fieldMessageArmResolvesToEnum(descriptor, field)) return "enum";
+        return field.cppTypeName();
+    }
+
     pub fn fieldWireType(_: Reflection, field: *const schema.FieldDescriptor) wire.WireType {
         return field.wireType();
     }
@@ -1093,6 +1108,18 @@ pub const Reflection = struct {
 
     pub fn fieldEnumType(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
         return try self.enumForField(message_descriptor, field);
+    }
+
+    fn fieldMessageArmResolvesToEnum(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
+        switch (field.kind) {
+            .message => {},
+            else => return false,
+        }
+        _ = self.enumForKind(message_descriptor, field, field.kind) catch |err| switch (err) {
+            error.TypeMismatch, error.UnknownEnum => return false,
+            else => return err,
+        };
+        return true;
     }
 
     pub fn fieldHasOneof(_: Reflection, field: *const schema.FieldDescriptor) bool {
