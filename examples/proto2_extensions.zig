@@ -63,6 +63,7 @@ pub fn main() !void {
     std.debug.assert((try refl.fieldExtensionScope(priority_ext)) == null);
     std.debug.assert(!(try refl.fieldHasExtensionScope(priority_ext)));
     std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
+    std.debug.assert(std.mem.eql(u8, (try refl.extensionContainingFile(priority_ext)).name, "extensions.proto"));
     std.debug.assert(std.mem.eql(u8, (try refl.fileContainingExtension(host_desc, 100)).name, "extensions.proto"));
     std.debug.assert(std.mem.eql(u8, (try refl.fileContainingExtensionByName(".demo.Host", 100)).name, "extensions.proto"));
     try std.testing.expectError(error.UnknownFile, refl.fileContainingExtension(host_desc, 999));

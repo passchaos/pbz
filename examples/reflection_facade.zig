@@ -130,6 +130,7 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));
     try std.testing.expectEqualStrings("common.proto", role_file.name);
     try std.testing.expectEqualStrings("app", refl.optionString(refl.fileOptions(app_file), "file_note").?);
+    try std.testing.expect((try refl.messageContainingFile(user_desc)) == app_file);
     try std.testing.expectEqualStrings("User", refl.messageName(user_desc));
     try std.testing.expect(refl.messageIsDeprecated(user_desc));
     try std.testing.expect(!refl.messageIsPlaceholder(user_desc));
@@ -144,6 +145,7 @@ pub fn main() !void {
     const role_full_name = try refl.enumFullName(role_desc);
     defer allocator.free(role_full_name);
     try std.testing.expectEqualStrings("demo.reflect.Role", role_full_name);
+    try std.testing.expect((try refl.enumContainingFile(role_desc)) == role_file);
     try std.testing.expectEqual(@as(usize, 1), refl.fileImportCount(app_file));
     try std.testing.expectEqualStrings("common.proto", (try refl.fileImportAt(app_file, 0)).path);
     try std.testing.expectEqual(@as(usize, 0), try refl.fileImportIndex(app_file, "common.proto"));
@@ -582,6 +584,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownService, refl.fileService(app_file, "Missing"));
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
+    try std.testing.expect((try refl.serviceContainingFile(users_service)) == app_file);
     try std.testing.expectEqual(@as(usize, 1), refl.serviceMethodCount(users_service));
     try std.testing.expectEqualStrings("Get", (try refl.serviceMethodAt(users_service, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.serviceMethodAt(users_service, 9));

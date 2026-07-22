@@ -802,6 +802,10 @@ pub const Reflection = struct {
         return self.registry.fileContainingMessage(descriptor) orelse error.UnknownMessage;
     }
 
+    pub fn messageContainingFile(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!*const schema.FileDescriptor {
+        return try self.fileOfMessage(descriptor);
+    }
+
     pub fn messageFieldCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
         return descriptor.fieldCount();
     }
@@ -999,6 +1003,10 @@ pub const Reflection = struct {
         return self.registry.fileContainingEnum(descriptor) orelse error.UnknownEnum;
     }
 
+    pub fn enumContainingFile(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!*const schema.FileDescriptor {
+        return try self.fileOfEnum(descriptor);
+    }
+
     pub fn enumValueName(_: Reflection, descriptor: *const schema.EnumValueDescriptor) []const u8 {
         return descriptor.name;
     }
@@ -1169,6 +1177,10 @@ pub const Reflection = struct {
 
     pub fn fileOfService(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
+    }
+
+    pub fn serviceContainingFile(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
+        return try self.fileOfService(descriptor);
     }
 
     pub fn serviceIndex(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!usize {
@@ -2069,6 +2081,10 @@ pub const Reflection = struct {
 
     pub fn fileOfExtension(self: Reflection, descriptor: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingExtension(descriptor) orelse error.UnknownField;
+    }
+
+    pub fn extensionContainingFile(self: Reflection, descriptor: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
+        return try self.fileOfExtension(descriptor);
     }
 
     pub fn oneofByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.OneofDescriptor {
