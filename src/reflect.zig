@@ -1053,6 +1053,12 @@ pub const Reflection = struct {
         return try joinNameAlloc(self.allocator, message_full_name, field.name);
     }
 
+    pub fn fieldDirectFullName(self: Reflection, field: *const schema.FieldDescriptor) Error![]u8 {
+        if (field.extendee != null) return try self.extensionFullName(field);
+        const owner = self.registry.messageContainingField(field) orelse return error.UnknownField;
+        return try self.fieldFullName(owner, field);
+    }
+
     pub fn extensionFullName(self: Reflection, field: *const schema.FieldDescriptor) Error![]u8 {
         const owner_file = try self.fileOfExtension(field);
         return try qualifyFileSymbolAlloc(self.allocator, owner_file, schema.extensionFullName(field));
@@ -1212,10 +1218,19 @@ pub const Reflection = struct {
         return descriptor;
     }
 
+    pub fn fieldDirectContainingType(self: Reflection, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        if (field.extendee != null) return try self.fieldExtendeeType(field);
+        return self.registry.messageContainingField(field) orelse error.UnknownField;
+    }
+
     pub fn fieldContainingFile(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
         if (field.extendee != null) return try self.fileOfExtension(field);
         if (!messageDirectlyContainsField(descriptor, field)) return error.UnknownField;
         return try self.fileOfMessage(descriptor);
+    }
+
+    pub fn fieldDirectContainingFile(self: Reflection, field: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingField(field) orelse error.UnknownField;
     }
 
     pub fn fieldExtensionScope(self: Reflection, field: *const schema.FieldDescriptor) Error!?*const schema.MessageDescriptor {

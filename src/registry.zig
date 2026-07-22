@@ -412,6 +412,21 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn messageContainingField(self: *const Registry, target: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+        for (self.files.items) |file| {
+            for (file.messages.items) |*message| {
+                if (messageContainingFieldInMessage(message, target)) |owner| return owner;
+            }
+        }
+        return null;
+    }
+
+    pub fn fileContainingField(self: *const Registry, target: *const schema.FieldDescriptor) ?*const schema.FileDescriptor {
+        if (self.fileContainingExtension(target)) |file| return file;
+        const owner = self.messageContainingField(target) orelse return null;
+        return self.fileContainingMessage(owner);
+    }
+
     pub fn fileContainingService(self: *const Registry, target: *const schema.ServiceDescriptor) ?*const schema.FileDescriptor {
         for (self.files.items) |file| {
             for (file.services.items) |*service| {
@@ -715,6 +730,16 @@ fn messageContainsExtension(message: *const schema.MessageDescriptor, target: *c
         if (messageContainsExtension(nested, target)) return true;
     }
     return false;
+}
+
+fn messageContainingFieldInMessage(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+    for (message.fields.items) |*field| {
+        if (field == target) return message;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainingFieldInMessage(nested, target)) |owner| return owner;
+    }
+    return null;
 }
 
 fn serviceContainsMethod(service: *const schema.ServiceDescriptor, target: *const schema.MethodDescriptor) bool {

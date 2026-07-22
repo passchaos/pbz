@@ -278,6 +278,9 @@ pub fn main() !void {
     const id_full_name = try refl.fieldFullName(user_desc, id_field);
     defer allocator.free(id_full_name);
     try std.testing.expectEqualStrings("demo.reflect.User.id", id_full_name);
+    const id_direct_full_name = try refl.fieldDirectFullName(id_field);
+    defer allocator.free(id_direct_full_name);
+    try std.testing.expectEqualStrings("demo.reflect.User.id", id_direct_full_name);
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
@@ -309,7 +312,9 @@ pub fn main() !void {
     try std.testing.expect(!refl.fieldIsRepeated(id_field));
     try std.testing.expect(!refl.fieldIsProto3Optional(id_field));
     try std.testing.expect((try refl.fieldContainingType(user_desc, id_field)) == user_desc);
+    try std.testing.expect((try refl.fieldDirectContainingType(id_field)) == user_desc);
     try std.testing.expect((try refl.fieldContainingFile(user_desc, id_field)) == app_file);
+    try std.testing.expect((try refl.fieldDirectContainingFile(id_field)) == app_file);
     try std.testing.expectError(error.UnknownField, refl.fieldContainingType(profile_desc, id_field));
     const id_options = refl.fieldOptions(id_field);
     try std.testing.expect(refl.optionBool(id_options, "deprecated").?);

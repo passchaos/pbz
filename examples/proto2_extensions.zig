@@ -49,10 +49,15 @@ pub fn main() !void {
     const priority_full_name = try refl.extensionFullName(priority_ext);
     defer allocator.free(priority_full_name);
     std.debug.assert(std.mem.eql(u8, priority_full_name, "demo.priority"));
+    const priority_direct_full_name = try refl.fieldDirectFullName(priority_ext);
+    defer allocator.free(priority_direct_full_name);
+    std.debug.assert(std.mem.eql(u8, priority_direct_full_name, "demo.priority"));
     std.debug.assert(refl.fieldIsExtension(priority_ext));
     std.debug.assert(std.mem.eql(u8, try refl.fieldExtendeeName(priority_ext), "Host"));
     std.debug.assert((try refl.fieldExtendeeType(priority_ext)) == host_desc);
     std.debug.assert((try refl.fieldContainingType(host_desc, priority_ext)) == host_desc);
+    std.debug.assert((try refl.fieldDirectContainingType(priority_ext)) == host_desc);
+    std.debug.assert((try refl.fieldDirectContainingFile(priority_ext)).name.len != 0);
     std.debug.assert((try refl.fieldExtensionScope(priority_ext)) == null);
     std.debug.assert(!(try refl.fieldHasExtensionScope(priority_ext)));
     std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
