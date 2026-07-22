@@ -2347,6 +2347,17 @@ pub const Reflection = struct {
         return value.values.items[index];
     }
 
+    pub fn repeatedValueIndex(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, value_to_find: dynamic.Value) Error!usize {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.cardinality != .repeated or field.kind == .map) return error.TypeMismatch;
+        try self.validateValueForField(message_value.descriptor, field, value_to_find);
+        const value = message_value.getByNumber(field.number) orelse return error.MissingField;
+        for (value.values.items, 0..) |candidate, index| {
+            if (dynamic.valueEqual(candidate, value_to_find)) return index;
+        }
+        return error.MissingField;
+    }
+
     pub fn repeatedMessage(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!*dynamic.DynamicMessage {
         const field = try self.fieldByName(message_value.descriptor, name);
         if (field.cardinality != .repeated or field.kind != .message) return error.TypeMismatch;

@@ -659,7 +659,15 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("protobuf", try refl.repeatedString(&user, "tags", 1));
     try std.testing.expect(try refl.setRepeatedString(&user, "tags", 1, "pbz"));
     try std.testing.expectEqualStrings("pbz", try refl.repeatedString(&user, "tags", 1));
+    const pbz_tag_lookup = try allocator.dupe(u8, "pbz");
+    defer allocator.free(pbz_tag_lookup);
+    try std.testing.expectEqual(@as(usize, 1), try refl.repeatedValueIndex(&user, "tags", .{ .string = pbz_tag_lookup }));
+    const missing_tag_lookup = try allocator.dupe(u8, "missing");
+    defer allocator.free(missing_tag_lookup);
+    try std.testing.expectError(error.MissingField, refl.repeatedValueIndex(&user, "tags", .{ .string = missing_tag_lookup }));
     try std.testing.expectError(error.TypeMismatch, refl.repeatedInt32(&user, "tags", 1));
+    try std.testing.expectError(error.TypeMismatch, refl.repeatedValueIndex(&user, "tags", .{ .int32 = 1 }));
+    try std.testing.expectError(error.TypeMismatch, refl.repeatedValueIndex(&user, "name", .{ .string = pbz_tag_lookup }));
     try std.testing.expect(!try refl.setRepeatedString(&user, "tags", 9, "missing"));
     try std.testing.expectError(error.TypeMismatch, refl.setRepeatedInt32(&user, "tags", 0, 1));
     try std.testing.expect(try refl.swapRepeatedValues(&user, "tags", 0, 1));
