@@ -1636,6 +1636,10 @@ pub const Reflection = struct {
         return descriptor.findValue(name) orelse error.UnknownEnum;
     }
 
+    pub fn enumValueByFullName(self: Reflection, name: []const u8) Error!*const schema.EnumValueDescriptor {
+        return self.registry.findEnumValue(name, null) orelse error.UnknownEnum;
+    }
+
     pub fn enumValueByNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i32) Error!*const schema.EnumValueDescriptor {
         return descriptor.findValueByNumber(number) orelse error.UnknownEnum;
     }

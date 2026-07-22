@@ -301,6 +301,20 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findEnumValue(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.EnumValueDescriptor {
+        const normalized = normalizeName(name);
+        for (self.files.items) |file| {
+            const query = fieldLookupNameInFile(file.package, normalized, scope);
+            for (file.enums.items) |*enumeration| {
+                if (findEnumValueInEnumPath(enumeration, query)) |value| return value;
+            }
+            for (file.messages.items) |*message| {
+                if (findEnumValueInMessagePath(message, query)) |value| return value;
+            }
+        }
+        return null;
+    }
+
     pub fn findService(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.ServiceDescriptor {
         const normalized = normalizeName(name);
         for (self.files.items) |file| {
@@ -1049,6 +1063,42 @@ fn findOneofAfterMessage(message: *const schema.MessageDescriptor, rest: []const
         return null;
     }
     return message.findOneof(rest);
+}
+
+fn findEnumValueInEnumPath(enumeration: *const schema.EnumDescriptor, query: []const u8) ?*const schema.EnumValueDescriptor {
+    if (std.mem.indexOfScalar(u8, query, '.')) |_| return null;
+    return enumeration.findValue(query);
+}
+
+fn findEnumValueInMessagePath(message: *const schema.MessageDescriptor, query: []const u8) ?*const schema.EnumValueDescriptor {
+    if (std.mem.indexOfScalar(u8, query, '.')) |idx| {
+        const head = query[0..idx];
+        const rest = query[idx + 1 ..];
+        if (!std.mem.eql(u8, head, message.name)) return null;
+        return findEnumValueAfterMessage(message, rest);
+    }
+    for (message.enums.items) |*enumeration| {
+        if (enumeration.findValue(query)) |value| return value;
+    }
+    for (message.messages.items) |*nested| {
+        if (findEnumValueInMessagePath(nested, query)) |value| return value;
+    }
+    return null;
+}
+
+fn findEnumValueAfterMessage(message: *const schema.MessageDescriptor, rest: []const u8) ?*const schema.EnumValueDescriptor {
+    if (std.mem.indexOfScalar(u8, rest, '.')) |idx| {
+        const nested_or_value_parent = rest[0..idx];
+        const nested_rest = rest[idx + 1 ..];
+        for (message.messages.items) |*nested| {
+            if (std.mem.eql(u8, nested.name, nested_or_value_parent)) return findEnumValueAfterMessage(nested, nested_rest);
+        }
+        return null;
+    }
+    for (message.enums.items) |*enumeration| {
+        if (enumeration.findValue(rest)) |value| return value;
+    }
+    return null;
 }
 
 fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {

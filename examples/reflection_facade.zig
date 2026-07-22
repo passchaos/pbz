@@ -231,6 +231,9 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownEnum, refl.enumValueAt(role_desc, 9));
     try std.testing.expectEqualStrings("ROLE_ADMIN", (try refl.enumValueByNumber(role_desc, 1)).name);
     try std.testing.expectEqual(@as(i32, 0), (try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")).number);
+    try std.testing.expect((try refl.enumValueByFullName(".demo.reflect.ROLE_UNKNOWN")) == role_unknown_value);
+    try std.testing.expect((try refl.enumValueByFullName("ROLE_UNKNOWN")) == role_unknown_value);
+    try std.testing.expectError(error.UnknownEnum, refl.enumValueByFullName("MISSING_ENUM_VALUE"));
     try std.testing.expectEqualStrings("display_name", (try refl.fieldByJsonName(user_desc, "shownName")).name);
     try std.testing.expectEqualStrings("big_delta", (try refl.fieldByJsonName(user_desc, "bigDelta")).name);
     const display_name_field = try refl.fieldByName(user_desc, "display_name");
