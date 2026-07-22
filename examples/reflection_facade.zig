@@ -239,6 +239,7 @@ pub fn main() !void {
     try std.testing.expect(!refl.fieldIsEnum(id_field));
     try std.testing.expect(!refl.fieldIsGroup(id_field));
     try std.testing.expect(refl.fieldIsOptional(id_field));
+    try std.testing.expect(!refl.fieldHasOptionalKeyword(id_field));
     try std.testing.expect(refl.fieldIsSingular(id_field));
     try std.testing.expect(!refl.fieldIsRepeated(id_field));
     try std.testing.expect(!refl.fieldIsProto3Optional(id_field));
@@ -273,6 +274,7 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(profile_field));
     try std.testing.expect(profile_desc == try refl.fieldMessageType(user_desc, profile_field));
     try std.testing.expect(refl.fieldIsProto3Optional(nickname_field));
+    try std.testing.expect(refl.fieldHasOptionalKeyword(nickname_field));
     try std.testing.expect(try refl.fieldHasPresence(user_desc, nickname_field));
     try std.testing.expect(!refl.fieldHasOneof(id_field));
     try std.testing.expectError(error.MissingField, refl.fieldOneofName(id_field));
@@ -709,6 +711,7 @@ pub fn main() !void {
     var parent = try required_refl.newMessage(".demo.required_reflect.Parent");
     defer parent.deinit();
     const priority_field = try required_refl.fieldByName(parent.descriptor, "priority");
+    try std.testing.expect(required_refl.fieldHasOptionalKeyword(priority_field));
     try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
     try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.fieldDefaultValue(parent.descriptor, priority_field)).int32);
@@ -728,6 +731,7 @@ pub fn main() !void {
     const required_name_field = try required_refl.fieldByName(parent.descriptor, "name");
     try std.testing.expect(required_refl.fieldIsRequired(required_name_field));
     try std.testing.expect(!required_refl.fieldIsOptional(required_name_field));
+    try std.testing.expect(!required_refl.fieldHasOptionalKeyword(required_name_field));
     try std.testing.expect(!required_refl.fieldHasDefaultValue(required_name_field));
     try std.testing.expectError(error.MissingField, required_refl.fieldExplicitDefaultValue(required_name_field));
     try std.testing.expectEqualStrings("", (try required_refl.fieldDefaultValue(parent.descriptor, required_name_field)).string);

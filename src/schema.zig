@@ -294,6 +294,10 @@ pub const FieldDescriptor = struct {
         return false;
     }
 
+    pub fn hasOptionalKeyword(self: FieldDescriptor) bool {
+        return self.cardinality == .optional;
+    }
+
     pub fn hasDefaultValue(self: FieldDescriptor) bool {
         return self.default_value != null;
     }

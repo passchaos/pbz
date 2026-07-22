@@ -907,6 +907,10 @@ pub const Reflection = struct {
         return field.cardinality != .repeated and !field.isRequired();
     }
 
+    pub fn fieldHasOptionalKeyword(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.hasOptionalKeyword();
+    }
+
     pub fn fieldIsRepeated(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isRepeatedLike();
     }
