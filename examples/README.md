@@ -92,7 +92,7 @@ library API.
   Struct field presence/access/index, Value typed accessors, ListValue access/index, scalar wrappers, bytes wrappers, and Any including
   embedded WKT JSON values plus descriptor well-known-type reflection.
 - `any_dynamic.zig` — custom dynamic-message `Any` pack/unpack with registry lookup and required-field validation.
-- `any_type_url.zig` — custom `Any` type URL prefixes/accessors, leading-dot type names, JSON parse, and type mismatch behavior.
+- `any_type_url.zig` — custom `Any` type URL prefixes/accessors/matching, leading-dot type names, JSON parse, and type mismatch behavior.
 - `proto2_extensions.zig` — proto2 extension parsing through TextFormat/JSON,
   repeated message extensions with required-field validation, extension range
   bounds/explicit-end/verification/declaration metadata, reflection extension/all-extensions/containing-file/range/declaration/full-name/extendee/scope/containing-type lookup/enumeration/index and lowercase/camelcase/printable name lookup, declaration index, descriptor

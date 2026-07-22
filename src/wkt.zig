@@ -877,6 +877,14 @@ pub const Any = struct {
         return "";
     }
 
+    pub fn hasTypeUrlPrefix(self: Any) bool {
+        return std.mem.lastIndexOfScalar(u8, self.type_url, '/') != null;
+    }
+
+    pub fn typeUrlPrefixIs(self: Any, prefix: []const u8) bool {
+        return std.mem.eql(u8, self.typeUrlPrefix(), std.mem.trimEnd(u8, prefix, "/"));
+    }
+
     pub fn valueBytes(self: Any) []const u8 {
         return self.value;
     }
