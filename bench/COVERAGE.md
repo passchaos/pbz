@@ -310,7 +310,7 @@ benchmark harness.
   ordered file/message/enum/service descriptor enumeration, descriptor name/full-name identity lookup,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/fields/presence/inspection/clearing, imported message fields, option lookup,
-  file-local service lookup, service/method type metadata lookup, extension descriptor lookup, unknown-field
+  file-local service lookup, service/method type metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
   query/mutation, required-field initialization checks, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for

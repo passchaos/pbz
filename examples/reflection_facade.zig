@@ -321,6 +321,40 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i64, 123456), try refl.getInt64(profile_value, "created_at"));
     try std.testing.expectEqualSlices(u8, &.{ 0xde, 0xad, 0xbe, 0xef }, try refl.getBytes(profile_value, "avatar"));
 
+    var merge_target = try refl.cloneMessage(&user);
+    defer merge_target.deinit();
+    var patch = try refl.newMessage("demo.reflect.User");
+    defer patch.deinit();
+    try refl.setString(&patch, "name", "Grace");
+    try refl.addString(&patch, "tags", "merged");
+    try refl.setBool(&patch, "disabled", true);
+    var patch_unknown = pbz.Writer.init(allocator);
+    defer patch_unknown.deinit();
+    try patch_unknown.writeUInt32(101, 7);
+    try refl.appendUnknownRaw(&patch, patch_unknown.slice());
+    try refl.mergeFrom(&merge_target, &patch);
+    try std.testing.expectEqualStrings("Grace", try refl.getString(&merge_target, "name"));
+    try std.testing.expectEqual(@as(usize, 2), try refl.repeatedLen(&merge_target, "tags"));
+    try std.testing.expectEqualStrings("merged", (try refl.repeatedValue(&merge_target, "tags", 1)).string);
+    try std.testing.expectEqualStrings("disabled", refl.whichOneof(&merge_target, "contact").?.name);
+    try std.testing.expect(refl.hasUnknownFieldNumber(&merge_target, 101));
+    try refl.mergeFrom(&merge_target, &merge_target);
+    try std.testing.expectEqual(@as(usize, 4), try refl.repeatedLen(&merge_target, "tags"));
+
+    var copied = try refl.newMessage("demo.reflect.User");
+    defer copied.deinit();
+    try refl.setInt32(&copied, "id", 999);
+    try refl.copyFrom(&copied, &user);
+    try std.testing.expectEqualStrings("Ada", try refl.getString(&copied, "name"));
+    try std.testing.expectEqual(@as(i32, 7), try refl.getInt32(&copied, "id"));
+    try refl.copyFrom(&copied, &copied);
+    try std.testing.expectEqualStrings("Ada", try refl.getString(&copied, "name"));
+    var cloned = try refl.cloneMessage(&copied);
+    defer cloned.deinit();
+    try refl.setString(&copied, "name", "mutated");
+    try std.testing.expectEqualStrings("Ada", try refl.getString(&cloned, "name"));
+    try std.testing.expectError(error.TypeMismatch, refl.mergeFrom(&copied, profile_value));
+
     const encoded = try user.encodedInitializedWithRegistry(app_file, &loaded.registry);
     defer allocator.free(encoded);
     var decoded = pbz.DynamicMessage.init(allocator, user_desc);

@@ -714,6 +714,31 @@ pub const Reflection = struct {
         try message_value.add(field, owned);
     }
 
+    pub fn mergeFrom(self: Reflection, message_value: *dynamic.DynamicMessage, other: *const dynamic.DynamicMessage) Error!void {
+        if (message_value.descriptor != other.descriptor) return error.TypeMismatch;
+        if (message_value == other) {
+            // DynamicMessage.mergeFrom appends/replaces through the destination
+            // field array while reading the source.  Snapshot self-merges first
+            // so aliases behave like C++ Message::MergeFrom(message) rather
+            // than depending on ArrayList reallocation details.
+            var snapshot = try other.cloneOwned(self.allocator);
+            defer snapshot.deinit();
+            return try message_value.mergeFrom(&snapshot);
+        }
+        return try message_value.mergeFrom(other);
+    }
+
+    pub fn copyFrom(self: Reflection, message_value: *dynamic.DynamicMessage, other: *const dynamic.DynamicMessage) Error!void {
+        if (message_value.descriptor != other.descriptor) return error.TypeMismatch;
+        if (message_value == other) return;
+        message_value.clear();
+        return try self.mergeFrom(message_value, other);
+    }
+
+    pub fn cloneMessage(self: Reflection, message_value: *const dynamic.DynamicMessage) Error!dynamic.DynamicMessage {
+        return try message_value.cloneOwned(self.allocator);
+    }
+
     pub fn clear(self: Reflection, message_value: *dynamic.DynamicMessage, field: *const schema.FieldDescriptor) void {
         _ = self;
         _ = message_value.clearField(field);

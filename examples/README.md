@@ -54,7 +54,7 @@ library API.
   typed singular/repeated message/group creation/access/mutation, field type/extendee/oneof metadata, maps, map key/value metadata, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved
   metadata, ordered file/message/enum/service descriptor enumeration, descriptor name/full-name identity lookup, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/fields/presence/inspection/clearing, imported message fields, option lookup,
-  file-local service lookup, service/method type metadata, and extension descriptor lookup, unknown-field query/mutation,
+  file-local service lookup, service/method type metadata, and extension descriptor lookup, dynamic merge/copy/clone, unknown-field query/mutation,
   required-field initialization checks, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
