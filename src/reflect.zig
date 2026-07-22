@@ -806,6 +806,10 @@ pub const Reflection = struct {
         return self.registry.findService(name, null) orelse error.UnknownService;
     }
 
+    pub fn methodByFullName(self: Reflection, name: []const u8) Error!*const schema.MethodDescriptor {
+        return self.registry.findMethod(name, null) orelse error.UnknownField;
+    }
+
     pub fn serviceName(_: Reflection, descriptor: *const schema.ServiceDescriptor) []const u8 {
         return descriptor.name;
     }

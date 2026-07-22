@@ -495,6 +495,9 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Get", (try refl.serviceMethodAt(users_service, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.serviceMethodAt(users_service, 9));
     const get_method = try refl.methodByName(users_service, "Get");
+    try std.testing.expect((try refl.methodByFullName(".demo.reflect.Users.Get")) == get_method);
+    try std.testing.expect((try refl.methodByFullName("Get")) == get_method);
+    try std.testing.expectError(error.UnknownField, refl.methodByFullName("Missing"));
     try std.testing.expectEqual(@as(usize, 0), try refl.methodIndex(users_service, get_method));
     try std.testing.expectEqualStrings("Get", refl.methodName(get_method));
     try std.testing.expect(refl.methodIsDeprecated(get_method));

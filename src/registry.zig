@@ -311,6 +311,16 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findMethod(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.MethodDescriptor {
+        const normalized = normalizeName(name);
+        for (self.files.items) |file| {
+            for (file.services.items) |*service| {
+                if (methodNameMatches(file.package, service, normalized, scope)) |method| return method;
+            }
+        }
+        return null;
+    }
+
     pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
         if (self.findMessage(extendee, null)) |message| return self.findExtensionForMessage(message, number);
         const normalized = normalizeName(extendee);
@@ -941,6 +951,19 @@ fn serviceNameMatches(package: []const u8, service_name: []const u8, query: []co
     if (!std.mem.eql(u8, service_name, query)) return false;
     const owner_scope = scope orelse return true;
     return package.len == 0 or std.mem.eql(u8, normalizeName(owner_scope), package);
+}
+
+fn methodNameMatches(package: []const u8, service: *const schema.ServiceDescriptor, query: []const u8, scope: ?[]const u8) ?*const schema.MethodDescriptor {
+    if (std.mem.lastIndexOfScalar(u8, query, '.')) |idx| {
+        const service_query = query[0..idx];
+        const method_query = query[idx + 1 ..];
+        if (!serviceNameMatches(package, service.name, service_query, scope)) return null;
+        return service.findMethod(method_query);
+    }
+    if (scope) |owner_scope| {
+        if (!serviceNameMatches(package, service.name, normalizeName(owner_scope), null)) return null;
+    }
+    return service.findMethod(query);
 }
 
 fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
