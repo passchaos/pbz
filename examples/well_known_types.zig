@@ -139,6 +139,7 @@ pub fn main() !void {
     var list_roundtrip = try pbz.ListValue.decode(allocator, list_wire);
     defer list_roundtrip.deinit(allocator);
     std.debug.assert(list_roundtrip.values.len == 3);
+    try std.testing.expect(list.eql(list_roundtrip));
 
     var object_any = try pbz.Any.packEncoded(allocator, "google.protobuf.Struct", object);
     defer object_any.deinit(allocator);

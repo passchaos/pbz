@@ -1756,6 +1756,10 @@ pub const ListValue = struct {
         return true;
     }
 
+    pub fn eql(self: ListValue, other: ListValue) bool {
+        return listValueEqual(self, other);
+    }
+
     pub fn encode(self: ListValue, allocator: std.mem.Allocator) anyerror![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
