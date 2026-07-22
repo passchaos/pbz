@@ -2048,6 +2048,13 @@ pub const Reflection = struct {
         return field_value.values.items[index];
     }
 
+    pub fn fieldValueIndex(_: Reflection, field_value: *const dynamic.FieldValue, value: dynamic.Value) Error!usize {
+        for (field_value.values.items, 0..) |candidate, index| {
+            if (dynamic.valueEqual(candidate, value)) return index;
+        }
+        return error.MissingField;
+    }
+
     pub fn valueTag(_: Reflection, value: dynamic.Value) ValueTag {
         return std.meta.activeTag(value);
     }
@@ -2072,6 +2079,18 @@ pub const Reflection = struct {
         const fields = message_value.unknownFields();
         if (index >= fields.len) return error.UnknownField;
         return fields[index];
+    }
+
+    pub fn unknownIndex(_: Reflection, message_value: *const dynamic.DynamicMessage, unknown: dynamic.UnknownField) Error!usize {
+        for (message_value.unknownFields(), 0..) |candidate, index| {
+            if (candidate.number == unknown.number and
+                candidate.wire_type == unknown.wire_type and
+                std.mem.eql(u8, candidate.data, unknown.data))
+            {
+                return index;
+            }
+        }
+        return error.UnknownField;
     }
 
     pub fn unknownFieldNumber(_: Reflection, unknown: dynamic.UnknownField) wire.FieldNumber {

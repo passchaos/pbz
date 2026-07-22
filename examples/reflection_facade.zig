@@ -710,6 +710,7 @@ pub fn main() !void {
     try std.testing.expect((refl.fieldValueDescriptor(count_field)) == counts_desc_field);
     try std.testing.expectEqual(@as(usize, 1), refl.fieldValueCount(count_field));
     const count_field_value = try refl.fieldValueAt(count_field, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.fieldValueIndex(count_field, count_field_value));
     try std.testing.expectEqual(.map_entry, refl.valueTag(count_field_value));
     try std.testing.expectEqual(@as(i32, 2), count_field_value.map_entry.value.int32);
     try std.testing.expectError(error.MissingField, refl.fieldValueAt(count_field, 9));
@@ -816,6 +817,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 100), refl.unknownFieldNumberRunNumber(unknown_runs[0]));
     try std.testing.expectEqual(@as(usize, 1), refl.unknownFieldNumberRunCount(unknown_runs[0]));
     const unknown_field = try refl.unknownAt(&decoded, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.unknownIndex(&decoded, unknown_field));
     try std.testing.expectEqual(@as(pbz.FieldNumber, 100), refl.unknownFieldNumber(unknown_field));
     try std.testing.expectEqual(pbz.WireType.varint, refl.unknownFieldWireType(unknown_field));
     try std.testing.expectEqualSlices(u8, raw_unknown.slice(), refl.unknownFieldData(unknown_field));

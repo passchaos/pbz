@@ -2107,7 +2107,7 @@ fn valueLessThan(a: Value, b: Value) bool {
     };
 }
 
-fn valueEqual(a: Value, b: Value) bool {
+pub fn valueEqual(a: Value, b: Value) bool {
     return switch (a) {
         .boolean => |av| b == .boolean and av == b.boolean,
         .int32 => |av| b == .int32 and av == b.int32,
@@ -2120,8 +2120,14 @@ fn valueEqual(a: Value, b: Value) bool {
         .fixed64 => |av| b == .fixed64 and av == b.fixed64,
         .sfixed32 => |av| b == .sfixed32 and av == b.sfixed32,
         .sfixed64 => |av| b == .sfixed64 and av == b.sfixed64,
+        .float => |av| b == .float and av == b.float,
+        .double => |av| b == .double and av == b.double,
         .string => |av| b == .string and std.mem.eql(u8, av, b.string),
-        else => false,
+        .bytes => |av| b == .bytes and std.mem.eql(u8, av, b.bytes),
+        .enumeration => |av| b == .enumeration and av == b.enumeration,
+        .message => |av| b == .message and av == b.message,
+        .group => |av| b == .group and av == b.group,
+        .map_entry => |av| b == .map_entry and av == b.map_entry,
     };
 }
 
