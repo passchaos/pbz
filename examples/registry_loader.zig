@@ -21,6 +21,10 @@ pub fn main() !void {
         \\edition = "2024";
         \\package demo.app;
         \\option optimize_for = CODE_SIZE;
+        \\option java_package = "com.example.demo";
+        \\option java_multiple_files = true;
+        \\option go_package = "example.com/demo;demopb";
+        \\option cc_enable_arenas = true;
         \\import public "common.proto";
         \\import option "custom_options.proto";
         \\message Event { demo.common.User user = 1; }
@@ -38,6 +42,10 @@ pub fn main() !void {
     const common_file = try refl.file("common.proto");
     const options_file = try refl.file("custom_options.proto");
     std.debug.assert(refl.fileOptimizeFor(app_file).? == .code_size);
+    std.debug.assert(std.mem.eql(u8, refl.fileJavaPackage(app_file).?, "com.example.demo"));
+    std.debug.assert(refl.fileJavaMultipleFiles(app_file));
+    std.debug.assert(std.mem.eql(u8, refl.fileGoPackage(app_file).?, "example.com/demo;demopb"));
+    std.debug.assert(refl.fileCcEnableArenas(app_file));
     const common_import = try refl.fileImport(app_file, "common.proto");
     std.debug.assert(std.mem.eql(u8, refl.importPath(common_import), "common.proto"));
     std.debug.assert(refl.importKind(common_import) == .public);

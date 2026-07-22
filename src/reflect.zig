@@ -70,6 +70,22 @@ pub const Reflection = struct {
         return file_descriptor.optimizeFor();
     }
 
+    pub fn fileJavaPackage(_: Reflection, file_descriptor: *const schema.FileDescriptor) ?[]const u8 {
+        return schema.optionString(file_descriptor.options.items, "java_package");
+    }
+
+    pub fn fileGoPackage(_: Reflection, file_descriptor: *const schema.FileDescriptor) ?[]const u8 {
+        return schema.optionString(file_descriptor.options.items, "go_package");
+    }
+
+    pub fn fileJavaMultipleFiles(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
+        return schema.optionBool(file_descriptor.options.items, "java_multiple_files") orelse false;
+    }
+
+    pub fn fileCcEnableArenas(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
+        return schema.optionBool(file_descriptor.options.items, "cc_enable_arenas") orelse false;
+    }
+
     pub fn fileEnforceNamingStyle(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.EnforceNamingStyle {
         return file_descriptor.features.enforce_naming_style;
     }
