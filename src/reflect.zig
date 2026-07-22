@@ -175,6 +175,13 @@ pub const Reflection = struct {
         return &file_descriptor.source_code_info.locations.items[index];
     }
 
+    pub fn sourceLocationIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, location: *const schema.SourceCodeInfo.Location) Error!usize {
+        for (file_descriptor.source_code_info.locations.items, 0..) |*candidate, index| {
+            if (candidate == location) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn sourceLocationPath(_: Reflection, location: *const schema.SourceCodeInfo.Location) []const i32 {
         return location.path.items;
     }
@@ -215,6 +222,13 @@ pub const Reflection = struct {
     pub fn generatedAnnotationAt(_: Reflection, generated_code_info: *const schema.GeneratedCodeInfo, index: usize) Error!*const schema.GeneratedCodeInfo.Annotation {
         if (index >= generated_code_info.annotations.items.len) return error.UnknownField;
         return &generated_code_info.annotations.items[index];
+    }
+
+    pub fn generatedAnnotationIndex(_: Reflection, generated_code_info: *const schema.GeneratedCodeInfo, annotation: *const schema.GeneratedCodeInfo.Annotation) Error!usize {
+        for (generated_code_info.annotations.items, 0..) |*candidate, index| {
+            if (candidate == annotation) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn generatedAnnotationPath(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) []const i32 {

@@ -38,6 +38,7 @@ pub fn main() !void {
     try std.testing.expect(!refl.sourceLocationExists(&file, &.{ 9, 9 }));
     const first_location = try refl.sourceLocationAt(&file, 0);
     try std.testing.expect(refl.sourceLocationPath(first_location).len != 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.sourceLocationIndex(&file, first_location));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationAt(&file, refl.sourceLocationCount(&file)));
     const syntax_location = try refl.sourceLocation(&file, &.{12});
     try std.testing.expectEqualSlices(i32, &.{12}, refl.sourceLocationPath(syntax_location));
@@ -143,7 +144,8 @@ fn expectPluginResponseMetadata(allocator: std.mem.Allocator, refl: pbz.Reflecti
                             try std.testing.expect(annotation_count >= 3);
                             try std.testing.expect(refl.generatedAnnotationExists(&info, &.{ 4, 0, 2, 0 }));
                             try std.testing.expect(!refl.generatedAnnotationExists(&info, &.{ 9, 9 }));
-                            _ = try refl.generatedAnnotationAt(&info, 0);
+                            const first_annotation = try refl.generatedAnnotationAt(&info, 0);
+                            try std.testing.expectEqual(@as(usize, 0), try refl.generatedAnnotationIndex(&info, first_annotation));
                             try std.testing.expectError(error.UnknownField, refl.generatedAnnotationAt(&info, annotation_count));
                             saw_file_annotation = saw_file_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{}), &.{}, source_file);
                             saw_message_annotation = saw_message_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{ 4, 0 }), &.{ 4, 0 }, source_file);
