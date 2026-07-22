@@ -21,6 +21,8 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 2), mask.pathCount());
     try std.testing.expectEqualStrings("foo_bar", try mask.pathAt(0));
     try std.testing.expectEqualStrings("baz", try mask.pathAt(1));
+    try std.testing.expect(mask.hasPath("foo_bar"));
+    try std.testing.expect(!mask.hasPath("missing"));
     try std.testing.expectEqual(@as(usize, 0), try mask.pathIndex("foo_bar"));
     try std.testing.expectError(error.UnknownField, mask.pathAt(2));
     try std.testing.expectError(error.UnknownField, mask.pathIndex("missing"));

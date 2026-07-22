@@ -407,6 +407,11 @@ pub const FieldMask = struct {
         return error.UnknownField;
     }
 
+    pub fn hasPath(self: FieldMask, path: []const u8) bool {
+        _ = self.pathIndex(path) catch return false;
+        return true;
+    }
+
     pub fn validate(self: FieldMask) !void {
         for (self.paths) |path| try validateFieldMaskPath(path);
     }

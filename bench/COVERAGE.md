@@ -320,7 +320,7 @@ benchmark harness.
   required-field validation, reflection extension/all-extensions/containing-file/range/declaration/full-name/extendee/scope/containing-type lookup/enumeration/index and lowercase/camelcase/printable name lookup, extension-range bounds/explicit-end/verification/declaration metadata and range/declaration enumeration/index, descriptor round-trips,
   JSON/TextFormat extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
-  Timestamp, Duration, FieldMask path access/index, Empty, Struct field presence/access/index, Value typed accessors, ListValue access/index, scalar and
+  Timestamp, Duration, FieldMask path presence/access/index, Empty, Struct field presence/access/index, Value typed accessors, ListValue access/index, scalar and
   bytes wrappers, standalone `Any` JSON mapping for embedded WKT payload
   values, descriptor well-known-type reflection, and WKT wire round-trips.
 - `examples/any_dynamic.zig` covers custom dynamic-message `Any`
