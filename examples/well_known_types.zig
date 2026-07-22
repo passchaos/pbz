@@ -18,7 +18,12 @@ pub fn main() !void {
 
     var mask = try pbz.FieldMask.jsonParseOwned(allocator, "\"fooBar,baz\"");
     defer mask.deinit(allocator);
-    std.debug.assert(mask.paths.len == 2);
+    try std.testing.expectEqual(@as(usize, 2), mask.pathCount());
+    try std.testing.expectEqualStrings("foo_bar", try mask.pathAt(0));
+    try std.testing.expectEqualStrings("baz", try mask.pathAt(1));
+    try std.testing.expectEqual(@as(usize, 0), try mask.pathIndex("foo_bar"));
+    try std.testing.expectError(error.UnknownField, mask.pathAt(2));
+    try std.testing.expectError(error.UnknownField, mask.pathIndex("missing"));
 
     const empty_bytes = try pbz.Empty.encode(allocator);
     defer allocator.free(empty_bytes);

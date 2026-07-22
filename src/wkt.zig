@@ -391,6 +391,22 @@ test "duration wire decode validates range and sign consistency" {
 pub const FieldMask = struct {
     paths: []const []const u8 = &.{},
 
+    pub fn pathCount(self: FieldMask) usize {
+        return self.paths.len;
+    }
+
+    pub fn pathAt(self: FieldMask, index: usize) ![]const u8 {
+        if (index >= self.paths.len) return error.UnknownField;
+        return self.paths[index];
+    }
+
+    pub fn pathIndex(self: FieldMask, path: []const u8) !usize {
+        for (self.paths, 0..) |candidate, index| {
+            if (std.mem.eql(u8, candidate, path)) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn validate(self: FieldMask) !void {
         for (self.paths) |path| try validateFieldMaskPath(path);
     }
