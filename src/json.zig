@@ -1649,7 +1649,7 @@ fn writeJsonStringExtensionName(file: *const schema.FileDescriptor, registry: ?*
     } else if (std.mem.indexOfScalar(u8, full_name, '.') != null) {
         try writeJsonStringContents(full_name, writer);
     } else {
-        const package = extensionDefiningPackage(registry, field) orelse file.package;
+        const package = registry_mod.fieldDefiningFile(file, registry, field).package;
         if (package.len != 0) {
             try writeJsonStringContents(package, writer);
             try writer.writeByte('.');
@@ -1657,21 +1657,6 @@ fn writeJsonStringExtensionName(file: *const schema.FileDescriptor, registry: ?*
         try writeJsonStringContents(full_name, writer);
     }
     try writer.writeAll("]\"");
-}
-
-fn extensionDefiningPackage(registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) ?[]const u8 {
-    const reg = registry orelse return null;
-    for (reg.files.items) |file| {
-        for (file.extensions.items) |*candidate| if (candidate == field) return file.package;
-        for (file.messages.items) |*message| if (extensionPackageInMessage(file, message, field)) |package| return package;
-    }
-    return null;
-}
-
-fn extensionPackageInMessage(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
-    for (message.extensions.items) |*candidate| if (candidate == field) return file.package;
-    for (message.messages.items) |*nested| if (extensionPackageInMessage(file, nested, field)) |package| return package;
-    return null;
 }
 
 fn writeLowerCamel(name: []const u8, writer: *std.Io.Writer) Error!void {
