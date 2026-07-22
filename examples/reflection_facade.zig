@@ -517,8 +517,11 @@ pub fn main() !void {
     try std.testing.expect(refl.messageReservedRange(user_desc, 111) == null);
     try std.testing.expectEqual(@as(i64, 100), refl.reservedRangeStart(user_reserved_range));
     try std.testing.expectEqual(@as(i64, 111), refl.reservedRangeEnd(user_reserved_range, user_desc.extensionRangeMaxExclusive()));
+    try std.testing.expectEqual(@as(i64, 111), refl.messageReservedRangeEnd(user_desc, user_reserved_range));
     try std.testing.expect(refl.reservedRangeContains(user_reserved_range, 100, user_desc.extensionRangeMaxExclusive()));
+    try std.testing.expect(refl.messageReservedRangeContains(user_desc, user_reserved_range, 100));
     try std.testing.expect(!refl.reservedRangeContains(user_reserved_range, 111, user_desc.extensionRangeMaxExclusive()));
+    try std.testing.expect(!refl.messageReservedRangeContains(user_desc, user_reserved_range, 111));
     try std.testing.expectError(error.UnknownField, refl.messageReservedRangeAt(user_desc, 9));
     try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
     const status_desc = try refl.enumeration(".demo.reflect.Status");

@@ -2252,8 +2252,16 @@ pub const Reflection = struct {
         return range.effectiveEnd(max_end);
     }
 
+    pub fn messageReservedRangeEnd(_: Reflection, descriptor: *const schema.MessageDescriptor, range: schema.ReservedRange) i64 {
+        return range.effectiveEnd(descriptor.extensionRangeMaxExclusive());
+    }
+
     pub fn reservedRangeContains(_: Reflection, range: schema.ReservedRange, number: i64, max_end: i64) bool {
         return range.containsWithMax(number, max_end);
+    }
+
+    pub fn messageReservedRangeContains(_: Reflection, descriptor: *const schema.MessageDescriptor, range: schema.ReservedRange, number: i64) bool {
+        return range.containsWithMax(number, descriptor.extensionRangeMaxExclusive());
     }
 
     pub fn enumForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
