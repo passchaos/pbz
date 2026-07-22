@@ -11,12 +11,14 @@ pub fn main() !void {
         \\package demo;
         \\message Host { extensions 100 to max; }
         \\message DeclaredHost {
-        \\  extensions 200 to max [
+        \\  extensions 200 to 249 [
         \\    declaration = { number: 200 full_name: ".demo.declared_priority" type: "int32" },
         \\    declaration = { number: 201 reserved: true },
+        \\    declaration = { number: 202 full_name: ".demo.declared_tags" type: "int32" repeated: true },
         \\    verification = DECLARATION
         \\  ];
         \\}
+        \\message MessageSetHost { option message_set_wire_format = true; extensions 4 to max; }
         \\message Payload {
         \\  required int32 id = 1;
         \\  optional string label = 2;
@@ -26,7 +28,10 @@ pub fn main() !void {
         \\  repeated Payload payloads = 101;
         \\}
         \\message Scope { extend Host { optional string scoped = 102; } }
-        \\extend DeclaredHost { optional int32 declared_priority = 200; }
+        \\extend DeclaredHost {
+        \\  optional int32 declared_priority = 200;
+        \\  repeated int32 declared_tags = 202;
+        \\}
     );
     defer file.deinit();
     file.name = "extensions.proto";
@@ -113,18 +118,42 @@ pub fn main() !void {
     std.debug.assert(refl.messageIsExtensionNumber(declared_desc, 200));
     std.debug.assert(!refl.messageIsExtensionNumber(declared_desc, 199));
     std.debug.assert(refl.messageExtensionRangeCount(declared_desc) == 1);
-    std.debug.assert((try refl.messageExtensionRangeAt(declared_desc, 0)).contains(200));
-    try std.testing.expectError(error.UnknownField, refl.messageExtensionRangeAt(declared_desc, 9));
     const reflected_range = refl.messageExtensionRange(declared_desc, 200) orelse return error.MissingExtensionRange;
-    std.debug.assert(reflected_range.verification.? == .declaration);
-    std.debug.assert(refl.extensionDeclarationCount(reflected_range) == 2);
-    std.debug.assert((try refl.extensionDeclarationAt(reflected_range, 0)).number == 200);
-    try std.testing.expectError(error.UnknownField, refl.extensionDeclarationAt(reflected_range, 9));
-    std.debug.assert(std.mem.eql(u8, (refl.extensionDeclaration(reflected_range, 200) orelse return error.MissingExtensionDeclaration).full_name, ".demo.declared_priority"));
-    std.debug.assert((refl.extensionDeclaration(reflected_range, 201) orelse return error.MissingExtensionDeclaration).reserved);
-    std.debug.assert(refl.extensionDeclaration(reflected_range, 202) == null);
+    std.debug.assert(reflected_range == try refl.messageExtensionRangeAt(declared_desc, 0));
+    try std.testing.expectError(error.UnknownField, refl.messageExtensionRangeAt(declared_desc, 9));
+    std.debug.assert(refl.extensionRangeStart(reflected_range) == 200);
+    std.debug.assert(try refl.extensionRangeEnd(declared_desc, reflected_range) == 250);
+    std.debug.assert(try refl.extensionRangeContains(declared_desc, reflected_range, 200));
+    std.debug.assert(refl.messageIsExtensionNumber(declared_desc, 249));
+    std.debug.assert(!(try refl.extensionRangeContains(declared_desc, reflected_range, 250)));
+    std.debug.assert(!refl.messageIsExtensionNumber(declared_desc, 250));
+    std.debug.assert(refl.extensionRangeHasVerification(reflected_range));
+    std.debug.assert(try refl.extensionRangeVerification(reflected_range) == .declaration);
+    const host_open_range = try refl.messageExtensionRangeAt(host_desc, 0);
+    std.debug.assert(try refl.extensionRangeEnd(host_desc, host_open_range) == @as(i64, std.math.maxInt(pbz.FieldNumber)) + 1);
+    const message_set_desc = try refl.message(".demo.MessageSetHost");
+    const message_set_open_range = try refl.messageExtensionRangeAt(message_set_desc, 0);
+    std.debug.assert(try refl.extensionRangeEnd(message_set_desc, message_set_open_range) == std.math.maxInt(i32));
+    std.debug.assert(refl.messageExtensionRangeMaxExclusive(message_set_desc) == std.math.maxInt(i32));
+    std.debug.assert(refl.messageIsExtensionNumber(message_set_desc, std.math.maxInt(i32) - 1));
+    std.debug.assert(!refl.messageIsExtensionNumber(message_set_desc, std.math.maxInt(i32)));
     std.debug.assert(range.verification.? == .declaration);
-    std.debug.assert(range.declarations.items.len == 2);
+    std.debug.assert(refl.extensionDeclarationCount(reflected_range) == 3);
+    const priority_decl = try refl.extensionDeclarationAt(reflected_range, 0);
+    std.debug.assert(refl.extensionDeclarationNumber(priority_decl) == 200);
+    std.debug.assert(std.mem.eql(u8, refl.extensionDeclarationFullName(priority_decl), ".demo.declared_priority"));
+    std.debug.assert(std.mem.eql(u8, refl.extensionDeclarationTypeName(priority_decl), "int32"));
+    std.debug.assert(!refl.extensionDeclarationIsReserved(priority_decl));
+    std.debug.assert(!refl.extensionDeclarationIsRepeated(priority_decl));
+    try std.testing.expectError(error.UnknownField, refl.extensionDeclarationAt(reflected_range, 9));
+    const found_priority_decl = refl.extensionDeclaration(reflected_range, 200) orelse return error.MissingExtensionDeclaration;
+    std.debug.assert(std.mem.eql(u8, refl.extensionDeclarationFullName(found_priority_decl), ".demo.declared_priority"));
+    const reserved_decl = refl.extensionDeclaration(reflected_range, 201) orelse return error.MissingExtensionDeclaration;
+    std.debug.assert(refl.extensionDeclarationIsReserved(reserved_decl));
+    const repeated_decl = refl.extensionDeclaration(reflected_range, 202) orelse return error.MissingExtensionDeclaration;
+    std.debug.assert(refl.extensionDeclarationIsRepeated(repeated_decl));
+    std.debug.assert(refl.extensionDeclaration(reflected_range, 203) == null);
+    std.debug.assert(range.declarations.items.len == 3);
     std.debug.assert(std.mem.eql(u8, range.declarations.items[0].full_name, ".demo.declared_priority"));
     std.debug.assert(range.declarations.items[1].reserved);
 

@@ -863,6 +863,32 @@ pub const Reflection = struct {
         return &descriptor.extension_ranges.items[index];
     }
 
+    pub fn messageExtensionRangeMaxExclusive(_: Reflection, descriptor: *const schema.MessageDescriptor) i64 {
+        return descriptor.extensionRangeMaxExclusive();
+    }
+
+    pub fn extensionRangeStart(_: Reflection, range: *const schema.ExtensionRange) i64 {
+        return range.start;
+    }
+
+    pub fn extensionRangeEnd(_: Reflection, descriptor: *const schema.MessageDescriptor, range: *const schema.ExtensionRange) Error!i64 {
+        if (!messageDirectlyContainsExtensionRange(descriptor, range)) return error.UnknownField;
+        return range.effectiveEnd(descriptor);
+    }
+
+    pub fn extensionRangeContains(self: Reflection, descriptor: *const schema.MessageDescriptor, range: *const schema.ExtensionRange, number: i64) Error!bool {
+        const end = try self.extensionRangeEnd(descriptor, range);
+        return number >= range.start and number < end;
+    }
+
+    pub fn extensionRangeHasVerification(_: Reflection, range: *const schema.ExtensionRange) bool {
+        return range.verification != null;
+    }
+
+    pub fn extensionRangeVerification(_: Reflection, range: *const schema.ExtensionRange) Error!schema.ExtensionRangeVerification {
+        return range.verification orelse error.MissingField;
+    }
+
     pub fn extensionRangeHasExplicitFeatures(_: Reflection, range: *const schema.ExtensionRange) bool {
         return range.features != null;
     }
@@ -882,6 +908,26 @@ pub const Reflection = struct {
     pub fn extensionDeclarationAt(_: Reflection, range: *const schema.ExtensionRange, index: usize) Error!schema.ExtensionDeclaration {
         if (index >= range.declarations.items.len) return error.UnknownField;
         return range.declarations.items[index];
+    }
+
+    pub fn extensionDeclarationNumber(_: Reflection, declaration: schema.ExtensionDeclaration) i32 {
+        return declaration.number;
+    }
+
+    pub fn extensionDeclarationFullName(_: Reflection, declaration: schema.ExtensionDeclaration) []const u8 {
+        return declaration.full_name;
+    }
+
+    pub fn extensionDeclarationTypeName(_: Reflection, declaration: schema.ExtensionDeclaration) []const u8 {
+        return declaration.type_name;
+    }
+
+    pub fn extensionDeclarationIsReserved(_: Reflection, declaration: schema.ExtensionDeclaration) bool {
+        return declaration.reserved;
+    }
+
+    pub fn extensionDeclarationIsRepeated(_: Reflection, declaration: schema.ExtensionDeclaration) bool {
+        return declaration.repeated;
     }
 
     pub fn messageIsExtensionNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
@@ -1936,6 +1982,13 @@ fn importOfKindAt(file: *const schema.FileDescriptor, kind: schema.Import.Kind, 
 fn messageDirectlyContainsField(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) bool {
     for (message.fields.items) |*field| {
         if (field == target) return true;
+    }
+    return false;
+}
+
+fn messageDirectlyContainsExtensionRange(message: *const schema.MessageDescriptor, target: *const schema.ExtensionRange) bool {
+    for (message.extension_ranges.items) |*range| {
+        if (range == target) return true;
     }
     return false;
 }

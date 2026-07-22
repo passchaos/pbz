@@ -409,6 +409,18 @@ pub const ExtensionRange = struct {
         return number >= self.start and number < end;
     }
 
+    pub fn effectiveEnd(self: ExtensionRange, message: *const MessageDescriptor) i64 {
+        // DescriptorProto stores extension/reserved range ends as exclusive
+        // values, but an omitted source-level `to max` depends on the host
+        // message shape: MessageSet ranges use the legacy int32 ceiling while
+        // ordinary messages use protobuf's public field-number ceiling + 1.
+        return self.end orelse message.extensionRangeMaxExclusive();
+    }
+
+    pub fn containsInMessage(self: ExtensionRange, message: *const MessageDescriptor, number: i64) bool {
+        return number >= self.start and number < self.effectiveEnd(message);
+    }
+
     pub fn declarationForNumber(self: ExtensionRange, number: i32) ?ExtensionDeclaration {
         for (self.declarations.items) |declaration| {
             if (declaration.number == number) return declaration;
@@ -683,14 +695,25 @@ pub const MessageDescriptor = struct {
     }
 
     pub fn extensionRangeForNumber(self: *const MessageDescriptor, number: i64) ?*const ExtensionRange {
+        if (number <= 0 or number >= self.extensionRangeMaxExclusive()) return null;
         for (self.extension_ranges.items) |*range| {
-            if (range.contains(number)) return range;
+            if (range.containsInMessage(self, number)) return range;
         }
         return null;
     }
 
     pub fn isExtensionNumber(self: *const MessageDescriptor, number: i64) bool {
         return self.extensionRangeForNumber(number) != null;
+    }
+
+    pub fn extensionRangeMaxExclusive(self: *const MessageDescriptor) i64 {
+        // Keep this in schema rather than descriptor encoding so reflection,
+        // validation, and dynamic extension lookup all agree on open-range
+        // membership, including the MessageSet exception.
+        return if (self.messageSetWireFormat())
+            std.math.maxInt(i32)
+        else
+            @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
     }
 
     pub fn findOneof(self: *const MessageDescriptor, name: []const u8) ?*const OneofDescriptor {
