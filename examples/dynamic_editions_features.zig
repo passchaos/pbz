@@ -30,6 +30,15 @@ pub fn main() !void {
 
     const desc = file.findMessage("Editions") orelse return error.MissingDescriptor;
     const child_desc = file.findMessage("Child") orelse return error.MissingDescriptor;
+    var registry = pbz.Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+    const refl = pbz.Reflection.init(allocator, &registry);
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, try refl.enumType(file.findEnum("Role") orelse return error.MissingDescriptor));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (desc.findField("packed") orelse return error.MissingField).features.?.repeated_field_encoding);
+    try std.testing.expect(try refl.fieldIsPacked(desc, desc.findField("packed") orelse return error.MissingField));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, try refl.fieldMessageEncoding(desc, desc.findField("delimited_child") orelse return error.MissingField));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.none, try refl.fieldUtf8Validation(desc, desc.findField("relaxed") orelse return error.MissingField));
 
     var msg = pbz.DynamicMessage.init(allocator, desc);
     defer msg.deinit();

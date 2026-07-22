@@ -283,6 +283,16 @@ pub const FieldDescriptor = struct {
         return file.features.field_presence != .implicit;
     }
 
+    pub fn utf8Validation(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.Utf8Validation {
+        if (self.features) |features| return features.utf8_validation;
+        return file.features.utf8_validation;
+    }
+
+    pub fn messageEncoding(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.MessageEncoding {
+        if (self.features) |features| return features.message_encoding;
+        return file.features.message_encoding;
+    }
+
     pub fn jsonName(self: FieldDescriptor, allocator: std.mem.Allocator) std.mem.Allocator.Error![]u8 {
         if (self.json_name) |explicit| return try allocator.dupe(u8, explicit);
         var out: std.ArrayList(u8) = .empty;
@@ -523,6 +533,11 @@ pub const EnumDescriptor = struct {
 
     pub fn allowAlias(self: *const EnumDescriptor) bool {
         return optionBool(self.options.items, "allow_alias") orelse false;
+    }
+
+    pub fn enumType(self: *const EnumDescriptor, file: *const FileDescriptor) FeatureSet.EnumType {
+        if (self.features) |features| return features.enum_type;
+        return file.features.enum_type;
     }
 
     pub fn isReservedName(self: *const EnumDescriptor, name: []const u8) bool {

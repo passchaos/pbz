@@ -166,6 +166,14 @@ pub const Reflection = struct {
         return field.resolvedPacked(try self.fileOfMessage(descriptor));
     }
 
+    pub fn fieldUtf8Validation(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!schema.FeatureSet.Utf8Validation {
+        return field.utf8Validation(try self.fileOfMessage(descriptor));
+    }
+
+    pub fn fieldMessageEncoding(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!schema.FeatureSet.MessageEncoding {
+        return field.messageEncoding(try self.fileOfMessage(descriptor));
+    }
+
     pub fn optionValue(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?schema.OptionValue {
         return schema.optionValue(options, name);
     }
@@ -216,6 +224,10 @@ pub const Reflection = struct {
 
     pub fn enumAllowAlias(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
         return descriptor.allowAlias();
+    }
+
+    pub fn enumType(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!schema.FeatureSet.EnumType {
+        return descriptor.enumType(try self.fileOfEnum(descriptor));
     }
 
     pub fn enumReservedName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) bool {

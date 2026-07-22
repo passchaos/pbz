@@ -235,7 +235,7 @@ benchmark harness.
 - `examples/dynamic_editions_features.zig` covers dynamic protobuf editions
   feature interactions: explicit/implicit/legacy-required presence,
   packed-vs-expanded repeated scalar encoding, delimited message encoding,
-  relaxed UTF-8 strings, closed enum unknown preservation, and TextFormat
+  relaxed UTF-8 strings, reflection feature metadata, closed enum unknown preservation, and TextFormat
   round-trip.
 - `examples/dynamic_defaults.zig` covers dynamic proto2 default values,
   explicit presence via `has`, `getOrDefault`, enum-name helpers, JSON null
