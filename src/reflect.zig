@@ -875,6 +875,28 @@ pub const Reflection = struct {
         return entries;
     }
 
+    pub fn mapKeys(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]dynamic.Value {
+        const entries = try self.mapEntries(message_value, name);
+        defer self.allocator.free(entries);
+        var keys = try self.allocator.alloc(dynamic.Value, entries.len);
+        errdefer self.allocator.free(keys);
+        for (entries, 0..) |entry, index| keys[index] = entry.key;
+        return keys;
+    }
+
+    pub fn mapValues(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]dynamic.Value {
+        const entries = try self.mapEntries(message_value, name);
+        defer self.allocator.free(entries);
+        var values = try self.allocator.alloc(dynamic.Value, entries.len);
+        errdefer self.allocator.free(values);
+        for (entries, 0..) |entry, index| values[index] = entry.value;
+        return values;
+    }
+
+    pub fn mapContains(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!bool {
+        return (try self.mapEntry(message_value, name, key)) != null;
+    }
+
     pub fn mapEntry(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!?*const dynamic.MapEntry {
         const field = try self.fieldByName(message_value.descriptor, name);
         try self.validateMapKey(field, key);
@@ -902,6 +924,10 @@ pub const Reflection = struct {
     pub fn stringMapValue(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?dynamic.Value {
         const entry = (try self.stringMapEntry(message_value, name, key)) orelse return null;
         return entry.value;
+    }
+
+    pub fn stringMapContains(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!bool {
+        return (try self.stringMapEntry(message_value, name, key)) != null;
     }
 
     pub fn stringMapEnumValueName(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: []const u8) Error!?[]const u8 {

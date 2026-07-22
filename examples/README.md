@@ -51,7 +51,7 @@ library API.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/get-default/clear helpers,
   present-field listing, type-checked writes, typed repeated scalar access/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, all scalar families,
-  typed singular/repeated message/group creation/access/mutation including typed repeated element access, field type/extendee/oneof metadata, maps, map key/value metadata, map size/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved
+  typed singular/repeated message/group creation/access/mutation including typed repeated element access, field type/extendee/oneof metadata, maps, map key/value metadata, map size/key/value/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved
   metadata, ordered file/message/enum/service descriptor enumeration, descriptor name/full-name identity lookup, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
   lookup/fields/presence/inspection/clearing, imported message fields, typed option lookup,
   file-local service lookup, service/method type metadata, and extension descriptor lookup, dynamic merge/copy/clone, unknown-field query/mutation,
