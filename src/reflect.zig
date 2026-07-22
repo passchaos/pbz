@@ -549,6 +549,14 @@ pub const Reflection = struct {
         return descriptor.findMethod(name) orelse error.UnknownField;
     }
 
+    pub fn methodInputTypeName(_: Reflection, method: *const schema.MethodDescriptor) []const u8 {
+        return method.input_type;
+    }
+
+    pub fn methodOutputTypeName(_: Reflection, method: *const schema.MethodDescriptor) []const u8 {
+        return method.output_type;
+    }
+
     pub fn methodInputType(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!*const schema.MessageDescriptor {
         const owner_file = try self.fileOfService(service_descriptor);
         return self.registry.findMessageVisible(owner_file, method.input_type, owner_file.package) orelse error.UnknownMessage;

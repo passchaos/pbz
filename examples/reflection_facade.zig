@@ -344,6 +344,8 @@ pub fn main() !void {
     const get_method_full_name = try refl.methodFullName(users_service, get_method);
     defer allocator.free(get_method_full_name);
     try std.testing.expectEqualStrings("demo.reflect.Users.Get", get_method_full_name);
+    try std.testing.expectEqualStrings("User", refl.methodInputTypeName(get_method));
+    try std.testing.expectEqualStrings("User", refl.methodOutputTypeName(get_method));
     try std.testing.expect(try refl.methodInputType(users_service, get_method) == user_desc);
     try std.testing.expect(try refl.methodOutputType(users_service, get_method) == user_desc);
     try std.testing.expect(!refl.methodClientStreaming(get_method));
