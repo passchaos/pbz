@@ -431,6 +431,11 @@ pub const FieldDescriptor = struct {
         return file.features.field_presence != .implicit;
     }
 
+    pub fn fieldPresence(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.FieldPresence {
+        if (self.features) |features| return features.field_presence;
+        return file.features.field_presence;
+    }
+
     pub fn utf8Validation(self: FieldDescriptor, file: *const FileDescriptor) FeatureSet.Utf8Validation {
         if (self.features) |features| return features.utf8_validation;
         return file.features.utf8_validation;

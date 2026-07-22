@@ -1091,6 +1091,10 @@ pub const Reflection = struct {
         return field.hasPresence(try self.fileOfMessage(descriptor));
     }
 
+    pub fn fieldPresence(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!schema.FeatureSet.FieldPresence {
+        return field.fieldPresence(try self.fileOfMessage(descriptor));
+    }
+
     pub fn fieldIsRequired(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isRequired();
     }

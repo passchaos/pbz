@@ -94,6 +94,9 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.packed_encoding, (try refl.fieldExplicitFeatures(desc.findField("packed") orelse return error.MissingField)).repeated_field_encoding);
     try std.testing.expect(!refl.fieldHasExplicitFeatures(desc.findField("expanded") orelse return error.MissingField));
     try std.testing.expectError(error.MissingField, refl.fieldExplicitFeatures(desc.findField("expanded") orelse return error.MissingField));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, try refl.fieldPresence(desc, desc.findField("explicit_zero") orelse return error.MissingField));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.implicit, try refl.fieldPresence(desc, desc.findField("implicit_zero") orelse return error.MissingField));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.legacy_required, try refl.fieldPresence(desc, desc.findField("required_id") orelse return error.MissingField));
     try std.testing.expect(try refl.fieldIsPacked(desc, desc.findField("packed") orelse return error.MissingField));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, try refl.fieldMessageEncoding(desc, desc.findField("delimited_child") orelse return error.MissingField));
     try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.none, try refl.fieldUtf8Validation(desc, desc.findField("relaxed") orelse return error.MissingField));
