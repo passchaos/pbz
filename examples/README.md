@@ -45,7 +45,7 @@ library API.
 - `dynamic_messageset.zig` — dynamic proto2 MessageSet encode/decode,
   reflection MessageSet wire-format metadata, JSON/TextFormat mapping, payload-before-type-id parsing, and unknown item
   preservation.
-- `descriptors_codegen.zig` — descriptor encode/decode, source-code info lookup/enumeration/accessors/path-span index plus detached-comment index,
+- `descriptors_codegen.zig` — descriptor encode/decode, source-code info lookup/enumeration/accessors/path-span coordinate/index plus detached-comment index,
   uninterpreted custom options, service/method options, descriptor sets, direct
   codegen, plugin request generation, and generated-code info annotation lookup/accessors/path index.
 - `reflection_facade.zig` — reflection facade over registry descriptors and

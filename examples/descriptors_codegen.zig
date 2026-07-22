@@ -54,6 +54,10 @@ pub fn main() !void {
     try std.testing.expectEqual(refl.sourceLocationSpan(syntax_location)[0], try refl.sourceLocationSpanAt(syntax_location, 0));
     try std.testing.expectEqual(refl.sourceLocationSpan(syntax_location)[3], try refl.sourceLocationSpanAt(syntax_location, 3));
     try std.testing.expectEqual(@as(usize, 1), try refl.sourceLocationSpanIndex(syntax_location, try refl.sourceLocationSpanAt(syntax_location, 1)));
+    try std.testing.expectEqual(try refl.sourceLocationSpanAt(syntax_location, 0), try refl.sourceLocationStartLine(syntax_location));
+    try std.testing.expectEqual(try refl.sourceLocationSpanAt(syntax_location, 1), try refl.sourceLocationStartColumn(syntax_location));
+    try std.testing.expectEqual(try refl.sourceLocationSpanAt(syntax_location, 2), try refl.sourceLocationEndLine(syntax_location));
+    try std.testing.expectEqual(try refl.sourceLocationSpanAt(syntax_location, 3), try refl.sourceLocationEndColumn(syntax_location));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationSpanAt(syntax_location, 4));
     try std.testing.expectError(error.UnknownField, refl.sourceLocationSpanIndex(syntax_location, 9999));
     try std.testing.expectEqualStrings("Syntax leading comment.\n", refl.sourceLocationLeadingComments(syntax_location).?);

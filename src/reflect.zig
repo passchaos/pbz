@@ -223,6 +223,26 @@ pub const Reflection = struct {
         return error.UnknownField;
     }
 
+    pub fn sourceLocationStartLine(_: Reflection, location: *const schema.SourceCodeInfo.Location) Error!i32 {
+        if (location.span.items.len < 3) return error.UnknownField;
+        return location.span.items[0];
+    }
+
+    pub fn sourceLocationStartColumn(_: Reflection, location: *const schema.SourceCodeInfo.Location) Error!i32 {
+        if (location.span.items.len < 3) return error.UnknownField;
+        return location.span.items[1];
+    }
+
+    pub fn sourceLocationEndLine(_: Reflection, location: *const schema.SourceCodeInfo.Location) Error!i32 {
+        if (location.span.items.len < 3) return error.UnknownField;
+        return if (location.span.items.len == 3) location.span.items[0] else location.span.items[2];
+    }
+
+    pub fn sourceLocationEndColumn(_: Reflection, location: *const schema.SourceCodeInfo.Location) Error!i32 {
+        if (location.span.items.len < 3) return error.UnknownField;
+        return if (location.span.items.len == 3) location.span.items[2] else location.span.items[3];
+    }
+
     pub fn sourceLocationLeadingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
         return location.leading_comments;
     }
