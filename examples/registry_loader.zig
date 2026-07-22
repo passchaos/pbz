@@ -25,6 +25,9 @@ pub fn main() !void {
         \\option java_multiple_files = true;
         \\option go_package = "example.com/demo;demopb";
         \\option cc_enable_arenas = true;
+        \\option cc_generic_services = true;
+        \\option java_generic_services = true;
+        \\option py_generic_services = true;
         \\import public "common.proto";
         \\import option "custom_options.proto";
         \\message Event { demo.common.User user = 1; }
@@ -46,6 +49,9 @@ pub fn main() !void {
     std.debug.assert(refl.fileJavaMultipleFiles(app_file));
     std.debug.assert(std.mem.eql(u8, refl.fileGoPackage(app_file).?, "example.com/demo;demopb"));
     std.debug.assert(refl.fileCcEnableArenas(app_file));
+    std.debug.assert(refl.fileCcGenericServices(app_file));
+    std.debug.assert(refl.fileJavaGenericServices(app_file));
+    std.debug.assert(refl.filePyGenericServices(app_file));
     const common_import = try refl.fileImport(app_file, "common.proto");
     std.debug.assert(std.mem.eql(u8, refl.importPath(common_import), "common.proto"));
     std.debug.assert(refl.importKind(common_import) == .public);

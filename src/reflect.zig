@@ -86,6 +86,18 @@ pub const Reflection = struct {
         return schema.optionBool(file_descriptor.options.items, "cc_enable_arenas") orelse false;
     }
 
+    pub fn fileCcGenericServices(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
+        return schema.optionBool(file_descriptor.options.items, "cc_generic_services") orelse false;
+    }
+
+    pub fn fileJavaGenericServices(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
+        return schema.optionBool(file_descriptor.options.items, "java_generic_services") orelse false;
+    }
+
+    pub fn filePyGenericServices(_: Reflection, file_descriptor: *const schema.FileDescriptor) bool {
+        return schema.optionBool(file_descriptor.options.items, "py_generic_services") orelse false;
+    }
+
     pub fn fileEnforceNamingStyle(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.EnforceNamingStyle {
         return file_descriptor.features.enforce_naming_style;
     }
