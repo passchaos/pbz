@@ -195,6 +195,13 @@ pub const Reflection = struct {
         return location.path.items[index];
     }
 
+    pub fn sourceLocationPathIndex(_: Reflection, location: *const schema.SourceCodeInfo.Location, value: i32) Error!usize {
+        for (location.path.items, 0..) |candidate, index| {
+            if (candidate == value) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn sourceLocationSpan(_: Reflection, location: *const schema.SourceCodeInfo.Location) []const i32 {
         return location.span.items;
     }
@@ -206,6 +213,13 @@ pub const Reflection = struct {
     pub fn sourceLocationSpanAt(_: Reflection, location: *const schema.SourceCodeInfo.Location, index: usize) Error!i32 {
         if (index >= location.span.items.len) return error.UnknownField;
         return location.span.items[index];
+    }
+
+    pub fn sourceLocationSpanIndex(_: Reflection, location: *const schema.SourceCodeInfo.Location, value: i32) Error!usize {
+        for (location.span.items, 0..) |candidate, index| {
+            if (candidate == value) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn sourceLocationLeadingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
