@@ -638,6 +638,13 @@ pub const Reflection = struct {
         return descriptor.findMessage(name) orelse error.UnknownMessage;
     }
 
+    pub fn messageNestedMessageIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, nested: *const schema.MessageDescriptor) Error!usize {
+        for (descriptor.messages.items, 0..) |*candidate, index| {
+            if (candidate == nested) return index;
+        }
+        return error.UnknownMessage;
+    }
+
     pub fn messageNestedMessageDeep(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.MessageDescriptor {
         return descriptor.findMessageDeep(name) orelse error.UnknownMessage;
     }
@@ -652,6 +659,13 @@ pub const Reflection = struct {
 
     pub fn messageNestedEnum(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
         return descriptor.findEnum(name) orelse error.UnknownEnum;
+    }
+
+    pub fn messageNestedEnumIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, nested: *const schema.EnumDescriptor) Error!usize {
+        for (descriptor.enums.items, 0..) |*candidate, index| {
+            if (candidate == nested) return index;
+        }
+        return error.UnknownEnum;
     }
 
     pub fn messageNestedEnumValue(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
