@@ -83,6 +83,62 @@ pub const Reflection = struct {
         return lhs.eql(rhs);
     }
 
+    pub fn featureSetDefaultsCount(_: Reflection, defaults: *const schema.FeatureSetDefaults) usize {
+        return defaults.defaults.items.len;
+    }
+
+    pub fn featureSetDefaultsAt(_: Reflection, defaults: *const schema.FeatureSetDefaults, index: usize) Error!*const schema.FeatureSetEditionDefault {
+        if (index >= defaults.defaults.items.len) return error.UnknownField;
+        return &defaults.defaults.items[index];
+    }
+
+    pub fn featureSetDefaultsIndex(_: Reflection, defaults: *const schema.FeatureSetDefaults, entry: *const schema.FeatureSetEditionDefault) Error!usize {
+        for (defaults.defaults.items, 0..) |*candidate, index| {
+            if (candidate == entry) return index;
+        }
+        return error.UnknownField;
+    }
+
+    pub fn featureSetDefaultsForEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults, edition: schema.Edition) Error!*const schema.FeatureSetEditionDefault {
+        return defaults.defaultsForEdition(edition) orelse error.UnknownField;
+    }
+
+    pub fn featureSetDefaultsHasMinimumEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults) bool {
+        return defaults.minimum_edition != null;
+    }
+
+    pub fn featureSetDefaultsMinimumEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults) Error!schema.Edition {
+        return defaults.minimum_edition orelse error.MissingField;
+    }
+
+    pub fn featureSetDefaultsHasMaximumEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults) bool {
+        return defaults.maximum_edition != null;
+    }
+
+    pub fn featureSetDefaultsMaximumEdition(_: Reflection, defaults: *const schema.FeatureSetDefaults) Error!schema.Edition {
+        return defaults.maximum_edition orelse error.MissingField;
+    }
+
+    pub fn featureSetEditionDefaultEdition(_: Reflection, entry: *const schema.FeatureSetEditionDefault) schema.Edition {
+        return entry.edition;
+    }
+
+    pub fn featureSetEditionDefaultHasOverridableFeatures(_: Reflection, entry: *const schema.FeatureSetEditionDefault) bool {
+        return entry.overridable_features != null;
+    }
+
+    pub fn featureSetEditionDefaultOverridableFeatures(_: Reflection, entry: *const schema.FeatureSetEditionDefault) Error!schema.FeatureSet {
+        return entry.overridable_features orelse error.MissingField;
+    }
+
+    pub fn featureSetEditionDefaultHasFixedFeatures(_: Reflection, entry: *const schema.FeatureSetEditionDefault) bool {
+        return entry.fixed_features != null;
+    }
+
+    pub fn featureSetEditionDefaultFixedFeatures(_: Reflection, entry: *const schema.FeatureSetEditionDefault) Error!schema.FeatureSet {
+        return entry.fixed_features orelse error.MissingField;
+    }
+
     pub fn fileFieldPresence(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.FieldPresence {
         return file_descriptor.features.field_presence;
     }

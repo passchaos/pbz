@@ -79,6 +79,38 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, refl.featureSetEnforceNamingStyle(file_features));
     try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.export_all, refl.featureSetDefaultSymbolVisibility(file_features));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, refl.featureSetEnforceProtoLimits(file_features));
+
+    var defaults = pbz.FeatureSetDefaults{};
+    defer defaults.deinit(allocator);
+    try defaults.defaults.append(allocator, .{
+        .edition = .legacy,
+        .overridable_features = pbz.schema.FeatureSet.defaults(.proto2),
+        .fixed_features = .{ .json_format = .legacy_best_effort },
+    });
+    try defaults.defaults.append(allocator, .{
+        .edition = .edition_2024,
+        .overridable_features = pbz.schema.FeatureSet.defaults(.editions),
+        .fixed_features = .{ .enforce_proto_limits = .proto_limits2026 },
+    });
+    defaults.minimum_edition = .legacy;
+    defaults.maximum_edition = .edition_2026;
+    try std.testing.expectEqual(@as(usize, 2), refl.featureSetDefaultsCount(&defaults));
+    const legacy_defaults = try refl.featureSetDefaultsAt(&defaults, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.featureSetDefaultsIndex(&defaults, legacy_defaults));
+    try std.testing.expectEqual(pbz.schema.Edition.legacy, refl.featureSetEditionDefaultEdition(legacy_defaults));
+    try std.testing.expect(refl.featureSetEditionDefaultHasOverridableFeatures(legacy_defaults));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.closed, refl.featureSetEnumType(try refl.featureSetEditionDefaultOverridableFeatures(legacy_defaults)));
+    try std.testing.expect(refl.featureSetEditionDefaultHasFixedFeatures(legacy_defaults));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.legacy_best_effort, refl.featureSetJsonFormat(try refl.featureSetEditionDefaultFixedFeatures(legacy_defaults)));
+    const edition_2024_defaults = try refl.featureSetDefaultsAt(&defaults, 1);
+    try std.testing.expectEqual(edition_2024_defaults, try refl.featureSetDefaultsForEdition(&defaults, .edition_2026));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.proto_limits2026, refl.featureSetEnforceProtoLimits(try refl.featureSetEditionDefaultFixedFeatures(edition_2024_defaults)));
+    try std.testing.expect(refl.featureSetDefaultsHasMinimumEdition(&defaults));
+    try std.testing.expectEqual(pbz.schema.Edition.legacy, try refl.featureSetDefaultsMinimumEdition(&defaults));
+    try std.testing.expect(refl.featureSetDefaultsHasMaximumEdition(&defaults));
+    try std.testing.expectEqual(pbz.schema.Edition.edition_2026, try refl.featureSetDefaultsMaximumEdition(&defaults));
+    try std.testing.expectError(error.UnknownField, refl.featureSetDefaultsAt(&defaults, 2));
+    try std.testing.expectError(error.UnknownField, refl.featureSetDefaultsForEdition(&defaults, .unknown));
     try std.testing.expect(refl.messageHasExplicitFeatures(child_desc));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);
     try std.testing.expect(!refl.messageHasExplicitFeatures(desc));
