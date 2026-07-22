@@ -873,6 +873,14 @@ pub const Any = struct {
         return anyTypeName(self.type_url);
     }
 
+    pub fn hasTypeName(self: Any) bool {
+        return self.typeName().len != 0;
+    }
+
+    pub fn typeNameIs(self: Any, full_name: []const u8) bool {
+        return anyTypeMatches(self.type_url, full_name);
+    }
+
     pub fn typeUrl(self: Any) []const u8 {
         return self.type_url;
     }
@@ -899,7 +907,7 @@ pub const Any = struct {
     }
 
     pub fn isType(self: Any, full_name: []const u8) bool {
-        return anyTypeMatches(self.type_url, full_name);
+        return self.typeNameIs(full_name);
     }
 
     pub fn unpackBytes(self: Any, expected_full_name: []const u8) ![]const u8 {

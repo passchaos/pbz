@@ -23,6 +23,10 @@ pub fn main() !void {
     try std.testing.expect(custom.typeUrlPrefixIs("example.test/custom/prefix/"));
     try std.testing.expect(!custom.typeUrlPrefixIs("type.googleapis.com"));
     try std.testing.expectEqualStrings("demo.CustomPayload", custom.typeName());
+    try std.testing.expect(custom.hasTypeName());
+    try std.testing.expect(custom.typeNameIs("demo.CustomPayload"));
+    try std.testing.expect(custom.typeNameIs(".demo.CustomPayload"));
+    try std.testing.expect(!custom.typeNameIs("demo.OtherPayload"));
     try std.testing.expect(custom.hasValue());
     try std.testing.expectEqualStrings("payload", custom.valueBytes());
     try std.testing.expect(custom.isType("demo.CustomPayload"));
