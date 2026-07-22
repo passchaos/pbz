@@ -275,6 +275,22 @@ pub const Reflection = struct {
         return annotation.path.items;
     }
 
+    pub fn generatedAnnotationPathCount(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) usize {
+        return annotation.path.items.len;
+    }
+
+    pub fn generatedAnnotationPathAt(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation, index: usize) Error!i32 {
+        if (index >= annotation.path.items.len) return error.UnknownField;
+        return annotation.path.items[index];
+    }
+
+    pub fn generatedAnnotationPathIndex(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation, value: i32) Error!usize {
+        for (annotation.path.items, 0..) |candidate, index| {
+            if (candidate == value) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn generatedAnnotationHasSourceFile(_: Reflection, annotation: *const schema.GeneratedCodeInfo.Annotation) bool {
         return annotation.source_file != null;
     }

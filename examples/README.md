@@ -47,7 +47,7 @@ library API.
   preservation.
 - `descriptors_codegen.zig` — descriptor encode/decode, source-code info lookup/enumeration/accessors/path-span index plus detached-comment index,
   uninterpreted custom options, service/method options, descriptor sets, direct
-  codegen, plugin request generation, and generated-code info annotation lookup/accessors/index.
+  codegen, plugin request generation, and generated-code info annotation lookup/accessors/path index.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
   dynamic messages, including typed get/set/add/get-default/clear helpers, field-value record accessors/index and dynamic/default value tags/accessors,
   present-field listing/access/index, type-checked writes, typed repeated scalar access/index/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, all scalar families,

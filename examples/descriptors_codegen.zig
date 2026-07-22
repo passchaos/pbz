@@ -166,9 +166,17 @@ fn expectPluginResponseMetadata(allocator: std.mem.Allocator, refl: pbz.Reflecti
                             const first_annotation = try refl.generatedAnnotationAt(&info, 0);
                             try std.testing.expectEqual(@as(usize, 0), try refl.generatedAnnotationIndex(&info, first_annotation));
                             try std.testing.expectError(error.UnknownField, refl.generatedAnnotationAt(&info, annotation_count));
+                            const field_annotation = try refl.generatedAnnotation(&info, &.{ 4, 0, 2, 0 });
+                            try std.testing.expectEqual(@as(usize, 4), refl.generatedAnnotationPathCount(field_annotation));
+                            try std.testing.expectEqual(@as(i32, 4), try refl.generatedAnnotationPathAt(field_annotation, 0));
+                            try std.testing.expectEqual(@as(i32, 2), try refl.generatedAnnotationPathAt(field_annotation, 2));
+                            try std.testing.expectEqual(@as(usize, 0), try refl.generatedAnnotationPathIndex(field_annotation, 4));
+                            try std.testing.expectEqual(@as(usize, 2), try refl.generatedAnnotationPathIndex(field_annotation, 2));
+                            try std.testing.expectError(error.UnknownField, refl.generatedAnnotationPathAt(field_annotation, 4));
+                            try std.testing.expectError(error.UnknownField, refl.generatedAnnotationPathIndex(field_annotation, 9));
                             saw_file_annotation = saw_file_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{}), &.{}, source_file);
                             saw_message_annotation = saw_message_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{ 4, 0 }), &.{ 4, 0 }, source_file);
-                            saw_field_annotation = saw_field_annotation or generatedAnnotationMatches(refl, try refl.generatedAnnotation(&info, &.{ 4, 0, 2, 0 }), &.{ 4, 0, 2, 0 }, source_file);
+                            saw_field_annotation = saw_field_annotation or generatedAnnotationMatches(refl, field_annotation, &.{ 4, 0, 2, 0 }, source_file);
                         },
                         else => try file_reader.skipValue(file_tag),
                     }
