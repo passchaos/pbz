@@ -543,6 +543,38 @@ pub const Reflection = struct {
         return descriptor.feature_support orelse error.MissingField;
     }
 
+    pub fn featureSupportHasEditionIntroduced(_: Reflection, support: schema.FeatureSupport) bool {
+        return support.edition_introduced != null;
+    }
+
+    pub fn featureSupportEditionIntroduced(_: Reflection, support: schema.FeatureSupport) Error!schema.Edition {
+        return support.edition_introduced orelse error.MissingField;
+    }
+
+    pub fn featureSupportHasEditionDeprecated(_: Reflection, support: schema.FeatureSupport) bool {
+        return support.edition_deprecated != null;
+    }
+
+    pub fn featureSupportEditionDeprecated(_: Reflection, support: schema.FeatureSupport) Error!schema.Edition {
+        return support.edition_deprecated orelse error.MissingField;
+    }
+
+    pub fn featureSupportDeprecationWarning(_: Reflection, support: schema.FeatureSupport) []const u8 {
+        return support.deprecation_warning;
+    }
+
+    pub fn featureSupportHasEditionRemoved(_: Reflection, support: schema.FeatureSupport) bool {
+        return support.edition_removed != null;
+    }
+
+    pub fn featureSupportEditionRemoved(_: Reflection, support: schema.FeatureSupport) Error!schema.Edition {
+        return support.edition_removed orelse error.MissingField;
+    }
+
+    pub fn featureSupportRemovalError(_: Reflection, support: schema.FeatureSupport) []const u8 {
+        return support.removal_error;
+    }
+
     pub fn enumValueHasExplicitFeatures(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
         return descriptor.features != null;
     }
