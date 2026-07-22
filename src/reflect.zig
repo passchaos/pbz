@@ -1146,6 +1146,10 @@ pub const Reflection = struct {
         return dynamic.defaultValueForFieldWithRegistry(owner_file, self.registry, default_scope, field);
     }
 
+    pub fn defaultValueTag(_: Reflection, value: dynamic.DefaultValue) DefaultTag {
+        return std.meta.activeTag(value);
+    }
+
     pub fn fieldDefaultEnumValue(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumValueDescriptor {
         const enum_desc = try self.fieldEnumType(descriptor, field);
         const value = switch (try self.fieldDefaultValue(descriptor, field)) {

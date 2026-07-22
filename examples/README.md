@@ -49,7 +49,7 @@ library API.
   uninterpreted custom options, service/method options, descriptor sets, direct
   codegen, plugin request generation, and generated-code info annotation lookup/accessors.
 - `reflection_facade.zig` — reflection facade over registry descriptors and
-  dynamic messages, including typed get/set/add/get-default/clear helpers, field-value record accessors and dynamic value tags,
+  dynamic messages, including typed get/set/add/get-default/clear helpers, field-value record accessors and dynamic/default value tags,
   present-field listing, type-checked writes, typed repeated scalar access/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, all scalar families,
   typed singular/repeated message/group creation/access/mutation including typed repeated element access, field scalar/kind/cpp-type/cardinality/optional-keyword/weak/lazy/debug-redact/ctype/jstype/retention/targets/wire-type/encoded-wire-type/containing/extendee/oneof metadata, maps, map-entry descriptor metadata, map key/value metadata, map size/key/value/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output/explicitness, explicit/effective default metadata and enum default value/name lookup, field presence/packing/packed-override/reserved range/name enumeration/accessors
   metadata, message/enum legacy-json-conflict metadata, feature-support lifecycle metadata/accessors, ordered file/message/enum/service descriptor enumeration/index lookup, file/message-local descriptor lookup, descriptor name/full-name/containing-type/value-owner identity lookup, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof field enumeration and oneof
