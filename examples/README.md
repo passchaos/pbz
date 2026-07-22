@@ -38,7 +38,7 @@ library API.
   and map enum fields.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
 - `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present
-  and missing proto2 weak imports, including reflection missing-weak lookup/enumeration metadata, descriptor-set, binary, JSON, and
+  and missing proto2 weak imports, including reflection missing-weak lookup/enumeration/index metadata, descriptor-set, binary, JSON, and
   TextFormat workflows.
 - `dynamic_reserved_text.zig` — reserved field names/ranges in dynamic schemas,
   descriptor round-trips, and TextFormat's reserved-name ignore semantics.

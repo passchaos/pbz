@@ -248,7 +248,7 @@ benchmark harness.
   groups, JSON/TextFormat round-trips, singular group merge semantics, and
   unknown group preservation.
 - `examples/dynamic_weak_imports.zig` covers dynamic loader/registry behavior
-  for present and missing proto2 weak imports, including reflection missing-weak lookup/enumeration metadata, descriptor-set
+  for present and missing proto2 weak imports, including reflection missing-weak lookup/enumeration/index metadata, descriptor-set
   preservation, usable local fields when a weak import is absent, and
   registry-backed binary/JSON/TextFormat round-trips when the weak import is
   present.

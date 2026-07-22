@@ -38,7 +38,9 @@ fn missingWeakImportStillLoads(allocator: std.mem.Allocator) !void {
     try std.testing.expect(!refl.importIsOption(missing_import));
     try std.testing.expectEqual(@as(usize, 1), refl.fileMissingWeakImportCount(root_file));
     try std.testing.expectEqualStrings("missing.proto", try refl.fileMissingWeakImportAt(root_file, 0));
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileMissingWeakImportIndex(root_file, "missing.proto"));
     try std.testing.expectError(error.UnknownFile, refl.fileMissingWeakImportAt(root_file, 1));
+    try std.testing.expectError(error.UnknownFile, refl.fileMissingWeakImportIndex(root_file, "other.proto"));
     try std.testing.expect(refl.fileHasMissingWeakImport(root_file, "missing.proto"));
 
     const root_desc = root_file.findMessage("Root") orelse return error.MissingDescriptor;

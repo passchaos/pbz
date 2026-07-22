@@ -304,6 +304,13 @@ pub const Reflection = struct {
         return file_descriptor.missing_weak_imports.items[index];
     }
 
+    pub fn fileMissingWeakImportIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) Error!usize {
+        for (file_descriptor.missing_weak_imports.items, 0..) |missing, index| {
+            if (std.mem.eql(u8, missing, path)) return index;
+        }
+        return error.UnknownFile;
+    }
+
     pub fn fileImportCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return file_descriptor.importCount();
     }
