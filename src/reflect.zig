@@ -1831,6 +1831,14 @@ pub const Reflection = struct {
         };
     }
 
+    pub fn mapEntryKey(_: Reflection, entry: *const dynamic.MapEntry) dynamic.Value {
+        return entry.key;
+    }
+
+    pub fn mapEntryValue(_: Reflection, entry: *const dynamic.MapEntry) dynamic.Value {
+        return entry.value;
+    }
+
     pub fn mapEntries(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]*const dynamic.MapEntry {
         const field = try self.fieldByName(message_value.descriptor, name);
         if (field.kind != .map) return error.TypeMismatch;

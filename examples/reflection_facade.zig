@@ -588,8 +588,8 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 1), count_field.values.items.len);
     try std.testing.expectEqual(@as(i32, 2), count_field.values.items[0].map_entry.value.int32);
     const count_entry_0 = try refl.mapEntryAt(&user, "counts", 0);
-    try std.testing.expectEqualStrings("red", count_entry_0.key.string);
-    try std.testing.expectEqual(@as(i32, 2), count_entry_0.value.int32);
+    try std.testing.expectEqualStrings("red", refl.mapEntryKey(count_entry_0).string);
+    try std.testing.expectEqual(@as(i32, 2), refl.mapEntryValue(count_entry_0).int32);
     const count_entries = try refl.mapEntries(&user, "counts");
     defer allocator.free(count_entries);
     try std.testing.expectEqual(@as(usize, 1), count_entries.len);
