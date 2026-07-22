@@ -330,6 +330,14 @@ pub const Reflection = struct {
         return descriptor.fieldAt(index) orelse error.UnknownField;
     }
 
+    pub fn messageExtensionCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.extensionCount();
+    }
+
+    pub fn messageExtensionAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.FieldDescriptor {
+        return descriptor.extensionAt(index) orelse error.UnknownField;
+    }
+
     pub fn messageOneofCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
         return descriptor.oneofCount();
     }
@@ -2414,12 +2422,20 @@ test "reflection facade finds extension descriptors" {
     const refl = Reflection.init(allocator, &reg);
     const host_desc = try refl.message(".demo.Host");
     const note = try refl.extensionForMessage(host_desc, 100);
+    try std.testing.expectEqual(@as(usize, 1), refl.fileExtensionCount(&file));
+    try std.testing.expect(note == try refl.fileExtensionAt(&file, 0));
+    try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(&file, 9));
     try std.testing.expect(note == try refl.extension(".demo.Host", 100));
     try std.testing.expect(note == try refl.extensionByName(".demo.Host", ".demo.note"));
     try std.testing.expect(note == try refl.extensionByNameForMessage(host_desc, "note"));
     try std.testing.expectEqualStrings("extensions.proto", (try refl.fileOfExtension(note)).name);
 
     const code = try refl.extensionByNameForMessage(host_desc, ".demo.Scope.code");
+    const scope_desc = try refl.message(".demo.Scope");
+    try std.testing.expectEqual(@as(usize, 1), refl.messageExtensionCount(scope_desc));
+    try std.testing.expect(code == try refl.messageExtensionAt(scope_desc, 0));
+    try std.testing.expectError(error.UnknownField, refl.messageExtensionAt(scope_desc, 9));
+    try std.testing.expectEqual(@as(usize, 0), refl.messageExtensionCount(host_desc));
     try std.testing.expect(code == try refl.extensionForMessage(host_desc, 101));
     try std.testing.expectEqual(@as(wire.FieldNumber, 101), code.number);
     try std.testing.expectError(error.UnknownField, refl.extensionForMessage(host_desc, 102));

@@ -698,6 +698,15 @@ pub const MessageDescriptor = struct {
         return &self.fields.items[index];
     }
 
+    pub fn extensionCount(self: *const MessageDescriptor) usize {
+        return self.extensions.items.len;
+    }
+
+    pub fn extensionAt(self: *const MessageDescriptor, index: usize) ?*const FieldDescriptor {
+        if (index >= self.extensions.items.len) return null;
+        return &self.extensions.items[index];
+    }
+
     pub fn oneofCount(self: *const MessageDescriptor) usize {
         return self.oneofs.items.len;
     }
