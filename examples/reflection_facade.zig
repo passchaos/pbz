@@ -67,8 +67,10 @@ pub fn main() !void {
         \\  repeated sfixed64 more_sfixed64 = 33;
         \\  repeated float more_floats = 34;
         \\  repeated double more_doubles = 35;
+        \\  optional string nickname = 36;
         \\  message Audit { int32 id = 1; }
         \\  enum LocalStatus { LOCAL_UNKNOWN = 0; }
+        \\  LocalStatus local_status = 37;
         \\}
         \\service Users {
         \\  option deprecated = true;
@@ -121,7 +123,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownService, refl.fileServiceAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 0), refl.fileExtensionCount(app_file));
     try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(app_file, 0));
-    try std.testing.expectEqual(@as(usize, 35), refl.messageFieldCount(user_desc));
+    try std.testing.expectEqual(@as(usize, 37), refl.messageFieldCount(user_desc));
     try std.testing.expect((try refl.messageFieldAt(user_desc, 0)) == try refl.fieldByName(user_desc, "id"));
     try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
@@ -169,8 +171,10 @@ pub fn main() !void {
     const id_field = try refl.fieldByName(user_desc, "id");
     const tags_field = try refl.fieldByName(user_desc, "tags");
     const role_field = try refl.fieldByName(user_desc, "role");
+    const local_status_field = try refl.fieldByName(user_desc, "local_status");
     const profile_field = try refl.fieldByName(user_desc, "profile");
     const email_field = try refl.fieldByName(user_desc, "email");
+    const nickname_field = try refl.fieldByName(user_desc, "nickname");
     const samples_field = try refl.fieldByName(user_desc, "samples");
     const counts_desc_field = try refl.fieldByName(user_desc, "counts");
     try std.testing.expectEqualStrings("id", refl.fieldName(id_field));
@@ -180,6 +184,16 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
+    try std.testing.expect(refl.fieldIsScalar(id_field));
+    try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
+    try std.testing.expectEqualStrings("int32", try refl.fieldScalarTypeName(id_field));
+    try std.testing.expect(!refl.fieldIsMessage(id_field));
+    try std.testing.expect(!refl.fieldIsEnum(id_field));
+    try std.testing.expect(!refl.fieldIsGroup(id_field));
+    try std.testing.expect(refl.fieldIsOptional(id_field));
+    try std.testing.expect(refl.fieldIsSingular(id_field));
+    try std.testing.expect(!refl.fieldIsRepeated(id_field));
+    try std.testing.expect(!refl.fieldIsProto3Optional(id_field));
     try std.testing.expect((try refl.fieldContainingType(user_desc, id_field)) == user_desc);
     try std.testing.expect((try refl.fieldContainingFile(user_desc, id_field)) == app_file);
     try std.testing.expectError(error.UnknownField, refl.fieldContainingType(profile_desc, id_field));
@@ -194,8 +208,13 @@ pub fn main() !void {
     try std.testing.expectError(error.TypeMismatch, refl.fieldMessageType(user_desc, id_field));
     try std.testing.expectEqualStrings("Role", try refl.fieldTypeName(role_field));
     try std.testing.expect(role_desc == try refl.fieldEnumType(user_desc, role_field));
+    try std.testing.expect(refl.fieldIsEnum(local_status_field));
+    try std.testing.expect((try refl.fieldEnumType(user_desc, local_status_field)) == local_status_desc);
     try std.testing.expectEqualStrings("Profile", try refl.fieldTypeName(profile_field));
+    try std.testing.expect(refl.fieldIsMessage(profile_field));
     try std.testing.expect(profile_desc == try refl.fieldMessageType(user_desc, profile_field));
+    try std.testing.expect(refl.fieldIsProto3Optional(nickname_field));
+    try std.testing.expect(try refl.fieldHasPresence(user_desc, nickname_field));
     try std.testing.expect(!refl.fieldHasOneof(id_field));
     try std.testing.expectError(error.MissingField, refl.fieldOneofName(id_field));
     try std.testing.expect(refl.fieldHasOneof(email_field));
@@ -205,6 +224,9 @@ pub fn main() !void {
     try std.testing.expectError(error.TypeMismatch, refl.fieldExtendeeName(id_field));
     try std.testing.expect(!(try refl.fieldHasPresence(user_desc, id_field)));
     try std.testing.expect(!(refl.fieldIsRequired(id_field)));
+    try std.testing.expect(refl.fieldIsOptional(tags_field) == false);
+    try std.testing.expect(refl.fieldIsRepeated(tags_field));
+    try std.testing.expect(!refl.fieldIsSingular(tags_field));
     try std.testing.expect(refl.fieldIsRepeatedLike(tags_field));
     try std.testing.expect(!(refl.fieldIsMap(tags_field)));
     try std.testing.expect(!refl.fieldIsPackable(tags_field));
@@ -594,12 +616,15 @@ pub fn main() !void {
     try std.testing.expect(child_desc == try required_refl.fieldMessageType(parent.descriptor, required_child_field));
     const legacy_field = try required_refl.fieldByName(parent.descriptor, "legacy");
     try std.testing.expectEqualStrings("Legacy", try required_refl.fieldTypeName(legacy_field));
+    try std.testing.expect(required_refl.fieldIsGroup(legacy_field));
     const legacy_desc = try required_refl.fieldGroupType(parent.descriptor, legacy_field);
     try std.testing.expectEqualStrings("Legacy", legacy_desc.name);
     const legacy_full_name = try required_refl.messageFullName(legacy_desc);
     defer allocator.free(legacy_full_name);
     try std.testing.expectEqualStrings("demo.required_reflect.Parent.Legacy", legacy_full_name);
     const required_name_field = try required_refl.fieldByName(parent.descriptor, "name");
+    try std.testing.expect(required_refl.fieldIsRequired(required_name_field));
+    try std.testing.expect(!required_refl.fieldIsOptional(required_name_field));
     try std.testing.expect(!required_refl.fieldHasDefaultValue(required_name_field));
     try std.testing.expectError(error.MissingField, required_refl.fieldExplicitDefaultValue(required_name_field));
     try std.testing.expect(!required_refl.isInitialized(&parent));

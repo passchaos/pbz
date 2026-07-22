@@ -349,6 +349,36 @@ pub const Reflection = struct {
         return field.kind;
     }
 
+    pub fn fieldIsScalar(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.kind == .scalar;
+    }
+
+    pub fn fieldScalarType(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.ScalarType {
+        return switch (field.kind) {
+            .scalar => |scalar| scalar,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldScalarTypeName(_: Reflection, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return schema.scalarTypeName(switch (field.kind) {
+            .scalar => |scalar| scalar,
+            else => return error.TypeMismatch,
+        });
+    }
+
+    pub fn fieldIsMessage(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.kind == .message;
+    }
+
+    pub fn fieldIsEnum(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.kind == .enumeration;
+    }
+
+    pub fn fieldIsGroup(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.kind == .group;
+    }
+
     pub fn fieldTypeName(_: Reflection, field: *const schema.FieldDescriptor) Error![]const u8 {
         return switch (field.kind) {
             .message, .enumeration, .group => |name| name,
@@ -438,6 +468,22 @@ pub const Reflection = struct {
 
     pub fn fieldIsRequired(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isRequired();
+    }
+
+    pub fn fieldIsOptional(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.cardinality != .repeated and !field.isRequired();
+    }
+
+    pub fn fieldIsRepeated(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isRepeatedLike();
+    }
+
+    pub fn fieldIsSingular(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return !field.isRepeatedLike();
+    }
+
+    pub fn fieldIsProto3Optional(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.proto3_optional;
     }
 
     pub fn fieldHasDefaultValue(_: Reflection, field: *const schema.FieldDescriptor) bool {
