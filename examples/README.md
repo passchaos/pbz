@@ -21,7 +21,7 @@ library API.
 - `dynamic_text_options.zig` — dynamic TextFormat options: enum-number output,
   custom indentation, unknown-field printing, and numeric enum input.
 - `registry_loader.zig` — `MemorySourceTree` plus filesystem `loadDir`,
-  recursive imports, file/import-chain reflection lookup, message/service/method registry lookup, and
+  recursive imports, file/import metadata and import-chain reflection lookup, message/service/method registry lookup, and
   registry-backed dynamic JSON output. Also shows registry duplicate-symbol
   protection for descriptors assembled directly rather than parsed from text.
 - `dynamic_groups.zig` — dynamic proto2 group fields, repeated groups, JSON and
@@ -38,7 +38,7 @@ library API.
   and map enum fields.
 - `dynamic_public_imports.zig` — dynamic registry public-import chain lookup plus JSON/binary round-trips.
 - `dynamic_weak_imports.zig` — dynamic loader/registry behavior for present
-  and missing proto2 weak imports, including descriptor-set, binary, JSON, and
+  and missing proto2 weak imports, including reflection missing-weak metadata, descriptor-set, binary, JSON, and
   TextFormat workflows.
 - `dynamic_reserved_text.zig` — reserved field names/ranges in dynamic schemas,
   descriptor round-trips, and TextFormat's reserved-name ignore semantics.

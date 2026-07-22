@@ -27,10 +27,13 @@ fn missingWeakImportStillLoads(allocator: std.mem.Allocator) !void {
     defer loaded.deinit();
 
     const root_file = loaded.registry.findFile("root.proto") orelse return error.MissingFile;
+    const refl = pbz.Reflection.init(allocator, &loaded.registry);
     try std.testing.expectEqual(@as(usize, 1), root_file.imports.items.len);
     try std.testing.expectEqual(pbz.schema.Import.Kind.weak, root_file.imports.items[0].kind);
+    try std.testing.expectEqual(pbz.schema.Import.Kind.weak, (try refl.fileImport(root_file, "missing.proto")).kind);
     try std.testing.expectEqual(@as(usize, 1), root_file.missing_weak_imports.items.len);
     try std.testing.expectEqualStrings("missing.proto", root_file.missing_weak_imports.items[0]);
+    try std.testing.expect(refl.fileHasMissingWeakImport(root_file, "missing.proto"));
 
     const root_desc = root_file.findMessage("Root") orelse return error.MissingDescriptor;
     try std.testing.expect(root_desc.findField("weak_field") != null);

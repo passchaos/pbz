@@ -42,6 +42,14 @@ pub const Reflection = struct {
         return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
     }
 
+    pub fn fileImport(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) Error!schema.Import {
+        return file_descriptor.findImport(path) orelse error.UnknownFile;
+    }
+
+    pub fn fileHasMissingWeakImport(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) bool {
+        return file_descriptor.hasMissingWeakImport(path);
+    }
+
     pub fn fileCanSee(self: Reflection, from: *const schema.FileDescriptor, to: *const schema.FileDescriptor) bool {
         return self.registry.fileCanSee(from, to);
     }

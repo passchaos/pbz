@@ -958,6 +958,20 @@ pub const FileDescriptor = struct {
         return null;
     }
 
+    pub fn findImport(self: *const FileDescriptor, path: []const u8) ?Import {
+        for (self.imports.items) |import| {
+            if (std.mem.eql(u8, import.path, path)) return import;
+        }
+        return null;
+    }
+
+    pub fn hasMissingWeakImport(self: *const FileDescriptor, path: []const u8) bool {
+        for (self.missing_weak_imports.items) |missing| {
+            if (std.mem.eql(u8, missing, path)) return true;
+        }
+        return false;
+    }
+
     pub fn findMessageDeep(self: *const FileDescriptor, name: []const u8) ?*const MessageDescriptor {
         const normalized = self.stripPackagePrefix(name);
         const needle = leafName(normalized);

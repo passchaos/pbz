@@ -30,6 +30,8 @@ pub fn main() !void {
     const refl = pbz.Reflection.init(allocator, &loaded.registry);
     const app_file = try refl.file("app.proto");
     const common_file = try refl.file("common.proto");
+    std.debug.assert((try refl.fileImport(app_file, "common.proto")).kind == .normal);
+    std.debug.assert(!refl.fileHasMissingWeakImport(app_file, "common.proto"));
     std.debug.assert(refl.fileCanSee(app_file, common_file));
     const chain = (try refl.importChainByPath("app.proto", "common.proto")).?;
     std.debug.assert(chain.len == 1 and std.mem.eql(u8, chain.paths[0], "common.proto"));

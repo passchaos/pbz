@@ -248,13 +248,13 @@ benchmark harness.
   groups, JSON/TextFormat round-trips, singular group merge semantics, and
   unknown group preservation.
 - `examples/dynamic_weak_imports.zig` covers dynamic loader/registry behavior
-  for present and missing proto2 weak imports, including descriptor-set
+  for present and missing proto2 weak imports, including reflection missing-weak metadata, descriptor-set
   preservation, usable local fields when a weak import is absent, and
   registry-backed binary/JSON/TextFormat round-trips when the weak import is
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
   loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
-  and method lookup, reflection file metadata/import-chain lookup, registry-backed dynamic
+  and method lookup, reflection file/import metadata and import-chain lookup, registry-backed dynamic
   JSON output, plus C++ DescriptorPool parity for rejecting duplicate descriptor
   symbols assembled programmatically.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
