@@ -17,7 +17,11 @@ pub fn main() !void {
     );
     defer custom.deinit(allocator);
     try std.testing.expectEqualStrings("example.test/custom/prefix/demo.CustomPayload", custom.type_url);
+    try std.testing.expectEqualStrings("example.test/custom/prefix/demo.CustomPayload", custom.typeUrl());
+    try std.testing.expectEqualStrings("example.test/custom/prefix", custom.typeUrlPrefix());
     try std.testing.expectEqualStrings("demo.CustomPayload", custom.typeName());
+    try std.testing.expect(custom.hasValue());
+    try std.testing.expectEqualStrings("payload", custom.valueBytes());
     try std.testing.expect(custom.isType("demo.CustomPayload"));
     try std.testing.expect(custom.isType(".demo.CustomPayload"));
     try std.testing.expect(!custom.isType("demo.OtherPayload"));
@@ -35,5 +39,6 @@ pub fn main() !void {
 
     var default_prefix = try pbz.Any.packBytes(allocator, ".demo.CustomPayload", "abc");
     defer default_prefix.deinit(allocator);
-    try std.testing.expectEqualStrings("type.googleapis.com/demo.CustomPayload", default_prefix.type_url);
+    try std.testing.expectEqualStrings("type.googleapis.com/demo.CustomPayload", default_prefix.typeUrl());
+    try std.testing.expectEqualStrings(pbz.Any.default_type_url_prefix, default_prefix.typeUrlPrefix());
 }

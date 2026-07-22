@@ -868,6 +868,23 @@ pub const Any = struct {
         return anyTypeName(self.type_url);
     }
 
+    pub fn typeUrl(self: Any) []const u8 {
+        return self.type_url;
+    }
+
+    pub fn typeUrlPrefix(self: Any) []const u8 {
+        if (std.mem.lastIndexOfScalar(u8, self.type_url, '/')) |idx| return self.type_url[0..idx];
+        return "";
+    }
+
+    pub fn valueBytes(self: Any) []const u8 {
+        return self.value;
+    }
+
+    pub fn hasValue(self: Any) bool {
+        return self.value.len != 0;
+    }
+
     pub fn isType(self: Any, full_name: []const u8) bool {
         return anyTypeMatches(self.type_url, full_name);
     }
