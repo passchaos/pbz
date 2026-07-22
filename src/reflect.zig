@@ -1800,6 +1800,13 @@ pub const Reflection = struct {
         return descriptor.reserved_names.items[index];
     }
 
+    pub fn enumReservedNameIndex(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) Error!usize {
+        for (descriptor.reserved_names.items, 0..) |reserved_name, index| {
+            if (std.mem.eql(u8, reserved_name, name)) return index;
+        }
+        return error.UnknownEnum;
+    }
+
     pub fn enumReservedNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i64) bool {
         return descriptor.isReservedNumber(number);
     }
@@ -1815,6 +1822,13 @@ pub const Reflection = struct {
     pub fn enumReservedRangeAt(_: Reflection, descriptor: *const schema.EnumDescriptor, index: usize) Error!schema.ReservedRange {
         if (index >= descriptor.reserved_ranges.items.len) return error.UnknownEnum;
         return descriptor.reserved_ranges.items[index];
+    }
+
+    pub fn enumReservedRangeIndex(_: Reflection, descriptor: *const schema.EnumDescriptor, range: schema.ReservedRange) Error!usize {
+        for (descriptor.reserved_ranges.items, 0..) |candidate, index| {
+            if (candidate.start == range.start and candidate.end == range.end) return index;
+        }
+        return error.UnknownEnum;
     }
 
     pub fn reservedRangeStart(_: Reflection, range: schema.ReservedRange) i64 {
@@ -1868,6 +1882,13 @@ pub const Reflection = struct {
         return descriptor.reserved_names.items[index];
     }
 
+    pub fn messageReservedNameIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!usize {
+        for (descriptor.reserved_names.items, 0..) |reserved_name, index| {
+            if (std.mem.eql(u8, reserved_name, name)) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn messageReservedNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
         return descriptor.isReservedNumber(number);
     }
@@ -1883,6 +1904,13 @@ pub const Reflection = struct {
     pub fn messageReservedRangeAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!schema.ReservedRange {
         if (index >= descriptor.reserved_ranges.items.len) return error.UnknownField;
         return descriptor.reserved_ranges.items[index];
+    }
+
+    pub fn messageReservedRangeIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, range: schema.ReservedRange) Error!usize {
+        for (descriptor.reserved_ranges.items, 0..) |candidate, index| {
+            if (candidate.start == range.start and candidate.end == range.end) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn messageExtensionRange(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) ?*const schema.ExtensionRange {

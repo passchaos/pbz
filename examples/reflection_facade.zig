@@ -455,10 +455,12 @@ pub fn main() !void {
     try std.testing.expect(refl.messageReservedName(user_desc, "legacy"));
     try std.testing.expectEqual(@as(usize, 1), refl.messageReservedNameCount(user_desc));
     try std.testing.expectEqualStrings("legacy", try refl.messageReservedNameAt(user_desc, 0));
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageReservedNameIndex(user_desc, "legacy"));
     try std.testing.expectError(error.UnknownField, refl.messageReservedNameAt(user_desc, 9));
     try std.testing.expect(refl.messageReservedNumber(user_desc, 100));
     try std.testing.expectEqual(@as(usize, 1), refl.messageReservedRangeCount(user_desc));
     const user_reserved_range = try refl.messageReservedRangeAt(user_desc, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageReservedRangeIndex(user_desc, user_reserved_range));
     const found_user_reserved_range = refl.messageReservedRange(user_desc, 100) orelse return error.MissingReservedRange;
     try std.testing.expectEqual(@as(i64, 100), refl.reservedRangeStart(found_user_reserved_range.*));
     try std.testing.expect(refl.messageReservedRange(user_desc, 99) == null);
@@ -489,10 +491,12 @@ pub fn main() !void {
     try std.testing.expect(refl.enumReservedName(status_desc, "STATUS_OLD"));
     try std.testing.expectEqual(@as(usize, 1), refl.enumReservedNameCount(status_desc));
     try std.testing.expectEqualStrings("STATUS_OLD", try refl.enumReservedNameAt(status_desc, 0));
+    try std.testing.expectEqual(@as(usize, 0), try refl.enumReservedNameIndex(status_desc, "STATUS_OLD"));
     try std.testing.expectError(error.UnknownEnum, refl.enumReservedNameAt(status_desc, 9));
     try std.testing.expect(refl.enumReservedNumber(status_desc, 5));
     try std.testing.expectEqual(@as(usize, 1), refl.enumReservedRangeCount(status_desc));
     const status_reserved_range = try refl.enumReservedRangeAt(status_desc, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.enumReservedRangeIndex(status_desc, status_reserved_range));
     const found_status_reserved_range = refl.enumReservedRange(status_desc, 5) orelse return error.MissingReservedRange;
     try std.testing.expectEqual(@as(i64, 5), refl.reservedRangeStart(found_status_reserved_range.*));
     try std.testing.expect(refl.enumReservedRange(status_desc, 4) == null);
