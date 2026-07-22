@@ -152,6 +152,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Status", (try refl.fileEnumAt(app_file, 0)).name);
     try std.testing.expect((try refl.fileEnum(app_file, "Status")) == try refl.enumeration(".demo.reflect.Status"));
     try std.testing.expectEqual(@as(usize, 0), try refl.enumIndex(try refl.enumeration(".demo.reflect.Status")));
+    try std.testing.expectEqualStrings("STATUS_UNKNOWN", (try refl.fileEnumValue(app_file, "STATUS_UNKNOWN")).name);
+    try std.testing.expectError(error.UnknownEnum, refl.fileEnumValue(app_file, "LOCAL_UNKNOWN"));
     try std.testing.expect((try refl.fileEnumDeep(app_file, "LocalStatus")) == try refl.messageNestedEnum(user_desc, "LocalStatus"));
     try std.testing.expectError(error.UnknownEnum, refl.fileEnum(app_file, "LocalStatus"));
     try std.testing.expectError(error.UnknownEnum, refl.fileEnumDeep(app_file, "Missing"));
@@ -193,6 +195,8 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 1), refl.messageNestedEnumCount(user_desc));
     const local_status_desc = try refl.messageNestedEnumAt(user_desc, 0);
     try std.testing.expect((try refl.messageNestedEnum(user_desc, "LocalStatus")) == local_status_desc);
+    try std.testing.expectEqualStrings("LOCAL_UNKNOWN", (try refl.messageNestedEnumValue(user_desc, "LOCAL_UNKNOWN")).name);
+    try std.testing.expectError(error.UnknownEnum, refl.messageNestedEnumValue(user_desc, "STATUS_UNKNOWN"));
     try std.testing.expect((try refl.messageNestedEnumDeep(user_desc, "LocalStatus")) == local_status_desc);
     try std.testing.expectError(error.UnknownEnum, refl.messageNestedEnum(user_desc, "Missing"));
     try std.testing.expectEqualStrings("LocalStatus", refl.enumName(local_status_desc));

@@ -1070,6 +1070,13 @@ pub const MessageDescriptor = struct {
         return null;
     }
 
+    pub fn findEnumValue(self: *const MessageDescriptor, name: []const u8) ?*const EnumValueDescriptor {
+        for (self.enums.items) |*enumeration| {
+            if (enumeration.findValue(name)) |value| return value;
+        }
+        return null;
+    }
+
     pub fn findMessageDeep(self: *const MessageDescriptor, name: []const u8) ?*const MessageDescriptor {
         const needle = leafName(name);
         for (self.messages.items) |*message| {
@@ -1438,6 +1445,13 @@ pub const FileDescriptor = struct {
     pub fn findEnum(self: *const FileDescriptor, name: []const u8) ?*const EnumDescriptor {
         for (self.enums.items) |*enumeration| {
             if (std.mem.eql(u8, enumeration.name, name)) return enumeration;
+        }
+        return null;
+    }
+
+    pub fn findEnumValue(self: *const FileDescriptor, name: []const u8) ?*const EnumValueDescriptor {
+        for (self.enums.items) |*enumeration| {
+            if (enumeration.findValue(name)) |value| return value;
         }
         return null;
     }

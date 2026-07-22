@@ -358,6 +358,10 @@ pub const Reflection = struct {
         return file_descriptor.findEnum(name) orelse error.UnknownEnum;
     }
 
+    pub fn fileEnumValue(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
+        return file_descriptor.findEnumValue(name) orelse error.UnknownEnum;
+    }
+
     pub fn fileEnumDeep(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
         return file_descriptor.findEnumDeep(name) orelse error.UnknownEnum;
     }
@@ -577,6 +581,10 @@ pub const Reflection = struct {
 
     pub fn messageNestedEnum(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
         return descriptor.findEnum(name) orelse error.UnknownEnum;
+    }
+
+    pub fn messageNestedEnumValue(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
+        return descriptor.findEnumValue(name) orelse error.UnknownEnum;
     }
 
     pub fn messageNestedEnumDeep(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.EnumDescriptor {
