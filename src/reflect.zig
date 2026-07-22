@@ -1553,6 +1553,10 @@ pub const Reflection = struct {
         return field_value.values.items[index];
     }
 
+    pub fn valueTag(_: Reflection, value: dynamic.Value) ValueTag {
+        return std.meta.activeTag(value);
+    }
+
     pub fn getField(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!?*const dynamic.FieldValue {
         return self.get(message_value, try self.fieldByName(message_value.descriptor, name));
     }

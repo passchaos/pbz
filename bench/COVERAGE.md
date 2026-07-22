@@ -303,7 +303,7 @@ benchmark harness.
   service/method options including idempotency levels, direct codegen, plugin
   request generation, and generated-code info annotation lookup/accessors.
 - `examples/reflection_facade.zig` covers the public reflection facade over
-  registry descriptors and dynamic messages, including typed get/set/add/get-default, field-value record accessors,
+  registry descriptors and dynamic messages, including typed get/set/add/get-default, field-value record accessors and dynamic value tags,
   and clear helpers across all scalar families, present-field listing, immediate
   type-checked writes, typed repeated scalar access/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, typed singular/repeated message/group creation/access/mutation including typed repeated element access, field scalar/kind/cpp-type/cardinality/optional-keyword/weak/lazy/debug-redact/ctype/jstype/retention/targets/wire-type/encoded-wire-type/containing/extendee/oneof metadata, map-entry descriptor metadata, map
   last-wins mutation, map key/value metadata, map size/key/value/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output/explicitness, explicit/effective default metadata and enum default value/name lookup, field presence/packing/packed-override/reserved range/name enumeration/accessor metadata,

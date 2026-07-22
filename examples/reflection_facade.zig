@@ -587,11 +587,15 @@ pub fn main() !void {
     const count_field = (try refl.getField(&user, "counts")).?;
     try std.testing.expect((refl.fieldValueDescriptor(count_field)) == counts_desc_field);
     try std.testing.expectEqual(@as(usize, 1), refl.fieldValueCount(count_field));
-    try std.testing.expectEqual(@as(i32, 2), (try refl.fieldValueAt(count_field, 0)).map_entry.value.int32);
+    const count_field_value = try refl.fieldValueAt(count_field, 0);
+    try std.testing.expectEqual(.map_entry, refl.valueTag(count_field_value));
+    try std.testing.expectEqual(@as(i32, 2), count_field_value.map_entry.value.int32);
     try std.testing.expectError(error.MissingField, refl.fieldValueAt(count_field, 9));
     const count_entry_0 = try refl.mapEntryAt(&user, "counts", 0);
     try std.testing.expectEqualStrings("red", refl.mapEntryKey(count_entry_0).string);
-    try std.testing.expectEqual(@as(i32, 2), refl.mapEntryValue(count_entry_0).int32);
+    const count_entry_value = refl.mapEntryValue(count_entry_0);
+    try std.testing.expectEqual(.int32, refl.valueTag(count_entry_value));
+    try std.testing.expectEqual(@as(i32, 2), count_entry_value.int32);
     const count_entries = try refl.mapEntries(&user, "counts");
     defer allocator.free(count_entries);
     try std.testing.expectEqual(@as(usize, 1), count_entries.len);
