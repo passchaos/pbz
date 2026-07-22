@@ -348,6 +348,13 @@ pub const Reflection = struct {
         return descriptor.fieldAt(index) orelse error.UnknownField;
     }
 
+    pub fn fieldIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        for (descriptor.fields.items, 0..) |*candidate, index| {
+            if (candidate == field) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn messageExtensionCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
         return descriptor.extensionCount();
     }
@@ -362,6 +369,13 @@ pub const Reflection = struct {
 
     pub fn messageOneofAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.OneofDescriptor {
         return descriptor.oneofAt(index) orelse error.UnknownField;
+    }
+
+    pub fn oneofIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
+        for (descriptor.oneofs.items, 0..) |*candidate, index| {
+            if (candidate == oneof) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn messageNestedMessageCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
@@ -494,6 +508,13 @@ pub const Reflection = struct {
         return descriptor.valueAt(index) orelse error.UnknownEnum;
     }
 
+    pub fn enumValueIndex(_: Reflection, descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error!usize {
+        for (descriptor.values.items, 0..) |*candidate, index| {
+            if (candidate == value) return index;
+        }
+        return error.UnknownEnum;
+    }
+
     pub fn service(self: Reflection, name: []const u8) Error!*const schema.ServiceDescriptor {
         return self.registry.findService(name, null) orelse error.UnknownService;
     }
@@ -573,6 +594,13 @@ pub const Reflection = struct {
 
     pub fn serviceMethodAt(_: Reflection, descriptor: *const schema.ServiceDescriptor, index: usize) Error!*const schema.MethodDescriptor {
         return descriptor.methodAt(index) orelse error.UnknownField;
+    }
+
+    pub fn methodIndex(_: Reflection, descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!usize {
+        for (descriptor.methods.items, 0..) |*candidate, index| {
+            if (candidate == method) return index;
+        }
+        return error.UnknownField;
     }
 
     pub fn methodByName(_: Reflection, descriptor: *const schema.ServiceDescriptor, name: []const u8) Error!*const schema.MethodDescriptor {

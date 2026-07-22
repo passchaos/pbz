@@ -151,8 +151,11 @@ pub fn main() !void {
     try std.testing.expect((try refl.messageFieldAt(user_desc, 0)) == try refl.fieldByName(user_desc, "id"));
     try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
+    try std.testing.expectEqual(@as(usize, 0), try refl.fieldIndex(user_desc, try refl.fieldByName(user_desc, "id")));
     try std.testing.expectEqual(@as(usize, 1), refl.messageOneofCount(user_desc));
-    try std.testing.expectEqualStrings("contact", (try refl.messageOneofAt(user_desc, 0)).name);
+    const contact_desc = try refl.messageOneofAt(user_desc, 0);
+    try std.testing.expectEqualStrings("contact", contact_desc.name);
+    try std.testing.expectEqual(@as(usize, 0), try refl.oneofIndex(user_desc, contact_desc));
     try std.testing.expectError(error.UnknownField, refl.messageOneofAt(user_desc, 9));
     try std.testing.expectEqual(@as(usize, 1), refl.messageNestedMessageCount(user_desc));
     const audit_desc = try refl.messageNestedMessageAt(user_desc, 0);
@@ -180,6 +183,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownEnum, refl.messageNestedEnumAt(user_desc, 9));
     try std.testing.expectEqual(@as(usize, 2), refl.enumValueCount(role_desc));
     const role_unknown_value = try refl.enumValueAt(role_desc, 0);
+    try std.testing.expectEqual(@as(usize, 0), try refl.enumValueIndex(role_desc, role_unknown_value));
     try std.testing.expectEqualStrings("ROLE_UNKNOWN", refl.enumValueName(role_unknown_value));
     try std.testing.expectEqual(@as(i32, 0), refl.enumValueNumber(role_unknown_value));
     try std.testing.expect((try refl.enumValueContainingEnum(role_desc, role_unknown_value)) == role_desc);
@@ -351,6 +355,7 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Get", (try refl.serviceMethodAt(users_service, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.serviceMethodAt(users_service, 9));
     const get_method = try refl.methodByName(users_service, "Get");
+    try std.testing.expectEqual(@as(usize, 0), try refl.methodIndex(users_service, get_method));
     try std.testing.expectEqualStrings("Get", refl.methodName(get_method));
     try std.testing.expect(refl.methodIsDeprecated(get_method));
     const get_method_full_name = try refl.methodFullName(users_service, get_method);
