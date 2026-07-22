@@ -1115,6 +1115,23 @@ pub const Reflection = struct {
         return field.explicitDefaultValue() orelse error.MissingField;
     }
 
+    pub fn fieldEditionDefaultCount(_: Reflection, field: *const schema.FieldDescriptor) usize {
+        return field.edition_defaults.items.len;
+    }
+
+    pub fn fieldEditionDefaultAt(_: Reflection, field: *const schema.FieldDescriptor, index: usize) Error!schema.FieldEditionDefault {
+        if (index >= field.edition_defaults.items.len) return error.UnknownField;
+        return field.edition_defaults.items[index];
+    }
+
+    pub fn fieldEditionDefaultEdition(_: Reflection, default: schema.FieldEditionDefault) schema.Edition {
+        return default.edition;
+    }
+
+    pub fn fieldEditionDefaultValue(_: Reflection, default: schema.FieldEditionDefault) []const u8 {
+        return default.value;
+    }
+
     pub fn fieldDefaultValue(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!dynamic.DefaultValue {
         const owner_file = try self.fileForFieldContext(descriptor, field);
         const default_scope = if (field.extendee != null) (try self.fieldExtensionScope(field)) orelse descriptor else descriptor;
@@ -2882,6 +2899,37 @@ test "reflection facade finds extension descriptors" {
     try std.testing.expect(code == try refl.extensionForMessage(host_desc, 101));
     try std.testing.expectEqual(@as(wire.FieldNumber, 101), code.number);
     try std.testing.expectError(error.UnknownField, refl.extensionForMessage(host_desc, 102));
+}
+
+test "reflection exposes field edition defaults" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor.init(allocator);
+    defer file.deinit();
+    file.name = "edition-defaults.proto";
+    file.setSyntax(.proto2);
+
+    var host = schema.MessageDescriptor{ .name = "Host" };
+    var field = schema.FieldDescriptor{ .name = "presence", .number = 1, .cardinality = .optional, .kind = .{ .scalar = .int32 } };
+    try field.edition_defaults.append(allocator, .{ .edition = .legacy, .value = "EXPLICIT" });
+    try field.edition_defaults.append(allocator, .{ .edition = .proto3, .value = "IMPLICIT" });
+    try host.fields.append(allocator, field);
+    try file.messages.append(allocator, host);
+
+    var reg = registry_mod.Registry.init(allocator);
+    defer reg.deinit();
+    try reg.addFile(&file);
+
+    const refl = Reflection.init(allocator, &reg);
+    const desc = try refl.message(".Host");
+    const presence = try refl.fieldByName(desc, "presence");
+    try std.testing.expectEqual(@as(usize, 2), refl.fieldEditionDefaultCount(presence));
+    const legacy_default = try refl.fieldEditionDefaultAt(presence, 0);
+    try std.testing.expectEqual(schema.Edition.legacy, refl.fieldEditionDefaultEdition(legacy_default));
+    try std.testing.expectEqualStrings("EXPLICIT", refl.fieldEditionDefaultValue(legacy_default));
+    const proto3_default = try refl.fieldEditionDefaultAt(presence, 1);
+    try std.testing.expectEqual(schema.Edition.proto3, refl.fieldEditionDefaultEdition(proto3_default));
+    try std.testing.expectEqualStrings("IMPLICIT", refl.fieldEditionDefaultValue(proto3_default));
+    try std.testing.expectError(error.UnknownField, refl.fieldEditionDefaultAt(presence, 2));
 }
 
 test "reflection facade resolves files and import chains" {
