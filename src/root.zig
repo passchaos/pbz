@@ -24,6 +24,15 @@ pub const FieldNumber = wire.FieldNumber;
 pub const WireType = wire.WireType;
 pub const Reader = wire.Reader;
 pub const Writer = wire.Writer;
+pub const Syntax = schema.Syntax;
+pub const Edition = schema.Edition;
+pub const Cardinality = schema.Cardinality;
+pub const ScalarType = schema.ScalarType;
+pub const FieldKind = schema.FieldKind;
+pub const MapType = schema.MapType;
+pub const FieldOption = schema.FieldOption;
+pub const OptionValue = schema.OptionValue;
+pub const OptionList = schema.OptionList;
 pub const FileDescriptor = schema.FileDescriptor;
 pub const MessageDescriptor = schema.MessageDescriptor;
 pub const FieldDescriptor = schema.FieldDescriptor;
@@ -39,6 +48,9 @@ pub const FeatureSetEditionDefault = schema.FeatureSetEditionDefault;
 pub const FeatureSetDefaults = schema.FeatureSetDefaults;
 pub const SourceCodeInfo = schema.SourceCodeInfo;
 pub const GeneratedCodeInfo = schema.GeneratedCodeInfo;
+pub const Import = schema.Import;
+pub const ReservedRange = schema.ReservedRange;
+pub const ExtensionRange = schema.ExtensionRange;
 pub const ExtensionDeclaration = schema.ExtensionDeclaration;
 pub const ExtensionRangeVerification = schema.ExtensionRangeVerification;
 pub const ProtoParser = parser.Parser;
@@ -106,6 +118,11 @@ pub const runPluginRequestBytes = codegen.runPluginRequestBytes;
 pub const ConformanceRequest = conformance.ConformanceRequest;
 pub const ConformanceResponse = conformance.ConformanceResponse;
 pub const runConformanceDynamic = conformance.runDynamic;
+pub const scalarTypeName = schema.scalarTypeName;
+pub const declarationTypeNameIsScalar = schema.declarationTypeNameIsScalar;
+pub const declarationSymbolIsQualified = schema.declarationSymbolIsQualified;
+pub const isFullIdentifier = schema.isFullIdentifier;
+pub const isIdentifier = schema.isIdentifier;
 
 pub inline fn validateUtf8(value: []const u8) bool {
     const std = @import("std");
@@ -143,6 +160,32 @@ test {
     _ = plugin;
     _ = codegen;
     _ = conformance;
+}
+
+test "root exports descriptor schema support types" {
+    const std = @import("std");
+    try std.testing.expectEqual(Syntax.proto3, schema.Syntax.proto3);
+    try std.testing.expectEqual(Edition.edition_2023, schema.Edition.edition_2023);
+    try std.testing.expectEqual(Cardinality.repeated, schema.Cardinality.repeated);
+    try std.testing.expectEqual(ScalarType.int32, schema.ScalarType.int32);
+    try std.testing.expectEqualStrings("int32", scalarTypeName(.int32));
+    try std.testing.expect(declarationTypeNameIsScalar("bytes"));
+    try std.testing.expect(declarationSymbolIsQualified(".demo.Type"));
+    try std.testing.expect(isFullIdentifier("demo.Type"));
+    try std.testing.expect(isIdentifier("field_name"));
+    const option_value = OptionValue{ .integer = 7 };
+    const option = FieldOption{ .name = "answer", .value = option_value };
+    try std.testing.expectEqual(@as(i64, 7), option.value.integer);
+    const kind = FieldKind{ .scalar = .int32 };
+    try std.testing.expectEqual(wire.WireType.varint, kind.wireType());
+    var value_kind = FieldKind{ .scalar = .string };
+    const map_type = MapType{ .key = .string, .value = &value_kind };
+    try std.testing.expectEqual(ScalarType.string, map_type.key);
+    const import = Import{ .path = "common.proto", .kind = .public };
+    try std.testing.expectEqualStrings("common.proto", import.path);
+    try std.testing.expect((ReservedRange{ .start = 10, .end = 20 }).containsWithMax(19, 100));
+    try std.testing.expect((ExtensionRange{ .start = 100, .end = 200 }).containsWithMax(199, 1000));
+    try std.testing.expectEqual(ExtensionRangeVerification.declaration, .declaration);
 }
 
 test "root exports registry-aware codegen" {
