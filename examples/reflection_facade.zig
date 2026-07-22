@@ -264,6 +264,9 @@ pub fn main() !void {
     defer allocator.free(default_json_name);
     try std.testing.expectEqualStrings("bigDelta", default_json_name);
     const id_field = try refl.fieldByName(user_desc, "id");
+    try std.testing.expect((try refl.fieldByFullName(".demo.reflect.User.id")) == id_field);
+    try std.testing.expect((try refl.fieldByFullName("id")) == id_field);
+    try std.testing.expectError(error.UnknownField, refl.fieldByFullName("missing"));
     const tags_field = try refl.fieldByName(user_desc, "tags");
     const role_field = try refl.fieldByName(user_desc, "role");
     const local_status_field = try refl.fieldByName(user_desc, "local_status");

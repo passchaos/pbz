@@ -310,7 +310,7 @@ benchmark harness.
   message/enum legacy-json-conflict metadata, feature-support lifecycle metadata/accessors, ordered file/message/enum/service descriptor enumeration/index lookup, file/message-local descriptor/value lookup, descriptor name/full-name/containing-type/value-owner/direct field-type identity and placeholder metadata lookup,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof field enumeration plus descriptor-direct oneof field access and oneof
   lookup/fields/presence/inspection/clearing plus real-vs-synthetic proto3-optional oneof/direct-owner/index metadata, imported message fields, descriptor option slices and typed option lookup,
-  file-local service lookup, registry method lookup, service/method owner/type/deprecation metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
+  file-local service lookup, registry field/method lookup, service/method owner/type/deprecation metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
   query/mutation and record accessors, required-field initialization checks, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for

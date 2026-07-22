@@ -986,6 +986,10 @@ pub const Reflection = struct {
         return descriptor.findField(name) orelse error.UnknownField;
     }
 
+    pub fn fieldByFullName(self: Reflection, name: []const u8) Error!*const schema.FieldDescriptor {
+        return self.registry.findField(name, null) orelse error.UnknownField;
+    }
+
     pub fn fieldByLowercaseName(_: Reflection, descriptor: *const schema.MessageDescriptor, lowercase_name: []const u8) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByLowercaseName(lowercase_name) orelse error.UnknownField;
     }

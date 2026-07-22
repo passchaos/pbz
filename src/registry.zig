@@ -321,6 +321,17 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findField(self: *const Registry, name: []const u8, scope: ?[]const u8) ?*const schema.FieldDescriptor {
+        const normalized = normalizeName(name);
+        for (self.files.items) |file| {
+            const query = fieldLookupNameInFile(file.package, normalized, scope);
+            for (file.messages.items) |*message| {
+                if (findFieldInMessagePath(message, query)) |field| return field;
+            }
+        }
+        return null;
+    }
+
     pub fn findExtension(self: *const Registry, extendee: []const u8, number: @import("wire.zig").FieldNumber) ?*const schema.FieldDescriptor {
         if (self.findMessage(extendee, null)) |message| return self.findExtensionForMessage(message, number);
         const normalized = normalizeName(extendee);
@@ -964,6 +975,43 @@ fn methodNameMatches(package: []const u8, service: *const schema.ServiceDescript
         if (!serviceNameMatches(package, service.name, normalizeName(owner_scope), null)) return null;
     }
     return service.findMethod(query);
+}
+
+fn fieldLookupNameInFile(package: []const u8, normalized: []const u8, scope: ?[]const u8) []const u8 {
+    if (package.len != 0 and std.mem.startsWith(u8, normalized, package) and normalized.len > package.len and normalized[package.len] == '.') return normalized[package.len + 1 ..];
+    if (scope) |owner_scope| {
+        const normalized_scope = normalizeName(owner_scope);
+        if (package.len != 0 and std.mem.eql(u8, normalized_scope, package)) return normalized;
+        if (package.len != 0 and std.mem.startsWith(u8, normalized_scope, package) and normalized_scope.len > package.len and normalized_scope[package.len] == '.') return normalized_scope[package.len + 1 ..];
+        return normalized_scope;
+    }
+    return normalized;
+}
+
+fn findFieldInMessagePath(message: *const schema.MessageDescriptor, query: []const u8) ?*const schema.FieldDescriptor {
+    if (std.mem.indexOfScalar(u8, query, '.')) |idx| {
+        const head = query[0..idx];
+        const rest = query[idx + 1 ..];
+        if (!std.mem.eql(u8, head, message.name)) return null;
+        return findFieldAfterMessage(message, rest);
+    }
+    if (message.findField(query)) |field| return field;
+    for (message.messages.items) |*nested| {
+        if (findFieldInMessagePath(nested, query)) |field| return field;
+    }
+    return null;
+}
+
+fn findFieldAfterMessage(message: *const schema.MessageDescriptor, rest: []const u8) ?*const schema.FieldDescriptor {
+    if (std.mem.indexOfScalar(u8, rest, '.')) |idx| {
+        const nested_name = rest[0..idx];
+        const nested_rest = rest[idx + 1 ..];
+        for (message.messages.items) |*nested| {
+            if (std.mem.eql(u8, nested.name, nested_name)) return findFieldAfterMessage(nested, nested_rest);
+        }
+        return null;
+    }
+    return message.findField(rest);
 }
 
 fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {
