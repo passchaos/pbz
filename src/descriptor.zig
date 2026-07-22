@@ -476,7 +476,7 @@ fn writeEnumReservedRange(allocator: std.mem.Allocator, range: schema.ReservedRa
 }
 
 fn descriptorMessageRangeEnd(message: *const schema.MessageDescriptor, maybe_end: ?i64) Error!i32 {
-    const end = maybe_end orelse return if (message.messageSetWireFormat()) std.math.maxInt(i32) else @as(i32, @intCast(@as(i64, std.math.maxInt(wire.FieldNumber)) + 1));
+    const end = maybe_end orelse return @intCast(message.extensionRangeMaxExclusive());
     return try descriptorI32RangeBound(end);
 }
 
@@ -2008,7 +2008,7 @@ fn validateDecodedMessageSetMessage(file: *const schema.FileDescriptor, message:
         if (message.fields.items.len != 0) return error.InvalidFieldType;
         var has_message_set_range = false;
         for (message.extension_ranges.items) |range| {
-            const end = range.end orelse std.math.maxInt(i64);
+            const end = range.effectiveEnd(message);
             if (range.start <= 4 and end > 4) has_message_set_range = true;
         }
         if (!has_message_set_range) return error.InvalidFieldType;
@@ -2073,17 +2073,19 @@ fn validateDecodedExtensionDeclaration(file: *const schema.FileDescriptor, field
     const extendee_name = field.extendee orelse return;
     const extendee = file.findMessageDeep(extendee_name) orelse return;
     for (extendee.extension_ranges.items) |range| {
-        const end = range.end orelse std.math.maxInt(i64);
-        if (field.number >= range.start and field.number < end) {
-            return try validateDecodedExtensionFieldDeclaration(file.package, field, range);
+        if (range.containsInMessage(extendee, field.number)) {
+            return try validateDecodedExtensionFieldDeclaration(file.package, field, extendee, range);
         }
     }
     return error.InvalidFieldType;
 }
 
-fn validateDecodedExtensionFieldDeclaration(package: []const u8, field: *const schema.FieldDescriptor, range: schema.ExtensionRange) Error!void {
+fn validateDecodedExtensionFieldDeclaration(package: []const u8, field: *const schema.FieldDescriptor, extendee: *const schema.MessageDescriptor, range: schema.ExtensionRange) Error!void {
     var matching_declaration: ?schema.ExtensionDeclaration = null;
+    const end = range.effectiveEnd(extendee);
     for (range.declarations.items) |declaration| {
+        if (declaration.number <= 0) return error.InvalidFieldType;
+        if (declaration.number < range.start or declaration.number >= end) return error.InvalidFieldType;
         if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
     }
     const declaration = matching_declaration orelse {
@@ -2381,6 +2383,7 @@ fn validateDecodedProto3OptionalFields(message: *const schema.MessageDescriptor)
 
 fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Error!void {
     if (!isIdentifier(message.name)) return error.InvalidFieldType;
+    const message_range_max = message.extensionRangeMaxExclusive();
     for (message.fields.items, 0..) |field, i| {
         if (!isIdentifier(field.name) or field.number == 0) return error.InvalidFieldType;
         try validateDecodedFieldJsonName(&field, false);
@@ -2388,10 +2391,10 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.InvalidFieldType;
         }
         for (message.reserved_ranges.items) |range| {
-            if (rangeContains(range, field.number, messageRangeMaxExclusive(message))) return error.InvalidFieldType;
+            if (range.containsWithMax(field.number, message_range_max)) return error.InvalidFieldType;
         }
         for (message.extension_ranges.items) |range| {
-            if (rangeContains(.{ .start = range.start, .end = range.end }, field.number, messageRangeMaxExclusive(message))) return error.InvalidFieldType;
+            if (range.containsInMessage(message, field.number)) return error.InvalidFieldType;
         }
         for (message.reserved_names.items) |name| {
             if (std.mem.eql(u8, name, field.name)) return error.InvalidFieldType;
@@ -2452,9 +2455,9 @@ fn validateDecodedMessageDescriptor(message: *const schema.MessageDescriptor) Er
     try validateDecodedMessageEnumValueSymbols(message);
     try validateDecodedFieldJsonNameUniqueness(message.fields.items);
     for (message.extensions.items) |field| try validateDecodedExtensionFieldDescriptor(&field);
-    try validateDecodedExtensionRanges(message.extension_ranges.items, message.reserved_ranges.items, messageRangeMaxExclusive(message));
+    try validateDecodedExtensionRanges(message, message.extension_ranges.items, message.reserved_ranges.items);
     try validateDecodedExtensionDeclarationNames(message.extension_ranges.items);
-    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items, false, messageRangeMaxExclusive(message));
+    try validateDecodedReservedRanges(message.reserved_ranges.items, message.reserved_names.items, false, message.extensionRangeMaxExclusive());
 }
 
 fn validateDecodedMessageEnumValueSymbols(message: *const schema.MessageDescriptor) Error!void {
@@ -2528,32 +2531,27 @@ fn customJsonName(field: *const schema.FieldDescriptor) ?[]const u8 {
     return if (schema.eqlDefaultJsonName(field.name, json_name)) null else json_name;
 }
 
-fn validateDecodedExtensionRanges(extension_ranges: []const schema.ExtensionRange, reserved_ranges: []const schema.ReservedRange, max_end: i64) Error!void {
+fn validateDecodedExtensionRanges(message: *const schema.MessageDescriptor, extension_ranges: []const schema.ExtensionRange, reserved_ranges: []const schema.ReservedRange) Error!void {
+    const max_end = message.extensionRangeMaxExclusive();
     for (extension_ranges, 0..) |range, i| {
-        try validateDecodedExtensionRangeBounds(range, max_end);
+        try validateDecodedExtensionRangeBounds(message, range);
         const as_reserved = schema.ReservedRange{ .start = range.start, .end = range.end };
         for (extension_ranges[i + 1 ..]) |other| {
-            try validateDecodedExtensionRangeBounds(other, max_end);
-            if (rangesOverlap(as_reserved, .{ .start = other.start, .end = other.end })) return error.InvalidFieldType;
+            try validateDecodedExtensionRangeBounds(message, other);
+            if (range.overlapsInMessage(message, other)) return error.InvalidFieldType;
         }
         for (reserved_ranges) |reserved| {
-            if (rangesOverlap(as_reserved, reserved)) return error.InvalidFieldType;
+            if (as_reserved.overlapsWithMax(reserved, max_end)) return error.InvalidFieldType;
         }
     }
 }
 
-fn validateDecodedExtensionRangeBounds(range: schema.ExtensionRange, max_end: i64) Error!void {
-    const end = range.end orelse max_end;
+fn validateDecodedExtensionRangeBounds(message: *const schema.MessageDescriptor, range: schema.ExtensionRange) Error!void {
+    const max_end = message.extensionRangeMaxExclusive();
+    const end = range.effectiveEnd(message);
     if (range.start <= 0 or range.start >= max_end) return error.InvalidFieldType;
     if (range.end != null and end > max_end) return error.InvalidFieldType;
     if (end <= range.start) return error.InvalidFieldType;
-}
-
-fn messageRangeMaxExclusive(message: *const schema.MessageDescriptor) i64 {
-    return if (message.messageSetWireFormat())
-        std.math.maxInt(i32)
-    else
-        @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
 }
 
 fn decodeFieldDescriptor(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), bytes: []const u8) Error!schema.FieldDescriptor {
@@ -2914,6 +2912,7 @@ fn validateEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const sche
     const alias_state = enumAliasState(enumeration);
     if (alias_state.has_allow_alias and !alias_state.allow_alias) return error.InvalidFieldType;
     var has_duplicate_numbers = false;
+    const enum_range_max = std.math.maxInt(i64);
     for (enumeration.values.items, 0..) |value, i| {
         if (!isIdentifier(value.name)) return error.InvalidFieldType;
         for (enumeration.values.items[i + 1 ..]) |other| {
@@ -2924,7 +2923,7 @@ fn validateEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const sche
             }
         }
         for (enumeration.reserved_ranges.items) |range| {
-            if (rangeContains(range, value.number, std.math.maxInt(i64))) return error.InvalidFieldType;
+            if (range.containsWithMax(value.number, enum_range_max)) return error.InvalidFieldType;
         }
         for (enumeration.reserved_names.items) |name| {
             if (std.mem.eql(u8, name, value.name)) return error.InvalidFieldType;
@@ -2932,7 +2931,7 @@ fn validateEnumDescriptor(allocator: std.mem.Allocator, enumeration: *const sche
     }
     if (alias_state.allow_alias and !has_duplicate_numbers) return error.InvalidFieldType;
     try validateEnumValueCanonicalNames(allocator, enumeration);
-    try validateDecodedReservedRanges(enumeration.reserved_ranges.items, enumeration.reserved_names.items, true, std.math.maxInt(i64));
+    try validateDecodedReservedRanges(enumeration.reserved_ranges.items, enumeration.reserved_names.items, true, enum_range_max);
 }
 
 fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *const schema.EnumDescriptor) Error!void {
@@ -2949,19 +2948,19 @@ fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *c
 
 fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []const []const u8, is_enum: bool, max_end: i64) Error!void {
     for (ranges, 0..) |range, i| {
-        const end = range.end orelse max_end;
+        const end = range.effectiveEnd(max_end);
         if (!is_enum) {
             if (range.start <= 0 or range.start >= max_end) return error.InvalidFieldType;
             if (range.end != null and end > max_end) return error.InvalidFieldType;
         }
         if (end <= range.start) return error.InvalidFieldType;
         for (ranges[i + 1 ..]) |other| {
-            const other_end = other.end orelse max_end;
+            const other_end = other.effectiveEnd(max_end);
             if (!is_enum) {
                 if (other.start <= 0 or other.start >= max_end) return error.InvalidFieldType;
                 if (other.end != null and other_end > max_end) return error.InvalidFieldType;
             }
-            if (rangesOverlap(range, other)) return error.InvalidFieldType;
+            if (range.overlapsWithMax(other, max_end)) return error.InvalidFieldType;
         }
     }
     for (names, 0..) |name, i| {
@@ -2970,17 +2969,6 @@ fn validateDecodedReservedRanges(ranges: []const schema.ReservedRange, names: []
             if (std.mem.eql(u8, name, other)) return error.InvalidFieldType;
         }
     }
-}
-
-fn rangeContains(range: schema.ReservedRange, number: i64, max_end: i64) bool {
-    const end = range.end orelse max_end;
-    return number >= range.start and number < end;
-}
-
-fn rangesOverlap(a: schema.ReservedRange, b: schema.ReservedRange) bool {
-    const a_end = a.end orelse std.math.maxInt(i64);
-    const b_end = b.end orelse std.math.maxInt(i64);
-    return a.start < b_end and b.start < a_end;
 }
 
 fn decodeOneofDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!schema.OneofDescriptor {
@@ -3017,7 +3005,7 @@ fn decodeExtensionRange(allocator: std.mem.Allocator, bytes: []const u8) Error!s
 fn validateDecodedExtensionRange(range: *const schema.ExtensionRange) Error!void {
     if (range.start <= 0) return error.InvalidFieldType;
     if (range.declarations.items.len != 0 and range.verification == .unverified) return error.InvalidFieldType;
-    const end = range.end orelse std.math.maxInt(i64);
+    const end = range.effectiveEndWithMax(std.math.maxInt(i64));
     if (end <= range.start) return error.InvalidFieldType;
     for (range.declarations.items, 0..) |declaration, index| {
         if (declaration.number <= 0) return error.InvalidFieldType;

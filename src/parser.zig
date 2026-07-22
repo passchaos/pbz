@@ -1630,15 +1630,15 @@ pub const Parser = struct {
     }
 
     fn validateMessageExtensionDeclarations(self: *Parser, message: *const schema.MessageDescriptor) ParseError!void {
-        for (message.extension_ranges.items) |range| try self.validateExtensionRangeDeclarations(range);
+        for (message.extension_ranges.items) |range| try self.validateExtensionRangeDeclarations(message, range);
         try validateExtensionDeclarationNames(message.extension_ranges.items);
         for (message.messages.items) |*nested| try self.validateMessageExtensionDeclarations(nested);
     }
 
-    fn validateExtensionRangeDeclarations(self: *Parser, range: schema.ExtensionRange) ParseError!void {
+    fn validateExtensionRangeDeclarations(self: *Parser, message: *const schema.MessageDescriptor, range: schema.ExtensionRange) ParseError!void {
         _ = self;
         if (range.declarations.items.len != 0 and range.verification == .unverified) return error.InvalidFieldType;
-        const end = range.end orelse std.math.maxInt(i64);
+        const end = range.effectiveEnd(message);
         for (range.declarations.items, 0..) |declaration, i| {
             if (declaration.number <= 0) return error.InvalidFieldType;
             if (declaration.number < range.start or declaration.number >= end) return error.ReservedField;
@@ -1658,20 +1658,19 @@ pub const Parser = struct {
         if (self.file.findMessageDeep(extendee_name) == null and self.file.findEnumDeep(extendee_name) != null) return error.InvalidFieldType;
         const extendee = self.file.findMessageDeep(extendee_name) orelse return;
         for (extendee.extension_ranges.items) |range| {
-            const end = range.end orelse std.math.maxInt(i64);
-            if (field.number >= range.start and field.number < end) {
-                try self.validateExtensionFieldDeclaration(field, range);
+            if (range.containsInMessage(extendee, field.number)) {
+                try self.validateExtensionFieldDeclaration(field, extendee, range);
                 return;
             }
         }
         return error.ReservedField;
     }
 
-    fn validateExtensionFieldDeclaration(self: *Parser, field: *const schema.FieldDescriptor, range: schema.ExtensionRange) ParseError!void {
+    fn validateExtensionFieldDeclaration(self: *Parser, field: *const schema.FieldDescriptor, extendee: *const schema.MessageDescriptor, range: schema.ExtensionRange) ParseError!void {
         var matching_declaration: ?schema.ExtensionDeclaration = null;
+        const end = range.effectiveEnd(extendee);
         for (range.declarations.items) |declaration| {
             if (declaration.number <= 0) return error.InvalidFieldType;
-            const end = range.end orelse std.math.maxInt(i64);
             if (declaration.number < range.start or declaration.number >= end) return error.ReservedField;
             if (declaration.number == @as(i32, @intCast(field.number))) matching_declaration = declaration;
         }
@@ -1696,7 +1695,7 @@ pub const Parser = struct {
             if (message.fields.items.len != 0) return error.InvalidFieldType;
             var has_message_set_range = false;
             for (message.extension_ranges.items) |range| {
-                const end = range.end orelse std.math.maxInt(i64);
+                const end = range.effectiveEnd(message);
                 if (range.start <= 4 and end > 4) has_message_set_range = true;
             }
             if (!has_message_set_range) return error.InvalidRange;
@@ -2089,13 +2088,14 @@ fn validateEnumValueCanonicalNames(allocator: std.mem.Allocator, enumeration: *c
 }
 
 fn validateEnumReserved(enumeration: *const schema.EnumDescriptor) ParseError!void {
+    const max_end = std.math.maxInt(i64);
     for (enumeration.reserved_ranges.items, 0..) |range, i| {
-        const end = range.end orelse std.math.maxInt(i64);
+        const end = range.effectiveEnd(max_end);
         if (range.start >= end) return error.InvalidRange;
         for (enumeration.reserved_ranges.items[i + 1 ..]) |other| {
-            const other_end = other.end orelse std.math.maxInt(i64);
+            const other_end = other.effectiveEnd(max_end);
             if (other.start >= other_end) return error.InvalidRange;
-            if (range.start < other_end and other.start < end) return error.InvalidRange;
+            if (range.overlapsWithMax(other, max_end)) return error.InvalidRange;
         }
     }
     for (enumeration.reserved_names.items, 0..) |name, i| {
@@ -2105,8 +2105,7 @@ fn validateEnumReserved(enumeration: *const schema.EnumDescriptor) ParseError!vo
     }
     for (enumeration.values.items) |value| {
         for (enumeration.reserved_ranges.items) |range| {
-            const end = range.end orelse std.math.maxInt(i64);
-            if (value.number >= range.start and value.number < end) return error.ReservedField;
+            if (range.containsWithMax(value.number, max_end)) return error.ReservedField;
         }
         for (enumeration.reserved_names.items) |name| {
             if (std.mem.eql(u8, value.name, name)) return error.ReservedField;
@@ -2130,35 +2129,34 @@ fn enumAliasState(enumeration: *const schema.EnumDescriptor) EnumAliasState {
 
 fn validateExtensionRanges(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
     if (syntax == .proto3 and message.extension_ranges.items.len != 0) return error.InvalidSyntax;
-    const max_end = messageRangeMaxExclusive(message);
+    const max_end = message.extensionRangeMaxExclusive();
     for (message.extension_ranges.items, 0..) |range, i| {
-        const end = range.end orelse max_end;
+        const end = range.effectiveEnd(message);
         if (range.start <= 0 or range.start >= end or range.start >= max_end or end > max_end) return error.InvalidRange;
         for (message.extension_ranges.items[i + 1 ..]) |other| {
-            const other_end = other.end orelse max_end;
+            const other_end = other.effectiveEnd(message);
             if (other.start <= 0 or other.start >= other_end or other.start >= max_end or other_end > max_end) return error.InvalidRange;
-            if (range.start < other_end and other.start < end) return error.InvalidRange;
+            if (range.overlapsInMessage(message, other)) return error.InvalidRange;
         }
         for (message.reserved_ranges.items) |reserved| {
-            const reserved_end = reserved.end orelse std.math.maxInt(i64);
-            if (range.start < reserved_end and reserved.start < end) return error.InvalidRange;
+            if ((schema.ReservedRange{ .start = range.start, .end = range.end }).overlapsWithMax(reserved, max_end)) return error.InvalidRange;
         }
     }
 }
 
 fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
-    const max_end = messageRangeMaxExclusive(message);
+    const max_end = message.extensionRangeMaxExclusive();
     for (message.reserved_ranges.items, 0..) |range, i| {
-        const end = range.end orelse max_end;
+        const end = range.effectiveEnd(max_end);
         if (range.start <= 0 or range.start >= max_end) return error.InvalidRange;
         if (range.end != null and end > max_end) return error.InvalidRange;
         if (end <= range.start) return error.InvalidRange;
         for (message.reserved_ranges.items[i + 1 ..]) |other| {
-            const other_end = other.end orelse max_end;
+            const other_end = other.effectiveEnd(max_end);
             if (other.start <= 0 or other.start >= max_end) return error.InvalidRange;
             if (other.end != null and other_end > max_end) return error.InvalidRange;
             if (other_end <= other.start) return error.InvalidRange;
-            if (range.start < other_end and other.start < end) return error.InvalidRange;
+            if (range.overlapsWithMax(other, max_end)) return error.InvalidRange;
         }
     }
     for (message.reserved_names.items, 0..) |name, i| {
@@ -2168,29 +2166,21 @@ fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
     }
 }
 
-fn messageRangeMaxExclusive(message: *const schema.MessageDescriptor) i64 {
-    return if (message.messageSetWireFormat())
-        std.math.maxInt(i32)
-    else
-        @as(i64, std.math.maxInt(wire.FieldNumber)) + 1;
-}
-
 fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
     try validateReserved(message);
     try validateExtensionRanges(message, syntax);
     try validateOneofs(message);
     try validateJsonNames(message);
+    const max_end = message.extensionRangeMaxExclusive();
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
             if (field.number == other.number or std.mem.eql(u8, field.name, other.name)) return error.DuplicateField;
         }
         for (message.reserved_ranges.items) |range| {
-            const end = range.end orelse messageRangeMaxExclusive(message);
-            if (field.number >= range.start and field.number < end) return error.ReservedField;
+            if (range.containsWithMax(field.number, max_end)) return error.ReservedField;
         }
         for (message.extension_ranges.items) |range| {
-            const end = range.end orelse messageRangeMaxExclusive(message);
-            if (field.number >= range.start and field.number < end) return error.ReservedField;
+            if (range.containsInMessage(message, field.number)) return error.ReservedField;
         }
         for (message.reserved_names.items) |name| {
             if (std.mem.eql(u8, field.name, name)) return error.ReservedField;

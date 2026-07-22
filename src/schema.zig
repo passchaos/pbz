@@ -388,6 +388,20 @@ pub const OneofDescriptor = struct {
 pub const ReservedRange = struct {
     start: i64,
     end: ?i64,
+
+    pub fn effectiveEnd(self: ReservedRange, max_end: i64) i64 {
+        return self.end orelse max_end;
+    }
+
+    pub fn containsWithMax(self: ReservedRange, number: i64, max_end: i64) bool {
+        return number >= self.start and number < self.effectiveEnd(max_end);
+    }
+
+    pub fn overlapsWithMax(self: ReservedRange, other: ReservedRange, max_end: i64) bool {
+        const end = self.effectiveEnd(max_end);
+        const other_end = other.effectiveEnd(max_end);
+        return self.start < other_end and other.start < end;
+    }
 };
 
 pub const ExtensionRange = struct {
@@ -405,8 +419,21 @@ pub const ExtensionRange = struct {
     }
 
     pub fn contains(self: ExtensionRange, number: i64) bool {
-        const end = self.end orelse std.math.maxInt(i64);
-        return number >= self.start and number < end;
+        return self.containsWithMax(number, std.math.maxInt(i64));
+    }
+
+    pub fn effectiveEndWithMax(self: ExtensionRange, max_end: i64) i64 {
+        return self.end orelse max_end;
+    }
+
+    pub fn containsWithMax(self: ExtensionRange, number: i64, max_end: i64) bool {
+        return number >= self.start and number < self.effectiveEndWithMax(max_end);
+    }
+
+    pub fn overlapsInMessage(self: ExtensionRange, message: *const MessageDescriptor, other: ExtensionRange) bool {
+        const end = self.effectiveEnd(message);
+        const other_end = other.effectiveEnd(message);
+        return self.start < other_end and other.start < end;
     }
 
     pub fn effectiveEnd(self: ExtensionRange, message: *const MessageDescriptor) i64 {
@@ -414,7 +441,7 @@ pub const ExtensionRange = struct {
         // values, but an omitted source-level `to max` depends on the host
         // message shape: MessageSet ranges use the legacy int32 ceiling while
         // ordinary messages use protobuf's public field-number ceiling + 1.
-        return self.end orelse message.extensionRangeMaxExclusive();
+        return self.effectiveEndWithMax(message.extensionRangeMaxExclusive());
     }
 
     pub fn containsInMessage(self: ExtensionRange, message: *const MessageDescriptor, number: i64) bool {
@@ -1290,8 +1317,7 @@ fn reservedNameMatches(names: []const []const u8, name: []const u8) bool {
 
 fn reservedNumberMatches(ranges: []const ReservedRange, number: i64) bool {
     for (ranges) |range| {
-        const end = range.end orelse std.math.maxInt(i64);
-        if (number >= range.start and number < end) return true;
+        if (range.containsWithMax(number, std.math.maxInt(i64))) return true;
     }
     return false;
 }
