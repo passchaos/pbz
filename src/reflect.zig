@@ -74,6 +74,15 @@ pub const Reflection = struct {
         return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
     }
 
+    pub fn sourceLocationCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return file_descriptor.source_code_info.locations.items.len;
+    }
+
+    pub fn sourceLocationAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.SourceCodeInfo.Location {
+        if (index >= file_descriptor.source_code_info.locations.items.len) return error.UnknownField;
+        return &file_descriptor.source_code_info.locations.items[index];
+    }
+
     pub fn sourceLocationPath(_: Reflection, location: *const schema.SourceCodeInfo.Location) []const i32 {
         return location.path.items;
     }

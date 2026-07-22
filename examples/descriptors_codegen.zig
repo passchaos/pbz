@@ -33,6 +33,10 @@ pub fn main() !void {
     try registry.addFile(&file);
     const refl = pbz.Reflection.init(allocator, &registry);
 
+    try std.testing.expect(refl.sourceLocationCount(&file) >= 3);
+    const first_location = try refl.sourceLocationAt(&file, 0);
+    try std.testing.expect(refl.sourceLocationPath(first_location).len != 0);
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationAt(&file, refl.sourceLocationCount(&file)));
     const syntax_location = try refl.sourceLocation(&file, &.{12});
     try std.testing.expectEqualSlices(i32, &.{12}, refl.sourceLocationPath(syntax_location));
     try std.testing.expectEqual(@as(usize, 4), refl.sourceLocationSpan(syntax_location).len);

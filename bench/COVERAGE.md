@@ -299,7 +299,7 @@ benchmark harness.
   server-streaming, and bidirectional-streaming RPC shapes, plus generated
   service/method option metadata such as `deprecated` and `idempotency_level`.
 - `examples/descriptors_codegen.zig` covers descriptor encode/decode,
-  descriptor sets, source-code info lookup/accessors, uninterpreted custom options,
+  descriptor sets, source-code info lookup/enumeration/accessors, uninterpreted custom options,
   service/method options including idempotency levels, direct codegen, plugin
   request generation, and generated-code info annotation lookup/accessors.
 - `examples/reflection_facade.zig` covers the public reflection facade over
