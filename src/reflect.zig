@@ -1590,6 +1590,14 @@ pub const Reflection = struct {
         return try message_value.unknownFieldNumberRunsAlloc(self.allocator);
     }
 
+    pub fn unknownFieldNumberRunNumber(_: Reflection, run: wire.RawFieldNumberRun) wire.FieldNumber {
+        return run.number;
+    }
+
+    pub fn unknownFieldNumberRunCount(_: Reflection, run: wire.RawFieldNumberRun) usize {
+        return run.count;
+    }
+
     pub fn unknownByNumber(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) []const dynamic.UnknownField {
         return message_value.unknownByNumber(number);
     }

@@ -685,8 +685,8 @@ pub fn main() !void {
     const unknown_runs = try refl.unknownFieldNumberRuns(&decoded);
     defer allocator.free(unknown_runs);
     try std.testing.expectEqual(@as(usize, 1), unknown_runs.len);
-    try std.testing.expectEqual(@as(pbz.FieldNumber, 100), unknown_runs[0].number);
-    try std.testing.expectEqual(@as(usize, 1), unknown_runs[0].count);
+    try std.testing.expectEqual(@as(pbz.FieldNumber, 100), refl.unknownFieldNumberRunNumber(unknown_runs[0]));
+    try std.testing.expectEqual(@as(usize, 1), refl.unknownFieldNumberRunCount(unknown_runs[0]));
     const unknown_field = try refl.unknownAt(&decoded, 0);
     try std.testing.expectEqual(@as(pbz.FieldNumber, 100), refl.unknownFieldNumber(unknown_field));
     try std.testing.expectEqual(pbz.WireType.varint, refl.unknownFieldWireType(unknown_field));
