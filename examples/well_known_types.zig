@@ -75,6 +75,7 @@ pub fn main() !void {
         \\{"enabled":true,"items":[null,"zig"]}
     );
     defer object.deinit(allocator);
+    try std.testing.expect(!object.isEmpty());
     try std.testing.expectEqual(@as(usize, 2), object.fieldCount());
     try std.testing.expectEqualStrings("enabled", (try object.fieldAt(0)).key);
     try std.testing.expect(object.hasField("enabled"));
@@ -116,6 +117,7 @@ pub fn main() !void {
         \\[null,true,{"nested":["owned"]}]
     );
     defer list.deinit(allocator);
+    try std.testing.expect(!list.isEmpty());
     try std.testing.expectEqual(@as(usize, 3), list.valueCount());
     try std.testing.expectEqual(pbz.wkt.Value.null_value, try list.valueAt(0));
     try std.testing.expect(list.hasValue(.{ .bool_value = true }));

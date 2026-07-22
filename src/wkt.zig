@@ -1608,6 +1608,10 @@ pub const Struct = struct {
         return self.fields.len;
     }
 
+    pub fn isEmpty(self: Struct) bool {
+        return self.fields.len == 0;
+    }
+
     pub fn fieldAt(self: Struct, index: usize) !Field {
         if (index >= self.fields.len) return error.UnknownField;
         return self.fields[index];
@@ -1729,6 +1733,10 @@ pub const ListValue = struct {
 
     pub fn valueCount(self: ListValue) usize {
         return self.values.len;
+    }
+
+    pub fn isEmpty(self: ListValue) bool {
+        return self.values.len == 0;
     }
 
     pub fn valueAt(self: ListValue, index: usize) !Value {
