@@ -1139,6 +1139,20 @@ pub const Reflection = struct {
         return field.targetAt(index) orelse error.MissingField;
     }
 
+    pub fn fieldTargetIndex(_: Reflection, field: *const schema.FieldDescriptor, target: schema.FieldTargetType) Error!usize {
+        var seen: usize = 0;
+        for (field.options.items) |option| {
+            if (!std.mem.eql(u8, schema.optionLeaf(option.name), "targets")) continue;
+            const candidate = schema.optionAsKnownEnum(schema.FieldTargetType, option.value) orelse {
+                seen += 1;
+                continue;
+            };
+            if (candidate == target) return seen;
+            seen += 1;
+        }
+        return error.MissingField;
+    }
+
     pub fn fieldIsWeak(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isWeak();
     }

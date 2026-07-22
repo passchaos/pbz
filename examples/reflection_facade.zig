@@ -316,7 +316,9 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 2), refl.fieldTargetCount(id_field));
     try std.testing.expectEqual(pbz.FieldTargetType.target_type_field, try refl.fieldTargetAt(id_field, 0));
     try std.testing.expectEqual(pbz.FieldTargetType.target_type_message, try refl.fieldTargetAt(id_field, 1));
+    try std.testing.expectEqual(@as(usize, 1), try refl.fieldTargetIndex(id_field, .target_type_message));
     try std.testing.expectError(error.MissingField, refl.fieldTargetAt(id_field, 2));
+    try std.testing.expectError(error.MissingField, refl.fieldTargetIndex(id_field, .target_type_enum));
     try std.testing.expect(refl.fieldIsScalar(id_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
     try std.testing.expectEqualStrings("int32", try refl.fieldScalarTypeName(id_field));
