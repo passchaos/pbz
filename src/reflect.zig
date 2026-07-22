@@ -875,6 +875,10 @@ pub const Reflection = struct {
         return extensionScopeMessageInFile(owner_file, field);
     }
 
+    pub fn fieldHasExtensionScope(self: Reflection, field: *const schema.FieldDescriptor) Error!bool {
+        return (try self.fieldExtensionScope(field)) != null;
+    }
+
     pub fn fieldByJsonName(_: Reflection, descriptor: *const schema.MessageDescriptor, json_name: []const u8) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByJsonName(json_name) orelse error.UnknownField;
     }

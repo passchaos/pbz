@@ -54,10 +54,12 @@ pub fn main() !void {
     std.debug.assert((try refl.fieldExtendeeType(priority_ext)) == host_desc);
     std.debug.assert((try refl.fieldContainingType(host_desc, priority_ext)) == host_desc);
     std.debug.assert((try refl.fieldExtensionScope(priority_ext)) == null);
+    std.debug.assert(!(try refl.fieldHasExtensionScope(priority_ext)));
     std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
     const scoped_ext = try refl.extensionForMessage(host_desc, 102);
     const scope_desc = try refl.message(".demo.Scope");
     std.debug.assert((try refl.fieldExtensionScope(scoped_ext)).? == scope_desc);
+    std.debug.assert(try refl.fieldHasExtensionScope(scoped_ext));
 
     var host = try pbz.parseTextAllocWithRegistry(
         allocator,
