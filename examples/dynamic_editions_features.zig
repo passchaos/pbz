@@ -68,7 +68,17 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, refl.fileEnforceNamingStyle(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.export_all, refl.fileDefaultSymbolVisibility(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, refl.fileEnforceProtoLimits(&file));
-    try std.testing.expect(refl.fileFeatures(&file).eql(file.features));
+    const file_features = refl.fileFeatures(&file);
+    try std.testing.expect(refl.featureSetEqual(file_features, file.features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.FieldPresence.explicit, refl.featureSetFieldPresence(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.RepeatedFieldEncoding.expanded, refl.featureSetRepeatedFieldEncoding(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnumType.open, refl.featureSetEnumType(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.verify, refl.featureSetUtf8Validation(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.length_prefixed, refl.featureSetMessageEncoding(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.allow, refl.featureSetJsonFormat(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, refl.featureSetEnforceNamingStyle(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.export_all, refl.featureSetDefaultSymbolVisibility(file_features));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, refl.featureSetEnforceProtoLimits(file_features));
     try std.testing.expect(refl.messageHasExplicitFeatures(child_desc));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);
     try std.testing.expect(!refl.messageHasExplicitFeatures(desc));

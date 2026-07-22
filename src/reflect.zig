@@ -43,6 +43,46 @@ pub const Reflection = struct {
         return file_descriptor.features;
     }
 
+    pub fn featureSetFieldPresence(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.FieldPresence {
+        return features.field_presence;
+    }
+
+    pub fn featureSetEnumType(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.EnumType {
+        return features.enum_type;
+    }
+
+    pub fn featureSetRepeatedFieldEncoding(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.RepeatedFieldEncoding {
+        return features.repeated_field_encoding;
+    }
+
+    pub fn featureSetUtf8Validation(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.Utf8Validation {
+        return features.utf8_validation;
+    }
+
+    pub fn featureSetMessageEncoding(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.MessageEncoding {
+        return features.message_encoding;
+    }
+
+    pub fn featureSetJsonFormat(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.JsonFormat {
+        return features.json_format;
+    }
+
+    pub fn featureSetEnforceNamingStyle(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.EnforceNamingStyle {
+        return features.enforce_naming_style;
+    }
+
+    pub fn featureSetDefaultSymbolVisibility(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.DefaultSymbolVisibility {
+        return features.default_symbol_visibility;
+    }
+
+    pub fn featureSetEnforceProtoLimits(_: Reflection, features: schema.FeatureSet) schema.FeatureSet.EnforceProtoLimits {
+        return features.enforce_proto_limits;
+    }
+
+    pub fn featureSetEqual(_: Reflection, lhs: schema.FeatureSet, rhs: schema.FeatureSet) bool {
+        return lhs.eql(rhs);
+    }
+
     pub fn fileFieldPresence(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.FieldPresence {
         return file_descriptor.features.field_presence;
     }
