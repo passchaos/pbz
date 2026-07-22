@@ -74,6 +74,10 @@ pub const Reflection = struct {
         return self.registry.findService(name, null) orelse error.UnknownService;
     }
 
+    pub fn fileService(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.ServiceDescriptor {
+        return file_descriptor.findService(name) orelse error.UnknownService;
+    }
+
     pub fn fileOfService(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
     }

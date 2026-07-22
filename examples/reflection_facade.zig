@@ -103,6 +103,8 @@ pub fn main() !void {
     try std.testing.expect(!refl.enumReservedNumber(status_desc, 10));
     try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));
     const users_service = try refl.service(".demo.reflect.Users");
+    try std.testing.expect(users_service == try refl.fileService(app_file, "Users"));
+    try std.testing.expectError(error.UnknownService, refl.fileService(app_file, "Missing"));
     const service_file = try refl.fileOfService(users_service);
     try std.testing.expect(service_file == app_file);
     const get_method = try refl.methodByName(users_service, "Get");

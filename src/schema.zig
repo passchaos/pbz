@@ -951,6 +951,13 @@ pub const FileDescriptor = struct {
         return null;
     }
 
+    pub fn findService(self: *const FileDescriptor, name: []const u8) ?*const ServiceDescriptor {
+        for (self.services.items) |*service| {
+            if (std.mem.eql(u8, service.name, name)) return service;
+        }
+        return null;
+    }
+
     pub fn findMessageDeep(self: *const FileDescriptor, name: []const u8) ?*const MessageDescriptor {
         const normalized = self.stripPackagePrefix(name);
         const needle = leafName(normalized);
