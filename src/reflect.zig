@@ -2688,6 +2688,49 @@ pub const Reflection = struct {
         return unknown.data;
     }
 
+    pub fn unknownFieldVarint(self: Reflection, unknown: dynamic.UnknownField) Error!u64 {
+        var reader = try self.unknownPayloadReader(unknown, .varint);
+        const value = try reader.readUInt64();
+        if (!reader.eof()) return error.InvalidWireType;
+        return value;
+    }
+
+    pub fn unknownFieldFixed32(self: Reflection, unknown: dynamic.UnknownField) Error!u32 {
+        var reader = try self.unknownPayloadReader(unknown, .fixed32);
+        const value = try reader.readFixed32();
+        if (!reader.eof()) return error.InvalidWireType;
+        return value;
+    }
+
+    pub fn unknownFieldFixed64(self: Reflection, unknown: dynamic.UnknownField) Error!u64 {
+        var reader = try self.unknownPayloadReader(unknown, .fixed64);
+        const value = try reader.readFixed64();
+        if (!reader.eof()) return error.InvalidWireType;
+        return value;
+    }
+
+    pub fn unknownFieldLengthDelimited(self: Reflection, unknown: dynamic.UnknownField) Error![]const u8 {
+        var reader = try self.unknownPayloadReader(unknown, .length_delimited);
+        const payload = try reader.readBytes();
+        if (!reader.eof()) return error.InvalidWireType;
+        return payload;
+    }
+
+    pub fn unknownFieldGroupPayload(self: Reflection, unknown: dynamic.UnknownField) Error![]const u8 {
+        var reader = try self.unknownPayloadReader(unknown, .start_group);
+        const payload = try reader.readGroupBytes(unknown.number);
+        if (!reader.eof()) return error.InvalidWireType;
+        return payload;
+    }
+
+    fn unknownPayloadReader(_: Reflection, unknown: dynamic.UnknownField, expected_wire_type: wire.WireType) Error!wire.Reader {
+        if (unknown.wire_type != expected_wire_type) return error.InvalidWireType;
+        var reader = wire.Reader.init(unknown.data);
+        const tag = (try reader.nextTag()) orelse return error.InvalidWireType;
+        if (tag.number != unknown.number or tag.wire_type != unknown.wire_type) return error.InvalidWireType;
+        return reader;
+    }
+
     pub fn unknownFieldCountByNumber(_: Reflection, message_value: *const dynamic.DynamicMessage, number: wire.FieldNumber) usize {
         return message_value.unknownFieldCountByNumber(number);
     }

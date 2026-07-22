@@ -311,7 +311,7 @@ benchmark harness.
   file metadata/import/dependency/import-kind dependency index/import-chain/symbol-containing-file lookup, enum descriptor/value registry lookup and enum-name writes, oneof field enumeration/index plus descriptor-direct oneof field access/index and oneof
   lookup/fields/presence/inspection/clearing plus real-vs-synthetic proto3-optional oneof/direct-owner/index metadata, imported message fields, descriptor option slices/access/index/value introspection and typed option lookup,
   file-local service lookup, registry field/oneof/method lookup, service/method owner/type/direct-type/deprecation metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
-  query/mutation, number-run index, and record accessors, required-field initialization checks, binary, and JSON round-trips.
+  query/mutation, number-run index, payload access, and record accessors, required-field initialization checks, binary, and JSON round-trips.
 - `examples/ownership_patterns.zig` covers arena-style ownership patterns for
   generated and dynamic messages, clone-to-long-lived-allocator handoff for
   both generated and dynamic messages, and generated decode reuse.
@@ -359,10 +359,9 @@ claiming broad superiority beyond the covered workloads:
   rows.
 - The local pbz benchmark includes unknown-field stress decode and
   count-by-number rows. The C++ `UnknownFieldSet` count-by-number row is parsed
-  into the fail-on-loss matrix against pbz's compact run sidecar; the C++
-  unknown-field decode row remains manual context because the APIs differ: C++
-  exposes parsed unknown fields, while pbz preserves exact raw-field slice
-  bytes.
+  into the fail-on-loss matrix against pbz's compact run sidecar; pbz now also
+  exposes decoded scalar/bytes/group payload accessors for preserved raw unknown
+  fields, while still retaining exact raw-field bytes.
 - `decodeKnownReuse` is a trusted same-schema hot path and intentionally rejects
   unknown fields instead of preserving them. Use `decode` / `decodeReuse` when
   unknown-field preservation is required.
