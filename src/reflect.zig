@@ -911,6 +911,10 @@ pub const Reflection = struct {
         return support.edition_deprecated orelse error.MissingField;
     }
 
+    pub fn featureSupportHasDeprecationWarning(_: Reflection, support: schema.FeatureSupport) bool {
+        return support.deprecation_warning.len != 0;
+    }
+
     pub fn featureSupportDeprecationWarning(_: Reflection, support: schema.FeatureSupport) []const u8 {
         return support.deprecation_warning;
     }
@@ -921,6 +925,10 @@ pub const Reflection = struct {
 
     pub fn featureSupportEditionRemoved(_: Reflection, support: schema.FeatureSupport) Error!schema.Edition {
         return support.edition_removed orelse error.MissingField;
+    }
+
+    pub fn featureSupportHasRemovalError(_: Reflection, support: schema.FeatureSupport) bool {
+        return support.removal_error.len != 0;
     }
 
     pub fn featureSupportRemovalError(_: Reflection, support: schema.FeatureSupport) []const u8 {

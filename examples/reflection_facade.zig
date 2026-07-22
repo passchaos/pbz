@@ -383,9 +383,11 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Edition.edition_2023, try refl.featureSupportEditionIntroduced(id_support));
     try std.testing.expect(refl.featureSupportHasEditionDeprecated(id_support));
     try std.testing.expectEqual(pbz.schema.Edition.edition_2024, try refl.featureSupportEditionDeprecated(id_support));
+    try std.testing.expect(refl.featureSupportHasDeprecationWarning(id_support));
     try std.testing.expectEqualStrings("use new_id", refl.featureSupportDeprecationWarning(id_support));
     try std.testing.expect(refl.featureSupportHasEditionRemoved(id_support));
     try std.testing.expectEqual(pbz.schema.Edition.edition_2026, try refl.featureSupportEditionRemoved(id_support));
+    try std.testing.expect(refl.featureSupportHasRemovalError(id_support));
     try std.testing.expectEqualStrings("removed id", refl.featureSupportRemovalError(id_support));
     try std.testing.expect(!refl.fieldHasFeatureSupport(tags_field));
     try std.testing.expectError(error.MissingField, refl.fieldFeatureSupport(tags_field));
@@ -526,7 +528,9 @@ pub fn main() !void {
     const status_support = try refl.enumValueFeatureSupport(status_unknown_value);
     try std.testing.expect(!refl.featureSupportHasEditionIntroduced(status_support));
     try std.testing.expectError(error.MissingField, refl.featureSupportEditionIntroduced(status_support));
+    try std.testing.expect(!refl.featureSupportHasDeprecationWarning(status_support));
     try std.testing.expectEqual(pbz.schema.Edition.edition_2026, try refl.featureSupportEditionRemoved(status_support));
+    try std.testing.expect(refl.featureSupportHasRemovalError(status_support));
     try std.testing.expectEqualStrings("removed status", refl.featureSupportRemovalError(status_support));
     try std.testing.expect(!refl.enumValueHasFeatureSupport(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
     try std.testing.expectError(error.MissingField, refl.enumValueFeatureSupport(try refl.enumValueByName(role_desc, "ROLE_UNKNOWN")));
