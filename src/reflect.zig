@@ -166,6 +166,14 @@ pub const Reflection = struct {
         return field.isMap();
     }
 
+    pub fn fieldMapKeyType(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.ScalarType {
+        return field.mapKeyType() orelse error.TypeMismatch;
+    }
+
+    pub fn fieldMapValueKind(_: Reflection, field: *const schema.FieldDescriptor) Error!schema.FieldKind {
+        return field.mapValueKind() orelse error.TypeMismatch;
+    }
+
     pub fn fieldIsRepeatedLike(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.isRepeatedLike();
     }

@@ -266,6 +266,20 @@ pub const FieldDescriptor = struct {
         return self.kind == .map;
     }
 
+    pub fn mapKeyType(self: FieldDescriptor) ?ScalarType {
+        return switch (self.kind) {
+            .map => |map_type| map_type.key,
+            else => null,
+        };
+    }
+
+    pub fn mapValueKind(self: FieldDescriptor) ?FieldKind {
+        return switch (self.kind) {
+            .map => |map_type| map_type.value.*,
+            else => null,
+        };
+    }
+
     pub fn isRepeatedLike(self: FieldDescriptor) bool {
         return self.cardinality == .repeated or self.kind == .map;
     }

@@ -92,6 +92,8 @@ pub fn main() !void {
     try std.testing.expect(refl.fieldIsPackable(samples_field));
     try std.testing.expect(try refl.fieldIsPacked(user_desc, samples_field));
     try std.testing.expect(refl.fieldIsMap(counts_desc_field));
+    try std.testing.expectEqual(pbz.schema.ScalarType.string, try refl.fieldMapKeyType(counts_desc_field));
+    try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, try refl.fieldMapValueKind(counts_desc_field));
     try std.testing.expect(refl.fieldIsRepeatedLike(counts_desc_field));
     try std.testing.expect(!refl.fieldIsPackable(counts_desc_field));
     try std.testing.expect(refl.messageReservedName(user_desc, "legacy"));
