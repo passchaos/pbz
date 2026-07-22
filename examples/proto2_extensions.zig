@@ -153,6 +153,8 @@ pub fn main() !void {
     std.debug.assert(try refl.extensionRangeContainingType(declared_desc, reflected_range) == declared_desc);
     try std.testing.expectError(error.UnknownField, refl.messageExtensionRangeAt(declared_desc, 9));
     std.debug.assert(refl.extensionRangeStart(reflected_range) == 200);
+    std.debug.assert(refl.extensionRangeHasExplicitEnd(reflected_range));
+    std.debug.assert(try refl.extensionRangeExplicitEnd(reflected_range) == 250);
     std.debug.assert(try refl.extensionRangeEnd(declared_desc, reflected_range) == 250);
     std.debug.assert(try refl.extensionRangeContains(declared_desc, reflected_range, 200));
     std.debug.assert(refl.messageIsExtensionNumber(declared_desc, 249));
@@ -162,6 +164,8 @@ pub fn main() !void {
     std.debug.assert(try refl.extensionRangeVerification(reflected_range) == .declaration);
     std.debug.assert(std.mem.eql(u8, refl.optionIdentifier(refl.extensionRangeOptions(reflected_range), "verification").?, "DECLARATION"));
     const host_open_range = try refl.messageExtensionRangeAt(host_desc, 0);
+    std.debug.assert(!refl.extensionRangeHasExplicitEnd(host_open_range));
+    try std.testing.expectError(error.MissingField, refl.extensionRangeExplicitEnd(host_open_range));
     std.debug.assert(try refl.extensionRangeEnd(host_desc, host_open_range) == @as(i64, std.math.maxInt(pbz.FieldNumber)) + 1);
     const message_set_desc = try refl.message(".demo.MessageSetHost");
     const message_set_open_range = try refl.messageExtensionRangeAt(message_set_desc, 0);

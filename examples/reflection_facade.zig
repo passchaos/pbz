@@ -516,6 +516,8 @@ pub fn main() !void {
     try std.testing.expect(refl.messageReservedRange(user_desc, 99) == null);
     try std.testing.expect(refl.messageReservedRange(user_desc, 111) == null);
     try std.testing.expectEqual(@as(i64, 100), refl.reservedRangeStart(user_reserved_range));
+    try std.testing.expect(refl.reservedRangeHasExplicitEnd(user_reserved_range));
+    try std.testing.expectEqual(@as(i64, 111), try refl.reservedRangeExplicitEnd(user_reserved_range));
     try std.testing.expectEqual(@as(i64, 111), refl.reservedRangeEnd(user_reserved_range, user_desc.extensionRangeMaxExclusive()));
     try std.testing.expectEqual(@as(i64, 111), refl.messageReservedRangeEnd(user_desc, user_reserved_range));
     try std.testing.expect(refl.reservedRangeContains(user_reserved_range, 100, user_desc.extensionRangeMaxExclusive()));
@@ -557,6 +559,8 @@ pub fn main() !void {
     try std.testing.expect(refl.enumReservedRange(status_desc, 4) == null);
     try std.testing.expect(refl.enumReservedRange(status_desc, 10) == null);
     try std.testing.expectEqual(@as(i64, 5), refl.reservedRangeStart(status_reserved_range));
+    try std.testing.expect(refl.reservedRangeHasExplicitEnd(status_reserved_range));
+    try std.testing.expectEqual(@as(i64, 10), try refl.reservedRangeExplicitEnd(status_reserved_range));
     try std.testing.expectEqual(@as(i64, 10), refl.reservedRangeEnd(status_reserved_range, std.math.maxInt(i64)));
     try std.testing.expect(refl.reservedRangeContains(status_reserved_range, 5, std.math.maxInt(i64)));
     try std.testing.expect(!refl.reservedRangeContains(status_reserved_range, 10, std.math.maxInt(i64)));

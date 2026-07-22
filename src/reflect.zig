@@ -2248,6 +2248,14 @@ pub const Reflection = struct {
         return range.start;
     }
 
+    pub fn reservedRangeHasExplicitEnd(_: Reflection, range: schema.ReservedRange) bool {
+        return range.end != null;
+    }
+
+    pub fn reservedRangeExplicitEnd(_: Reflection, range: schema.ReservedRange) Error!i64 {
+        return range.end orelse error.MissingField;
+    }
+
     pub fn reservedRangeEnd(_: Reflection, range: schema.ReservedRange, max_end: i64) i64 {
         return range.effectiveEnd(max_end);
     }
@@ -2365,6 +2373,14 @@ pub const Reflection = struct {
 
     pub fn extensionRangeStart(_: Reflection, range: *const schema.ExtensionRange) i64 {
         return range.start;
+    }
+
+    pub fn extensionRangeHasExplicitEnd(_: Reflection, range: *const schema.ExtensionRange) bool {
+        return range.end != null;
+    }
+
+    pub fn extensionRangeExplicitEnd(_: Reflection, range: *const schema.ExtensionRange) Error!i64 {
+        return range.end orelse error.MissingField;
     }
 
     pub fn extensionRangeEnd(_: Reflection, descriptor: *const schema.MessageDescriptor, range: *const schema.ExtensionRange) Error!i64 {
