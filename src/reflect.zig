@@ -66,6 +66,10 @@ pub const Reflection = struct {
         return file_descriptor.features.json_format;
     }
 
+    pub fn fileOptions(_: Reflection, file_descriptor: *const schema.FileDescriptor) []const schema.FieldOption {
+        return file_descriptor.options.items;
+    }
+
     pub fn sourceLocation(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const i32) Error!*const schema.SourceCodeInfo.Location {
         return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
     }
@@ -185,6 +189,10 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn messageOptions(_: Reflection, descriptor: *const schema.MessageDescriptor) []const schema.FieldOption {
+        return descriptor.options.items;
+    }
+
     pub fn messageHasExplicitFeatures(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
         return descriptor.features != null;
     }
@@ -262,6 +270,10 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn enumOptions(_: Reflection, descriptor: *const schema.EnumDescriptor) []const schema.FieldOption {
+        return descriptor.options.items;
+    }
+
     pub fn enumHasExplicitFeatures(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
         return descriptor.features != null;
     }
@@ -289,6 +301,10 @@ pub const Reflection = struct {
 
     pub fn enumValueIsDeprecated(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
+    }
+
+    pub fn enumValueOptions(_: Reflection, descriptor: *const schema.EnumValueDescriptor) []const schema.FieldOption {
+        return descriptor.options.items;
     }
 
     pub fn enumValueHasFeatureSupport(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
@@ -337,6 +353,10 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn serviceOptions(_: Reflection, descriptor: *const schema.ServiceDescriptor) []const schema.FieldOption {
+        return descriptor.options.items;
+    }
+
     pub fn serviceHasExplicitFeatures(_: Reflection, descriptor: *const schema.ServiceDescriptor) bool {
         return descriptor.features != null;
     }
@@ -364,6 +384,10 @@ pub const Reflection = struct {
 
     pub fn methodIsDeprecated(_: Reflection, method: *const schema.MethodDescriptor) bool {
         return schema.optionBool(method.options.items, "deprecated") orelse false;
+    }
+
+    pub fn methodOptions(_: Reflection, method: *const schema.MethodDescriptor) []const schema.FieldOption {
+        return method.options.items;
     }
 
     pub fn methodHasExplicitFeatures(_: Reflection, method: *const schema.MethodDescriptor) bool {
@@ -450,6 +474,10 @@ pub const Reflection = struct {
 
     pub fn fieldIsDeprecated(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return schema.optionBool(field.options.items, "deprecated") orelse false;
+    }
+
+    pub fn fieldOptions(_: Reflection, field: *const schema.FieldDescriptor) []const schema.FieldOption {
+        return field.options.items;
     }
 
     pub fn fieldFullName(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]u8 {
@@ -733,6 +761,10 @@ pub const Reflection = struct {
         return descriptor.name;
     }
 
+    pub fn oneofOptions(_: Reflection, descriptor: *const schema.OneofDescriptor) []const schema.FieldOption {
+        return descriptor.options.items;
+    }
+
     pub fn oneofHasExplicitFeatures(_: Reflection, descriptor: *const schema.OneofDescriptor) bool {
         return descriptor.features != null;
     }
@@ -883,6 +915,10 @@ pub const Reflection = struct {
 
     pub fn extensionRangeHasVerification(_: Reflection, range: *const schema.ExtensionRange) bool {
         return range.verification != null;
+    }
+
+    pub fn extensionRangeOptions(_: Reflection, range: *const schema.ExtensionRange) []const schema.FieldOption {
+        return range.options.items;
     }
 
     pub fn extensionRangeVerification(_: Reflection, range: *const schema.ExtensionRange) Error!schema.ExtensionRangeVerification {

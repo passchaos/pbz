@@ -18,6 +18,7 @@ pub fn main() !void {
         \\syntax = "proto3";
         \\package demo.reflect;
         \\import "common.proto";
+        \\option (demo.file_note) = "app";
         \\enum Status {
         \\  option deprecated = true;
         \\  reserved 5 to 9;
@@ -51,7 +52,11 @@ pub fn main() !void {
         \\  map<string, int32> counts = 4;
         \\  Role role = 5;
         \\  Profile profile = 6;
-        \\  oneof contact { string email = 7; bool disabled = 8; }
+        \\  oneof contact {
+        \\    option (demo.oneof_note) = "contact";
+        \\    string email = 7;
+        \\    bool disabled = 8;
+        \\  }
         \\  uint32 quota = 9;
         \\  uint64 total = 10;
         \\  sint32 delta = 11;
@@ -107,8 +112,10 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Syntax.proto3, refl.fileSyntax(app_file));
     try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));
     try std.testing.expectEqualStrings("common.proto", role_file.name);
+    try std.testing.expectEqualStrings("app", refl.optionString(refl.fileOptions(app_file), "file_note").?);
     try std.testing.expectEqualStrings("User", refl.messageName(user_desc));
     try std.testing.expect(refl.messageIsDeprecated(user_desc));
+    try std.testing.expect(refl.optionBool(refl.messageOptions(user_desc), "deprecated").?);
     const user_full_name = try refl.messageFullName(user_desc);
     defer allocator.free(user_full_name);
     try std.testing.expectEqualStrings("demo.reflect.User", user_full_name);
@@ -216,13 +223,14 @@ pub fn main() !void {
     try std.testing.expect((try refl.fieldContainingType(user_desc, id_field)) == user_desc);
     try std.testing.expect((try refl.fieldContainingFile(user_desc, id_field)) == app_file);
     try std.testing.expectError(error.UnknownField, refl.fieldContainingType(profile_desc, id_field));
-    try std.testing.expect(refl.optionBool(id_field.options.items, "deprecated").?);
-    try std.testing.expectEqualStrings("primary id", refl.optionString(id_field.options.items, "note").?);
-    try std.testing.expectEqual(@as(i64, 42), refl.optionInteger(id_field.options.items, "answer").?);
-    try std.testing.expectEqual(@as(u64, 18446744073709551615), refl.optionUnsignedInteger(id_field.options.items, "max_u64").?);
-    try std.testing.expectEqual(@as(f64, 1.5), refl.optionFloat(id_field.options.items, "ratio").?);
-    try std.testing.expect(std.mem.indexOf(u8, refl.optionAggregate(id_field.options.items, "meta").?, "label") != null);
-    try std.testing.expect(refl.optionString(id_field.options.items, "missing") == null);
+    const id_options = refl.fieldOptions(id_field);
+    try std.testing.expect(refl.optionBool(id_options, "deprecated").?);
+    try std.testing.expectEqualStrings("primary id", refl.optionString(id_options, "note").?);
+    try std.testing.expectEqual(@as(i64, 42), refl.optionInteger(id_options, "answer").?);
+    try std.testing.expectEqual(@as(u64, 18446744073709551615), refl.optionUnsignedInteger(id_options, "max_u64").?);
+    try std.testing.expectEqual(@as(f64, 1.5), refl.optionFloat(id_options, "ratio").?);
+    try std.testing.expect(std.mem.indexOf(u8, refl.optionAggregate(id_options, "meta").?, "label") != null);
+    try std.testing.expect(refl.optionString(id_options, "missing") == null);
     try std.testing.expect(refl.fieldHasFeatureSupport(id_field));
     const id_support = try refl.fieldFeatureSupport(id_field);
     try std.testing.expectEqual(pbz.schema.Edition.edition_2023, id_support.edition_introduced.?);
@@ -247,7 +255,9 @@ pub fn main() !void {
     try std.testing.expectError(error.MissingField, refl.fieldOneofName(id_field));
     try std.testing.expect(refl.fieldHasOneof(email_field));
     try std.testing.expectEqualStrings("contact", try refl.fieldOneofName(email_field));
-    try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == try refl.oneofByName(user_desc, "contact"));
+    const contact_oneof = try refl.oneofByName(user_desc, "contact");
+    try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == contact_oneof);
+    try std.testing.expectEqualStrings("contact", refl.optionString(refl.oneofOptions(contact_oneof), "oneof_note").?);
     try std.testing.expect(!refl.fieldIsExtension(id_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldExtendeeName(id_field));
     try std.testing.expect(!(try refl.fieldHasPresence(user_desc, id_field)));
@@ -278,8 +288,10 @@ pub fn main() !void {
     try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
     const status_desc = try refl.enumeration(".demo.reflect.Status");
     try std.testing.expect(refl.enumIsDeprecated(status_desc));
+    try std.testing.expect(refl.optionBool(refl.enumOptions(status_desc), "deprecated").?);
     const status_unknown_value = try refl.enumValueByName(status_desc, "STATUS_UNKNOWN");
     try std.testing.expect(refl.enumValueIsDeprecated(status_unknown_value));
+    try std.testing.expect(refl.optionBool(refl.enumValueOptions(status_unknown_value), "deprecated").?);
     try std.testing.expect(refl.enumValueHasFeatureSupport(status_unknown_value));
     const status_support = try refl.enumValueFeatureSupport(status_unknown_value);
     try std.testing.expectEqual(pbz.schema.Edition.edition_2026, status_support.edition_removed.?);
@@ -321,9 +333,11 @@ pub fn main() !void {
     try std.testing.expect(try refl.methodOutputType(users_service, get_method) == user_desc);
     try std.testing.expect(!refl.methodClientStreaming(get_method));
     try std.testing.expect(!refl.methodServerStreaming(get_method));
-    try std.testing.expect(refl.optionBool(users_service.options.items, "deprecated").?);
-    try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionIdentifier(get_method.options.items, "idempotency_level").?);
-    try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionValue(get_method.options.items, "idempotency_level").?.identifier);
+    try std.testing.expect(refl.optionBool(refl.serviceOptions(users_service), "deprecated").?);
+    const method_options = refl.methodOptions(get_method);
+    try std.testing.expect(refl.optionBool(method_options, "deprecated").?);
+    try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionIdentifier(method_options, "idempotency_level").?);
+    try std.testing.expectEqualStrings("NO_SIDE_EFFECTS", refl.optionValue(method_options, "idempotency_level").?.identifier);
 
     var user = try refl.newMessage("demo.reflect.User");
     defer user.deinit();

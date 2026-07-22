@@ -129,6 +129,7 @@ pub fn main() !void {
     std.debug.assert(!refl.messageIsExtensionNumber(declared_desc, 250));
     std.debug.assert(refl.extensionRangeHasVerification(reflected_range));
     std.debug.assert(try refl.extensionRangeVerification(reflected_range) == .declaration);
+    std.debug.assert(std.mem.eql(u8, refl.optionIdentifier(refl.extensionRangeOptions(reflected_range), "verification").?, "DECLARATION"));
     const host_open_range = try refl.messageExtensionRangeAt(host_desc, 0);
     std.debug.assert(try refl.extensionRangeEnd(host_desc, host_open_range) == @as(i64, std.math.maxInt(pbz.FieldNumber)) + 1);
     const message_set_desc = try refl.message(".demo.MessageSetHost");
