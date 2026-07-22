@@ -137,6 +137,9 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("bigDelta", default_json_name);
     const id_field = try refl.fieldByName(user_desc, "id");
     const tags_field = try refl.fieldByName(user_desc, "tags");
+    const role_field = try refl.fieldByName(user_desc, "role");
+    const profile_field = try refl.fieldByName(user_desc, "profile");
+    const email_field = try refl.fieldByName(user_desc, "email");
     const samples_field = try refl.fieldByName(user_desc, "samples");
     const counts_desc_field = try refl.fieldByName(user_desc, "counts");
     try std.testing.expectEqualStrings("id", refl.fieldName(id_field));
@@ -146,6 +149,19 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
+    try std.testing.expectError(error.TypeMismatch, refl.fieldTypeName(id_field));
+    try std.testing.expectError(error.TypeMismatch, refl.fieldMessageType(user_desc, id_field));
+    try std.testing.expectEqualStrings("Role", try refl.fieldTypeName(role_field));
+    try std.testing.expect(role_desc == try refl.fieldEnumType(user_desc, role_field));
+    try std.testing.expectEqualStrings("Profile", try refl.fieldTypeName(profile_field));
+    try std.testing.expect(profile_desc == try refl.fieldMessageType(user_desc, profile_field));
+    try std.testing.expect(!refl.fieldHasOneof(id_field));
+    try std.testing.expectError(error.MissingField, refl.fieldOneofName(id_field));
+    try std.testing.expect(refl.fieldHasOneof(email_field));
+    try std.testing.expectEqualStrings("contact", try refl.fieldOneofName(email_field));
+    try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == try refl.oneofByName(user_desc, "contact"));
+    try std.testing.expect(!refl.fieldIsExtension(id_field));
+    try std.testing.expectError(error.TypeMismatch, refl.fieldExtendeeName(id_field));
     try std.testing.expect(!(try refl.fieldHasPresence(user_desc, id_field)));
     try std.testing.expect(!(refl.fieldIsRequired(id_field)));
     try std.testing.expect(refl.fieldIsRepeatedLike(tags_field));
@@ -375,7 +391,12 @@ pub fn main() !void {
         \\syntax = "proto2";
         \\package demo.required_reflect;
         \\message Child { required int32 id = 1; }
-        \\message Parent { required string name = 1; optional Child child = 2; optional int32 priority = 3 [default = 7]; }
+        \\message Parent {
+        \\  required string name = 1;
+        \\  optional Child child = 2;
+        \\  optional int32 priority = 3 [default = 7];
+        \\  optional group Legacy = 4 { optional int32 code = 5; }
+        \\}
     );
     defer required_file.deinit();
     required_file.name = "required-reflect.proto";
@@ -390,6 +411,17 @@ pub fn main() !void {
     try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
     try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.getFieldOrDefault(&parent, "priority")).int32);
+    const required_child_field = try required_refl.fieldByName(parent.descriptor, "child");
+    try std.testing.expectEqualStrings("Child", try required_refl.fieldTypeName(required_child_field));
+    const child_desc = try required_refl.message(".demo.required_reflect.Child");
+    try std.testing.expect(child_desc == try required_refl.fieldMessageType(parent.descriptor, required_child_field));
+    const legacy_field = try required_refl.fieldByName(parent.descriptor, "legacy");
+    try std.testing.expectEqualStrings("Legacy", try required_refl.fieldTypeName(legacy_field));
+    const legacy_desc = try required_refl.fieldGroupType(parent.descriptor, legacy_field);
+    try std.testing.expectEqualStrings("Legacy", legacy_desc.name);
+    const legacy_full_name = try required_refl.messageFullName(legacy_desc);
+    defer allocator.free(legacy_full_name);
+    try std.testing.expectEqualStrings("demo.required_reflect.Parent.Legacy", legacy_full_name);
     const required_name_field = try required_refl.fieldByName(parent.descriptor, "name");
     try std.testing.expect(!required_refl.fieldHasDefaultValue(required_name_field));
     try std.testing.expectError(error.MissingField, required_refl.fieldExplicitDefaultValue(required_name_field));
@@ -400,7 +432,6 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("name", missing_name);
 
     try required_refl.setString(&parent, "name", "root");
-    const child_desc = try required_refl.message(".demo.required_reflect.Child");
     const child = try required_refl.mutableMessage(&parent, "child");
     try std.testing.expect(child.descriptor == child_desc);
     const missing_child = (try required_refl.missingRequiredFieldPath(&parent)).?;

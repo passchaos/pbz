@@ -317,6 +317,63 @@ pub const Reflection = struct {
         return field.kind;
     }
 
+    pub fn fieldTypeName(_: Reflection, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return switch (field.kind) {
+            .message, .enumeration, .group => |name| name,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn fieldMessageType(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        const type_name = switch (field.kind) {
+            .message => |name| name,
+            else => return error.TypeMismatch,
+        };
+        return try self.messageForFieldType(message_descriptor, field, type_name);
+    }
+
+    pub fn fieldGroupType(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        const type_name = switch (field.kind) {
+            .group => |name| name,
+            else => return error.TypeMismatch,
+        };
+        return try self.messageForFieldType(message_descriptor, field, type_name);
+    }
+
+    pub fn fieldEnumType(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
+        return try self.enumForField(message_descriptor, field);
+    }
+
+    pub fn fieldHasOneof(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.oneof_name != null;
+    }
+
+    pub fn fieldOneofName(_: Reflection, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return field.oneof_name orelse error.MissingField;
+    }
+
+    pub fn fieldContainingOneof(_: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.OneofDescriptor {
+        const oneof_name = field.oneof_name orelse return error.MissingField;
+        return descriptor.findOneof(oneof_name) orelse error.UnknownField;
+    }
+
+    pub fn fieldIsExtension(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.extendee != null;
+    }
+
+    pub fn fieldExtendeeName(_: Reflection, field: *const schema.FieldDescriptor) Error![]const u8 {
+        return field.extendee orelse error.TypeMismatch;
+    }
+
+    pub fn fieldExtendeeType(self: Reflection, field: *const schema.FieldDescriptor) Error!*const schema.MessageDescriptor {
+        const extendee = field.extendee orelse return error.TypeMismatch;
+        const owner_file = try self.fileOfExtension(field);
+        const scope = extensionScope(owner_file, field);
+        if (self.registry.findMessageVisible(owner_file, extendee, scope)) |message_desc| return message_desc;
+        if (self.registry.findMessage(extendee, scope)) |message_desc| return message_desc;
+        return error.UnknownMessage;
+    }
+
     pub fn fieldByJsonName(_: Reflection, descriptor: *const schema.MessageDescriptor, json_name: []const u8) Error!*const schema.FieldDescriptor {
         return descriptor.findFieldByJsonName(json_name) orelse error.UnknownField;
     }

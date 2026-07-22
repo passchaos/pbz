@@ -305,7 +305,7 @@ benchmark harness.
 - `examples/reflection_facade.zig` covers the public reflection facade over
   registry descriptors and dynamic messages, including typed get/set/add/get-default
   and clear helpers across all scalar families, present-field listing, immediate
-  type-checked writes, repeated field replacement/reordering/removal, typed message/group creation/access/mutation, map
+  type-checked writes, repeated field replacement/reordering/removal, typed message/group creation/access/mutation, field type/extendee/oneof metadata, map
   last-wins mutation, map key/value metadata, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output, explicit default metadata, field presence/packing/reserved metadata,
   ordered file/message/enum/service descriptor enumeration, descriptor name/full-name identity lookup,
   file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
@@ -317,7 +317,7 @@ benchmark harness.
   both generated and dynamic messages, and generated decode reuse.
 - `examples/proto2_extensions.zig` covers proto2 extension parsing, extension
   range declarations/verification, repeated message extensions with recursive
-  required-field validation, reflection extension/range/declaration/full-name lookup, descriptor round-trips,
+  required-field validation, reflection extension/range/declaration/full-name/extendee lookup, descriptor round-trips,
   JSON/TextFormat extension mappings, and unknown preservation.
 - `examples/well_known_types.zig` covers selected well known types, including
   Timestamp, Duration, FieldMask, Empty, Struct/Value/ListValue, scalar and

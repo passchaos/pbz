@@ -43,6 +43,9 @@ pub fn main() !void {
     const priority_full_name = try refl.extensionFullName(priority_ext);
     defer allocator.free(priority_full_name);
     std.debug.assert(std.mem.eql(u8, priority_full_name, "demo.priority"));
+    std.debug.assert(refl.fieldIsExtension(priority_ext));
+    std.debug.assert(std.mem.eql(u8, try refl.fieldExtendeeName(priority_ext), "Host"));
+    std.debug.assert((try refl.fieldExtendeeType(priority_ext)) == host_desc);
     std.debug.assert(std.mem.eql(u8, (try refl.fileOfExtension(priority_ext)).name, "extensions.proto"));
 
     var host = try pbz.parseTextAllocWithRegistry(
@@ -134,6 +137,7 @@ pub fn main() !void {
     const declared_full_name = try refl.extensionFullName(declared_ext);
     defer allocator.free(declared_full_name);
     std.debug.assert(std.mem.eql(u8, declared_full_name, "demo.declared_priority"));
+    std.debug.assert((try refl.fieldExtendeeType(declared_ext)) == declared_desc);
     std.debug.assert(declared.getByNumber(declared_ext.number).?.values.items[0].int32 == 11);
     const declared_json = try pbz.stringifyJsonAllocWithRegistry(allocator, &file, &registry, &declared, .{});
     defer allocator.free(declared_json);
