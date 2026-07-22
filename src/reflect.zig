@@ -9,6 +9,7 @@ pub const Error = dynamic.DecodeError || dynamic.ValidationError || error{ Unkno
 
 const ValueTag = std.meta.Tag(dynamic.Value);
 const DefaultTag = std.meta.Tag(dynamic.DefaultValue);
+const OptionTag = std.meta.Tag(schema.OptionValue);
 
 pub const Reflection = struct {
     allocator: std.mem.Allocator,
@@ -1663,6 +1664,50 @@ pub const Reflection = struct {
             if (std.mem.eql(u8, option.name, name) or std.mem.eql(u8, schema.optionLeaf(option.name), name)) return index;
         }
         return error.UnknownField;
+    }
+
+    pub fn optionName(_: Reflection, option: schema.FieldOption) []const u8 {
+        return option.name;
+    }
+
+    pub fn optionLeafName(_: Reflection, option: schema.FieldOption) []const u8 {
+        return schema.optionLeaf(option.name);
+    }
+
+    pub fn optionRawValue(_: Reflection, option: schema.FieldOption) schema.OptionValue {
+        return option.value;
+    }
+
+    pub fn optionValueTag(_: Reflection, value: schema.OptionValue) OptionTag {
+        return std.meta.activeTag(value);
+    }
+
+    pub fn optionValueBool(_: Reflection, value: schema.OptionValue) ?bool {
+        return schema.optionAsBool(value);
+    }
+
+    pub fn optionValueIdentifier(_: Reflection, value: schema.OptionValue) ?[]const u8 {
+        return schema.optionAsIdentifier(value);
+    }
+
+    pub fn optionValueString(_: Reflection, value: schema.OptionValue) ?[]const u8 {
+        return schema.optionAsString(value);
+    }
+
+    pub fn optionValueInteger(_: Reflection, value: schema.OptionValue) ?i64 {
+        return schema.optionAsInteger(value);
+    }
+
+    pub fn optionValueUnsignedInteger(_: Reflection, value: schema.OptionValue) ?u64 {
+        return schema.optionAsUnsignedInteger(value);
+    }
+
+    pub fn optionValueFloat(_: Reflection, value: schema.OptionValue) ?f64 {
+        return schema.optionAsFloat(value);
+    }
+
+    pub fn optionValueAggregate(_: Reflection, value: schema.OptionValue) ?[]const u8 {
+        return schema.optionAsAggregate(value);
     }
 
     pub fn optionValue(_: Reflection, options: []const schema.FieldOption, name: []const u8) ?schema.OptionValue {
