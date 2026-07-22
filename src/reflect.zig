@@ -1510,14 +1510,29 @@ pub const Reflection = struct {
         return try descriptor.oneofFieldsAlloc(self.allocator, name);
     }
 
+    pub fn oneofDescriptorFields(self: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error![]*const schema.FieldDescriptor {
+        _ = try self.oneofContainingType(descriptor, oneof);
+        return try descriptor.oneofFieldsAlloc(self.allocator, oneof.name);
+    }
+
     pub fn oneofFieldCount(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!usize {
         _ = try self.oneofByName(descriptor, name);
         return descriptor.oneofFieldCount(name);
     }
 
+    pub fn oneofDescriptorFieldCount(self: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
+        _ = try self.oneofContainingType(descriptor, oneof);
+        return descriptor.oneofFieldCount(oneof.name);
+    }
+
     pub fn oneofFieldAt(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8, index: usize) Error!*const schema.FieldDescriptor {
         _ = try self.oneofByName(descriptor, name);
         return descriptor.oneofFieldAt(name, index) orelse error.UnknownField;
+    }
+
+    pub fn oneofDescriptorFieldAt(self: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor, index: usize) Error!*const schema.FieldDescriptor {
+        _ = try self.oneofContainingType(descriptor, oneof);
+        return descriptor.oneofFieldAt(oneof.name, index) orelse error.UnknownField;
     }
 
     pub fn enumValueByName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
