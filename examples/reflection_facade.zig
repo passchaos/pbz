@@ -265,6 +265,11 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("disabled", refl.whichOneof(&user, "contact").?.name);
     try std.testing.expect(try refl.getBool(&user, "disabled"));
     try std.testing.expectEqualStrings("contact", (try refl.oneofByName(user_desc, "contact")).name);
+    const contact_fields = try refl.oneofFields(user_desc, "contact");
+    defer allocator.free(contact_fields);
+    try std.testing.expectEqual(@as(usize, 2), contact_fields.len);
+    try std.testing.expectEqualStrings("email", contact_fields[0].name);
+    try std.testing.expectEqualStrings("disabled", contact_fields[1].name);
     try std.testing.expect(try refl.clearOneof(&user, "contact"));
     try std.testing.expect(!(try refl.hasOneof(&user, "contact")));
     try std.testing.expect(refl.whichOneof(&user, "contact") == null);

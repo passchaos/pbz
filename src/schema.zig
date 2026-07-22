@@ -631,6 +631,17 @@ pub const MessageDescriptor = struct {
         return null;
     }
 
+    pub fn oneofFieldsAlloc(self: *const MessageDescriptor, allocator: std.mem.Allocator, name: []const u8) std.mem.Allocator.Error![]*const FieldDescriptor {
+        var fields: std.ArrayList(*const FieldDescriptor) = .empty;
+        errdefer fields.deinit(allocator);
+        for (self.fields.items) |*field| {
+            if (field.oneof_name) |oneof_name| {
+                if (std.mem.eql(u8, oneof_name, name)) try fields.append(allocator, field);
+            }
+        }
+        return try fields.toOwnedSlice(allocator);
+    }
+
     pub fn findMessage(self: *const MessageDescriptor, name: []const u8) ?*const MessageDescriptor {
         for (self.messages.items) |*message| {
             if (std.mem.eql(u8, message.name, name)) return message;

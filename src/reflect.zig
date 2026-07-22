@@ -222,6 +222,11 @@ pub const Reflection = struct {
         return descriptor.findOneof(name) orelse error.UnknownField;
     }
 
+    pub fn oneofFields(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error![]*const schema.FieldDescriptor {
+        _ = try self.oneofByName(descriptor, name);
+        return try descriptor.oneofFieldsAlloc(self.allocator, name);
+    }
+
     pub fn enumValueByName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
         return descriptor.findValue(name) orelse error.UnknownEnum;
     }

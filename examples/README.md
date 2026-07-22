@@ -53,7 +53,7 @@ library API.
   present-field listing, type-checked writes, repeated field replacement/reordering/removal, all scalar families,
   typed message/group creation/access/mutation, maps, map key lookup, JSON-name field lookup/output, field presence/packing/reserved
   metadata, file metadata/import-chain lookup, enum descriptor/value lookup and enum-name writes, oneof
-  lookup/presence/inspection/clearing, imported message fields, option lookup,
+  lookup/fields/presence/inspection/clearing, imported message fields, option lookup,
   file-local service lookup, service/method type metadata, and extension descriptor lookup, unknown-field query/mutation,
   required-field initialization checks, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
