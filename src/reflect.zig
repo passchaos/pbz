@@ -579,8 +579,26 @@ pub const Reflection = struct {
         return descriptor.isReservedName(name);
     }
 
+    pub fn enumReservedNameCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {
+        return descriptor.reserved_names.items.len;
+    }
+
+    pub fn enumReservedNameAt(_: Reflection, descriptor: *const schema.EnumDescriptor, index: usize) Error![]const u8 {
+        if (index >= descriptor.reserved_names.items.len) return error.UnknownEnum;
+        return descriptor.reserved_names.items[index];
+    }
+
     pub fn enumReservedNumber(_: Reflection, descriptor: *const schema.EnumDescriptor, number: i64) bool {
         return descriptor.isReservedNumber(number);
+    }
+
+    pub fn enumReservedRangeCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {
+        return descriptor.reserved_ranges.items.len;
+    }
+
+    pub fn enumReservedRangeAt(_: Reflection, descriptor: *const schema.EnumDescriptor, index: usize) Error!schema.ReservedRange {
+        if (index >= descriptor.reserved_ranges.items.len) return error.UnknownEnum;
+        return descriptor.reserved_ranges.items[index];
     }
 
     pub fn enumForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
@@ -613,16 +631,52 @@ pub const Reflection = struct {
         return descriptor.isReservedName(name);
     }
 
+    pub fn messageReservedNameCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.reserved_names.items.len;
+    }
+
+    pub fn messageReservedNameAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error![]const u8 {
+        if (index >= descriptor.reserved_names.items.len) return error.UnknownField;
+        return descriptor.reserved_names.items[index];
+    }
+
     pub fn messageReservedNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {
         return descriptor.isReservedNumber(number);
+    }
+
+    pub fn messageReservedRangeCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.reserved_ranges.items.len;
+    }
+
+    pub fn messageReservedRangeAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!schema.ReservedRange {
+        if (index >= descriptor.reserved_ranges.items.len) return error.UnknownField;
+        return descriptor.reserved_ranges.items[index];
     }
 
     pub fn messageExtensionRange(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) ?*const schema.ExtensionRange {
         return descriptor.extensionRangeForNumber(number);
     }
 
+    pub fn messageExtensionRangeCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.extension_ranges.items.len;
+    }
+
+    pub fn messageExtensionRangeAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.ExtensionRange {
+        if (index >= descriptor.extension_ranges.items.len) return error.UnknownField;
+        return &descriptor.extension_ranges.items[index];
+    }
+
     pub fn extensionDeclaration(_: Reflection, range: *const schema.ExtensionRange, number: i32) ?schema.ExtensionDeclaration {
         return range.declarationForNumber(number);
+    }
+
+    pub fn extensionDeclarationCount(_: Reflection, range: *const schema.ExtensionRange) usize {
+        return range.declarations.items.len;
+    }
+
+    pub fn extensionDeclarationAt(_: Reflection, range: *const schema.ExtensionRange, index: usize) Error!schema.ExtensionDeclaration {
+        if (index >= range.declarations.items.len) return error.UnknownField;
+        return range.declarations.items[index];
     }
 
     pub fn messageIsExtensionNumber(_: Reflection, descriptor: *const schema.MessageDescriptor, number: i64) bool {

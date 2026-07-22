@@ -112,8 +112,14 @@ pub fn main() !void {
     const range = declared_desc.extension_ranges.items[0];
     std.debug.assert(refl.messageIsExtensionNumber(declared_desc, 200));
     std.debug.assert(!refl.messageIsExtensionNumber(declared_desc, 199));
+    std.debug.assert(refl.messageExtensionRangeCount(declared_desc) == 1);
+    std.debug.assert((try refl.messageExtensionRangeAt(declared_desc, 0)).contains(200));
+    try std.testing.expectError(error.UnknownField, refl.messageExtensionRangeAt(declared_desc, 9));
     const reflected_range = refl.messageExtensionRange(declared_desc, 200) orelse return error.MissingExtensionRange;
     std.debug.assert(reflected_range.verification.? == .declaration);
+    std.debug.assert(refl.extensionDeclarationCount(reflected_range) == 2);
+    std.debug.assert((try refl.extensionDeclarationAt(reflected_range, 0)).number == 200);
+    try std.testing.expectError(error.UnknownField, refl.extensionDeclarationAt(reflected_range, 9));
     std.debug.assert(std.mem.eql(u8, (refl.extensionDeclaration(reflected_range, 200) orelse return error.MissingExtensionDeclaration).full_name, ".demo.declared_priority"));
     std.debug.assert((refl.extensionDeclaration(reflected_range, 201) orelse return error.MissingExtensionDeclaration).reserved);
     std.debug.assert(refl.extensionDeclaration(reflected_range, 202) == null);
