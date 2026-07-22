@@ -229,6 +229,15 @@ pub const Reflection = struct {
         return try self.file(import.path);
     }
 
+    pub fn fileOptionDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
+        return importKindCount(file_descriptor, .option);
+    }
+
+    pub fn fileOptionDependency(self: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FileDescriptor {
+        const import = importOfKindAt(file_descriptor, .option, index) orelse return error.UnknownFile;
+        return try self.file(import.path);
+    }
+
     pub fn fileMessageCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return file_descriptor.messageCount();
     }

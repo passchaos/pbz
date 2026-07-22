@@ -13,10 +13,15 @@ pub fn main() !void {
         \\package demo.common;
         \\message User { int32 id = 1; }
     );
+    try tree.add("custom_options.proto",
+        \\syntax = "proto2";
+        \\package demo.options;
+    );
     try tree.add("app.proto",
-        \\syntax = "proto3";
+        \\edition = "2024";
         \\package demo.app;
         \\import public "common.proto";
+        \\import option "custom_options.proto";
         \\message Event { demo.common.User user = 1; }
         \\service Events { rpc Get (Event) returns (Event); }
     );
@@ -30,18 +35,25 @@ pub fn main() !void {
     const refl = pbz.Reflection.init(allocator, &loaded.registry);
     const app_file = try refl.file("app.proto");
     const common_file = try refl.file("common.proto");
+    const options_file = try refl.file("custom_options.proto");
     const common_import = try refl.fileImport(app_file, "common.proto");
     std.debug.assert(std.mem.eql(u8, refl.importPath(common_import), "common.proto"));
     std.debug.assert(refl.importKind(common_import) == .public);
     std.debug.assert(refl.importIsPublic(common_import));
     std.debug.assert(!refl.importIsWeak(common_import));
     std.debug.assert(!refl.importIsOption(common_import));
-    std.debug.assert(refl.fileDependencyCount(app_file) == 1);
+    const options_import = try refl.fileImport(app_file, "custom_options.proto");
+    std.debug.assert(refl.importIsOption(options_import));
+    std.debug.assert(refl.fileDependencyCount(app_file) == 2);
     std.debug.assert((try refl.fileDependency(app_file, 0)) == common_file);
+    std.debug.assert((try refl.fileDependency(app_file, 1)) == options_file);
     try std.testing.expectError(error.UnknownFile, refl.fileDependency(app_file, 9));
     std.debug.assert(refl.filePublicDependencyCount(app_file) == 1);
     std.debug.assert((try refl.filePublicDependency(app_file, 0)) == common_file);
     try std.testing.expectError(error.UnknownFile, refl.filePublicDependency(app_file, 9));
+    std.debug.assert(refl.fileOptionDependencyCount(app_file) == 1);
+    std.debug.assert((try refl.fileOptionDependency(app_file, 0)) == options_file);
+    try std.testing.expectError(error.UnknownFile, refl.fileOptionDependency(app_file, 9));
     std.debug.assert(refl.fileWeakDependencyCount(app_file) == 0);
     try std.testing.expectError(error.UnknownFile, refl.fileWeakDependency(app_file, 0));
     std.debug.assert(!refl.fileHasMissingWeakImport(app_file, "common.proto"));
