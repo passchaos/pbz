@@ -90,6 +90,7 @@ pub fn main() !void {
         \\  message Audit { int32 id = 1; }
         \\  enum LocalStatus { LOCAL_UNKNOWN = 0; }
         \\  LocalStatus local_status = 37;
+        \\  repeated int32 unpacked_samples = 38 [packed = false];
         \\}
         \\service Users {
         \\  option deprecated = true;
@@ -151,7 +152,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownService, refl.fileServiceAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 0), refl.fileExtensionCount(app_file));
     try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(app_file, 0));
-    try std.testing.expectEqual(@as(usize, 37), refl.messageFieldCount(user_desc));
+    try std.testing.expectEqual(@as(usize, 38), refl.messageFieldCount(user_desc));
     try std.testing.expect((try refl.messageFieldAt(user_desc, 0)) == try refl.fieldByName(user_desc, "id"));
     try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
@@ -225,6 +226,7 @@ pub fn main() !void {
     const email_field = try refl.fieldByName(user_desc, "email");
     const nickname_field = try refl.fieldByName(user_desc, "nickname");
     const samples_field = try refl.fieldByName(user_desc, "samples");
+    const unpacked_samples_field = try refl.fieldByName(user_desc, "unpacked_samples");
     const counts_desc_field = try refl.fieldByName(user_desc, "counts");
     try std.testing.expectEqualStrings("id", refl.fieldName(id_field));
     const id_full_name = try refl.fieldFullName(user_desc, id_field);
@@ -306,9 +308,14 @@ pub fn main() !void {
     try std.testing.expect(!(refl.fieldIsMap(tags_field)));
     try std.testing.expect(!refl.fieldIsPackable(tags_field));
     try std.testing.expect(refl.fieldIsPackable(samples_field));
+    try std.testing.expect(!refl.fieldHasPackedOverride(samples_field));
+    try std.testing.expectError(error.MissingField, refl.fieldPackedOverride(samples_field));
     try std.testing.expect(try refl.fieldIsPacked(user_desc, samples_field));
     try std.testing.expectEqual(pbz.WireType.varint, refl.fieldWireType(samples_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, samples_field));
+    try std.testing.expect(refl.fieldHasPackedOverride(unpacked_samples_field));
+    try std.testing.expect(!(try refl.fieldPackedOverride(unpacked_samples_field)));
+    try std.testing.expect(!(try refl.fieldIsPacked(user_desc, unpacked_samples_field)));
     try std.testing.expect(refl.fieldIsMap(counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, counts_desc_field));

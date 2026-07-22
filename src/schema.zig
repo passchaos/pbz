@@ -266,6 +266,14 @@ pub const FieldDescriptor = struct {
         return self.cardinality == .repeated and self.kind.packable();
     }
 
+    pub fn hasPackedOverride(self: FieldDescriptor) bool {
+        return self.packed_override != null;
+    }
+
+    pub fn packedOverride(self: FieldDescriptor) ?bool {
+        return self.packed_override;
+    }
+
     pub fn isMap(self: FieldDescriptor) bool {
         return self.kind == .map;
     }

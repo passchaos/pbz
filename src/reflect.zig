@@ -1030,6 +1030,14 @@ pub const Reflection = struct {
         return field.isPackable();
     }
 
+    pub fn fieldHasPackedOverride(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.hasPackedOverride();
+    }
+
+    pub fn fieldPackedOverride(_: Reflection, field: *const schema.FieldDescriptor) Error!bool {
+        return field.packedOverride() orelse error.MissingField;
+    }
+
     pub fn fieldIsPacked(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!bool {
         return field.resolvedPacked(try self.fileOfMessage(descriptor));
     }
