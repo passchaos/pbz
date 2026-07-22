@@ -34,12 +34,18 @@ pub fn main() !void {
     const refl = pbz.Reflection.init(allocator, &registry);
 
     const syntax_location = try refl.sourceLocation(&file, &.{12});
-    try std.testing.expectEqualStrings("Syntax leading comment.\n", syntax_location.leading_comments.?);
+    try std.testing.expectEqualSlices(i32, &.{12}, refl.sourceLocationPath(syntax_location));
+    try std.testing.expectEqual(@as(usize, 4), refl.sourceLocationSpan(syntax_location).len);
+    try std.testing.expectEqualStrings("Syntax leading comment.\n", refl.sourceLocationLeadingComments(syntax_location).?);
+    try std.testing.expect(refl.sourceLocationTrailingComments(syntax_location) == null);
+    try std.testing.expectEqual(@as(usize, 0), refl.sourceLocationLeadingDetachedCommentCount(syntax_location));
+    try std.testing.expectError(error.UnknownField, refl.sourceLocationLeadingDetachedCommentAt(syntax_location, 0));
     const event_location = file.source_code_info.location(&.{ 4, 0 }) orelse return error.MissingSourceInfo;
-    try std.testing.expectEqualStrings("Event leading comment.\n", event_location.leading_comments.?);
+    try std.testing.expectEqualStrings("Event leading comment.\n", refl.sourceLocationLeadingComments(event_location).?);
     const id_location = try refl.sourceLocation(&file, &.{ 4, 0, 2, 0 });
-    try std.testing.expectEqualStrings("id leading comment.\n", id_location.leading_comments.?);
-    try std.testing.expectEqualStrings("id trailing comment.\n", id_location.trailing_comments.?);
+    try std.testing.expectEqualSlices(i32, &.{ 4, 0, 2, 0 }, refl.sourceLocationPath(id_location));
+    try std.testing.expectEqualStrings("id leading comment.\n", refl.sourceLocationLeadingComments(id_location).?);
+    try std.testing.expectEqualStrings("id trailing comment.\n", refl.sourceLocationTrailingComments(id_location).?);
 
     const descriptor_bytes = try pbz.encodeFileDescriptorProto(allocator, &file, file.name);
     defer allocator.free(descriptor_bytes);
@@ -53,7 +59,7 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("(demo.field_opt).nested.leaf", decoded_field.options.items[0].name);
     try std.testing.expectEqual(@as(i64, 123), decoded_field.options.items[0].value.integer);
     const decoded_id_location = decoded_file.source_code_info.location(&.{ 4, 0, 2, 0 }) orelse return error.MissingSourceInfo;
-    try std.testing.expectEqualStrings("id trailing comment.\n", decoded_id_location.trailing_comments.?);
+    try std.testing.expectEqualStrings("id trailing comment.\n", refl.sourceLocationTrailingComments(decoded_id_location).?);
     const decoded_service = decoded_file.services.items[0];
     try std.testing.expect(optionValue(decoded_service.options.items, "deprecated").?.boolean);
     const decoded_method = decoded_service.methods.items[0];

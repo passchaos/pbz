@@ -74,6 +74,31 @@ pub const Reflection = struct {
         return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
     }
 
+    pub fn sourceLocationPath(_: Reflection, location: *const schema.SourceCodeInfo.Location) []const i32 {
+        return location.path.items;
+    }
+
+    pub fn sourceLocationSpan(_: Reflection, location: *const schema.SourceCodeInfo.Location) []const i32 {
+        return location.span.items;
+    }
+
+    pub fn sourceLocationLeadingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
+        return location.leading_comments;
+    }
+
+    pub fn sourceLocationTrailingComments(_: Reflection, location: *const schema.SourceCodeInfo.Location) ?[]const u8 {
+        return location.trailing_comments;
+    }
+
+    pub fn sourceLocationLeadingDetachedCommentCount(_: Reflection, location: *const schema.SourceCodeInfo.Location) usize {
+        return location.leading_detached_comments.items.len;
+    }
+
+    pub fn sourceLocationLeadingDetachedCommentAt(_: Reflection, location: *const schema.SourceCodeInfo.Location, index: usize) Error![]const u8 {
+        if (index >= location.leading_detached_comments.items.len) return error.UnknownField;
+        return location.leading_detached_comments.items[index];
+    }
+
     pub fn fileImport(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const u8) Error!schema.Import {
         return file_descriptor.findImport(path) orelse error.UnknownFile;
     }
