@@ -346,6 +346,13 @@ pub const Reflection = struct {
         return file_descriptor.findMessage(name) orelse error.UnknownMessage;
     }
 
+    pub fn fileMessageIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, descriptor: *const schema.MessageDescriptor) Error!usize {
+        for (file_descriptor.messages.items, 0..) |*candidate, index| {
+            if (candidate == descriptor) return index;
+        }
+        return error.UnknownMessage;
+    }
+
     pub fn fileMessageDeep(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.MessageDescriptor {
         return file_descriptor.findMessageDeep(name) orelse error.UnknownMessage;
     }
@@ -362,6 +369,13 @@ pub const Reflection = struct {
         return file_descriptor.findEnum(name) orelse error.UnknownEnum;
     }
 
+    pub fn fileEnumIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, descriptor: *const schema.EnumDescriptor) Error!usize {
+        for (file_descriptor.enums.items, 0..) |*candidate, index| {
+            if (candidate == descriptor) return index;
+        }
+        return error.UnknownEnum;
+    }
+
     pub fn fileEnumValue(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
         return file_descriptor.findEnumValue(name) orelse error.UnknownEnum;
     }
@@ -376,6 +390,13 @@ pub const Reflection = struct {
 
     pub fn fileServiceAt(_: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.ServiceDescriptor {
         return file_descriptor.serviceAt(index) orelse error.UnknownService;
+    }
+
+    pub fn fileServiceIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, descriptor: *const schema.ServiceDescriptor) Error!usize {
+        for (file_descriptor.services.items, 0..) |*candidate, index| {
+            if (candidate == descriptor) return index;
+        }
+        return error.UnknownService;
     }
 
     pub fn fileExtensionCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {

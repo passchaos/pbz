@@ -150,6 +150,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 1), refl.fileMessageCount(app_file));
     try std.testing.expect((try refl.fileMessageAt(app_file, 0)) == user_desc);
     try std.testing.expectEqualStrings("User", (try refl.fileMessageAt(app_file, 0)).name);
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileMessageIndex(app_file, user_desc));
     try std.testing.expectEqual(@as(usize, 0), try refl.messageIndex(user_desc));
     try std.testing.expect((try refl.fileMessage(app_file, "User")) == user_desc);
     try std.testing.expect((try refl.fileMessageDeep(app_file, "Audit")) == try refl.messageNestedMessage(user_desc, "Audit"));
@@ -159,6 +160,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 1), refl.fileEnumCount(app_file));
     try std.testing.expectEqualStrings("Status", (try refl.fileEnumAt(app_file, 0)).name);
     try std.testing.expect((try refl.fileEnum(app_file, "Status")) == try refl.enumeration(".demo.reflect.Status"));
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileEnumIndex(app_file, try refl.enumeration(".demo.reflect.Status")));
     try std.testing.expectEqual(@as(usize, 0), try refl.enumIndex(try refl.enumeration(".demo.reflect.Status")));
     try std.testing.expectEqualStrings("STATUS_UNKNOWN", (try refl.fileEnumValue(app_file, "STATUS_UNKNOWN")).name);
     try std.testing.expectError(error.UnknownEnum, refl.fileEnumValue(app_file, "LOCAL_UNKNOWN"));
@@ -168,6 +170,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownEnum, refl.fileEnumAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 1), refl.fileServiceCount(app_file));
     try std.testing.expectEqualStrings("Users", (try refl.fileServiceAt(app_file, 0)).name);
+    try std.testing.expectEqual(@as(usize, 0), try refl.fileServiceIndex(app_file, try refl.fileService(app_file, "Users")));
     try std.testing.expectError(error.UnknownService, refl.fileServiceAt(app_file, 9));
     try std.testing.expectEqual(@as(usize, 0), refl.fileExtensionCount(app_file));
     try std.testing.expectError(error.UnknownField, refl.fileExtensionAt(app_file, 0));
