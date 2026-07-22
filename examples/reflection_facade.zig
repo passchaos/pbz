@@ -160,6 +160,8 @@ pub fn main() !void {
     try std.testing.expect((try refl.messageNestedMessageDeep(user_desc, "Audit")) == audit_desc);
     try std.testing.expectError(error.UnknownMessage, refl.messageNestedMessage(user_desc, "Missing"));
     try std.testing.expectEqualStrings("Audit", refl.messageName(audit_desc));
+    try std.testing.expect((try refl.messageContainingType(audit_desc)).? == user_desc);
+    try std.testing.expect((try refl.messageContainingType(user_desc)) == null);
     const audit_full_name = try refl.messageFullName(audit_desc);
     defer allocator.free(audit_full_name);
     try std.testing.expectEqualStrings("demo.reflect.User.Audit", audit_full_name);
@@ -170,6 +172,8 @@ pub fn main() !void {
     try std.testing.expect((try refl.messageNestedEnumDeep(user_desc, "LocalStatus")) == local_status_desc);
     try std.testing.expectError(error.UnknownEnum, refl.messageNestedEnum(user_desc, "Missing"));
     try std.testing.expectEqualStrings("LocalStatus", refl.enumName(local_status_desc));
+    try std.testing.expect((try refl.enumContainingType(local_status_desc)).? == user_desc);
+    try std.testing.expect((try refl.enumContainingType(role_desc)) == null);
     const local_status_full_name = try refl.enumFullName(local_status_desc);
     defer allocator.free(local_status_full_name);
     try std.testing.expectEqualStrings("demo.reflect.User.LocalStatus", local_status_full_name);

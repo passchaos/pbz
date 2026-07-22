@@ -331,6 +331,11 @@ pub const Reflection = struct {
         return try messageFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownMessage;
     }
 
+    pub fn messageContainingType(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!?*const schema.MessageDescriptor {
+        const owner_file = try self.fileOfMessage(descriptor);
+        return containingMessageForMessage(owner_file, descriptor);
+    }
+
     pub fn fileOfMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingMessage(descriptor) orelse error.UnknownMessage;
     }
@@ -418,6 +423,11 @@ pub const Reflection = struct {
     pub fn enumFullName(self: Reflection, descriptor: *const schema.EnumDescriptor) Error![]u8 {
         const owner_file = try self.fileOfEnum(descriptor);
         return try enumFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownEnum;
+    }
+
+    pub fn enumContainingType(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!?*const schema.MessageDescriptor {
+        const owner_file = try self.fileOfEnum(descriptor);
+        return containingMessageForEnum(owner_file, descriptor);
     }
 
     pub fn fileOfEnum(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!*const schema.FileDescriptor {
@@ -2228,6 +2238,42 @@ fn messageDirectlyContainsExtensionRange(message: *const schema.MessageDescripto
         if (range == target) return true;
     }
     return false;
+}
+
+fn containingMessageForMessage(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor) ?*const schema.MessageDescriptor {
+    for (file.messages.items) |*message| {
+        if (message == target) return null;
+        if (containingMessageForMessageInMessage(message, target)) |parent| return parent;
+    }
+    return null;
+}
+
+fn containingMessageForMessageInMessage(parent: *const schema.MessageDescriptor, target: *const schema.MessageDescriptor) ?*const schema.MessageDescriptor {
+    for (parent.messages.items) |*nested| {
+        if (nested == target) return parent;
+        if (containingMessageForMessageInMessage(nested, target)) |ancestor| return ancestor;
+    }
+    return null;
+}
+
+fn containingMessageForEnum(file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) ?*const schema.MessageDescriptor {
+    for (file.enums.items) |*enum_desc| {
+        if (enum_desc == target) return null;
+    }
+    for (file.messages.items) |*message| {
+        if (containingMessageForEnumInMessage(message, target)) |parent| return parent;
+    }
+    return null;
+}
+
+fn containingMessageForEnumInMessage(parent: *const schema.MessageDescriptor, target: *const schema.EnumDescriptor) ?*const schema.MessageDescriptor {
+    for (parent.enums.items) |*enum_desc| {
+        if (enum_desc == target) return parent;
+    }
+    for (parent.messages.items) |*nested| {
+        if (containingMessageForEnumInMessage(nested, target)) |ancestor| return ancestor;
+    }
+    return null;
 }
 
 fn extensionScopeMessageInFile(file: *const schema.FileDescriptor, target: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
