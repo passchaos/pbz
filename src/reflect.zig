@@ -817,6 +817,10 @@ pub const Reflection = struct {
         return error.UnknownField;
     }
 
+    pub fn messageFieldIndex(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        return try self.fieldIndex(descriptor, field);
+    }
+
     pub fn messageExtensionCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
         return descriptor.extensionCount();
     }
@@ -867,6 +871,10 @@ pub const Reflection = struct {
         return error.UnknownField;
     }
 
+    pub fn messageOneofIndex(self: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
+        return try self.oneofIndex(descriptor, oneof);
+    }
+
     pub fn realOneofIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
         var seen: usize = 0;
         for (descriptor.oneofs.items) |*candidate| {
@@ -875,6 +883,10 @@ pub const Reflection = struct {
             seen += 1;
         }
         return error.UnknownField;
+    }
+
+    pub fn messageRealOneofIndex(self: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
+        return try self.realOneofIndex(descriptor, oneof);
     }
 
     pub fn messageNestedMessageCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
@@ -1232,6 +1244,10 @@ pub const Reflection = struct {
             if (candidate == method) return index;
         }
         return error.UnknownField;
+    }
+
+    pub fn serviceMethodIndex(self: Reflection, descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error!usize {
+        return try self.methodIndex(descriptor, method);
     }
 
     pub fn methodDirectIndex(self: Reflection, method: *const schema.MethodDescriptor) Error!usize {

@@ -181,13 +181,16 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("id", (try refl.messageFieldAt(user_desc, 0)).name);
     try std.testing.expectError(error.UnknownField, refl.messageFieldAt(user_desc, 99));
     try std.testing.expectEqual(@as(usize, 0), try refl.fieldIndex(user_desc, try refl.fieldByName(user_desc, "id")));
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageFieldIndex(user_desc, try refl.fieldByName(user_desc, "id")));
     try std.testing.expectEqual(@as(usize, 1), refl.messageOneofCount(user_desc));
     const contact_desc = try refl.messageOneofAt(user_desc, 0);
     try std.testing.expectEqualStrings("contact", contact_desc.name);
     try std.testing.expectEqual(@as(usize, 0), try refl.oneofIndex(user_desc, contact_desc));
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageOneofIndex(user_desc, contact_desc));
     try std.testing.expectEqual(@as(usize, 1), refl.messageRealOneofCount(user_desc));
     try std.testing.expect((try refl.messageRealOneofAt(user_desc, 0)) == contact_desc);
     try std.testing.expectEqual(@as(usize, 0), try refl.realOneofIndex(user_desc, contact_desc));
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageRealOneofIndex(user_desc, contact_desc));
     try std.testing.expect(try refl.oneofIsReal(user_desc, contact_desc));
     try std.testing.expect(!(try refl.oneofIsSynthetic(user_desc, contact_desc)));
     try std.testing.expectError(error.UnknownField, refl.messageOneofAt(user_desc, 9));
@@ -587,6 +590,7 @@ pub fn main() !void {
     try std.testing.expect((try refl.methodByFullName("Get")) == get_method);
     try std.testing.expectError(error.UnknownField, refl.methodByFullName("Missing"));
     try std.testing.expectEqual(@as(usize, 0), try refl.methodIndex(users_service, get_method));
+    try std.testing.expectEqual(@as(usize, 0), try refl.serviceMethodIndex(users_service, get_method));
     try std.testing.expectEqualStrings("Get", refl.methodName(get_method));
     try std.testing.expect(refl.methodIsDeprecated(get_method));
     const get_method_full_name = try refl.methodFullName(users_service, get_method);
