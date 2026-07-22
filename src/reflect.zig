@@ -1082,6 +1082,10 @@ pub const Reflection = struct {
         return self.registry.enumContainingValue(value) orelse error.UnknownEnum;
     }
 
+    pub fn enumValueDirectContainingEnum(self: Reflection, value: *const schema.EnumValueDescriptor) Error!*const schema.EnumDescriptor {
+        return try self.enumValueType(value);
+    }
+
     pub fn enumValueContainingFile(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error!*const schema.FileDescriptor {
         _ = try self.enumValueContainingEnum(enum_descriptor, value);
         return try self.fileOfEnum(enum_descriptor);

@@ -229,6 +229,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(i32, 0), refl.enumValueNumber(role_unknown_value));
     try std.testing.expect((try refl.enumValueContainingEnum(role_desc, role_unknown_value)) == role_desc);
     try std.testing.expect((try refl.enumValueType(role_unknown_value)) == role_desc);
+    try std.testing.expect((try refl.enumValueDirectContainingEnum(role_unknown_value)) == role_desc);
     try std.testing.expect((try refl.enumValueContainingFile(role_desc, role_unknown_value)) == role_file);
     try std.testing.expect((try refl.enumValueFile(role_unknown_value)) == role_file);
     try std.testing.expectEqual(@as(usize, 0), try refl.enumValueDirectIndex(role_unknown_value));
