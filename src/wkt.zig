@@ -1809,6 +1809,10 @@ pub const Value = union(enum) {
         return self == .null_value;
     }
 
+    pub fn eql(self: Value, other: Value) bool {
+        return valueEqual(self, other);
+    }
+
     pub fn number(self: Value) !f64 {
         return switch (self) {
             .number_value => |value| value,

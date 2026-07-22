@@ -95,6 +95,8 @@ pub fn main() !void {
     defer scalar_value_roundtrip.deinit(allocator);
     try std.testing.expectEqual(.string_value, scalar_value_roundtrip.valueTag());
     try std.testing.expectEqualStrings("standalone", try scalar_value_roundtrip.string());
+    try std.testing.expect(scalar_value_roundtrip.eql(.{ .string_value = "standalone" }));
+    try std.testing.expect(!scalar_value_roundtrip.eql(.{ .string_value = "other" }));
     try std.testing.expectError(error.TypeMismatch, scalar_value_roundtrip.boolean());
     switch (scalar_value_roundtrip) {
         .string_value => |value| std.debug.assert(std.mem.eql(u8, value, "standalone")),
