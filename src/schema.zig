@@ -742,6 +742,10 @@ pub const MessageDescriptor = struct {
         return reservedNumberMatches(self.reserved_ranges.items, number);
     }
 
+    pub fn isMapEntry(self: *const MessageDescriptor) bool {
+        return self.map_entry;
+    }
+
     pub fn extensionRangeForNumber(self: *const MessageDescriptor, number: i64) ?*const ExtensionRange {
         if (number <= 0 or number >= self.extensionRangeMaxExclusive()) return null;
         for (self.extension_ranges.items) |*range| {

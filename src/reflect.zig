@@ -310,6 +310,10 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn messageIsMapEntry(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
+        return descriptor.isMapEntry();
+    }
+
     pub fn messageOptions(_: Reflection, descriptor: *const schema.MessageDescriptor) []const schema.FieldOption {
         return descriptor.options.items;
     }
@@ -2341,6 +2345,10 @@ test "reflection facade creates and edits dynamic messages" {
     const person_desc = try refl.message("demo.Person");
     const child_desc = try refl.message("demo.Child");
     const other_desc = try refl.message("demo.Other");
+    var synthetic_map_entry = schema.MessageDescriptor{ .name = "CountsEntry", .map_entry = true };
+    defer synthetic_map_entry.deinit(allocator);
+    try std.testing.expect(refl.messageIsMapEntry(&synthetic_map_entry));
+    try std.testing.expect(!refl.messageIsMapEntry(person_desc));
     var msg = try refl.newMessage("demo.Person");
     defer msg.deinit();
 

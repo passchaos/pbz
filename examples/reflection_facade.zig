@@ -115,6 +115,7 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("app", refl.optionString(refl.fileOptions(app_file), "file_note").?);
     try std.testing.expectEqualStrings("User", refl.messageName(user_desc));
     try std.testing.expect(refl.messageIsDeprecated(user_desc));
+    try std.testing.expect(!refl.messageIsMapEntry(user_desc));
     try std.testing.expect(refl.optionBool(refl.messageOptions(user_desc), "deprecated").?);
     const user_full_name = try refl.messageFullName(user_desc);
     defer allocator.free(user_full_name);
