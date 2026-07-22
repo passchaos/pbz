@@ -2239,6 +2239,139 @@ pub const Reflection = struct {
         return std.meta.activeTag(value);
     }
 
+    pub fn valueDouble(_: Reflection, value: dynamic.Value) Error!f64 {
+        return switch (value) {
+            .double => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueFloat(_: Reflection, value: dynamic.Value) Error!f32 {
+        return switch (value) {
+            .float => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueInt32(_: Reflection, value: dynamic.Value) Error!i32 {
+        return switch (value) {
+            .int32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueInt64(_: Reflection, value: dynamic.Value) Error!i64 {
+        return switch (value) {
+            .int64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueUInt32(_: Reflection, value: dynamic.Value) Error!u32 {
+        return switch (value) {
+            .uint32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueUInt64(_: Reflection, value: dynamic.Value) Error!u64 {
+        return switch (value) {
+            .uint64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueSInt32(_: Reflection, value: dynamic.Value) Error!i32 {
+        return switch (value) {
+            .sint32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueSInt64(_: Reflection, value: dynamic.Value) Error!i64 {
+        return switch (value) {
+            .sint64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueFixed32(_: Reflection, value: dynamic.Value) Error!u32 {
+        return switch (value) {
+            .fixed32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueFixed64(_: Reflection, value: dynamic.Value) Error!u64 {
+        return switch (value) {
+            .fixed64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueSFixed32(_: Reflection, value: dynamic.Value) Error!i32 {
+        return switch (value) {
+            .sfixed32 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueSFixed64(_: Reflection, value: dynamic.Value) Error!i64 {
+        return switch (value) {
+            .sfixed64 => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueBool(_: Reflection, value: dynamic.Value) Error!bool {
+        return switch (value) {
+            .boolean => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueString(_: Reflection, value: dynamic.Value) Error![]const u8 {
+        return switch (value) {
+            .string => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueBytes(_: Reflection, value: dynamic.Value) Error![]const u8 {
+        return switch (value) {
+            .bytes => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueEnumNumber(_: Reflection, value: dynamic.Value) Error!i32 {
+        return switch (value) {
+            .enumeration => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueMessage(_: Reflection, value: dynamic.Value) Error!*dynamic.DynamicMessage {
+        return switch (value) {
+            .message => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueGroup(_: Reflection, value: dynamic.Value) Error!*dynamic.DynamicMessage {
+        return switch (value) {
+            .group => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn valueMapEntry(_: Reflection, value: dynamic.Value) Error!*dynamic.MapEntry {
+        return switch (value) {
+            .map_entry => |v| v,
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn getField(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!?*const dynamic.FieldValue {
         return self.get(message_value, try self.fieldByName(message_value.descriptor, name));
     }

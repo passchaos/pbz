@@ -763,6 +763,25 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(f64, 2.5), try refl.repeatedDouble(&user, "more_doubles", 0));
     try std.testing.expect(try refl.setRepeatedDouble(&user, "more_doubles", 0, 3.5));
     try std.testing.expectEqual(@as(f64, 3.5), try refl.repeatedDouble(&user, "more_doubles", 0));
+    try std.testing.expectEqualStrings("zig", try refl.valueString(try refl.repeatedValue(&user, "tags", 0)));
+    try std.testing.expect(try refl.valueBool(try refl.repeatedValue(&user, "flags", 0)));
+    try std.testing.expectEqualSlices(u8, &.{ 9, 8 }, try refl.valueBytes(try refl.repeatedValue(&user, "blobs", 0)));
+    try std.testing.expectEqual(@as(i32, 1), try refl.valueEnumNumber(try refl.repeatedValue(&user, "roles", 0)));
+    try std.testing.expectEqual(@as(u32, 30), try refl.valueUInt32(try refl.repeatedValue(&user, "samples", 0)));
+    try std.testing.expectEqual(@as(i64, -3), try refl.valueSInt64(try refl.repeatedValue(&user, "deltas", 0)));
+    try std.testing.expectEqual(@as(i32, 4), try refl.valueInt32(try refl.repeatedValue(&user, "more_ids", 0)));
+    try std.testing.expectEqual(@as(i64, -5), try refl.valueInt64(try refl.repeatedValue(&user, "more_totals", 0)));
+    try std.testing.expectEqual(@as(u64, 6), try refl.valueUInt64(try refl.repeatedValue(&user, "more_unsigned", 0)));
+    try std.testing.expectEqual(@as(i32, -7), try refl.valueSInt32(try refl.repeatedValue(&user, "more_deltas", 0)));
+    try std.testing.expectEqual(@as(u32, 8), try refl.valueFixed32(try refl.repeatedValue(&user, "more_fixed32", 0)));
+    try std.testing.expectEqual(@as(u64, 9), try refl.valueFixed64(try refl.repeatedValue(&user, "more_fixed64", 0)));
+    try std.testing.expectEqual(@as(i32, -10), try refl.valueSFixed32(try refl.repeatedValue(&user, "more_sfixed32", 0)));
+    try std.testing.expectEqual(@as(i64, -11), try refl.valueSFixed64(try refl.repeatedValue(&user, "more_sfixed64", 0)));
+    try std.testing.expectEqual(@as(f32, 1.75), try refl.valueFloat(try refl.repeatedValue(&user, "more_floats", 0)));
+    try std.testing.expectEqual(@as(f64, 3.5), try refl.valueDouble(try refl.repeatedValue(&user, "more_doubles", 0)));
+    try std.testing.expectError(error.TypeMismatch, refl.valueInt32(try refl.repeatedValue(&user, "tags", 0)));
+    const profile_value_record = (try refl.getField(&user, "profile")).?;
+    try std.testing.expect((try refl.valueMessage(try refl.fieldValueAt(profile_value_record, 0))) == profile);
     try std.testing.expectEqualStrings("email", refl.whichOneof(&user, "contact").?.name);
     try std.testing.expectEqualStrings("ada@example.test", try refl.getString(&user, "email"));
 
@@ -777,10 +796,12 @@ pub fn main() !void {
     try std.testing.expectError(error.MissingField, refl.fieldValueAt(count_field, 9));
     const count_entry_0 = try refl.mapEntryAt(&user, "counts", 0);
     try std.testing.expectEqual(@as(usize, 0), try refl.mapEntryIndex(&user, "counts", count_entry_0));
+    try std.testing.expect((try refl.valueMapEntry(count_field_value)) == count_entry_0);
     try std.testing.expectEqualStrings("red", refl.mapEntryKey(count_entry_0).string);
     const count_entry_value = refl.mapEntryValue(count_entry_0);
     try std.testing.expectEqual(.int32, refl.valueTag(count_entry_value));
     try std.testing.expectEqual(@as(i32, 2), count_entry_value.int32);
+    try std.testing.expectEqual(@as(i32, 2), try refl.valueInt32(count_entry_value));
     const count_entries = try refl.mapEntries(&user, "counts");
     defer allocator.free(count_entries);
     try std.testing.expectEqual(@as(usize, 1), count_entries.len);
@@ -1060,6 +1081,7 @@ pub fn main() !void {
     try required_refl.setInt32(appended_group, "code", 9);
     try std.testing.expect((try required_refl.repeatedGroup(&parent, "item", 0)) == appended_group);
     try std.testing.expect((try required_refl.mutableRepeatedGroup(&parent, "item", 0)) == appended_group);
+    try std.testing.expect((try required_refl.valueGroup(try required_refl.repeatedValue(&parent, "item", 0))) == appended_group);
     try std.testing.expectEqual(@as(i32, 9), try required_refl.getInt32(try required_refl.repeatedGroup(&parent, "item", 0), "code"));
     try std.testing.expectError(error.TypeMismatch, required_refl.repeatedGroup(&parent, "children", 0));
     try std.testing.expectError(error.MissingField, required_refl.repeatedGroup(&parent, "item", 9));
