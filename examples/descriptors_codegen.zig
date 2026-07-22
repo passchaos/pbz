@@ -127,14 +127,9 @@ fn expectPluginResponseMetadata(allocator: std.mem.Allocator, response_bytes: []
                             saw_generated_info = true;
                             var info = try pbz.decodeGeneratedCodeInfo(allocator, try file_reader.readBytes());
                             defer info.deinit(allocator);
-                            for (info.annotations.items) |annotation| {
-                                const source_matches = std.mem.eql(u8, annotation.source_file orelse "", source_file);
-                                const range_valid = annotation.begin.? >= 0 and annotation.end.? > annotation.begin.?;
-                                const semantic_matches = annotation.semantic.? == .set;
-                                if (annotation.path.items.len == 0) saw_file_annotation = saw_file_annotation or source_matches and range_valid and semantic_matches;
-                                if (std.mem.eql(i32, annotation.path.items, &.{ 4, 0 })) saw_message_annotation = saw_message_annotation or source_matches and range_valid and semantic_matches;
-                                if (std.mem.eql(i32, annotation.path.items, &.{ 4, 0, 2, 0 })) saw_field_annotation = saw_field_annotation or source_matches and range_valid and semantic_matches;
-                            }
+                            saw_file_annotation = saw_file_annotation or generatedAnnotationMatches(info.annotation(&.{}) orelse return error.MissingGeneratedAnnotation, source_file);
+                            saw_message_annotation = saw_message_annotation or generatedAnnotationMatches(info.annotation(&.{ 4, 0 }) orelse return error.MissingGeneratedAnnotation, source_file);
+                            saw_field_annotation = saw_field_annotation or generatedAnnotationMatches(info.annotation(&.{ 4, 0, 2, 0 }) orelse return error.MissingGeneratedAnnotation, source_file);
                         },
                         else => try file_reader.skipValue(file_tag),
                     }
@@ -152,4 +147,11 @@ fn expectPluginResponseMetadata(allocator: std.mem.Allocator, response_bytes: []
     try std.testing.expect(saw_file_annotation);
     try std.testing.expect(saw_message_annotation);
     try std.testing.expect(saw_field_annotation);
+}
+
+fn generatedAnnotationMatches(annotation: *const pbz.GeneratedCodeInfo.Annotation, source_file: []const u8) bool {
+    return std.mem.eql(u8, annotation.source_file orelse "", source_file) and
+        annotation.begin.? >= 0 and
+        annotation.end.? > annotation.begin.? and
+        annotation.semantic.? == .set;
 }

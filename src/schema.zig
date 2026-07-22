@@ -455,9 +455,16 @@ pub const GeneratedCodeInfo = struct {
     };
 
     pub fn deinit(self: *GeneratedCodeInfo, allocator: std.mem.Allocator) void {
-        for (self.annotations.items) |*annotation| annotation.deinit(allocator);
+        for (self.annotations.items) |*ann| ann.deinit(allocator);
         self.annotations.deinit(allocator);
         self.* = undefined;
+    }
+
+    pub fn annotation(self: *const GeneratedCodeInfo, path: []const i32) ?*const Annotation {
+        for (self.annotations.items) |*ann| {
+            if (std.mem.eql(i32, ann.path.items, path)) return ann;
+        }
+        return null;
     }
 };
 
