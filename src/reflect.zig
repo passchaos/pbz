@@ -154,6 +154,10 @@ pub const Reflection = struct {
         return file_descriptor.options.items;
     }
 
+    pub fn fileIsPlaceholder(_: Reflection, _: *const schema.FileDescriptor) bool {
+        return false;
+    }
+
     pub fn sourceLocation(_: Reflection, file_descriptor: *const schema.FileDescriptor, path: []const i32) Error!*const schema.SourceCodeInfo.Location {
         return file_descriptor.source_code_info.location(path) orelse error.UnknownField;
     }
@@ -438,6 +442,10 @@ pub const Reflection = struct {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
+    pub fn messageIsPlaceholder(_: Reflection, _: *const schema.MessageDescriptor) bool {
+        return false;
+    }
+
     pub fn messageNoStandardDescriptorAccessor(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
         return descriptor.noStandardDescriptorAccessor();
     }
@@ -625,6 +633,10 @@ pub const Reflection = struct {
 
     pub fn enumIsDeprecated(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
         return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
+    }
+
+    pub fn enumIsPlaceholder(_: Reflection, _: *const schema.EnumDescriptor) bool {
+        return false;
     }
 
     pub fn enumDeprecatedLegacyJsonFieldConflicts(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {

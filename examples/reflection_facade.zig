@@ -118,6 +118,7 @@ pub fn main() !void {
     const role_desc = try refl.enumeration(".demo.reflect.Role");
     const role_file = try refl.fileOfEnum(role_desc);
     try std.testing.expectEqualStrings("app.proto", refl.fileName(app_file));
+    try std.testing.expect(!refl.fileIsPlaceholder(app_file));
     try std.testing.expectEqualStrings("demo.reflect", refl.filePackage(app_file));
     try std.testing.expectEqual(pbz.schema.Syntax.proto3, refl.fileSyntax(app_file));
     try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));
@@ -125,6 +126,7 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("app", refl.optionString(refl.fileOptions(app_file), "file_note").?);
     try std.testing.expectEqualStrings("User", refl.messageName(user_desc));
     try std.testing.expect(refl.messageIsDeprecated(user_desc));
+    try std.testing.expect(!refl.messageIsPlaceholder(user_desc));
     try std.testing.expect(refl.messageNoStandardDescriptorAccessor(user_desc));
     try std.testing.expect(refl.messageDeprecatedLegacyJsonFieldConflicts(user_desc));
     try std.testing.expect(!refl.messageIsMapEntry(user_desc));
@@ -215,6 +217,7 @@ pub fn main() !void {
     try std.testing.expect((try refl.enumValueContainingEnum(role_desc, role_unknown_value)) == role_desc);
     try std.testing.expect((try refl.enumValueContainingFile(role_desc, role_unknown_value)) == role_file);
     try std.testing.expect(!refl.enumIsDeprecated(role_desc));
+    try std.testing.expect(!refl.enumIsPlaceholder(role_desc));
     try std.testing.expect(!refl.enumValueIsDeprecated(role_unknown_value));
     const role_unknown_full_name = try refl.enumValueFullName(role_desc, role_unknown_value);
     defer allocator.free(role_unknown_full_name);
