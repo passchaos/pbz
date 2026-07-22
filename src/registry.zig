@@ -281,6 +281,11 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn findExtensionByPrintableNameForMessage(self: *const Registry, message: *const schema.MessageDescriptor, printable_name: []const u8) ?*const schema.FieldDescriptor {
+        const name = schema.printableExtensionName(printable_name) orelse return null;
+        return self.findExtensionByNameForMessage(message, name);
+    }
+
     fn findExtensionByNameForMessageInScope(self: *const Registry, file: *const schema.FileDescriptor, scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, name: []const u8) ?*const schema.FieldDescriptor {
         for (scope.extensions.items) |*field| {
             if (self.extensionNameTargetsMessage(file, field, message, name)) return field;

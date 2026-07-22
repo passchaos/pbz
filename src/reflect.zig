@@ -1541,6 +1541,10 @@ pub const Reflection = struct {
         return self.registry.findExtensionByNameForMessage(descriptor, name) orelse error.UnknownField;
     }
 
+    pub fn extensionByPrintableNameForMessage(self: Reflection, descriptor: *const schema.MessageDescriptor, printable_name: []const u8) Error!*const schema.FieldDescriptor {
+        return self.registry.findExtensionByPrintableNameForMessage(descriptor, printable_name) orelse error.UnknownField;
+    }
+
     pub fn fileOfExtension(self: Reflection, descriptor: *const schema.FieldDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingExtension(descriptor) orelse error.UnknownField;
     }
