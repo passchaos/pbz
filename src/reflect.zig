@@ -766,9 +766,25 @@ pub const Reflection = struct {
         return enum_descriptor;
     }
 
+    pub fn enumValueType(self: Reflection, value: *const schema.EnumValueDescriptor) Error!*const schema.EnumDescriptor {
+        return self.registry.enumContainingValue(value) orelse error.UnknownEnum;
+    }
+
     pub fn enumValueContainingFile(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error!*const schema.FileDescriptor {
         _ = try self.enumValueContainingEnum(enum_descriptor, value);
         return try self.fileOfEnum(enum_descriptor);
+    }
+
+    pub fn enumValueFile(self: Reflection, value: *const schema.EnumValueDescriptor) Error!*const schema.FileDescriptor {
+        return self.registry.fileContainingEnumValue(value) orelse error.UnknownEnum;
+    }
+
+    pub fn enumValueDirectIndex(self: Reflection, value: *const schema.EnumValueDescriptor) Error!usize {
+        return try self.enumValueIndex(try self.enumValueType(value), value);
+    }
+
+    pub fn enumValueDirectFullName(self: Reflection, value: *const schema.EnumValueDescriptor) Error![]u8 {
+        return try self.enumValueFullName(try self.enumValueType(value), value);
     }
 
     pub fn enumValueCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {

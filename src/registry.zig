@@ -388,6 +388,18 @@ pub const Registry = struct {
         return null;
     }
 
+    pub fn enumContainingValue(self: *const Registry, target: *const schema.EnumValueDescriptor) ?*const schema.EnumDescriptor {
+        for (self.files.items) |file| {
+            if (enumContainingValueInFile(file, target)) |enumeration| return enumeration;
+        }
+        return null;
+    }
+
+    pub fn fileContainingEnumValue(self: *const Registry, target: *const schema.EnumValueDescriptor) ?*const schema.FileDescriptor {
+        const enumeration = self.enumContainingValue(target) orelse return null;
+        return self.fileContainingEnum(enumeration);
+    }
+
     pub fn fileContainingExtension(self: *const Registry, target: *const schema.FieldDescriptor) ?*const schema.FileDescriptor {
         for (self.files.items) |file| {
             for (file.extensions.items) |*field| {
@@ -640,6 +652,33 @@ fn fileContainsEnum(file: *const schema.FileDescriptor, target: *const schema.En
     }
     for (file.messages.items) |*message| {
         if (messageContainsEnum(message, target)) return true;
+    }
+    return false;
+}
+
+fn enumContainingValueInFile(file: *const schema.FileDescriptor, target: *const schema.EnumValueDescriptor) ?*const schema.EnumDescriptor {
+    for (file.enums.items) |*enumeration| {
+        if (enumContainsValue(enumeration, target)) return enumeration;
+    }
+    for (file.messages.items) |*message| {
+        if (enumContainingValueInMessage(message, target)) |enumeration| return enumeration;
+    }
+    return null;
+}
+
+fn enumContainingValueInMessage(message: *const schema.MessageDescriptor, target: *const schema.EnumValueDescriptor) ?*const schema.EnumDescriptor {
+    for (message.enums.items) |*enumeration| {
+        if (enumContainsValue(enumeration, target)) return enumeration;
+    }
+    for (message.messages.items) |*nested| {
+        if (enumContainingValueInMessage(nested, target)) |enumeration| return enumeration;
+    }
+    return null;
+}
+
+fn enumContainsValue(enumeration: *const schema.EnumDescriptor, target: *const schema.EnumValueDescriptor) bool {
+    for (enumeration.values.items) |*value| {
+        if (value == target) return true;
     }
     return false;
 }
