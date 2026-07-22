@@ -396,6 +396,8 @@ pub fn main() !void {
         \\  optional Child child = 2;
         \\  optional int32 priority = 3 [default = 7];
         \\  optional group Legacy = 4 { optional int32 code = 5; }
+        \\  repeated Child children = 6;
+        \\  repeated group Item = 7 { optional int32 code = 8; }
         \\}
     );
     defer required_file.deinit();
@@ -434,6 +436,17 @@ pub fn main() !void {
     try required_refl.setString(&parent, "name", "root");
     const child = try required_refl.mutableMessage(&parent, "child");
     try std.testing.expect(child.descriptor == child_desc);
+    const appended_child = try required_refl.addMutableMessage(&parent, "children");
+    try std.testing.expect(appended_child.descriptor == child_desc);
+    try required_refl.setInt32(appended_child, "id", 2);
+    try std.testing.expectEqual(@as(usize, 1), try required_refl.repeatedLen(&parent, "children"));
+    try std.testing.expectEqual(@as(i32, 2), try required_refl.getInt32((try required_refl.repeatedValue(&parent, "children", 0)).message, "id"));
+    try std.testing.expectError(error.TypeMismatch, required_refl.addMutableMessage(&parent, "child"));
+    const appended_group = try required_refl.addMutableGroup(&parent, "item");
+    try std.testing.expect(appended_group.descriptor == try required_refl.fieldGroupType(parent.descriptor, try required_refl.fieldByName(parent.descriptor, "item")));
+    try required_refl.setInt32(appended_group, "code", 9);
+    try std.testing.expectEqual(@as(i32, 9), try required_refl.getInt32((try required_refl.repeatedValue(&parent, "item", 0)).group, "code"));
+    try std.testing.expectError(error.TypeMismatch, required_refl.addMutableGroup(&parent, "child"));
     const missing_child = (try required_refl.missingRequiredFieldPath(&parent)).?;
     defer allocator.free(missing_child);
     try std.testing.expectEqualStrings("child.id", missing_child);

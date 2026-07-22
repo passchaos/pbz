@@ -1118,6 +1118,19 @@ pub const Reflection = struct {
         return nested;
     }
 
+    pub fn addMutableMessage(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.cardinality != .repeated) return error.TypeMismatch;
+        const nested = try self.allocator.create(dynamic.DynamicMessage);
+        errdefer self.allocator.destroy(nested);
+        nested.* = try self.newMessageForField(message_value.descriptor, field);
+        var owns_nested = true;
+        errdefer if (owns_nested) nested.deinit();
+        try self.add(message_value, field, .{ .message = nested });
+        owns_nested = false;
+        return nested;
+    }
+
     pub fn setGroupOwned(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8, value: *dynamic.DynamicMessage) Error!void {
         try self.set(message_value, try self.fieldByName(message_value.descriptor, name), .{ .group = value });
     }
@@ -1142,6 +1155,19 @@ pub const Reflection = struct {
         var owns_nested = true;
         errdefer if (owns_nested) nested.deinit();
         try self.set(message_value, field, .{ .group = nested });
+        owns_nested = false;
+        return nested;
+    }
+
+    pub fn addMutableGroup(self: Reflection, message_value: *dynamic.DynamicMessage, name: []const u8) Error!*dynamic.DynamicMessage {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.cardinality != .repeated) return error.TypeMismatch;
+        const nested = try self.allocator.create(dynamic.DynamicMessage);
+        errdefer self.allocator.destroy(nested);
+        nested.* = try self.newGroupForField(message_value.descriptor, field);
+        var owns_nested = true;
+        errdefer if (owns_nested) nested.deinit();
+        try self.add(message_value, field, .{ .group = nested });
         owns_nested = false;
         return nested;
     }
