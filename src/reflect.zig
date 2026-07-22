@@ -862,6 +862,10 @@ pub const Reflection = struct {
         return field.kind;
     }
 
+    pub fn fieldCppType(_: Reflection, field: *const schema.FieldDescriptor) schema.FieldCppType {
+        return field.cppType();
+    }
+
     pub fn fieldWireType(_: Reflection, field: *const schema.FieldDescriptor) wire.WireType {
         return field.wireType();
     }

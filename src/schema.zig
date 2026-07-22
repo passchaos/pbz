@@ -122,6 +122,19 @@ pub const ScalarType = enum {
     }
 };
 
+pub const FieldCppType = enum {
+    int32,
+    int64,
+    uint32,
+    uint64,
+    double,
+    float,
+    bool,
+    enumeration,
+    string,
+    message,
+};
+
 pub fn scalarTypeName(scalar: ScalarType) []const u8 {
     return switch (scalar) {
         .double => "double",
@@ -207,6 +220,23 @@ pub const FieldKind = union(enum) {
             .scalar => |scalar| scalar.packable(),
             .enumeration => true,
             else => false,
+        };
+    }
+
+    pub fn cppType(self: FieldKind) FieldCppType {
+        return switch (self) {
+            .scalar => |scalar| switch (scalar) {
+                .int32, .sint32, .sfixed32 => .int32,
+                .int64, .sint64, .sfixed64 => .int64,
+                .uint32, .fixed32 => .uint32,
+                .uint64, .fixed64 => .uint64,
+                .double => .double,
+                .float => .float,
+                .bool => .bool,
+                .string, .bytes => .string,
+            },
+            .enumeration => .enumeration,
+            .message, .group, .map => .message,
         };
     }
 };
@@ -299,6 +329,10 @@ pub const FieldDescriptor = struct {
 
     pub fn wireType(self: FieldDescriptor) wire.WireType {
         return self.kind.wireType();
+    }
+
+    pub fn cppType(self: FieldDescriptor) FieldCppType {
+        return self.kind.cppType();
     }
 
     pub fn encodedWireType(self: FieldDescriptor, file: *const FileDescriptor) wire.WireType {

@@ -238,6 +238,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
+    try std.testing.expectEqual(pbz.FieldCppType.int32, refl.fieldCppType(id_field));
     try std.testing.expectEqual(pbz.WireType.varint, refl.fieldWireType(id_field));
     try std.testing.expectEqual(pbz.WireType.varint, try refl.fieldEncodedWireType(user_desc, id_field));
     try std.testing.expect(refl.fieldIsDeprecated(id_field));
@@ -290,9 +291,11 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("Role", try refl.fieldTypeName(role_field));
     try std.testing.expect(role_desc == try refl.fieldEnumType(user_desc, role_field));
     try std.testing.expect(refl.fieldIsEnum(local_status_field));
+    try std.testing.expectEqual(pbz.FieldCppType.enumeration, refl.fieldCppType(local_status_field));
     try std.testing.expect((try refl.fieldEnumType(user_desc, local_status_field)) == local_status_desc);
     try std.testing.expectEqualStrings("Profile", try refl.fieldTypeName(profile_field));
     try std.testing.expect(refl.fieldIsMessage(profile_field));
+    try std.testing.expectEqual(pbz.FieldCppType.message, refl.fieldCppType(profile_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(profile_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, profile_field));
     try std.testing.expect(profile_desc == try refl.fieldMessageType(user_desc, profile_field));
@@ -328,6 +331,7 @@ pub fn main() !void {
     try std.testing.expect(!(try refl.fieldPackedOverride(unpacked_samples_field)));
     try std.testing.expect(!(try refl.fieldIsPacked(user_desc, unpacked_samples_field)));
     try std.testing.expect(refl.fieldIsMap(counts_desc_field));
+    try std.testing.expectEqual(pbz.FieldCppType.message, refl.fieldCppType(counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, refl.fieldWireType(counts_desc_field));
     try std.testing.expectEqual(pbz.WireType.length_delimited, try refl.fieldEncodedWireType(user_desc, counts_desc_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.string, try refl.fieldMapKeyType(counts_desc_field));

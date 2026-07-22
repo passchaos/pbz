@@ -28,6 +28,7 @@ pub const Syntax = schema.Syntax;
 pub const Edition = schema.Edition;
 pub const Cardinality = schema.Cardinality;
 pub const ScalarType = schema.ScalarType;
+pub const FieldCppType = schema.FieldCppType;
 pub const FieldKind = schema.FieldKind;
 pub const MapType = schema.MapType;
 pub const FieldOption = schema.FieldOption;
@@ -179,6 +180,7 @@ test "root exports descriptor schema support types" {
     try std.testing.expectEqual(Edition.edition_2023, schema.Edition.edition_2023);
     try std.testing.expectEqual(Cardinality.repeated, schema.Cardinality.repeated);
     try std.testing.expectEqual(ScalarType.int32, schema.ScalarType.int32);
+    try std.testing.expectEqual(FieldCppType.string, (FieldKind{ .scalar = .bytes }).cppType());
     try std.testing.expectEqualStrings("int32", scalarTypeName(.int32));
     try std.testing.expect(declarationTypeNameIsScalar("bytes"));
     try std.testing.expect(declarationSymbolIsQualified(".demo.Type"));
