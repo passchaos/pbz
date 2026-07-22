@@ -130,6 +130,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 1), refl.fileMessageCount(app_file));
     try std.testing.expect((try refl.fileMessageAt(app_file, 0)) == user_desc);
     try std.testing.expectEqualStrings("User", (try refl.fileMessageAt(app_file, 0)).name);
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageIndex(user_desc));
     try std.testing.expect((try refl.fileMessage(app_file, "User")) == user_desc);
     try std.testing.expect((try refl.fileMessageDeep(app_file, "Audit")) == try refl.messageNestedMessage(user_desc, "Audit"));
     try std.testing.expectError(error.UnknownMessage, refl.fileMessage(app_file, "Audit"));
@@ -138,6 +139,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 1), refl.fileEnumCount(app_file));
     try std.testing.expectEqualStrings("Status", (try refl.fileEnumAt(app_file, 0)).name);
     try std.testing.expect((try refl.fileEnum(app_file, "Status")) == try refl.enumeration(".demo.reflect.Status"));
+    try std.testing.expectEqual(@as(usize, 0), try refl.enumIndex(try refl.enumeration(".demo.reflect.Status")));
     try std.testing.expect((try refl.fileEnumDeep(app_file, "LocalStatus")) == try refl.messageNestedEnum(user_desc, "LocalStatus"));
     try std.testing.expectError(error.UnknownEnum, refl.fileEnum(app_file, "LocalStatus"));
     try std.testing.expectError(error.UnknownEnum, refl.fileEnumDeep(app_file, "Missing"));
@@ -163,6 +165,7 @@ pub fn main() !void {
     try std.testing.expect((try refl.messageNestedMessageDeep(user_desc, "Audit")) == audit_desc);
     try std.testing.expectError(error.UnknownMessage, refl.messageNestedMessage(user_desc, "Missing"));
     try std.testing.expectEqualStrings("Audit", refl.messageName(audit_desc));
+    try std.testing.expectEqual(@as(usize, 0), try refl.messageIndex(audit_desc));
     try std.testing.expect((try refl.messageContainingType(audit_desc)).? == user_desc);
     try std.testing.expect((try refl.messageContainingType(user_desc)) == null);
     const audit_full_name = try refl.messageFullName(audit_desc);
@@ -175,6 +178,7 @@ pub fn main() !void {
     try std.testing.expect((try refl.messageNestedEnumDeep(user_desc, "LocalStatus")) == local_status_desc);
     try std.testing.expectError(error.UnknownEnum, refl.messageNestedEnum(user_desc, "Missing"));
     try std.testing.expectEqualStrings("LocalStatus", refl.enumName(local_status_desc));
+    try std.testing.expectEqual(@as(usize, 0), try refl.enumIndex(local_status_desc));
     try std.testing.expect((try refl.enumContainingType(local_status_desc)).? == user_desc);
     try std.testing.expect((try refl.enumContainingType(role_desc)) == null);
     const local_status_full_name = try refl.enumFullName(local_status_desc);
@@ -343,6 +347,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));
     const users_service = try refl.service(".demo.reflect.Users");
     try std.testing.expectEqualStrings("Users", refl.serviceName(users_service));
+    try std.testing.expectEqual(@as(usize, 0), try refl.serviceIndex(users_service));
     try std.testing.expect(refl.serviceIsDeprecated(users_service));
     const users_service_full_name = try refl.serviceFullName(users_service);
     defer allocator.free(users_service_full_name);

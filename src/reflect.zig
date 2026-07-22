@@ -331,6 +331,20 @@ pub const Reflection = struct {
         return try messageFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownMessage;
     }
 
+    pub fn messageIndex(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!usize {
+        const owner_file = try self.fileOfMessage(descriptor);
+        if (containingMessageForMessage(owner_file, descriptor)) |parent| {
+            for (parent.messages.items, 0..) |*candidate, index| {
+                if (candidate == descriptor) return index;
+            }
+        } else {
+            for (owner_file.messages.items, 0..) |*candidate, index| {
+                if (candidate == descriptor) return index;
+            }
+        }
+        return error.UnknownMessage;
+    }
+
     pub fn messageContainingType(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!?*const schema.MessageDescriptor {
         const owner_file = try self.fileOfMessage(descriptor);
         return containingMessageForMessage(owner_file, descriptor);
@@ -437,6 +451,20 @@ pub const Reflection = struct {
     pub fn enumFullName(self: Reflection, descriptor: *const schema.EnumDescriptor) Error![]u8 {
         const owner_file = try self.fileOfEnum(descriptor);
         return try enumFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownEnum;
+    }
+
+    pub fn enumIndex(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!usize {
+        const owner_file = try self.fileOfEnum(descriptor);
+        if (containingMessageForEnum(owner_file, descriptor)) |parent| {
+            for (parent.enums.items, 0..) |*candidate, index| {
+                if (candidate == descriptor) return index;
+            }
+        } else {
+            for (owner_file.enums.items, 0..) |*candidate, index| {
+                if (candidate == descriptor) return index;
+            }
+        }
+        return error.UnknownEnum;
     }
 
     pub fn enumContainingType(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!?*const schema.MessageDescriptor {
@@ -550,6 +578,14 @@ pub const Reflection = struct {
 
     pub fn fileOfService(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
+    }
+
+    pub fn serviceIndex(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!usize {
+        const owner_file = try self.fileOfService(descriptor);
+        for (owner_file.services.items, 0..) |*candidate, index| {
+            if (candidate == descriptor) return index;
+        }
+        return error.UnknownService;
     }
 
     pub fn methodName(_: Reflection, method: *const schema.MethodDescriptor) []const u8 {
