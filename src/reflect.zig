@@ -512,13 +512,31 @@ pub const Reflection = struct {
         return descriptor.oneofCount();
     }
 
+    pub fn messageRealOneofCount(_: Reflection, descriptor: *const schema.MessageDescriptor) usize {
+        return descriptor.realOneofCount();
+    }
+
     pub fn messageOneofAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.OneofDescriptor {
         return descriptor.oneofAt(index) orelse error.UnknownField;
+    }
+
+    pub fn messageRealOneofAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.OneofDescriptor {
+        return descriptor.realOneofAt(index) orelse error.UnknownField;
     }
 
     pub fn oneofIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
         for (descriptor.oneofs.items, 0..) |*candidate, index| {
             if (candidate == oneof) return index;
+        }
+        return error.UnknownField;
+    }
+
+    pub fn realOneofIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!usize {
+        var seen: usize = 0;
+        for (descriptor.oneofs.items) |*candidate| {
+            if (descriptor.oneofIsSynthetic(candidate)) continue;
+            if (candidate == oneof) return seen;
+            seen += 1;
         }
         return error.UnknownField;
     }
@@ -1032,6 +1050,11 @@ pub const Reflection = struct {
         return descriptor.findOneof(oneof_name) orelse error.UnknownField;
     }
 
+    pub fn fieldRealContainingOneof(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!?*const schema.OneofDescriptor {
+        const oneof = try self.fieldContainingOneof(descriptor, field);
+        return if (descriptor.oneofIsSynthetic(oneof)) null else oneof;
+    }
+
     pub fn fieldIsExtension(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.extendee != null;
     }
@@ -1297,6 +1320,15 @@ pub const Reflection = struct {
 
     pub fn oneofExplicitFeatures(_: Reflection, descriptor: *const schema.OneofDescriptor) Error!schema.FeatureSet {
         return descriptor.features orelse error.MissingField;
+    }
+
+    pub fn oneofIsSynthetic(_: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!bool {
+        if (!messageDirectlyContainsOneof(message_descriptor, oneof)) return error.UnknownField;
+        return message_descriptor.oneofIsSynthetic(oneof);
+    }
+
+    pub fn oneofIsReal(self: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!bool {
+        return !(try self.oneofIsSynthetic(message_descriptor, oneof));
     }
 
     pub fn oneofFullName(self: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error![]u8 {
@@ -2639,6 +2671,13 @@ fn importOfKindAt(file: *const schema.FileDescriptor, kind: schema.Import.Kind, 
 fn messageDirectlyContainsField(message: *const schema.MessageDescriptor, target: *const schema.FieldDescriptor) bool {
     for (message.fields.items) |*field| {
         if (field == target) return true;
+    }
+    return false;
+}
+
+fn messageDirectlyContainsOneof(message: *const schema.MessageDescriptor, target: *const schema.OneofDescriptor) bool {
+    for (message.oneofs.items) |*oneof| {
+        if (oneof == target) return true;
     }
     return false;
 }

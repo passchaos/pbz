@@ -844,9 +844,52 @@ pub const MessageDescriptor = struct {
         return self.oneofs.items.len;
     }
 
+    pub fn realOneofCount(self: *const MessageDescriptor) usize {
+        var count: usize = 0;
+        for (self.oneofs.items) |*oneof| {
+            if (!self.oneofIsSynthetic(oneof)) count += 1;
+        }
+        return count;
+    }
+
     pub fn oneofAt(self: *const MessageDescriptor, index: usize) ?*const OneofDescriptor {
         if (index >= self.oneofs.items.len) return null;
         return &self.oneofs.items[index];
+    }
+
+    pub fn realOneofAt(self: *const MessageDescriptor, index: usize) ?*const OneofDescriptor {
+        var seen: usize = 0;
+        for (self.oneofs.items) |*oneof| {
+            if (self.oneofIsSynthetic(oneof)) continue;
+            if (seen == index) return oneof;
+            seen += 1;
+        }
+        return null;
+    }
+
+    pub fn oneofIsSynthetic(self: *const MessageDescriptor, oneof: *const OneofDescriptor) bool {
+        var found_oneof = false;
+        for (self.oneofs.items) |*candidate| {
+            if (candidate == oneof) {
+                found_oneof = true;
+                break;
+            }
+        }
+        if (!found_oneof) return false;
+
+        // FileDescriptorProto represents each proto3 `optional` field as a
+        // one-field synthetic oneof with the field's `proto3_optional` bit set.
+        // Parsed source files keep proto3 optional as a plain field, so only
+        // descriptor-decoded messages can satisfy this shape.
+        var field_count: usize = 0;
+        var only_field_is_proto3_optional = false;
+        for (self.fields.items) |field| {
+            const oneof_name = field.oneof_name orelse continue;
+            if (!std.mem.eql(u8, oneof_name, oneof.name)) continue;
+            field_count += 1;
+            only_field_is_proto3_optional = field.proto3_optional;
+        }
+        return field_count == 1 and only_field_is_proto3_optional;
     }
 
     pub fn nestedMessageCount(self: *const MessageDescriptor) usize {

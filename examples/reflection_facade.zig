@@ -169,7 +169,13 @@ pub fn main() !void {
     const contact_desc = try refl.messageOneofAt(user_desc, 0);
     try std.testing.expectEqualStrings("contact", contact_desc.name);
     try std.testing.expectEqual(@as(usize, 0), try refl.oneofIndex(user_desc, contact_desc));
+    try std.testing.expectEqual(@as(usize, 1), refl.messageRealOneofCount(user_desc));
+    try std.testing.expect((try refl.messageRealOneofAt(user_desc, 0)) == contact_desc);
+    try std.testing.expectEqual(@as(usize, 0), try refl.realOneofIndex(user_desc, contact_desc));
+    try std.testing.expect(try refl.oneofIsReal(user_desc, contact_desc));
+    try std.testing.expect(!(try refl.oneofIsSynthetic(user_desc, contact_desc)));
     try std.testing.expectError(error.UnknownField, refl.messageOneofAt(user_desc, 9));
+    try std.testing.expectError(error.UnknownField, refl.messageRealOneofAt(user_desc, 9));
     try std.testing.expectEqual(@as(usize, 1), refl.messageNestedMessageCount(user_desc));
     const audit_desc = try refl.messageNestedMessageAt(user_desc, 0);
     try std.testing.expect((try refl.messageNestedMessage(user_desc, "Audit")) == audit_desc);
@@ -313,9 +319,12 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("contact", try refl.fieldOneofName(email_field));
     const contact_oneof = try refl.oneofByName(user_desc, "contact");
     try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == contact_oneof);
+    try std.testing.expect((try refl.fieldRealContainingOneof(user_desc, email_field)).? == contact_oneof);
+    try std.testing.expectError(error.MissingField, refl.fieldRealContainingOneof(user_desc, id_field));
     try std.testing.expect((try refl.oneofContainingType(user_desc, contact_oneof)) == user_desc);
     try std.testing.expect((try refl.oneofContainingFile(user_desc, contact_oneof)) == app_file);
     try std.testing.expectEqualStrings("contact", refl.optionString(refl.oneofOptions(contact_oneof), "oneof_note").?);
+    try expectDecodedSyntheticOneofReflection(allocator, &loaded.registry, app_file);
     try std.testing.expect(!refl.fieldIsExtension(id_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldExtendeeName(id_field));
     try std.testing.expect(!(try refl.fieldHasPresence(user_desc, id_field)));
@@ -843,6 +852,47 @@ pub fn main() !void {
     try required_refl.validateInitialized(&parent);
     try std.testing.expect(required_refl.isInitialized(&parent));
     try std.testing.expect((try required_refl.missingRequiredFieldPath(&parent)) == null);
+}
+
+fn expectDecodedSyntheticOneofReflection(
+    allocator: std.mem.Allocator,
+    source_registry: *const pbz.Registry,
+    source_file: *const pbz.FileDescriptor,
+) !void {
+    const descriptor_bytes = try pbz.encodeFileDescriptorProtoWithRegistry(allocator, source_file, source_registry, source_file.name);
+    defer allocator.free(descriptor_bytes);
+
+    var decoded_file = try pbz.decodeFileDescriptorProto(allocator, descriptor_bytes);
+    defer decoded_file.deinit();
+    var decoded_registry = pbz.Registry.init(allocator);
+    defer decoded_registry.deinit();
+    try decoded_registry.addFile(&decoded_file);
+
+    const refl = pbz.Reflection.init(allocator, &decoded_registry);
+    const user_desc = try refl.message(".demo.reflect.User");
+    const nickname_field = try refl.fieldByName(user_desc, "nickname");
+    const contact_oneof = try refl.oneofByName(user_desc, "contact");
+    const synthetic_oneof = try refl.oneofByName(user_desc, "_nickname");
+
+    // DescriptorProto keeps proto3 optional presence by appending synthetic
+    // oneofs after all user-authored oneofs. These helpers mirror the C++
+    // Descriptor API split between oneof_decl_count() and
+    // real_oneof_decl_count(), so callers can choose descriptor-wire parity or
+    // source-level oneof semantics without inspecting raw oneof names.
+    try std.testing.expectEqual(@as(usize, 2), refl.messageOneofCount(user_desc));
+    try std.testing.expectEqual(@as(usize, 1), refl.messageRealOneofCount(user_desc));
+    try std.testing.expect((try refl.messageOneofAt(user_desc, 0)) == contact_oneof);
+    try std.testing.expect((try refl.messageOneofAt(user_desc, 1)) == synthetic_oneof);
+    try std.testing.expect((try refl.messageRealOneofAt(user_desc, 0)) == contact_oneof);
+    try std.testing.expectError(error.UnknownField, refl.messageRealOneofAt(user_desc, 1));
+    try std.testing.expectEqual(@as(usize, 1), try refl.oneofIndex(user_desc, synthetic_oneof));
+    try std.testing.expectError(error.UnknownField, refl.realOneofIndex(user_desc, synthetic_oneof));
+    try std.testing.expect(!(try refl.oneofIsSynthetic(user_desc, contact_oneof)));
+    try std.testing.expect(try refl.oneofIsReal(user_desc, contact_oneof));
+    try std.testing.expect(try refl.oneofIsSynthetic(user_desc, synthetic_oneof));
+    try std.testing.expect(!(try refl.oneofIsReal(user_desc, synthetic_oneof)));
+    try std.testing.expect((try refl.fieldContainingOneof(user_desc, nickname_field)) == synthetic_oneof);
+    try std.testing.expect((try refl.fieldRealContainingOneof(user_desc, nickname_field)) == null);
 }
 
 comptime {
