@@ -754,6 +754,14 @@ pub const Reflection = struct {
         return field.isWeak();
     }
 
+    pub fn fieldIsLazy(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isLazy();
+    }
+
+    pub fn fieldIsUnverifiedLazy(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return field.isUnverifiedLazy();
+    }
+
     pub fn fieldOptions(_: Reflection, field: *const schema.FieldDescriptor) []const schema.FieldOption {
         return field.options.items;
     }

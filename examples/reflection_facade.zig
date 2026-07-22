@@ -704,7 +704,7 @@ pub fn main() !void {
         \\  optional group Legacy = 4 { optional int32 code = 5; }
         \\  repeated Child children = 6;
         \\  repeated group Item = 7 { optional int32 code = 8; }
-        \\  optional Child weak_child = 9 [weak = true];
+        \\  optional Child weak_child = 9 [lazy = true, weak = true, unverified_lazy = true];
         \\}
     );
     defer required_file.deinit();
@@ -719,6 +719,8 @@ pub fn main() !void {
     const priority_field = try required_refl.fieldByName(parent.descriptor, "priority");
     try std.testing.expect(required_refl.fieldHasOptionalKeyword(priority_field));
     try std.testing.expect(!required_refl.fieldIsWeak(priority_field));
+    try std.testing.expect(!required_refl.fieldIsLazy(priority_field));
+    try std.testing.expect(!required_refl.fieldIsUnverifiedLazy(priority_field));
     try std.testing.expect(required_refl.fieldHasDefaultValue(priority_field));
     try std.testing.expectEqual(@as(i64, 7), (try required_refl.fieldExplicitDefaultValue(priority_field)).integer);
     try std.testing.expectEqual(@as(i32, 7), (try required_refl.fieldDefaultValue(parent.descriptor, priority_field)).int32);
@@ -728,6 +730,8 @@ pub fn main() !void {
     try std.testing.expect(try required_refl.fieldMessageType(parent.descriptor, required_child_field) == child_desc);
     const weak_child_field = try required_refl.fieldByName(parent.descriptor, "weak_child");
     try std.testing.expect(required_refl.fieldIsWeak(weak_child_field));
+    try std.testing.expect(required_refl.fieldIsLazy(weak_child_field));
+    try std.testing.expect(required_refl.fieldIsUnverifiedLazy(weak_child_field));
     try std.testing.expect(try required_refl.fieldMessageType(parent.descriptor, weak_child_field) == child_desc);
     try std.testing.expectEqualStrings("Child", try required_refl.fieldTypeName(required_child_field));
     const legacy_field = try required_refl.fieldByName(parent.descriptor, "legacy");

@@ -307,6 +307,14 @@ pub const FieldDescriptor = struct {
         return optionBool(self.options.items, "weak") orelse false;
     }
 
+    pub fn isLazy(self: FieldDescriptor) bool {
+        return optionBool(self.options.items, "lazy") orelse false;
+    }
+
+    pub fn isUnverifiedLazy(self: FieldDescriptor) bool {
+        return optionBool(self.options.items, "unverified_lazy") orelse false;
+    }
+
     pub fn hasDefaultValue(self: FieldDescriptor) bool {
         return self.default_value != null;
     }
