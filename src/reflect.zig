@@ -1556,6 +1556,12 @@ pub const Reflection = struct {
         return message_value.unknownFields();
     }
 
+    pub fn unknownAt(_: Reflection, message_value: *const dynamic.DynamicMessage, index: usize) Error!dynamic.UnknownField {
+        const fields = message_value.unknownFields();
+        if (index >= fields.len) return error.UnknownField;
+        return fields[index];
+    }
+
     pub fn unknownFieldNumber(_: Reflection, unknown: dynamic.UnknownField) wire.FieldNumber {
         return unknown.number;
     }
