@@ -19,11 +19,13 @@ pub fn main() !void {
         \\package demo.reflect;
         \\import "common.proto";
         \\enum Status {
+        \\  option deprecated = true;
         \\  reserved 5 to 9;
         \\  reserved "STATUS_OLD";
-        \\  STATUS_UNKNOWN = 0;
+        \\  STATUS_UNKNOWN = 0 [deprecated = true];
         \\}
         \\message User {
+        \\  option deprecated = true;
         \\  reserved 100 to 110;
         \\  reserved "legacy";
         \\  int32 id = 1 [
@@ -74,7 +76,10 @@ pub fn main() !void {
         \\}
         \\service Users {
         \\  option deprecated = true;
-        \\  rpc Get (User) returns (User) { option idempotency_level = NO_SIDE_EFFECTS; }
+        \\  rpc Get (User) returns (User) {
+        \\    option deprecated = true;
+        \\    option idempotency_level = NO_SIDE_EFFECTS;
+        \\  }
         \\}
     );
 
@@ -93,6 +98,7 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.Edition.proto3, refl.fileEdition(app_file));
     try std.testing.expectEqualStrings("common.proto", role_file.name);
     try std.testing.expectEqualStrings("User", refl.messageName(user_desc));
+    try std.testing.expect(refl.messageIsDeprecated(user_desc));
     const user_full_name = try refl.messageFullName(user_desc);
     defer allocator.free(user_full_name);
     try std.testing.expectEqualStrings("demo.reflect.User", user_full_name);
@@ -154,6 +160,8 @@ pub fn main() !void {
     const role_unknown_value = try refl.enumValueAt(role_desc, 0);
     try std.testing.expectEqualStrings("ROLE_UNKNOWN", refl.enumValueName(role_unknown_value));
     try std.testing.expectEqual(@as(i32, 0), refl.enumValueNumber(role_unknown_value));
+    try std.testing.expect(!refl.enumIsDeprecated(role_desc));
+    try std.testing.expect(!refl.enumValueIsDeprecated(role_unknown_value));
     const role_unknown_full_name = try refl.enumValueFullName(role_desc, role_unknown_value);
     defer allocator.free(role_unknown_full_name);
     try std.testing.expectEqualStrings("demo.reflect.ROLE_UNKNOWN", role_unknown_full_name);
@@ -184,6 +192,7 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(pbz.FieldNumber, 1), refl.fieldNumber(id_field));
     try std.testing.expectEqual(pbz.schema.Cardinality.implicit, refl.fieldCardinality(id_field));
     try std.testing.expectEqual(pbz.schema.FieldKind{ .scalar = .int32 }, refl.fieldKind(id_field));
+    try std.testing.expect(refl.fieldIsDeprecated(id_field));
     try std.testing.expect(refl.fieldIsScalar(id_field));
     try std.testing.expectEqual(pbz.schema.ScalarType.int32, try refl.fieldScalarType(id_field));
     try std.testing.expectEqualStrings("int32", try refl.fieldScalarTypeName(id_field));
@@ -249,6 +258,8 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownField, refl.messageReservedRangeAt(user_desc, 9));
     try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
     const status_desc = try refl.enumeration(".demo.reflect.Status");
+    try std.testing.expect(refl.enumIsDeprecated(status_desc));
+    try std.testing.expect(refl.enumValueIsDeprecated(try refl.enumValueByName(status_desc, "STATUS_UNKNOWN")));
     try std.testing.expect(refl.enumReservedName(status_desc, "STATUS_OLD"));
     try std.testing.expectEqual(@as(usize, 1), refl.enumReservedNameCount(status_desc));
     try std.testing.expectEqualStrings("STATUS_OLD", try refl.enumReservedNameAt(status_desc, 0));
@@ -263,6 +274,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));
     const users_service = try refl.service(".demo.reflect.Users");
     try std.testing.expectEqualStrings("Users", refl.serviceName(users_service));
+    try std.testing.expect(refl.serviceIsDeprecated(users_service));
     const users_service_full_name = try refl.serviceFullName(users_service);
     defer allocator.free(users_service_full_name);
     try std.testing.expectEqualStrings("demo.reflect.Users", users_service_full_name);
@@ -275,6 +287,7 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownField, refl.serviceMethodAt(users_service, 9));
     const get_method = try refl.methodByName(users_service, "Get");
     try std.testing.expectEqualStrings("Get", refl.methodName(get_method));
+    try std.testing.expect(refl.methodIsDeprecated(get_method));
     const get_method_full_name = try refl.methodFullName(users_service, get_method);
     defer allocator.free(get_method_full_name);
     try std.testing.expectEqualStrings("demo.reflect.Users.Get", get_method_full_name);

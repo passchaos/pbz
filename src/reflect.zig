@@ -153,6 +153,10 @@ pub const Reflection = struct {
         return descriptor.name;
     }
 
+    pub fn messageIsDeprecated(_: Reflection, descriptor: *const schema.MessageDescriptor) bool {
+        return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
+    }
+
     pub fn messageFullName(self: Reflection, descriptor: *const schema.MessageDescriptor) Error![]u8 {
         const owner_file = try self.fileOfMessage(descriptor);
         return try messageFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownMessage;
@@ -218,6 +222,10 @@ pub const Reflection = struct {
         return descriptor.name;
     }
 
+    pub fn enumIsDeprecated(_: Reflection, descriptor: *const schema.EnumDescriptor) bool {
+        return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
+    }
+
     pub fn enumFullName(self: Reflection, descriptor: *const schema.EnumDescriptor) Error![]u8 {
         const owner_file = try self.fileOfEnum(descriptor);
         return try enumFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownEnum;
@@ -233,6 +241,10 @@ pub const Reflection = struct {
 
     pub fn enumValueNumber(_: Reflection, descriptor: *const schema.EnumValueDescriptor) i32 {
         return descriptor.number;
+    }
+
+    pub fn enumValueIsDeprecated(_: Reflection, descriptor: *const schema.EnumValueDescriptor) bool {
+        return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
     }
 
     pub fn enumValueFullName(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error![]u8 {
@@ -261,6 +273,10 @@ pub const Reflection = struct {
         return descriptor.name;
     }
 
+    pub fn serviceIsDeprecated(_: Reflection, descriptor: *const schema.ServiceDescriptor) bool {
+        return schema.optionBool(descriptor.options.items, "deprecated") orelse false;
+    }
+
     pub fn fileService(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.ServiceDescriptor {
         return file_descriptor.findService(name) orelse error.UnknownService;
     }
@@ -276,6 +292,10 @@ pub const Reflection = struct {
 
     pub fn methodName(_: Reflection, method: *const schema.MethodDescriptor) []const u8 {
         return method.name;
+    }
+
+    pub fn methodIsDeprecated(_: Reflection, method: *const schema.MethodDescriptor) bool {
+        return schema.optionBool(method.options.items, "deprecated") orelse false;
     }
 
     pub fn methodFullName(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error![]u8 {
@@ -350,6 +370,10 @@ pub const Reflection = struct {
 
     pub fn fieldName(_: Reflection, field: *const schema.FieldDescriptor) []const u8 {
         return field.name;
+    }
+
+    pub fn fieldIsDeprecated(_: Reflection, field: *const schema.FieldDescriptor) bool {
+        return schema.optionBool(field.options.items, "deprecated") orelse false;
     }
 
     pub fn fieldFullName(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]u8 {
