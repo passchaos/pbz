@@ -383,9 +383,19 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("email", refl.whichOneof(&user, "contact").?.name);
     try std.testing.expectEqualStrings("ada@example.test", try refl.getString(&user, "email"));
 
+    try std.testing.expectEqual(@as(usize, 1), try refl.mapLen(&user, "counts"));
     const count_field = (try refl.getField(&user, "counts")).?;
     try std.testing.expectEqual(@as(usize, 1), count_field.values.items.len);
     try std.testing.expectEqual(@as(i32, 2), count_field.values.items[0].map_entry.value.int32);
+    const count_entry_0 = try refl.mapEntryAt(&user, "counts", 0);
+    try std.testing.expectEqualStrings("red", count_entry_0.key.string);
+    try std.testing.expectEqual(@as(i32, 2), count_entry_0.value.int32);
+    const count_entries = try refl.mapEntries(&user, "counts");
+    defer allocator.free(count_entries);
+    try std.testing.expectEqual(@as(usize, 1), count_entries.len);
+    try std.testing.expect(count_entries[0] == count_entry_0);
+    try std.testing.expectError(error.MissingField, refl.mapEntryAt(&user, "counts", 9));
+    try std.testing.expectError(error.TypeMismatch, refl.mapLen(&user, "tags"));
     try std.testing.expectEqual(@as(i32, 2), (try refl.stringMapValue(&user, "counts", "red")).?.int32);
     const red_lookup = try allocator.dupe(u8, "red");
     defer allocator.free(red_lookup);

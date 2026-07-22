@@ -843,6 +843,38 @@ pub const Reflection = struct {
         return message_value.swapRepeatedValues(try self.fieldByName(message_value.descriptor, name), lhs, rhs);
     }
 
+    pub fn mapLen(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!usize {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.kind != .map) return error.TypeMismatch;
+        return if (message_value.getByNumber(field.number)) |entry| entry.values.items.len else 0;
+    }
+
+    pub fn mapEntryAt(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, index: usize) Error!*const dynamic.MapEntry {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.kind != .map) return error.TypeMismatch;
+        const value = message_value.getByNumber(field.number) orelse return error.MissingField;
+        if (index >= value.values.items.len) return error.MissingField;
+        return switch (value.values.items[index]) {
+            .map_entry => |entry| entry,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn mapEntries(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error![]*const dynamic.MapEntry {
+        const field = try self.fieldByName(message_value.descriptor, name);
+        if (field.kind != .map) return error.TypeMismatch;
+        const value = message_value.getByNumber(field.number) orelse return try self.allocator.alloc(*const dynamic.MapEntry, 0);
+        var entries = try self.allocator.alloc(*const dynamic.MapEntry, value.values.items.len);
+        errdefer self.allocator.free(entries);
+        for (value.values.items, 0..) |item, index| {
+            entries[index] = switch (item) {
+                .map_entry => |entry| entry,
+                else => return error.TypeMismatch,
+            };
+        }
+        return entries;
+    }
+
     pub fn mapEntry(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8, key: dynamic.Value) Error!?*const dynamic.MapEntry {
         const field = try self.fieldByName(message_value.descriptor, name);
         try self.validateMapKey(field, key);
