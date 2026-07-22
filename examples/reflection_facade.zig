@@ -297,8 +297,10 @@ pub fn main() !void {
     try std.testing.expect(refl.messageReservedNumber(user_desc, 100));
     try std.testing.expectEqual(@as(usize, 1), refl.messageReservedRangeCount(user_desc));
     const user_reserved_range = try refl.messageReservedRangeAt(user_desc, 0);
-    try std.testing.expectEqual(@as(i64, 100), user_reserved_range.start);
-    try std.testing.expectEqual(@as(i64, 111), user_reserved_range.end.?);
+    try std.testing.expectEqual(@as(i64, 100), refl.reservedRangeStart(user_reserved_range));
+    try std.testing.expectEqual(@as(i64, 111), refl.reservedRangeEnd(user_reserved_range, user_desc.extensionRangeMaxExclusive()));
+    try std.testing.expect(refl.reservedRangeContains(user_reserved_range, 100, user_desc.extensionRangeMaxExclusive()));
+    try std.testing.expect(!refl.reservedRangeContains(user_reserved_range, 111, user_desc.extensionRangeMaxExclusive()));
     try std.testing.expectError(error.UnknownField, refl.messageReservedRangeAt(user_desc, 9));
     try std.testing.expect(!refl.messageReservedNumber(user_desc, 99));
     const status_desc = try refl.enumeration(".demo.reflect.Status");
@@ -320,8 +322,10 @@ pub fn main() !void {
     try std.testing.expect(refl.enumReservedNumber(status_desc, 5));
     try std.testing.expectEqual(@as(usize, 1), refl.enumReservedRangeCount(status_desc));
     const status_reserved_range = try refl.enumReservedRangeAt(status_desc, 0);
-    try std.testing.expectEqual(@as(i64, 5), status_reserved_range.start);
-    try std.testing.expectEqual(@as(i64, 10), status_reserved_range.end.?);
+    try std.testing.expectEqual(@as(i64, 5), refl.reservedRangeStart(status_reserved_range));
+    try std.testing.expectEqual(@as(i64, 10), refl.reservedRangeEnd(status_reserved_range, std.math.maxInt(i64)));
+    try std.testing.expect(refl.reservedRangeContains(status_reserved_range, 5, std.math.maxInt(i64)));
+    try std.testing.expect(!refl.reservedRangeContains(status_reserved_range, 10, std.math.maxInt(i64)));
     try std.testing.expectError(error.UnknownEnum, refl.enumReservedRangeAt(status_desc, 9));
     try std.testing.expect(!refl.enumReservedNumber(status_desc, 10));
     try std.testing.expectError(error.UnknownField, refl.fieldByJsonName(user_desc, "display_name"));

@@ -999,6 +999,18 @@ pub const Reflection = struct {
         return descriptor.reserved_ranges.items[index];
     }
 
+    pub fn reservedRangeStart(_: Reflection, range: schema.ReservedRange) i64 {
+        return range.start;
+    }
+
+    pub fn reservedRangeEnd(_: Reflection, range: schema.ReservedRange, max_end: i64) i64 {
+        return range.effectiveEnd(max_end);
+    }
+
+    pub fn reservedRangeContains(_: Reflection, range: schema.ReservedRange, number: i64, max_end: i64) bool {
+        return range.containsWithMax(number, max_end);
+    }
+
     pub fn enumForField(self: Reflection, message_descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!*const schema.EnumDescriptor {
         return try self.enumForKind(message_descriptor, field, field.kind);
     }
