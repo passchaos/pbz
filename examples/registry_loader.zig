@@ -86,12 +86,15 @@ pub fn main() !void {
     try std.testing.expectError(error.UnknownFile, refl.fileDependency(app_file, 9));
     std.debug.assert(refl.filePublicDependencyCount(app_file) == 1);
     std.debug.assert((try refl.filePublicDependency(app_file, 0)) == common_file);
+    std.debug.assert((try refl.filePublicDependencyIndex(app_file, common_file)) == 0);
     try std.testing.expectError(error.UnknownFile, refl.filePublicDependency(app_file, 9));
     std.debug.assert(refl.fileOptionDependencyCount(app_file) == 1);
     std.debug.assert((try refl.fileOptionDependency(app_file, 0)) == options_file);
+    std.debug.assert((try refl.fileOptionDependencyIndex(app_file, options_file)) == 0);
     try std.testing.expectError(error.UnknownFile, refl.fileOptionDependency(app_file, 9));
     std.debug.assert(refl.fileWeakDependencyCount(app_file) == 0);
     try std.testing.expectError(error.UnknownFile, refl.fileWeakDependency(app_file, 0));
+    try std.testing.expectError(error.UnknownFile, refl.fileWeakDependencyIndex(app_file, common_file));
     std.debug.assert(!refl.fileHasMissingWeakImport(app_file, "common.proto"));
     std.debug.assert(refl.fileCanSee(app_file, common_file));
     const chain = (try refl.importChainByPath("app.proto", "common.proto")).?;

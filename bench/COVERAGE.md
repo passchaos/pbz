@@ -254,7 +254,7 @@ benchmark harness.
   present.
 - `examples/registry_loader.zig` covers public in-memory and filesystem schema
   loading (`MemorySourceTree` and `loadDir`), recursive imports, message/service
-  and method lookup, reflection typed file option/import/dependency metadata, import-kind/option-dependency metadata and import-chain lookup/accessors, registry-backed dynamic
+  and method lookup, reflection typed file option/import/dependency metadata, import-kind dependency index/option-dependency metadata and import-chain lookup/accessors, registry-backed dynamic
   JSON output, plus C++ DescriptorPool parity for rejecting duplicate descriptor
   symbols assembled programmatically.
 - `examples/dynamic_reserved_text.zig` covers reserved field names/ranges in
@@ -308,7 +308,7 @@ benchmark harness.
   type-checked writes, typed repeated scalar access/replacement across all scalar families, repeated enum descriptor/name lookup, repeated field replacement/reordering/removal, typed singular/repeated message/group creation/access/mutation including typed repeated element access, field scalar/kind/declared-type/cpp-type-name/cpp-type/cardinality/optional-keyword/weak/lazy/debug-redact/ctype/jstype/retention/targets/wire-type/encoded-wire-type/direct-containing/containing/extendee/oneof/direct-owner/index metadata, lowercase/camelcase/JSON field-name lookup/output, map-entry descriptor metadata, map
   last-wins mutation, map key/value metadata, map size/key/value/entry enumeration, map key lookup, repeated/map enum-name lookup, JSON-name field lookup/output/explicitness, explicit/effective typed default metadata and enum default value/name lookup, field presence/packing/packed-override/reserved range/name lookup/enumeration/accessor metadata,
   message/enum legacy-json-conflict metadata, feature-support lifecycle metadata/accessors, ordered file/message/nested-type/enum/service descriptor enumeration/index lookup, file/message-local descriptor/value lookup/index, descriptor name/full-name/containing-type/value-owner/direct field-type identity and placeholder metadata lookup,
-  file metadata/import/dependency index/import-chain/symbol-containing-file lookup, enum descriptor/value registry lookup and enum-name writes, oneof field enumeration plus descriptor-direct oneof field access and oneof
+  file metadata/import/dependency/import-kind dependency index/import-chain/symbol-containing-file lookup, enum descriptor/value registry lookup and enum-name writes, oneof field enumeration plus descriptor-direct oneof field access and oneof
   lookup/fields/presence/inspection/clearing plus real-vs-synthetic proto3-optional oneof/direct-owner/index metadata, imported message fields, descriptor option slices and typed option lookup,
   file-local service lookup, registry field/oneof/method lookup, service/method owner/type/deprecation metadata lookup, extension descriptor lookup, dynamic merge/copy/clone, unknown-field
   query/mutation and record accessors, required-field initialization checks, binary, and JSON round-trips.

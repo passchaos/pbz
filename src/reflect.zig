@@ -345,6 +345,10 @@ pub const Reflection = struct {
         return try self.file(import.path);
     }
 
+    pub fn filePublicDependencyIndex(self: Reflection, file_descriptor: *const schema.FileDescriptor, dependency: *const schema.FileDescriptor) Error!usize {
+        return self.fileDependencyIndexOfKind(file_descriptor, .public, dependency) orelse error.UnknownFile;
+    }
+
     pub fn fileWeakDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return importKindCount(file_descriptor, .weak);
     }
@@ -354,6 +358,10 @@ pub const Reflection = struct {
         return try self.file(import.path);
     }
 
+    pub fn fileWeakDependencyIndex(self: Reflection, file_descriptor: *const schema.FileDescriptor, dependency: *const schema.FileDescriptor) Error!usize {
+        return self.fileDependencyIndexOfKind(file_descriptor, .weak, dependency) orelse error.UnknownFile;
+    }
+
     pub fn fileOptionDependencyCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
         return importKindCount(file_descriptor, .option);
     }
@@ -361,6 +369,24 @@ pub const Reflection = struct {
     pub fn fileOptionDependency(self: Reflection, file_descriptor: *const schema.FileDescriptor, index: usize) Error!*const schema.FileDescriptor {
         const import = importOfKindAt(file_descriptor, .option, index) orelse return error.UnknownFile;
         return try self.file(import.path);
+    }
+
+    pub fn fileOptionDependencyIndex(self: Reflection, file_descriptor: *const schema.FileDescriptor, dependency: *const schema.FileDescriptor) Error!usize {
+        return self.fileDependencyIndexOfKind(file_descriptor, .option, dependency) orelse error.UnknownFile;
+    }
+
+    fn fileDependencyIndexOfKind(self: Reflection, file_descriptor: *const schema.FileDescriptor, kind: schema.Import.Kind, dependency: *const schema.FileDescriptor) ?usize {
+        var seen: usize = 0;
+        for (file_descriptor.imports.items) |import| {
+            if (import.kind != kind) continue;
+            const imported = self.registry.findFile(import.path) orelse {
+                seen += 1;
+                continue;
+            };
+            if (registry_mod.sameFile(imported, dependency)) return seen;
+            seen += 1;
+        }
+        return null;
     }
 
     pub fn fileMessageCount(_: Reflection, file_descriptor: *const schema.FileDescriptor) usize {
