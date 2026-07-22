@@ -1566,6 +1566,11 @@ pub const Struct = struct {
         return error.UnknownField;
     }
 
+    pub fn hasField(self: Struct, key: []const u8) bool {
+        _ = self.fieldIndex(key) catch return false;
+        return true;
+    }
+
     pub fn fieldValue(self: Struct, key: []const u8) !Value {
         return (try self.fieldAt(try self.fieldIndex(key))).value;
     }

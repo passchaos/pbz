@@ -72,6 +72,8 @@ pub fn main() !void {
     defer object.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 2), object.fieldCount());
     try std.testing.expectEqualStrings("enabled", (try object.fieldAt(0)).key);
+    try std.testing.expect(object.hasField("enabled"));
+    try std.testing.expect(!object.hasField("missing"));
     try std.testing.expectEqual(@as(usize, 0), try object.fieldIndex("enabled"));
     switch (try object.fieldValue("enabled")) {
         .bool_value => |value| try std.testing.expect(value),
