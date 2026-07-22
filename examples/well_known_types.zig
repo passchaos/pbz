@@ -109,6 +109,8 @@ pub fn main() !void {
     defer list.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 3), list.valueCount());
     try std.testing.expectEqual(pbz.wkt.Value.null_value, try list.valueAt(0));
+    try std.testing.expect(list.hasValue(.{ .bool_value = true }));
+    try std.testing.expect(!list.hasValue(.{ .string_value = "missing" }));
     try std.testing.expectEqual(@as(usize, 1), try list.valueIndex(.{ .bool_value = true }));
     try std.testing.expect((try list.valueAt(0)).isNull());
     try std.testing.expect(try (try list.valueAt(1)).boolean());

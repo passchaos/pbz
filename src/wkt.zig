@@ -1715,6 +1715,11 @@ pub const ListValue = struct {
         return error.UnknownField;
     }
 
+    pub fn hasValue(self: ListValue, value: Value) bool {
+        _ = self.valueIndex(value) catch return false;
+        return true;
+    }
+
     pub fn encode(self: ListValue, allocator: std.mem.Allocator) anyerror![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();
