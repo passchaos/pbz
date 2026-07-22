@@ -1766,6 +1766,49 @@ pub const Value = union(enum) {
     struct_value: *Struct,
     list_value: *ListValue,
 
+    pub fn valueTag(self: Value) std.meta.Tag(Value) {
+        return std.meta.activeTag(self);
+    }
+
+    pub fn isNull(self: Value) bool {
+        return self == .null_value;
+    }
+
+    pub fn number(self: Value) !f64 {
+        return switch (self) {
+            .number_value => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn string(self: Value) ![]const u8 {
+        return switch (self) {
+            .string_value => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn boolean(self: Value) !bool {
+        return switch (self) {
+            .bool_value => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn object(self: Value) !*const Struct {
+        return switch (self) {
+            .struct_value => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
+    pub fn list(self: Value) !*const ListValue {
+        return switch (self) {
+            .list_value => |value| value,
+            else => error.TypeMismatch,
+        };
+    }
+
     pub fn encode(self: Value, allocator: std.mem.Allocator) anyerror![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();

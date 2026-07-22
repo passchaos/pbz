@@ -89,6 +89,9 @@ pub fn main() !void {
     defer allocator.free(scalar_value_wire);
     var scalar_value_roundtrip = try pbz.Value.decode(allocator, scalar_value_wire);
     defer scalar_value_roundtrip.deinit(allocator);
+    try std.testing.expectEqual(.string_value, scalar_value_roundtrip.valueTag());
+    try std.testing.expectEqualStrings("standalone", try scalar_value_roundtrip.string());
+    try std.testing.expectError(error.TypeMismatch, scalar_value_roundtrip.boolean());
     switch (scalar_value_roundtrip) {
         .string_value => |value| std.debug.assert(std.mem.eql(u8, value, "standalone")),
         else => return error.UnexpectedValueKind,
@@ -101,6 +104,12 @@ pub fn main() !void {
     try std.testing.expectEqual(@as(usize, 3), list.valueCount());
     try std.testing.expectEqual(pbz.wkt.Value.null_value, try list.valueAt(0));
     try std.testing.expectEqual(@as(usize, 1), try list.valueIndex(.{ .bool_value = true }));
+    try std.testing.expect((try list.valueAt(0)).isNull());
+    try std.testing.expect(try (try list.valueAt(1)).boolean());
+    const nested_object = try (try list.valueAt(2)).object();
+    try std.testing.expectEqual(@as(usize, 1), nested_object.fieldCount());
+    const nested_list = try (try nested_object.fieldValue("nested")).list();
+    try std.testing.expectEqual(@as(usize, 1), nested_list.valueCount());
     try std.testing.expectError(error.UnknownField, list.valueAt(3));
     try std.testing.expectError(error.UnknownField, list.valueIndex(.{ .string_value = "missing" }));
     const list_json = try list.jsonStringifyAlloc(allocator);
