@@ -1989,6 +1989,13 @@ pub const Reflection = struct {
         return range.declarations.items[index];
     }
 
+    pub fn extensionDeclarationIndex(_: Reflection, range: *const schema.ExtensionRange, declaration: schema.ExtensionDeclaration) Error!usize {
+        for (range.declarations.items, 0..) |candidate, index| {
+            if (candidate.number == declaration.number) return index;
+        }
+        return error.UnknownField;
+    }
+
     pub fn extensionDeclarationNumber(_: Reflection, declaration: schema.ExtensionDeclaration) i32 {
         return declaration.number;
     }

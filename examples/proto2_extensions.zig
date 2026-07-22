@@ -165,6 +165,7 @@ pub fn main() !void {
     std.debug.assert(range.verification.? == .declaration);
     std.debug.assert(refl.extensionDeclarationCount(reflected_range) == 3);
     const priority_decl = try refl.extensionDeclarationAt(reflected_range, 0);
+    std.debug.assert(try refl.extensionDeclarationIndex(reflected_range, priority_decl) == 0);
     std.debug.assert(refl.extensionDeclarationNumber(priority_decl) == 200);
     std.debug.assert(std.mem.eql(u8, refl.extensionDeclarationFullName(priority_decl), ".demo.declared_priority"));
     std.debug.assert(std.mem.eql(u8, refl.extensionDeclarationTypeName(priority_decl), "int32"));
