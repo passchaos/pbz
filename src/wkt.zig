@@ -1550,6 +1550,26 @@ pub const Struct = struct {
         value: Value,
     };
 
+    pub fn fieldCount(self: Struct) usize {
+        return self.fields.len;
+    }
+
+    pub fn fieldAt(self: Struct, index: usize) !Field {
+        if (index >= self.fields.len) return error.UnknownField;
+        return self.fields[index];
+    }
+
+    pub fn fieldIndex(self: Struct, key: []const u8) !usize {
+        for (self.fields, 0..) |field, index| {
+            if (std.mem.eql(u8, field.key, key)) return index;
+        }
+        return error.UnknownField;
+    }
+
+    pub fn fieldValue(self: Struct, key: []const u8) !Value {
+        return (try self.fieldAt(try self.fieldIndex(key))).value;
+    }
+
     pub fn encode(self: Struct, allocator: std.mem.Allocator) anyerror![]u8 {
         var writer = wire.Writer.init(allocator);
         errdefer writer.deinit();

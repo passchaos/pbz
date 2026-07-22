@@ -70,6 +70,15 @@ pub fn main() !void {
         \\{"enabled":true,"items":[null,"zig"]}
     );
     defer object.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 2), object.fieldCount());
+    try std.testing.expectEqualStrings("enabled", (try object.fieldAt(0)).key);
+    try std.testing.expectEqual(@as(usize, 0), try object.fieldIndex("enabled"));
+    switch (try object.fieldValue("enabled")) {
+        .bool_value => |value| try std.testing.expect(value),
+        else => return error.UnexpectedValueKind,
+    }
+    try std.testing.expectError(error.UnknownField, object.fieldAt(2));
+    try std.testing.expectError(error.UnknownField, object.fieldIndex("missing"));
     const object_json = try object.jsonStringifyAlloc(allocator);
     defer allocator.free(object_json);
     std.debug.assert(std.mem.indexOf(u8, object_json, "enabled") != null);
