@@ -106,6 +106,15 @@ pub const Reflection = struct {
         return self.registry.findMessage(name, null) orelse error.UnknownMessage;
     }
 
+    pub fn messageName(_: Reflection, descriptor: *const schema.MessageDescriptor) []const u8 {
+        return descriptor.name;
+    }
+
+    pub fn messageFullName(self: Reflection, descriptor: *const schema.MessageDescriptor) Error![]u8 {
+        const owner_file = try self.fileOfMessage(descriptor);
+        return try messageFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownMessage;
+    }
+
     pub fn fileOfMessage(self: Reflection, descriptor: *const schema.MessageDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingMessage(descriptor) orelse error.UnknownMessage;
     }
@@ -146,8 +155,35 @@ pub const Reflection = struct {
         return self.registry.findEnum(name, null) orelse error.UnknownEnum;
     }
 
+    pub fn enumName(_: Reflection, descriptor: *const schema.EnumDescriptor) []const u8 {
+        return descriptor.name;
+    }
+
+    pub fn enumFullName(self: Reflection, descriptor: *const schema.EnumDescriptor) Error![]u8 {
+        const owner_file = try self.fileOfEnum(descriptor);
+        return try enumFullNameInFileAlloc(self.allocator, owner_file, descriptor) orelse error.UnknownEnum;
+    }
+
     pub fn fileOfEnum(self: Reflection, descriptor: *const schema.EnumDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingEnum(descriptor) orelse error.UnknownEnum;
+    }
+
+    pub fn enumValueName(_: Reflection, descriptor: *const schema.EnumValueDescriptor) []const u8 {
+        return descriptor.name;
+    }
+
+    pub fn enumValueNumber(_: Reflection, descriptor: *const schema.EnumValueDescriptor) i32 {
+        return descriptor.number;
+    }
+
+    pub fn enumValueFullName(self: Reflection, enum_descriptor: *const schema.EnumDescriptor, value: *const schema.EnumValueDescriptor) Error![]u8 {
+        const enum_full_name = try self.enumFullName(enum_descriptor);
+        defer self.allocator.free(enum_full_name);
+        // Protobuf enum values are scoped to the enum's parent, not to the enum
+        // type itself.  This matches C++ EnumValueDescriptor::full_name() and
+        // the DescriptorPool duplicate-symbol rules also enforced by Registry.
+        const parent_scope = if (std.mem.lastIndexOfScalar(u8, enum_full_name, '.')) |idx| enum_full_name[0..idx] else "";
+        return try joinNameAlloc(self.allocator, parent_scope, value.name);
     }
 
     pub fn enumValueCount(_: Reflection, descriptor: *const schema.EnumDescriptor) usize {
@@ -162,12 +198,31 @@ pub const Reflection = struct {
         return self.registry.findService(name, null) orelse error.UnknownService;
     }
 
+    pub fn serviceName(_: Reflection, descriptor: *const schema.ServiceDescriptor) []const u8 {
+        return descriptor.name;
+    }
+
     pub fn fileService(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.ServiceDescriptor {
         return file_descriptor.findService(name) orelse error.UnknownService;
     }
 
+    pub fn serviceFullName(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error![]u8 {
+        const owner_file = try self.fileOfService(descriptor);
+        return try qualifyFileSymbolAlloc(self.allocator, owner_file, descriptor.name);
+    }
+
     pub fn fileOfService(self: Reflection, descriptor: *const schema.ServiceDescriptor) Error!*const schema.FileDescriptor {
         return self.registry.fileContainingService(descriptor) orelse error.UnknownService;
+    }
+
+    pub fn methodName(_: Reflection, method: *const schema.MethodDescriptor) []const u8 {
+        return method.name;
+    }
+
+    pub fn methodFullName(self: Reflection, service_descriptor: *const schema.ServiceDescriptor, method: *const schema.MethodDescriptor) Error![]u8 {
+        const service_full_name = try self.serviceFullName(service_descriptor);
+        defer self.allocator.free(service_full_name);
+        return try joinNameAlloc(self.allocator, service_full_name, method.name);
     }
 
     pub fn serviceMethodCount(_: Reflection, descriptor: *const schema.ServiceDescriptor) usize {
@@ -232,6 +287,34 @@ pub const Reflection = struct {
 
     pub fn fieldByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.FieldDescriptor {
         return descriptor.findField(name) orelse error.UnknownField;
+    }
+
+    pub fn fieldName(_: Reflection, field: *const schema.FieldDescriptor) []const u8 {
+        return field.name;
+    }
+
+    pub fn fieldFullName(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error![]u8 {
+        if (field.extendee != null) return try self.extensionFullName(field);
+        const message_full_name = try self.messageFullName(descriptor);
+        defer self.allocator.free(message_full_name);
+        return try joinNameAlloc(self.allocator, message_full_name, field.name);
+    }
+
+    pub fn extensionFullName(self: Reflection, field: *const schema.FieldDescriptor) Error![]u8 {
+        const owner_file = try self.fileOfExtension(field);
+        return try qualifyFileSymbolAlloc(self.allocator, owner_file, schema.extensionFullName(field));
+    }
+
+    pub fn fieldNumber(_: Reflection, field: *const schema.FieldDescriptor) wire.FieldNumber {
+        return field.number;
+    }
+
+    pub fn fieldCardinality(_: Reflection, field: *const schema.FieldDescriptor) schema.Cardinality {
+        return field.cardinality;
+    }
+
+    pub fn fieldKind(_: Reflection, field: *const schema.FieldDescriptor) schema.FieldKind {
+        return field.kind;
     }
 
     pub fn fieldByJsonName(_: Reflection, descriptor: *const schema.MessageDescriptor, json_name: []const u8) Error!*const schema.FieldDescriptor {
@@ -324,6 +407,16 @@ pub const Reflection = struct {
 
     pub fn oneofByName(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.OneofDescriptor {
         return descriptor.findOneof(name) orelse error.UnknownField;
+    }
+
+    pub fn oneofName(_: Reflection, descriptor: *const schema.OneofDescriptor) []const u8 {
+        return descriptor.name;
+    }
+
+    pub fn oneofFullName(self: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error![]u8 {
+        const message_full_name = try self.messageFullName(message_descriptor);
+        defer self.allocator.free(message_full_name);
+        return try joinNameAlloc(self.allocator, message_full_name, oneof.name);
     }
 
     pub fn oneofFields(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error![]*const schema.FieldDescriptor {
@@ -1170,6 +1263,78 @@ fn messageScopeInMessage(package: []const u8, prefix: []const u8, scope_message:
 fn formatMessageScope(package: []const u8, path: []const u8, buf: *[512]u8) ?[]const u8 {
     if (package.len == 0) return std.fmt.bufPrint(buf, "{s}", .{path}) catch null;
     return std.fmt.bufPrint(buf, "{s}.{s}", .{ package, path }) catch null;
+}
+
+fn messageFullNameInFileAlloc(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor) std.mem.Allocator.Error!?[]u8 {
+    for (file.messages.items) |*message_desc| {
+        if (message_desc == target) return try qualifyFileSymbolAlloc(allocator, file, message_desc.name);
+        if (try messageFullNameInMessageAlloc(allocator, file, message_desc.name, message_desc, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn messageFullNameInMessageAlloc(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    parent_path: []const u8,
+    parent: *const schema.MessageDescriptor,
+    target: *const schema.MessageDescriptor,
+) std.mem.Allocator.Error!?[]u8 {
+    for (parent.messages.items) |*nested| {
+        const nested_path = try joinNameAlloc(allocator, parent_path, nested.name);
+        defer allocator.free(nested_path);
+        if (nested == target) return try qualifyFileSymbolAlloc(allocator, file, nested_path);
+        if (try messageFullNameInMessageAlloc(allocator, file, nested_path, nested, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn enumFullNameInFileAlloc(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]u8 {
+    for (file.enums.items) |*enum_desc| {
+        if (enum_desc == target) return try qualifyFileSymbolAlloc(allocator, file, enum_desc.name);
+    }
+    for (file.messages.items) |*message_desc| {
+        if (try enumFullNameInMessageAlloc(allocator, file, message_desc.name, message_desc, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn enumFullNameInMessageAlloc(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    parent_path: []const u8,
+    parent: *const schema.MessageDescriptor,
+    target: *const schema.EnumDescriptor,
+) std.mem.Allocator.Error!?[]u8 {
+    for (parent.enums.items) |*enum_desc| {
+        const enum_path = try joinNameAlloc(allocator, parent_path, enum_desc.name);
+        defer allocator.free(enum_path);
+        if (enum_desc == target) return try qualifyFileSymbolAlloc(allocator, file, enum_path);
+    }
+    for (parent.messages.items) |*nested| {
+        const nested_path = try joinNameAlloc(allocator, parent_path, nested.name);
+        defer allocator.free(nested_path);
+        if (try enumFullNameInMessageAlloc(allocator, file, nested_path, nested, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn qualifyFileSymbolAlloc(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, name: []const u8) std.mem.Allocator.Error![]u8 {
+    const absolute = std.mem.startsWith(u8, name, ".");
+    const normalized = if (absolute) name[1..] else name;
+    if (absolute or file.package.len == 0 or startsWithPackage(file.package, normalized)) return try allocator.dupe(u8, normalized);
+    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ file.package, normalized });
+}
+
+fn startsWithPackage(package: []const u8, name: []const u8) bool {
+    return name.len > package.len and
+        std.mem.eql(u8, name[0..package.len], package) and
+        name[package.len] == '.';
+}
+
+fn joinNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) std.mem.Allocator.Error![]u8 {
+    if (prefix.len == 0) return try allocator.dupe(u8, name);
+    return try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, name });
 }
 
 test "reflection facade creates and edits dynamic messages" {
