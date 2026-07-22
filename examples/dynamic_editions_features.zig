@@ -65,6 +65,9 @@ pub fn main() !void {
     try std.testing.expectEqual(pbz.schema.FeatureSet.Utf8Validation.verify, refl.fileUtf8Validation(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.length_prefixed, refl.fileMessageEncoding(&file));
     try std.testing.expectEqual(pbz.schema.FeatureSet.JsonFormat.allow, refl.fileJsonFormat(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceNamingStyle.style_legacy, refl.fileEnforceNamingStyle(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.DefaultSymbolVisibility.export_all, refl.fileDefaultSymbolVisibility(&file));
+    try std.testing.expectEqual(pbz.schema.FeatureSet.EnforceProtoLimits.legacy_no_explicit_limits, refl.fileEnforceProtoLimits(&file));
     try std.testing.expect(refl.fileFeatures(&file).eql(file.features));
     try std.testing.expect(refl.messageHasExplicitFeatures(child_desc));
     try std.testing.expectEqual(pbz.schema.FeatureSet.MessageEncoding.delimited, (try refl.messageExplicitFeatures(child_desc)).message_encoding);

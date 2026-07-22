@@ -66,6 +66,18 @@ pub const Reflection = struct {
         return file_descriptor.features.json_format;
     }
 
+    pub fn fileEnforceNamingStyle(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.EnforceNamingStyle {
+        return file_descriptor.features.enforce_naming_style;
+    }
+
+    pub fn fileDefaultSymbolVisibility(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.DefaultSymbolVisibility {
+        return file_descriptor.features.default_symbol_visibility;
+    }
+
+    pub fn fileEnforceProtoLimits(_: Reflection, file_descriptor: *const schema.FileDescriptor) schema.FeatureSet.EnforceProtoLimits {
+        return file_descriptor.features.enforce_proto_limits;
+    }
+
     pub fn fileOptions(_: Reflection, file_descriptor: *const schema.FileDescriptor) []const schema.FieldOption {
         return file_descriptor.options.items;
     }
