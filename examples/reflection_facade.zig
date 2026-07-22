@@ -642,6 +642,16 @@ pub fn main() !void {
     try refl.setInt64(profile, "created_at", 123456);
     try refl.setBytes(profile, "avatar", &.{ 0xde, 0xad, 0xbe, 0xef });
 
+    const present_fields = try refl.listFields(&user);
+    defer allocator.free(present_fields);
+    try std.testing.expect(present_fields.len != 0);
+    try std.testing.expectEqual(present_fields.len, refl.listFieldCount(&user));
+    try std.testing.expect((try refl.listFieldAt(&user, 0)) == present_fields[0]);
+    try std.testing.expect((try refl.listFieldAt(&user, present_fields.len - 1)) == present_fields[present_fields.len - 1]);
+    try std.testing.expectEqual(@as(usize, 0), try refl.listFieldIndex(&user, present_fields[0]));
+    try std.testing.expectError(error.UnknownField, refl.listFieldAt(&user, present_fields.len));
+    try std.testing.expectError(error.UnknownField, refl.listFieldIndex(&user, display_name_field));
+
     try std.testing.expect(try refl.hasField(&user, "id"));
     try std.testing.expectEqual(@as(i32, 7), try refl.getInt32(&user, "id"));
     try std.testing.expectEqualStrings("Ada", try refl.getString(&user, "name"));

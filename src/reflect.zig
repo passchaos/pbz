@@ -2184,6 +2184,18 @@ pub const Reflection = struct {
         return try message_value.listFieldsAlloc(self.allocator);
     }
 
+    pub fn listFieldCount(_: Reflection, message_value: *const dynamic.DynamicMessage) usize {
+        return message_value.listFieldCount();
+    }
+
+    pub fn listFieldAt(_: Reflection, message_value: *const dynamic.DynamicMessage, index: usize) Error!*const schema.FieldDescriptor {
+        return message_value.listFieldAt(index) orelse error.UnknownField;
+    }
+
+    pub fn listFieldIndex(_: Reflection, message_value: *const dynamic.DynamicMessage, field: *const schema.FieldDescriptor) Error!usize {
+        return message_value.listFieldIndex(field) orelse error.UnknownField;
+    }
+
     pub fn unknownCount(_: Reflection, message_value: *const dynamic.DynamicMessage) usize {
         return message_value.unknownCount();
     }

@@ -170,6 +170,36 @@ pub const DynamicMessage = struct {
         return result;
     }
 
+    pub fn listFieldCount(self: *const DynamicMessage) usize {
+        var count: usize = 0;
+        for (self.fields.items) |*entry| {
+            if (entry.values.items.len != 0) count += 1;
+        }
+        return count;
+    }
+
+    pub fn listFieldAt(self: *const DynamicMessage, index: usize) ?*const schema.FieldDescriptor {
+        for (self.fields.items) |*entry| {
+            if (entry.values.items.len == 0) continue;
+            if (self.listFieldIndex(entry.descriptor) == index) return entry.descriptor;
+        }
+        return null;
+    }
+
+    pub fn listFieldIndex(self: *const DynamicMessage, descriptor: *const schema.FieldDescriptor) ?usize {
+        var order_index: usize = 0;
+        var found = false;
+        for (self.fields.items) |*entry| {
+            if (entry.values.items.len == 0) continue;
+            if (entry.descriptor == descriptor) {
+                found = true;
+            } else if (entry.descriptor.number < descriptor.number) {
+                order_index += 1;
+            }
+        }
+        return if (found) order_index else null;
+    }
+
     pub fn clearField(self: *DynamicMessage, field: *const schema.FieldDescriptor) bool {
         var index: usize = 0;
         while (index < self.fields.items.len) : (index += 1) {
