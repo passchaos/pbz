@@ -1540,6 +1540,19 @@ pub const Reflection = struct {
         return message_value.getByNumber(field.number);
     }
 
+    pub fn fieldValueDescriptor(_: Reflection, field_value: *const dynamic.FieldValue) *const schema.FieldDescriptor {
+        return field_value.descriptor;
+    }
+
+    pub fn fieldValueCount(_: Reflection, field_value: *const dynamic.FieldValue) usize {
+        return field_value.values.items.len;
+    }
+
+    pub fn fieldValueAt(_: Reflection, field_value: *const dynamic.FieldValue, index: usize) Error!dynamic.Value {
+        if (index >= field_value.values.items.len) return error.MissingField;
+        return field_value.values.items[index];
+    }
+
     pub fn getField(self: Reflection, message_value: *const dynamic.DynamicMessage, name: []const u8) Error!?*const dynamic.FieldValue {
         return self.get(message_value, try self.fieldByName(message_value.descriptor, name));
     }

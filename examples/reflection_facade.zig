@@ -585,8 +585,10 @@ pub fn main() !void {
 
     try std.testing.expectEqual(@as(usize, 1), try refl.mapLen(&user, "counts"));
     const count_field = (try refl.getField(&user, "counts")).?;
-    try std.testing.expectEqual(@as(usize, 1), count_field.values.items.len);
-    try std.testing.expectEqual(@as(i32, 2), count_field.values.items[0].map_entry.value.int32);
+    try std.testing.expect((refl.fieldValueDescriptor(count_field)) == counts_desc_field);
+    try std.testing.expectEqual(@as(usize, 1), refl.fieldValueCount(count_field));
+    try std.testing.expectEqual(@as(i32, 2), (try refl.fieldValueAt(count_field, 0)).map_entry.value.int32);
+    try std.testing.expectError(error.MissingField, refl.fieldValueAt(count_field, 9));
     const count_entry_0 = try refl.mapEntryAt(&user, "counts", 0);
     try std.testing.expectEqualStrings("red", refl.mapEntryKey(count_entry_0).string);
     try std.testing.expectEqual(@as(i32, 2), refl.mapEntryValue(count_entry_0).int32);
