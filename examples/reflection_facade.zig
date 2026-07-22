@@ -639,8 +639,13 @@ pub fn main() !void {
     const contact_fields = try refl.oneofFields(user_desc, "contact");
     defer allocator.free(contact_fields);
     try std.testing.expectEqual(@as(usize, 2), contact_fields.len);
+    try std.testing.expectEqual(@as(usize, 2), try refl.oneofFieldCount(user_desc, "contact"));
     try std.testing.expectEqualStrings("email", contact_fields[0].name);
     try std.testing.expectEqualStrings("disabled", contact_fields[1].name);
+    try std.testing.expectEqualStrings("email", (try refl.oneofFieldAt(user_desc, "contact", 0)).name);
+    try std.testing.expectEqualStrings("disabled", (try refl.oneofFieldAt(user_desc, "contact", 1)).name);
+    try std.testing.expectError(error.UnknownField, refl.oneofFieldAt(user_desc, "contact", 2));
+    try std.testing.expectError(error.UnknownField, refl.oneofFieldCount(user_desc, "missing"));
     try std.testing.expect(try refl.clearOneof(&user, "contact"));
     try std.testing.expect(!(try refl.hasOneof(&user, "contact")));
     try std.testing.expect(refl.whichOneof(&user, "contact") == null);

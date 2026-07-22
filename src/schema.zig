@@ -773,6 +773,29 @@ pub const MessageDescriptor = struct {
         return try fields.toOwnedSlice(allocator);
     }
 
+    pub fn oneofFieldCount(self: *const MessageDescriptor, name: []const u8) usize {
+        var count: usize = 0;
+        for (self.fields.items) |field| {
+            if (field.oneof_name) |oneof_name| {
+                if (std.mem.eql(u8, oneof_name, name)) count += 1;
+            }
+        }
+        return count;
+    }
+
+    pub fn oneofFieldAt(self: *const MessageDescriptor, name: []const u8, index: usize) ?*const FieldDescriptor {
+        var seen: usize = 0;
+        for (self.fields.items) |*field| {
+            if (field.oneof_name) |oneof_name| {
+                if (std.mem.eql(u8, oneof_name, name)) {
+                    if (seen == index) return field;
+                    seen += 1;
+                }
+            }
+        }
+        return null;
+    }
+
     pub fn findMessage(self: *const MessageDescriptor, name: []const u8) ?*const MessageDescriptor {
         for (self.messages.items) |*message| {
             if (std.mem.eql(u8, message.name, name)) return message;

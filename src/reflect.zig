@@ -914,6 +914,16 @@ pub const Reflection = struct {
         return try descriptor.oneofFieldsAlloc(self.allocator, name);
     }
 
+    pub fn oneofFieldCount(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!usize {
+        _ = try self.oneofByName(descriptor, name);
+        return descriptor.oneofFieldCount(name);
+    }
+
+    pub fn oneofFieldAt(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8, index: usize) Error!*const schema.FieldDescriptor {
+        _ = try self.oneofByName(descriptor, name);
+        return descriptor.oneofFieldAt(name, index) orelse error.UnknownField;
+    }
+
     pub fn enumValueByName(_: Reflection, descriptor: *const schema.EnumDescriptor, name: []const u8) Error!*const schema.EnumValueDescriptor {
         return descriptor.findValue(name) orelse error.UnknownEnum;
     }
