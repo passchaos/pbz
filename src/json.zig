@@ -181,29 +181,30 @@ fn fillMessageObject(
             if (options.ignore_unknown_fields) continue;
             return error.UnknownField;
         };
-        if (entry.value_ptr.* == .null and jsonNullSkipsField(file, registry, message.descriptor, field)) continue;
+        const field_file = fieldDefiningFile(file, registry, field);
+        if (entry.value_ptr.* == .null and jsonNullSkipsField(field_file, registry, message.descriptor, field)) continue;
         if (seenJsonField(seen_fields.items, field.number)) return error.DuplicateField;
         if (field.oneof_name) |oneof_name| {
             if (seenJsonOneof(seen_fields.items, message.descriptor, oneof_name, field.number)) return error.DuplicateField;
         }
         try seen_fields.append(allocator, field.number);
         if (field.kind == .map) {
-            try parseMapField(allocator, file, registry, message, field, entry.value_ptr.*, options);
+            try parseMapField(allocator, field_file, registry, message, field, entry.value_ptr.*, options);
         } else if (field.cardinality == .repeated) {
             const array = switch (entry.value_ptr.*) {
                 .array => |array| array,
                 else => return error.TypeMismatch,
             };
             for (array.items) |item| {
-                const value = parseValue(allocator, file, registry, message.descriptor, field.kind, item, options) catch |err| {
-                    if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, field.kind, err)) continue;
+                const value = parseValue(allocator, field_file, registry, message.descriptor, field.kind, item, options) catch |err| {
+                    if (shouldIgnoreEnumParseError(options, field_file, registry, message.descriptor, field.kind, err)) continue;
                     return err;
                 };
                 try addOwnedValue(allocator, message, field, value);
             }
         } else {
-            const value = parseValue(allocator, file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
-                if (shouldIgnoreEnumParseError(options, file, registry, message.descriptor, field.kind, err)) continue;
+            const value = parseValue(allocator, field_file, registry, message.descriptor, field.kind, entry.value_ptr.*, options) catch |err| {
+                if (shouldIgnoreEnumParseError(options, field_file, registry, message.descriptor, field.kind, err)) continue;
                 return err;
             };
             try addOwnedValue(allocator, message, field, value);
@@ -603,6 +604,13 @@ fn messageDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?
     return reg.fileContainingMessage(descriptor) orelse default_file;
 }
 
+fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, field: *const schema.FieldDescriptor) *const schema.FileDescriptor {
+    if (registry) |reg| {
+        if (reg.fileContainingExtension(field)) |file| return file;
+    }
+    return default_file;
+}
+
 fn enumDescriptorFile(default_file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.EnumDescriptor) *const schema.FileDescriptor {
     const reg = registry orelse return default_file;
     return reg.fileContainingEnum(descriptor) orelse default_file;
@@ -681,22 +689,23 @@ fn writeMessageContents(
 ) Error!void {
     for (message.fields.items) |*entry| {
         if (entry.values.items.len == 0) continue;
-        if (shouldSkipDefaultJsonField(file, registry, message.descriptor, entry)) continue;
+        const field_file = fieldDefiningFile(file, registry, entry.descriptor);
+        if (shouldSkipDefaultJsonField(field_file, registry, message.descriptor, entry)) continue;
         if (!first.*) try writer.writeAll(",");
         first.* = false;
         try writeFieldName(file, registry, entry.descriptor, options, writer);
         try writer.writeAll(":");
         if (entry.descriptor.kind == .map) {
-            try writeMap(file, registry, message.descriptor, entry.descriptor, entry.values.items, options, writer);
+            try writeMap(field_file, registry, message.descriptor, entry.descriptor, entry.values.items, options, writer);
         } else if (entry.descriptor.cardinality == .repeated) {
             try writer.writeAll("[");
             for (entry.values.items, 0..) |value, index| {
                 if (index != 0) try writer.writeAll(",");
-                try writeValue(file, registry, message.descriptor, entry.descriptor.kind, value, options, writer);
+                try writeValue(field_file, registry, message.descriptor, entry.descriptor.kind, value, options, writer);
             }
             try writer.writeAll("]");
         } else {
-            try writeValue(file, registry, message.descriptor, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer);
+            try writeValue(field_file, registry, message.descriptor, entry.descriptor.kind, entry.values.items[entry.values.items.len - 1], options, writer);
         }
     }
     if (options.always_print_primitive_fields) {

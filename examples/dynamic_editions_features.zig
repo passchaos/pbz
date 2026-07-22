@@ -185,8 +185,9 @@ pub fn main() !void {
     var extension_tree = pbz.MemorySourceTree.init(allocator);
     defer extension_tree.deinit();
     try extension_tree.add("host.proto",
-        \\syntax = "proto2";
+        \\edition = "2023";
         \\package demo.editions_ext;
+        \\option features.field_presence = IMPLICIT;
         \\message Host { extensions 100 to max; }
     );
     try extension_tree.add("ext.proto",
@@ -247,6 +248,16 @@ pub fn main() !void {
     try std.testing.expectEqualStrings(&.{0xc0}, decoded_extension_host.get("relaxed").?.values.items[0].string);
     try std.testing.expectEqualStrings("owned", decoded_extension_host.get("delimited").?.values.items[0].message.get("label").?.values.items[0].string);
     try std.testing.expectEqual(@as(i32, 0), decoded_extension_host.get("explicit_zero").?.values.items[0].int32);
+
+    var json_extension_host = pbz.DynamicMessage.init(allocator, host_desc);
+    defer json_extension_host.deinit();
+    try json_extension_host.add(explicit_zero_ext, .{ .int32 = 0 });
+    const extension_json = try pbz.stringifyJsonAllocWithRegistry(allocator, host_file, &extension_loaded.registry, &json_extension_host, .{});
+    defer allocator.free(extension_json);
+    try std.testing.expect(std.mem.indexOf(u8, extension_json, "\"[demo.editions_ext.explicit_zero]\":0") != null);
+    var extension_from_json = try pbz.parseJsonAllocWithRegistry(allocator, host_file, &extension_loaded.registry, host_desc, extension_json, .{});
+    defer extension_from_json.deinit();
+    try std.testing.expectEqual(@as(i32, 0), extension_from_json.get("explicit_zero").?.values.items[0].int32);
 
     const extension_text = try pbz.formatTextAllocWithRegistry(allocator, host_file, &extension_loaded.registry, &extension_host, .{});
     defer allocator.free(extension_text);
