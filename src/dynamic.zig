@@ -162,11 +162,7 @@ pub const DynamicMessage = struct {
             fields.appendAssumeCapacity(entry.descriptor);
         }
         const result = try fields.toOwnedSlice(allocator);
-        std.mem.sort(*const schema.FieldDescriptor, result, {}, struct {
-            fn lessThan(_: void, lhs: *const schema.FieldDescriptor, rhs: *const schema.FieldDescriptor) bool {
-                return lhs.number < rhs.number;
-            }
-        }.lessThan);
+        sortFieldDescriptorsByNumber(result);
         return result;
     }
 
@@ -179,25 +175,37 @@ pub const DynamicMessage = struct {
     }
 
     pub fn listFieldAt(self: *const DynamicMessage, index: usize) ?*const schema.FieldDescriptor {
+        // `listFieldsAlloc` exposes present fields in descriptor-number order,
+        // matching protobuf reflection rather than mutation/storage order.  Keep
+        // the scalar at/index helpers on the same ordering without allocating by
+        // selecting the Nth present descriptor by field number.
+        var selected: ?*const schema.FieldDescriptor = null;
+        var selected_rank: usize = 0;
         for (self.fields.items) |*entry| {
             if (entry.values.items.len == 0) continue;
-            if (self.listFieldIndex(entry.descriptor) == index) return entry.descriptor;
+            var rank: usize = 0;
+            for (self.fields.items) |*other| {
+                if (other.values.items.len == 0) continue;
+                if (other.descriptor.number < entry.descriptor.number) rank += 1;
+            }
+            if (rank == index) {
+                selected = entry.descriptor;
+                selected_rank = rank;
+                break;
+            }
         }
-        return null;
+        return if (selected_rank == index) selected else null;
     }
 
     pub fn listFieldIndex(self: *const DynamicMessage, descriptor: *const schema.FieldDescriptor) ?usize {
+        if (!self.has(descriptor)) return null;
         var order_index: usize = 0;
-        var found = false;
         for (self.fields.items) |*entry| {
             if (entry.values.items.len == 0) continue;
-            if (entry.descriptor == descriptor) {
-                found = true;
-            } else if (entry.descriptor.number < descriptor.number) {
-                order_index += 1;
-            }
+            if (entry.descriptor == descriptor) continue;
+            if (entry.descriptor.number < descriptor.number) order_index += 1;
         }
-        return if (found) order_index else null;
+        return order_index;
     }
 
     pub fn clearField(self: *DynamicMessage, field: *const schema.FieldDescriptor) bool {
@@ -2112,6 +2120,14 @@ fn unknownFieldIndexLessThan(message: *const DynamicMessage, a: usize, b: usize)
     const rhs = message.unknown_fields.items[b];
     if (lhs.number != rhs.number) return lhs.number < rhs.number;
     return a < b;
+}
+
+fn sortFieldDescriptorsByNumber(fields: []*const schema.FieldDescriptor) void {
+    std.mem.sort(*const schema.FieldDescriptor, fields, {}, struct {
+        fn lessThan(_: void, lhs: *const schema.FieldDescriptor, rhs: *const schema.FieldDescriptor) bool {
+            return lhs.number < rhs.number;
+        }
+    }.lessThan);
 }
 
 fn mapEntryLessThan(a: Value, b: Value) bool {
