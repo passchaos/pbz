@@ -266,6 +266,8 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("contact", try refl.fieldOneofName(email_field));
     const contact_oneof = try refl.oneofByName(user_desc, "contact");
     try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == contact_oneof);
+    try std.testing.expect((try refl.oneofContainingType(user_desc, contact_oneof)) == user_desc);
+    try std.testing.expect((try refl.oneofContainingFile(user_desc, contact_oneof)) == app_file);
     try std.testing.expectEqualStrings("contact", refl.optionString(refl.oneofOptions(contact_oneof), "oneof_note").?);
     try std.testing.expect(!refl.fieldIsExtension(id_field));
     try std.testing.expectError(error.TypeMismatch, refl.fieldExtendeeName(id_field));

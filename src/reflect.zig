@@ -938,6 +938,16 @@ pub const Reflection = struct {
         return try joinNameAlloc(self.allocator, message_full_name, oneof.name);
     }
 
+    pub fn oneofContainingType(_: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!*const schema.MessageDescriptor {
+        if (message_descriptor.findOneof(oneof.name) != oneof) return error.UnknownField;
+        return message_descriptor;
+    }
+
+    pub fn oneofContainingFile(self: Reflection, message_descriptor: *const schema.MessageDescriptor, oneof: *const schema.OneofDescriptor) Error!*const schema.FileDescriptor {
+        _ = try self.oneofContainingType(message_descriptor, oneof);
+        return try self.fileOfMessage(message_descriptor);
+    }
+
     pub fn oneofFields(self: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error![]*const schema.FieldDescriptor {
         _ = try self.oneofByName(descriptor, name);
         return try descriptor.oneofFieldsAlloc(self.allocator, name);
