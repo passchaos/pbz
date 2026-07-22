@@ -382,6 +382,18 @@ pub const Reflection = struct {
         return file_descriptor.extensionAt(index) orelse error.UnknownField;
     }
 
+    pub fn fileExtension(_: Reflection, file_descriptor: *const schema.FileDescriptor, name: []const u8) Error!*const schema.FieldDescriptor {
+        return file_descriptor.findExtension(name) orelse error.UnknownField;
+    }
+
+    pub fn fileExtensionByLowercaseName(_: Reflection, file_descriptor: *const schema.FileDescriptor, lowercase_name: []const u8) Error!*const schema.FieldDescriptor {
+        return file_descriptor.findExtensionByLowercaseName(lowercase_name) orelse error.UnknownField;
+    }
+
+    pub fn fileExtensionByCamelcaseName(_: Reflection, file_descriptor: *const schema.FileDescriptor, camelcase_name: []const u8) Error!*const schema.FieldDescriptor {
+        return file_descriptor.findExtensionByCamelcaseName(camelcase_name) orelse error.UnknownField;
+    }
+
     pub fn fileExtensionIndex(_: Reflection, file_descriptor: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!usize {
         for (file_descriptor.extensions.items, 0..) |*candidate, index| {
             if (candidate == field) return index;
@@ -513,6 +525,18 @@ pub const Reflection = struct {
 
     pub fn messageExtensionAt(_: Reflection, descriptor: *const schema.MessageDescriptor, index: usize) Error!*const schema.FieldDescriptor {
         return descriptor.extensionAt(index) orelse error.UnknownField;
+    }
+
+    pub fn messageExtension(_: Reflection, descriptor: *const schema.MessageDescriptor, name: []const u8) Error!*const schema.FieldDescriptor {
+        return descriptor.findExtension(name) orelse error.UnknownField;
+    }
+
+    pub fn messageExtensionByLowercaseName(_: Reflection, descriptor: *const schema.MessageDescriptor, lowercase_name: []const u8) Error!*const schema.FieldDescriptor {
+        return descriptor.findExtensionByLowercaseName(lowercase_name) orelse error.UnknownField;
+    }
+
+    pub fn messageExtensionByCamelcaseName(_: Reflection, descriptor: *const schema.MessageDescriptor, camelcase_name: []const u8) Error!*const schema.FieldDescriptor {
+        return descriptor.findExtensionByCamelcaseName(camelcase_name) orelse error.UnknownField;
     }
 
     pub fn messageExtensionIndex(_: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!usize {

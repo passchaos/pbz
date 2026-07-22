@@ -27,7 +27,7 @@ pub fn main() !void {
         \\  optional int32 priority = 100;
         \\  repeated Payload payloads = 101;
         \\}
-        \\message Scope { extend Host { optional string scoped = 102; } }
+        \\message Scope { extend Host { optional string scoped_value = 102; } }
         \\extend DeclaredHost {
         \\  optional int32 declared_priority = 200;
         \\  repeated int32 declared_tags = 202;
@@ -60,6 +60,10 @@ pub fn main() !void {
     const scope_desc = try refl.message(".demo.Scope");
     std.debug.assert((try refl.fieldExtensionScope(scoped_ext)).? == scope_desc);
     std.debug.assert(try refl.fieldHasExtensionScope(scoped_ext));
+    std.debug.assert(scoped_ext == try refl.messageExtension(scope_desc, "scoped_value"));
+    std.debug.assert(scoped_ext == try refl.messageExtensionByLowercaseName(scope_desc, "scoped_value"));
+    std.debug.assert(scoped_ext == try refl.messageExtensionByCamelcaseName(scope_desc, "scopedValue"));
+    try std.testing.expectError(error.UnknownField, refl.messageExtension(scope_desc, ".demo.Scope.scoped_value"));
 
     var host = try pbz.parseTextAllocWithRegistry(
         allocator,
@@ -180,6 +184,10 @@ pub fn main() !void {
     defer declared.deinit();
 
     const declared_ext = registry.findExtension("demo.DeclaredHost", 200).?;
+    std.debug.assert(declared_ext == try refl.fileExtension(&file, "declared_priority"));
+    std.debug.assert(declared_ext == try refl.fileExtensionByLowercaseName(&file, "declared_priority"));
+    std.debug.assert(declared_ext == try refl.fileExtensionByCamelcaseName(&file, "declaredPriority"));
+    try std.testing.expectError(error.UnknownField, refl.fileExtension(&file, ".demo.declared_priority"));
     const declared_full_name = try refl.extensionFullName(declared_ext);
     defer allocator.free(declared_full_name);
     std.debug.assert(std.mem.eql(u8, declared_full_name, "demo.declared_priority"));

@@ -911,6 +911,27 @@ pub const MessageDescriptor = struct {
         return &self.extensions.items[index];
     }
 
+    pub fn findExtension(self: *const MessageDescriptor, name: []const u8) ?*const FieldDescriptor {
+        for (self.extensions.items) |*field| {
+            if (std.mem.eql(u8, field.name, name)) return field;
+        }
+        return null;
+    }
+
+    pub fn findExtensionByLowercaseName(self: *const MessageDescriptor, lowercase_name: []const u8) ?*const FieldDescriptor {
+        for (self.extensions.items) |*field| {
+            if (eqlLowercaseName(field.name, lowercase_name)) return field;
+        }
+        return null;
+    }
+
+    pub fn findExtensionByCamelcaseName(self: *const MessageDescriptor, camelcase_name: []const u8) ?*const FieldDescriptor {
+        for (self.extensions.items) |*field| {
+            if (eqlCamelcaseName(field.name, camelcase_name)) return field;
+        }
+        return null;
+    }
+
     pub fn oneofCount(self: *const MessageDescriptor) usize {
         return self.oneofs.items.len;
     }
@@ -1433,6 +1454,27 @@ pub const FileDescriptor = struct {
     pub fn extensionAt(self: *const FileDescriptor, index: usize) ?*const FieldDescriptor {
         if (index >= self.extensions.items.len) return null;
         return &self.extensions.items[index];
+    }
+
+    pub fn findExtension(self: *const FileDescriptor, name: []const u8) ?*const FieldDescriptor {
+        for (self.extensions.items) |*field| {
+            if (std.mem.eql(u8, field.name, name)) return field;
+        }
+        return null;
+    }
+
+    pub fn findExtensionByLowercaseName(self: *const FileDescriptor, lowercase_name: []const u8) ?*const FieldDescriptor {
+        for (self.extensions.items) |*field| {
+            if (eqlLowercaseName(field.name, lowercase_name)) return field;
+        }
+        return null;
+    }
+
+    pub fn findExtensionByCamelcaseName(self: *const FileDescriptor, camelcase_name: []const u8) ?*const FieldDescriptor {
+        for (self.extensions.items) |*field| {
+            if (eqlCamelcaseName(field.name, camelcase_name)) return field;
+        }
+        return null;
     }
 
     pub fn findMessage(self: *const FileDescriptor, name: []const u8) ?*const MessageDescriptor {
