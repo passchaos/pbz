@@ -349,6 +349,9 @@ pub fn main() !void {
     const contact_oneof = try refl.oneofByName(user_desc, "contact");
     try std.testing.expect((try refl.fieldContainingOneof(user_desc, email_field)) == contact_oneof);
     try std.testing.expect((try refl.fieldRealContainingOneof(user_desc, email_field)).? == contact_oneof);
+    try std.testing.expectEqual(@as(usize, 0), try refl.fieldIndexInOneof(user_desc, email_field));
+    try std.testing.expectEqual(@as(usize, 1), try refl.fieldIndexInOneof(user_desc, try refl.fieldByName(user_desc, "disabled")));
+    try std.testing.expectError(error.MissingField, refl.fieldIndexInOneof(user_desc, id_field));
     try std.testing.expectError(error.MissingField, refl.fieldRealContainingOneof(user_desc, id_field));
     try std.testing.expect((try refl.oneofContainingType(user_desc, contact_oneof)) == user_desc);
     try std.testing.expect((try refl.oneofContainingFile(user_desc, contact_oneof)) == app_file);

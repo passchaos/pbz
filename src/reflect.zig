@@ -1140,6 +1140,11 @@ pub const Reflection = struct {
         return if (descriptor.oneofIsSynthetic(oneof)) null else oneof;
     }
 
+    pub fn fieldIndexInOneof(self: Reflection, descriptor: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) Error!usize {
+        const oneof_name = try self.fieldOneofName(field);
+        return descriptor.oneofFieldIndex(oneof_name, field) orelse error.UnknownField;
+    }
+
     pub fn fieldIsExtension(_: Reflection, field: *const schema.FieldDescriptor) bool {
         return field.extendee != null;
     }

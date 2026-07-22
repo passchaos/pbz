@@ -1125,6 +1125,17 @@ pub const MessageDescriptor = struct {
         return null;
     }
 
+    pub fn oneofFieldIndex(self: *const MessageDescriptor, oneof_name: []const u8, target: *const FieldDescriptor) ?usize {
+        var seen: usize = 0;
+        for (self.fields.items) |*field| {
+            const field_oneof = field.oneof_name orelse continue;
+            if (!std.mem.eql(u8, field_oneof, oneof_name)) continue;
+            if (field == target) return seen;
+            seen += 1;
+        }
+        return null;
+    }
+
     pub fn findMessage(self: *const MessageDescriptor, name: []const u8) ?*const MessageDescriptor {
         for (self.messages.items) |*message| {
             if (std.mem.eql(u8, message.name, name)) return message;
