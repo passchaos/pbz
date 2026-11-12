@@ -176,6 +176,7 @@ pub const Parser = struct {
         try self.validatePackedOptions();
         try self.validateFieldOptionApplicabilities();
         try self.validateFeatureSemantics();
+        try self.validateNamingStyle();
         return self.file;
     }
 
@@ -1403,7 +1404,105 @@ pub const Parser = struct {
         for (self.file.messages.items) |*message| try self.validateMessageFieldOptionApplicabilities(message);
     }
 
-    fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
+    fn validateNamingStyle(self: *Parser) ParseError!void {
+    if (self.file.syntax != .editions) return;
+    const file_style = self.file.features.enforce_naming_style;
+    if (file_style != .style_legacy) try validatePackageNaming(self.file.package);
+    for (self.file.messages.items) |*message| try validateMessageNaming(message, file_style);
+    for (self.file.enums.items) |*enumeration| try validateEnumNaming(enumeration, file_style);
+    for (self.file.services.items) |*service| try validateServiceNaming(service, file_style);
+    for (self.file.extensions.items) |*field| try validateFieldNaming(field, file_style);
+}
+
+fn effectiveNamingStyle(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
+    return if (features) |value| value.enforce_naming_style else inherited;
+}
+
+fn validatePackageNaming(package: []const u8) ParseError!void {
+    if (package.len == 0) return;
+    var it = std.mem.splitScalar(u8, package, '.');
+    while (it.next()) |component| {
+        if (!isLowerSnakeCaseName(component)) return error.InvalidFieldType;
+    }
+}
+
+fn validateMessageNaming(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+    const style = effectiveNamingStyle(message.features, inherited);
+    if (style != .style_legacy and !isTitleCaseName(message.name)) return error.InvalidFieldType;
+    for (message.fields.items) |*field| try validateFieldNaming(field, style);
+    for (message.oneofs.items) |*oneof| {
+        const oneof_style = effectiveNamingStyle(oneof.features, style);
+        if (oneof_style != .style_legacy and !isLowerSnakeCaseName(oneof.name)) return error.InvalidFieldType;
+    }
+    for (message.messages.items) |*nested| try validateMessageNaming(nested, style);
+    for (message.enums.items) |*enumeration| try validateEnumNaming(enumeration, style);
+    for (message.extensions.items) |*field| try validateFieldNaming(field, style);
+}
+
+fn validateFieldNaming(field: *const schema.FieldDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+    const style = effectiveNamingStyle(field.features, inherited);
+    if (style != .style_legacy and !isLowerSnakeCaseName(field.name)) return error.InvalidFieldType;
+}
+
+fn validateEnumNaming(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+    const style = effectiveNamingStyle(enumeration.features, inherited);
+    if (style != .style_legacy and !isTitleCaseName(enumeration.name)) return error.InvalidFieldType;
+    for (enumeration.values.items) |*value| {
+        const value_style = effectiveNamingStyle(value.features, style);
+        if (value_style != .style_legacy and !isUpperSnakeCaseName(value.name)) return error.InvalidFieldType;
+    }
+}
+
+fn validateServiceNaming(service: *const schema.ServiceDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
+    const style = effectiveNamingStyle(service.features, inherited);
+    if (style != .style_legacy and !isTitleCaseName(service.name)) return error.InvalidFieldType;
+    for (service.methods.items) |*method| {
+        const method_style = effectiveNamingStyle(method.features, style);
+        if (method_style != .style_legacy and !isTitleCaseName(method.name)) return error.InvalidFieldType;
+    }
+}
+
+fn isTitleCaseName(name: []const u8) bool {
+    if (name.len == 0 or !std.ascii.isUpper(name[0])) return false;
+    for (name[1..]) |c| {
+        if (!std.ascii.isAlphanumeric(c)) return false;
+    }
+    return true;
+}
+
+fn isLowerSnakeCaseName(name: []const u8) bool {
+    if (name.len == 0 or !std.ascii.isLower(name[0])) return false;
+    var after_underscore = false;
+    for (name[1..], 1..) |c, index| {
+        if (c == '_') {
+            if (after_underscore or index + 1 >= name.len) return false;
+            after_underscore = true;
+            continue;
+        }
+        if (!(std.ascii.isLower(c) or std.ascii.isDigit(c))) return false;
+        if (after_underscore and !std.ascii.isLower(c)) return false;
+        after_underscore = false;
+    }
+    return true;
+}
+
+fn isUpperSnakeCaseName(name: []const u8) bool {
+    if (name.len == 0 or !std.ascii.isUpper(name[0])) return false;
+    var after_underscore = false;
+    for (name[1..], 1..) |c, index| {
+        if (c == '_') {
+            if (after_underscore or index + 1 >= name.len) return false;
+            after_underscore = true;
+            continue;
+        }
+        if (!(std.ascii.isUpper(c) or std.ascii.isDigit(c))) return false;
+        if (after_underscore and !std.ascii.isUpper(c)) return false;
+        after_underscore = false;
+    }
+    return true;
+}
+
+fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
         for (message.fields.items) |*field| try validateFieldOptionApplicability(field);
         for (message.extensions.items) |*field| try validateFieldOptionApplicability(field);
         for (message.messages.items) |*nested| try self.validateMessageFieldOptionApplicabilities(nested);
@@ -1416,7 +1515,10 @@ pub const Parser = struct {
     }
 
     fn validateMessageFeatureSemantics(self: *Parser, message: *schema.MessageDescriptor) ParseError!void {
-        for (message.fields.items) |*field| try self.validateFieldFeatureSemantics(field, message);
+        for (message.fields.items) |*field| {
+            if (field.kind == .group) return error.InvalidFieldType;
+            try self.validateFieldFeatureSemantics(field, message);
+        }
         for (message.extensions.items) |*field| try self.validateFieldFeatureSemantics(field, message);
         for (message.messages.items) |*nested| try self.validateMessageFeatureSemantics(nested);
     }
@@ -3675,6 +3777,85 @@ test "parser applies feature options across declaration scopes" {
     const service = file.services.items[0];
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
     try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, service.methods.items[0].features.?.enforce_proto_limits);
+}
+
+test "parser enforces editions STYLE2024 naming" {
+    const allocator = std.testing.allocator;
+    var valid = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo.v1;
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message GoodName {
+        \\  int32 good_field = 1;
+        \\  oneof good_oneof { int32 a = 2; }
+        \\}
+        \\enum GoodEnum { GOOD_ENUM_UNKNOWN = 0; }
+        \\service GoodService { rpc DoThing (GoodName) returns (GoodName); }
+    );
+    defer valid.deinit();
+
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message lower_name {}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message M { int32 camelCase = 1; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message M { int32 _x = 1; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message M { oneof camelOne { int32 x = 1; } }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\enum E_BAD { E_BAD_UNKNOWN = 0; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\enum E { unknown = 0; }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message M { int32 x = 1; }
+        \\service svc { rpc Do (M) returns (M); }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message M { int32 x = 1; }
+        \\service Svc { rpc do_thing (M) returns (M); }
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2024";
+        \\package Demo;
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message M {}
+    ));
+    var legacy = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.enforce_naming_style = STYLE_LEGACY;
+        \\message lower_name { int32 camelCase = 1; }
+    );
+    defer legacy.deinit();
+}
+
+test "parser rejects editions group syntax" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2024";
+        \\message M { group G = 1 { int32 x = 2; } }
+    ));
 }
 
 test "parser gates edition-2024 and edition-2026 feature options" {

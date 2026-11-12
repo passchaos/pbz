@@ -27,8 +27,10 @@ benchmarks, and upstream conformance suite:
 - proto2, proto3, and protobuf editions metadata/features used by the test set,
   including dynamic editions presence, repeated encoding, message encoding,
   UTF-8 validation, enum openness behavior, feature edition gating
-  (2024/2026-introduced options), and `default_symbol_visibility`
-  (`EXPORT_ALL` / `EXPORT_TOP_LEVEL` / `LOCAL_ALL` / `STRICT`) enforcement
+  (2024/2026-introduced options), `default_symbol_visibility`
+  (`EXPORT_ALL` / `EXPORT_TOP_LEVEL` / `LOCAL_ALL` / `STRICT`) enforcement,
+  and STYLE2024/2026 naming checks (TitleCase, lower_snake_case,
+  UPPER_SNAKE_CASE, package casing)
 - scalar fields, repeated fields, packed fields, maps, nested messages, groups,
   oneof, proto3 optional, required-field validation
 - unknown field preservation, deterministic encoding, MessageSet support, and
