@@ -51,8 +51,9 @@ benchmarks, and upstream conformance suite:
 - standalone deterministic fuzzer (`pbz-fuzz`) covering the wire reader,
   descriptor decoder/set decoder, `.proto` parser, dynamic binary/JSON/
   TextFormat parsers (including registry-backed imports and WKT types), and
-  generated `Person` decode/encode plus `decodeReuse`/`decodeOwnedReuse`, with a
-  short seed-0 pass wired into `zig build check`
+  generated `Person` binary decode/encode, `decodeReuse`/`decodeOwnedReuse`,
+  and generated JSON/TextFormat parsers, with a short seed-0 pass wired into
+  `zig build check`
 
 For detailed feature coverage, see:
 
