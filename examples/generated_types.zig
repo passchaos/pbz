@@ -142,6 +142,15 @@ pub fn main() !void {
     std.debug.assert(clear_target.id == 0);
     std.debug.assert(clear_target.name.len == 0);
 
+    // decodeOwned adopts borrowed wire payloads in place; freeing the input
+    // below must leave the decoded strings and map keys valid.
+    const owned_wire = try person.encode(allocator);
+    var owned_person = try person_pb.demo.Person.decodeOwned(allocator, owned_wire);
+    defer owned_person.deinit(allocator);
+    allocator.free(owned_wire);
+    std.debug.assert(std.mem.eql(u8, owned_person.name, "Zig"));
+    std.debug.assert(owned_person.counts.get("red").? == 2);
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,
