@@ -48,6 +48,9 @@ benchmarks, and upstream conformance suite:
 - generated Zig types validated by the upstream conformance suite: binary
   requests decode/encode through generated code, while JSON/TextFormat use the
   registry-aware dynamic bridge
+- standalone deterministic fuzzer (`pbz-fuzz`) covering the wire reader,
+  descriptor decoder, `.proto` parser, and dynamic binary/JSON/TextFormat
+  parsers, with a short seed-0 pass wired into `zig build check`
 
 For detailed feature coverage, see:
 
@@ -393,6 +396,8 @@ zig build build-codegen-smoke
 zig build check-generated-examples
 zig build conformance-smoke
 zig build cli-smoke
+zig build fuzz-smoke
+zig build fuzz -Dfuzz-iterations=1000000 -Dfuzz-seed=0
 python3 bench/summarize_compare.py --self-test
 tools/run_conformance.sh
 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log

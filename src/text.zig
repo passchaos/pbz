@@ -1444,13 +1444,14 @@ const TextParser = struct {
                         try out.appendSlice(self.allocator, buf[0..len]);
                     },
                     '0'...'7' => {
-                        var value: u8 = esc - '0';
+                        var value: u16 = esc - '0';
                         var digits: usize = 1;
                         while (!self.eof() and digits < 3 and self.peek() >= '0' and self.peek() <= '7') : (digits += 1) {
                             value = value * 8 + (self.peek() - '0');
                             self.index += 1;
                         }
-                        try out.append(self.allocator, value);
+                        if (value > 0xff) return error.InvalidCharacter;
+                        try out.append(self.allocator, @intCast(value));
                     },
                     else => try out.append(self.allocator, esc),
                 }
@@ -1549,6 +1550,9 @@ const TextParser = struct {
     }
 
     fn peek(self: *const TextParser) u8 {
+        // Returning a sentinel at EOF keeps speculative token checks safe; all
+        // parsing loops still handle EOF explicitly via eof().
+        if (self.index >= self.input.len) return 0;
         return self.input[self.index];
     }
 

@@ -1663,11 +1663,17 @@ fn decodeMapEntryValue(
         switch (tag.number) {
             1 => {
                 if (tag.wire_type != map_type.key.wireType()) return error.InvalidWireType;
-                if (maybe_key) |*old| deinitValue(old, allocator);
+                if (maybe_key) |*old| {
+                    deinitValue(old, allocator);
+                    maybe_key = null;
+                }
                 maybe_key = try decodeValue(allocator, file, registry, current, field, .{ .scalar = map_type.key }, entry_reader);
             },
             2 => {
-                if (maybe_value) |*old| deinitValue(old, allocator);
+                if (maybe_value) |*old| {
+                    deinitValue(old, allocator);
+                    maybe_value = null;
+                }
                 if (registryEnumDescriptor(file, registry, current, map_type.value.*)) |enumeration| {
                     if (tag.wire_type != .varint) return error.InvalidWireType;
                     const value = try entry_reader.readInt32();

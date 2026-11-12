@@ -187,6 +187,32 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(cli_exe);
 
+    const fuzz_exe = b.addExecutable(.{
+        .name = "pbz-fuzz",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/pbz_fuzz.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "pbz", .module = mod }},
+        }),
+    });
+    const run_fuzz = b.addRunArtifact(fuzz_exe);
+    if (b.option(usize, "fuzz-iterations", "Number of standalone fuzz iterations")) |iterations| {
+        run_fuzz.addArg("--iterations");
+        run_fuzz.addArg(b.fmt("{d}", .{iterations}));
+    }
+    if (b.option(u64, "fuzz-seed", "Standalone fuzz PRNG seed")) |seed| {
+        run_fuzz.addArg("--seed");
+        run_fuzz.addArg(b.fmt("{d}", .{seed}));
+    }
+    const fuzz_step = b.step("fuzz", "Run the standalone fuzzer");
+    fuzz_step.dependOn(&run_fuzz.step);
+
+    const run_fuzz_smoke = b.addRunArtifact(fuzz_exe);
+    run_fuzz_smoke.addArgs(&.{ "--iterations", "20000", "--seed", "0" });
+    const fuzz_smoke_step = b.step("fuzz-smoke", "Run a short deterministic standalone fuzz pass");
+    fuzz_smoke_step.dependOn(&run_fuzz_smoke.step);
+
     const tests = b.addTest(.{
         .root_module = mod,
     });
@@ -350,4 +376,5 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(generated_examples_check_step);
     check_step.dependOn(conformance_smoke_step);
     check_step.dependOn(cli_smoke_step);
+    check_step.dependOn(fuzz_smoke_step);
 }
