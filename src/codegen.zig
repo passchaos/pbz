@@ -13,6 +13,7 @@ const CodegenContext = struct {
     pbz_import: []const u8 = "pbz",
     emit_json: bool = true,
     emit_text: bool = true,
+    emit_descriptor: bool = true,
     output_suffix: []const u8 = ".pb.zig",
     strip_proto_ext: bool = true,
 };
@@ -42,6 +43,14 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
     try writeZigStringLiteral(active_ctx.pbz_import, &out.writer);
     try out.writer.writeAll(");\n\n");
     try writeFileMetadata(&active_ctx, &out.writer, 0);
+    if (active_ctx.emit_descriptor) {
+        var descriptor_file = try cloneFileForCodegen(arena.allocator(), ctx.file);
+        descriptor_file.source_code_info = .{};
+        if (active_ctx.registry) |registry| {
+            try resolveImportedEnumsForCodegen(arena.allocator(), &descriptor_file, registry);
+        }
+        try writeGeneratedFileDescriptor(&active_ctx, &descriptor_file, &out.writer, 0);
+    }
     try writePackagedFileDecls(&active_ctx, &out.writer, 0);
     return try finalizeGeneratedZig(ctx.allocator, try out.toOwnedSlice());
 }
@@ -404,6 +413,7 @@ const PluginParameterOptions = struct {
     pbz_import: []const u8 = "pbz",
     emit_json: bool = true,
     emit_text: bool = true,
+    emit_descriptor: bool = true,
     output_suffix: []const u8 = ".pb.zig",
     strip_proto_ext: bool = true,
 };
@@ -474,6 +484,8 @@ fn parsePluginParameters(parameter: []const u8) error{InvalidPluginParameter}!Pl
             options.emit_json = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "text") or std.mem.eql(u8, key, "text_format") or std.mem.eql(u8, key, "emit_text")) {
             options.emit_text = try parseParameterBool(maybe_value orelse "true");
+        } else if (std.mem.eql(u8, key, "descriptor") or std.mem.eql(u8, key, "emit_descriptor")) {
+            options.emit_descriptor = try parseParameterBool(maybe_value orelse "true");
         } else if (std.mem.eql(u8, key, "output_suffix")) {
             options.output_suffix = maybe_value orelse return error.InvalidPluginParameter;
             if (options.output_suffix.len == 0) return error.InvalidPluginParameter;
@@ -720,6 +732,46 @@ fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: 
         try writer.writeAll("const pbz_generated_file = @This();\n");
     }
     try writer.writeAll("\n");
+}
+
+fn writeGeneratedFileDescriptor(ctx: *const CodegenContext, file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const descriptor_mod = @import("descriptor.zig");
+    const descriptor_bytes = if (ctx.registry) |registry|
+        try descriptor_mod.encodeFileDescriptorProtoWithRegistry(ctx.allocator, file, registry, file.name)
+    else
+        try descriptor_mod.encodeFileDescriptorProto(ctx.allocator, file, file.name);
+    defer ctx.allocator.free(descriptor_bytes);
+
+    try indent(writer, depth);
+    try writer.writeAll("/// Serialized google.protobuf.FileDescriptorProto for this generated file.\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// Use decodeFileDescriptor() to build registry/reflection metadata.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub const file_descriptor_proto = [_]u8{");
+    for (descriptor_bytes, 0..) |byte, i| {
+        if (i % 12 == 0) {
+            try writer.writeAll("\n");
+            try indent(writer, depth + 1);
+        } else {
+            try writer.writeAll(" ");
+        }
+        try writer.print("0x{x:0>2},", .{byte});
+    }
+    if (descriptor_bytes.len != 0) {
+        try writer.writeAll("\n");
+        try indent(writer, depth);
+    }
+    try writer.writeAll("};\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// Decode the embedded FileDescriptorProto. The caller owns the result and\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// must call deinit() on it.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeFileDescriptor(allocator: std.mem.Allocator) !pbz.schema.FileDescriptor {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return pbz.decodeFileDescriptorProto(allocator, &file_descriptor_proto);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
 }
 
 fn writeImportDecl(ctx: *const CodegenContext, import: schema.Import, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -13309,7 +13361,7 @@ test "codegen request plugin options include imports and raw bytes entrypoint" {
 
     var no_helpers_request = plugin.CodeGeneratorRequest.init(allocator);
     defer no_helpers_request.deinit();
-    no_helpers_request.parameter = "json=false,text_format=false";
+    no_helpers_request.parameter = "json=false,text_format=false,descriptor=false";
     try no_helpers_request.files_to_generate.append(allocator, "app.proto");
     try no_helpers_request.appendProtoFile(try @import("parser.zig").Parser.parse(allocator, "syntax = \"proto2\"; message App { optional int32 id = 1; }"));
     no_helpers_request.proto_files.items[0].name = "app.proto";
@@ -13521,6 +13573,29 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expect(std.mem.indexOf(u8, content, "while (!packed_reader.eof()) { const value_start = packed_reader.position(); const value = try packed_reader.readInt32(); const value_end = packed_reader.position();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try pbz.wire.appendRawVarintPayload(allocator, &_unknown_fields_list, 2, payload[value_start..value_end]);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try ids_list.append(allocator, try r.readInt32())") != null);
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen embeds a decodable file descriptor" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\package demo;
+        \\message Person { int32 id = 1; string name = 2; }
+    );
+    defer file.deinit();
+    file.name = "person.proto";
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const file_descriptor_proto = [_]u8{") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFileDescriptor(allocator: std.mem.Allocator) !pbz.schema.FileDescriptor {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return pbz.decodeFileDescriptorProto(allocator, &file_descriptor_proto);") != null);
+
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
     var tree = try std.zig.Ast.parse(allocator, source, .zig);

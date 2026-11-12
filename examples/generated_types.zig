@@ -102,6 +102,15 @@ pub fn main() !void {
     merge_source.deinit(allocator);
     std.debug.assert(std.mem.eql(u8, merge_target.name, "merged"));
 
+    // Generated files embed their FileDescriptorProto so generated types can
+    // participate in registry/reflection workflows without re-parsing .proto
+    // source at runtime.
+    var file_descriptor = try person_pb.decodeFileDescriptor(allocator);
+    defer file_descriptor.deinit();
+    std.debug.assert(std.mem.eql(u8, file_descriptor.package, "demo"));
+    const person_descriptor = file_descriptor.findMessage("Person") orelse unreachable;
+    std.debug.assert(person_descriptor.fields.items.len == 4);
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,
