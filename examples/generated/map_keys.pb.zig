@@ -304,14 +304,19 @@ pub const demo = struct {
 
             // no same-file extension accessors
 
+            /// Merge other into self. String/bytes payloads, raw message payloads,
+            /// and map keys/values are deep-copied, so other remains independently valid.
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+                const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 const by_int_other_count = other.by_int.count();
                 if (by_int_other_count != 0) {
                     try self.by_int.ensureUnusedCapacity(allocator, by_int_other_count);
                     var other_it = other.by_int.iterator();
                     while (other_it.next()) |entry| {
-                        const result = self.by_int.getOrPutAssumeCapacity(entry.key_ptr.*);
-                        result.value_ptr.* = entry.value_ptr.*;
+                        const key = entry.key_ptr.*;
+                        const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                        const result = self.by_int.getOrPutAssumeCapacity(key);
+                        result.value_ptr.* = value;
                     }
                 }
                 const by_bool_other_count = other.by_bool.count();
@@ -319,8 +324,10 @@ pub const demo = struct {
                     try self.by_bool.ensureUnusedCapacity(allocator, by_bool_other_count);
                     var other_it = other.by_bool.iterator();
                     while (other_it.next()) |entry| {
-                        const result = self.by_bool.getOrPutAssumeCapacity(entry.key_ptr.*);
-                        result.value_ptr.* = entry.value_ptr.*;
+                        const key = entry.key_ptr.*;
+                        const value = entry.value_ptr.*;
+                        const result = self.by_bool.getOrPutAssumeCapacity(key);
+                        result.value_ptr.* = value;
                     }
                 }
                 const by_i64_other_count = other.by_i64.count();
@@ -328,8 +335,10 @@ pub const demo = struct {
                     try self.by_i64.ensureUnusedCapacity(allocator, by_i64_other_count);
                     var other_it = other.by_i64.iterator();
                     while (other_it.next()) |entry| {
-                        const result = self.by_i64.getOrPutAssumeCapacity(entry.key_ptr.*);
-                        result.value_ptr.* = entry.value_ptr.*;
+                        const key = entry.key_ptr.*;
+                        const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                        const result = self.by_i64.getOrPutAssumeCapacity(key);
+                        result.value_ptr.* = value;
                     }
                 }
                 const by_u64_other_count = other.by_u64.count();
@@ -337,8 +346,10 @@ pub const demo = struct {
                     try self.by_u64.ensureUnusedCapacity(allocator, by_u64_other_count);
                     var other_it = other.by_u64.iterator();
                     while (other_it.next()) |entry| {
-                        const result = self.by_u64.getOrPutAssumeCapacity(entry.key_ptr.*);
-                        result.value_ptr.* = entry.value_ptr.*;
+                        const key = entry.key_ptr.*;
+                        const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                        const result = self.by_u64.getOrPutAssumeCapacity(key);
+                        result.value_ptr.* = value;
                     }
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -505,6 +516,8 @@ pub const demo = struct {
                 return buffer[0..index];
             }
 
+            /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+            /// must guarantee that all string fields contain valid UTF-8.
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 { var map_it = self.by_int.iterator(); while (map_it.next()) |map_entry| {
@@ -869,17 +882,24 @@ pub const demo = struct {
                 return try self.encode(allocator);
             }
 
+            /// Decode from wire bytes. String/bytes fields borrow the input slice;
+            /// use decodeOwned when the decoded message must outlive the input.
             pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var r = pbz.Reader.init(bytes);
                 return try @This().decodeFromReader(allocator, &r);
             }
 
+            /// Decode from an existing reader. String/bytes fields borrow the reader input.
             pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 while (try r.nextTag()) |tag| {
+                    if (!@This().decodeAcceptsTag(tag)) {
+                        try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                    continue;
+                    }
                     switch (tag.number) {
                         1 => {
                             var entry = by_intEntry{};
@@ -887,8 +907,22 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readInt32(),
-                                    2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; },
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readInt32();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.value = value;
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -900,8 +934,20 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readBool(),
-                                    2 => entry.value = try entry_reader.readInt32(),
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readBool();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.value = try entry_reader.readInt32();
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -913,8 +959,22 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readInt64(),
-                                    2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; },
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readInt64();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.value = value;
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -926,8 +986,22 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readUInt64(),
-                                    2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; },
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readUInt64();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.value = value;
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -940,6 +1014,19 @@ pub const demo = struct {
                 return self;
             }
 
+            fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+                return switch (tag.number) {
+                    1 => tag.wire_type == .length_delimited,
+                    2 => tag.wire_type == .length_delimited,
+                    3 => tag.wire_type == .length_delimited,
+                    4 => tag.wire_type == .length_delimited,
+                    else => true,
+                };
+            }
+
+
+            /// Decode into an existing message, reusing repeated/map storage.
+            /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 self.by_int.clearRetainingCapacity();
@@ -952,6 +1039,10 @@ pub const demo = struct {
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 var r = pbz.Reader.init(bytes);
                 while (try r.nextTag()) |tag| {
+                    if (!@This().decodeAcceptsTag(tag)) {
+                        try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                    continue;
+                    }
                     switch (tag.number) {
                         1 => {
                             var entry = by_intEntry{};
@@ -959,8 +1050,22 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readInt32(),
-                                    2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; },
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readInt32();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.value = value;
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -972,8 +1077,20 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readBool(),
-                                    2 => entry.value = try entry_reader.readInt32(),
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readBool();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.value = try entry_reader.readInt32();
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -985,8 +1102,22 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readInt64(),
-                                    2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; },
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readInt64();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.value = value;
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -998,8 +1129,22 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => entry.key = try entry_reader.readUInt64(),
-                                    2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; },
+                                    1 => {
+                                        if (entry_tag.wire_type != .varint) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            entry.key = try entry_reader.readUInt64();
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.value = value;
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -1017,6 +1162,7 @@ pub const demo = struct {
                 return try decoded.cloneOwned(allocator);
             }
 
+            /// Decode and validate required fields. String/bytes fields borrow the input slice.
             pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decode(allocator, bytes);
                 errdefer self.deinit(allocator);
@@ -1024,6 +1170,7 @@ pub const demo = struct {
                 return self;
             }
 
+            /// Decode, deep-copy, and validate required fields.
             pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decodeOwned(allocator, bytes);
                 errdefer self.deinit(allocator);

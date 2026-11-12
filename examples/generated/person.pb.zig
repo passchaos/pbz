@@ -268,15 +268,21 @@ pub const demo = struct {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+            const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
             if (other.id != 0) self.id = other.id;
-            if (other.name.len != 0) self.name = other.name;
+            if (other.name.len != 0) self.name = try _pbz_owned_allocator.dupe(u8, other.name);
             if (other.scores.len != 0) {
                 const old = self.scores;
-                const merged = try allocator.alloc(i32, old.len + other.scores.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.scores);
-                self.scores = merged;
+                {
+                    const merged = try allocator.alloc(i32, old.len + other.scores.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.scores);
+                    self.scores = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             const counts_other_count = other.counts.count();
@@ -284,8 +290,10 @@ pub const demo = struct {
                 try self.counts.ensureUnusedCapacity(allocator, counts_other_count);
                 var other_it = other.counts.iterator();
                 while (other_it.next()) |entry| {
-                    const result = self.counts.getOrPutAssumeCapacity(entry.key_ptr.*);
-                    result.value_ptr.* = entry.value_ptr.*;
+                    const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                    const value = entry.value_ptr.*;
+                    const result = self.counts.getOrPutAssumeCapacity(key);
+                    result.value_ptr.* = value;
                 }
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -400,6 +408,8 @@ pub const demo = struct {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
@@ -560,11 +570,14 @@ pub const demo = struct {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -573,6 +586,10 @@ pub const demo = struct {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => { self.id = try r.readInt32(); },
                     2 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; },
@@ -590,8 +607,22 @@ pub const demo = struct {
                         var entry_reader = try r.nested(payload);
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
-                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => entry.value = try entry_reader.readInt32(),
+                                1 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value = try entry_reader.readBytes();
+                                        if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                        entry.key = value;
+                                    }
+                                },
+                                2 => {
+                                    if (entry_tag.wire_type != .varint) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        entry.value = try entry_reader.readInt32();
+                                    }
+                                },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -605,6 +636,19 @@ pub const demo = struct {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint,
+                2 => tag.wire_type == .length_delimited,
+                3 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                4 => tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var scores_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.scores));
             scores_list.clearRetainingCapacity();
@@ -620,6 +664,10 @@ pub const demo = struct {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => { self.id = try r.readInt32(); },
                     2 => { self.name = try r.readBytes(); if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; },
@@ -637,8 +685,22 @@ pub const demo = struct {
                         var entry_reader = try r.nested(payload);
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
-                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => entry.value = try entry_reader.readInt32(),
+                                1 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value = try entry_reader.readBytes();
+                                        if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                        entry.key = value;
+                                    }
+                                },
+                                2 => {
+                                    if (entry_tag.wire_type != .varint) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        entry.value = try entry_reader.readInt32();
+                                    }
+                                },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -657,6 +719,7 @@ pub const demo = struct {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -664,6 +727,7 @@ pub const demo = struct {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -1829,6 +1893,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.active) self.active = other.active;
             if (other.count != 0) self.count = other.count;
@@ -1844,18 +1910,24 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (other.kind != 0) self.kind = other.kind;
             if (other.flags.len != 0) {
                 const old = self.flags;
-                const merged = try allocator.alloc(bool, old.len + other.flags.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.flags);
-                self.flags = merged;
+                {
+                    const merged = try allocator.alloc(bool, old.len + other.flags.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.flags);
+                    self.flags = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             if (other.ids.len != 0) {
                 const old = self.ids;
-                const merged = try allocator.alloc(u64, old.len + other.ids.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.ids);
-                self.ids = merged;
+                {
+                    const merged = try allocator.alloc(u64, old.len + other.ids.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.ids);
+                    self.ids = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -2000,6 +2072,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.active) { buffer[index] = 8; index += 1; buffer[index] = if (self.active) 1 else 0; index += 1; }
@@ -2128,11 +2202,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -2178,6 +2255,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var flags_list: std.ArrayList(bool) = std.ArrayList(bool).fromOwnedSlice(@constCast(self.flags));
             flags_list.clearRetainingCapacity();
@@ -2318,6 +2397,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -2325,6 +2405,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -3509,23 +3590,32 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.title.len != 0) self.title = other.title;
-            if (other.payload.len != 0) self.payload = other.payload;
+            const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+            if (other.title.len != 0) self.title = try _pbz_owned_allocator.dupe(u8, other.title);
+            if (other.payload.len != 0) self.payload = try _pbz_owned_allocator.dupe(u8, other.payload);
             if (other.tags.len != 0) {
                 const old = self.tags;
-                const merged = try allocator.alloc([]const u8, old.len + other.tags.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.tags);
-                self.tags = merged;
+                {
+                    const merged = try allocator.alloc([]const u8, old.len + other.tags.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    for (other.tags, 0..) |item, i| merged[old.len + i] = try _pbz_owned_allocator.dupe(u8, item);
+                    self.tags = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             if (other.chunks.len != 0) {
                 const old = self.chunks;
-                const merged = try allocator.alloc([]const u8, old.len + other.chunks.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.chunks);
-                self.chunks = merged;
+                {
+                    const merged = try allocator.alloc([]const u8, old.len + other.chunks.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    for (other.chunks, 0..) |item, i| merged[old.len + i] = try _pbz_owned_allocator.dupe(u8, item);
+                    self.chunks = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -3583,6 +3673,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.title.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.title.len); @memcpy(buffer[index..][0..self.title.len], self.title); index += self.title.len; }
@@ -3641,11 +3733,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -3673,6 +3768,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var tags_list: std.ArrayList([]const u8) = std.ArrayList([]const u8).fromOwnedSlice(@constCast(self.tags));
             tags_list.clearRetainingCapacity();
@@ -3713,6 +3810,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -3720,6 +3818,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -4649,14 +4748,20 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-            if (other.payload.len != 0) self.payload = other.payload;
+            const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+            if (other.payload.len != 0) self.payload = try _pbz_owned_allocator.dupe(u8, other.payload);
             if (other.chunks.len != 0) {
                 const old = self.chunks;
-                const merged = try allocator.alloc([]const u8, old.len + other.chunks.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.chunks);
-                self.chunks = merged;
+                {
+                    const merged = try allocator.alloc([]const u8, old.len + other.chunks.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    for (other.chunks, 0..) |item, i| merged[old.len + i] = try _pbz_owned_allocator.dupe(u8, item);
+                    self.chunks = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -4706,6 +4811,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.payload.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.payload.len); @memcpy(buffer[index..][0..self.payload.len], self.payload); index += self.payload.len; }
@@ -4758,11 +4865,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -4785,6 +4895,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var chunks_list: std.ArrayList([]const u8) = std.ArrayList([]const u8).fromOwnedSlice(@constCast(self.chunks));
             chunks_list.clearRetainingCapacity();
@@ -4817,6 +4929,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -4824,6 +4937,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -5842,17 +5956,20 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+            const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
             if (other.has_count) { self.count = other.count; self.has_count = true; }
-            if (other.has_note) { self.note = other.note; self.has_note = true; }
-            if (other.has_raw) { self.raw = other.raw; self.has_raw = true; }
+            if (other.has_note) { self.note = try _pbz_owned_allocator.dupe(u8, other.note); self.has_note = true; }
+            if (other.has_raw) { self.raw = try _pbz_owned_allocator.dupe(u8, other.raw); self.has_raw = true; }
             if (other.child) |other_value| {
                 if (self.child) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.child = try other_value.cloneOwned(allocator); }
             }
             switch (other.pick) {
                 .none => {},
-                .name => |value| { self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = value }; },
-                .token => |value| { self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = value }; },
+                .name => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = owned_value }; },
+                .token => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = owned_value }; },
                 .nested => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = owned_value }; },
                 .code => |value| { self._pbzDeinitOneof_pick(allocator); self.pick = .{ .code = value }; },
             }
@@ -5939,6 +6056,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.has_count) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.count)))); }
@@ -6036,17 +6155,24 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => { self.count = try r.readInt32(); self.has_count = true; },
                     2 => { self.note = try r.readBytes(); if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; self.has_note = true; },
@@ -6063,6 +6189,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint,
+                2 => tag.wire_type == .length_delimited,
+                3 => tag.wire_type == .length_delimited,
+                4 => tag.wire_type == .length_delimited,
+                5 => tag.wire_type == .length_delimited,
+                6 => tag.wire_type == .length_delimited,
+                7 => tag.wire_type == .length_delimited,
+                8 => tag.wire_type == .varint,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             self._pbzDeinitOneof_pick(allocator);
@@ -6080,6 +6223,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => { self.count = try r.readInt32(); self.has_count = true; },
                     2 => { self.note = try r.readBytes(); if (!pbz.validateUtf8(self.note)) return error.InvalidUtf8; self.has_note = true; },
@@ -6101,6 +6248,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -6108,6 +6256,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -7096,9 +7245,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             // no same-file extension accessors
 
+            /// Merge other into self. String/bytes payloads, raw message payloads,
+            /// and map keys/values are deep-copied, so other remains independently valid.
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+                const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 if (other.id != 0) self.id = other.id;
-                if (other.label.len != 0) self.label = other.label;
+                if (other.label.len != 0) self.label = try _pbz_owned_allocator.dupe(u8, other.label);
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
 
@@ -7146,6 +7298,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return buffer[0..index];
             }
 
+            /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+            /// must guarantee that all string fields contain valid UTF-8.
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
@@ -7198,11 +7352,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try self.encode(allocator);
             }
 
+            /// Decode from wire bytes. String/bytes fields borrow the input slice;
+            /// use decodeOwned when the decoded message must outlive the input.
             pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var r = pbz.Reader.init(bytes);
                 return try @This().decodeFromReader(allocator, &r);
             }
 
+            /// Decode from an existing reader. String/bytes fields borrow the reader input.
             pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
@@ -7222,6 +7379,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return self;
             }
 
+            /// Decode into an existing message, reusing repeated/map storage.
+            /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
@@ -7250,6 +7409,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try decoded.cloneOwned(allocator);
             }
 
+            /// Decode and validate required fields. String/bytes fields borrow the input slice.
             pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decode(allocator, bytes);
                 errdefer self.deinit(allocator);
@@ -7257,6 +7417,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return self;
             }
 
+            /// Decode, deep-copy, and validate required fields.
             pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decodeOwned(allocator, bytes);
                 errdefer self.deinit(allocator);
@@ -8090,13 +8251,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -8171,6 +8337,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -8245,11 +8413,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -8258,6 +8429,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -8275,6 +8450,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -8287,6 +8472,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -8342,6 +8531,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -8349,6 +8539,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -9181,13 +9372,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(u32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(u32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -9251,6 +9447,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -9315,11 +9513,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -9328,6 +9529,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -9345,6 +9550,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .fixed32 or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(u32) = std.ArrayList(u32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -9357,6 +9572,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -9423,6 +9642,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -9430,6 +9650,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -10254,13 +10475,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(u64, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(u64, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -10324,6 +10550,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -10388,11 +10616,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -10401,6 +10632,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -10418,6 +10653,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .fixed64 or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(u64) = std.ArrayList(u64).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -10430,6 +10675,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -10496,6 +10745,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -10503,6 +10753,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -11327,13 +11578,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -11397,6 +11653,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -11461,11 +11719,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -11474,6 +11735,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -11491,6 +11756,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .fixed32 or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -11503,6 +11778,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -11569,6 +11848,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -11576,6 +11856,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -12400,13 +12681,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i64, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i64, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -12470,6 +12756,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -12534,11 +12822,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -12547,6 +12838,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -12564,6 +12859,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .fixed64 or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i64) = std.ArrayList(i64).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -12576,6 +12881,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -12642,6 +12951,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -12649,6 +12959,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -13473,13 +13784,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(f32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(f32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -13543,6 +13859,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -13607,11 +13925,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -13620,6 +13941,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -13637,6 +13962,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .fixed32 or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(f32) = std.ArrayList(f32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -13649,6 +13984,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -13715,6 +14054,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -13722,6 +14062,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -14546,13 +14887,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(f64, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(f64, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -14616,6 +14962,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -14680,11 +15028,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -14693,6 +15044,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -14710,6 +15065,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .fixed64 or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(f64) = std.ArrayList(f64).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -14722,6 +15087,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -14788,6 +15157,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -14795,6 +15165,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -15615,13 +15986,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(u64, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(u64, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -15696,6 +16072,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -15770,11 +16148,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -15783,6 +16164,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -15800,6 +16185,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(u64) = std.ArrayList(u64).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -15812,6 +16207,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -15867,6 +16266,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -15874,6 +16274,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -16694,13 +17095,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(u32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(u32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -16775,6 +17181,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -16849,11 +17257,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -16862,6 +17273,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -16879,6 +17294,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(u32) = std.ArrayList(u32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -16891,6 +17316,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -16946,6 +17375,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -16953,6 +17383,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -17773,13 +18204,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i64, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i64, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -17854,6 +18290,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -17928,11 +18366,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -17941,6 +18382,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -17958,6 +18403,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i64) = std.ArrayList(i64).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -17970,6 +18425,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -18025,6 +18484,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -18032,6 +18492,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -18852,13 +19313,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -18933,6 +19399,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -19007,11 +19475,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -19020,6 +19491,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -19037,6 +19512,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -19049,6 +19534,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -19104,6 +19593,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -19111,6 +19601,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -19931,13 +20422,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i64, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i64, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -20012,6 +20508,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -20086,11 +20584,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -20099,6 +20600,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -20116,6 +20621,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i64) = std.ArrayList(i64).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -20128,6 +20643,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -20183,6 +20702,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -20190,6 +20710,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -21010,13 +21531,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(bool, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(bool, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -21080,6 +21606,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -21144,11 +21672,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -21157,6 +21688,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -21174,6 +21709,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(bool) = std.ArrayList(bool).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -21186,6 +21731,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -21240,6 +21789,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -21247,6 +21797,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -22063,13 +22614,18 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
             if (other.values.len != 0) {
                 const old = self.values;
-                const merged = try allocator.alloc(i32, old.len + other.values.len);
-                @memcpy(merged[0..old.len], old);
-                @memcpy(merged[old.len..], other.values);
-                self.values = merged;
+                {
+                    const merged = try allocator.alloc(i32, old.len + other.values.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    @memcpy(merged[old.len..], other.values);
+                    self.values = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -22144,6 +22700,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.values.len != 0) {
@@ -22218,11 +22776,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -22231,6 +22792,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -22248,6 +22813,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint or tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var values_list: std.ArrayList(i32) = std.ArrayList(i32).fromOwnedSlice(@constCast(self.values));
             values_list.clearRetainingCapacity();
@@ -22260,6 +22835,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         if (tag.wire_type == .length_delimited) {
@@ -22322,6 +22901,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -22329,6 +22909,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -23180,14 +23761,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+            const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
             const counts_other_count = other.counts.count();
             if (counts_other_count != 0) {
                 try self.counts.ensureUnusedCapacity(allocator, counts_other_count);
                 var other_it = other.counts.iterator();
                 while (other_it.next()) |entry| {
-                    const result = self.counts.getOrPutAssumeCapacity(entry.key_ptr.*);
-                    result.value_ptr.* = entry.value_ptr.*;
+                    const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                    const value = entry.value_ptr.*;
+                    const result = self.counts.getOrPutAssumeCapacity(key);
+                    result.value_ptr.* = value;
                 }
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -23261,6 +23847,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             { var map_it = self.counts.iterator(); while (map_it.next()) |map_entry| {
@@ -23387,17 +23975,24 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         var entry = countsEntry{};
@@ -23405,8 +24000,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry_reader = try r.nested(payload);
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
-                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => entry.value = try entry_reader.readInt32(),
+                                1 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value = try entry_reader.readBytes();
+                                        if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                        entry.key = value;
+                                    }
+                                },
+                                2 => {
+                                    if (entry_tag.wire_type != .varint) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        entry.value = try entry_reader.readInt32();
+                                    }
+                                },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -23419,6 +24028,16 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             self.counts.clearRetainingCapacity();
@@ -23428,6 +24047,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => {
                         var entry = countsEntry{};
@@ -23435,8 +24058,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry_reader = try r.nested(payload);
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
-                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => entry.value = try entry_reader.readInt32(),
+                                1 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value = try entry_reader.readBytes();
+                                        if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                        entry.key = value;
+                                    }
+                                },
+                                2 => {
+                                    if (entry_tag.wire_type != .varint) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        entry.value = try entry_reader.readInt32();
+                                    }
+                                },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -23454,6 +24091,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -23461,6 +24099,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -24477,17 +25116,25 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
         // no same-file extension accessors
 
+        /// Merge other into self. String/bytes payloads, raw message payloads,
+        /// and map keys/values are deep-copied, so other remains independently valid.
         pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+            const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
             if (other.id != 0) self.id = other.id;
             if (other.audit) |other_value| {
                 if (self.audit) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.audit = try other_value.cloneOwned(allocator); }
             }
             if (other.history.len != 0) {
                 const old = self.history;
-                const merged = try allocator.alloc(Audit, old.len + other.history.len);
-                @memcpy(merged[0..old.len], old);
-                for (other.history, 0..) |item, i| merged[old.len + i] = try item.cloneOwned(allocator);
-                self.history = merged;
+                {
+                    const merged = try allocator.alloc(Audit, old.len + other.history.len);
+                    errdefer allocator.free(merged);
+                    @memcpy(merged[0..old.len], old);
+                    var _pbz_cloned: usize = 0;
+                    errdefer for (merged[old.len..old.len + _pbz_cloned]) |*item| item.deinit(allocator);
+                    for (other.history, 0..) |item, i| { merged[old.len + i] = try item.cloneOwned(allocator); _pbz_cloned += 1; }
+                    self.history = merged;
+                }
                 if (old.len != 0) allocator.free(old);
             }
             const audits_other_count = other.audits.count();
@@ -24495,16 +25142,17 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try self.audits.ensureUnusedCapacity(allocator, audits_other_count);
                 var other_it = other.audits.iterator();
                 while (other_it.next()) |entry| {
-                    const cloned_value = try entry.value_ptr.cloneOwned(allocator);
-                    const result = self.audits.getOrPutAssumeCapacity(entry.key_ptr.*);
+                    const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                    const value = try entry.value_ptr.cloneOwned(allocator);
+                    const result = self.audits.getOrPutAssumeCapacity(key);
                     if (result.found_existing) result.value_ptr.deinit(allocator);
-                    result.value_ptr.* = cloned_value;
+                    result.value_ptr.* = value;
                 }
             }
             switch (other.subject) {
                 .none => {},
-                .user_name => |value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
-                .organization_id => |value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
+                .user_name => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = owned_value }; },
+                .organization_id => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = owned_value }; },
                 .audit_subject => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = owned_value }; },
             }
             try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -24614,6 +25262,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return buffer[0..index];
         }
 
+        /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+        /// must guarantee that all string fields contain valid UTF-8.
         pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
             var index: usize = 0;
             if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
@@ -24779,11 +25429,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try self.encode(allocator);
         }
 
+        /// Decode from wire bytes. String/bytes fields borrow the input slice;
+        /// use decodeOwned when the decoded message must outlive the input.
         pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var r = pbz.Reader.init(bytes);
             return try @This().decodeFromReader(allocator, &r);
         }
 
+        /// Decode from an existing reader. String/bytes fields borrow the reader input.
         pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
@@ -24793,6 +25446,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => { self.id = try r.readInt32(); },
                     2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.audit = _pbz_nested; } },
@@ -24804,8 +25461,25 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry_reader = try r.nested(payload);
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
-                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
+                                1 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value = try entry_reader.readBytes();
+                                        if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                        entry.key = value;
+                                    }
+                                },
+                                2 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value_payload = try entry_reader.readBytes();
+                                        var value_reader = try entry_reader.nested(value_payload);
+                                        entry.value.deinit(allocator);
+                                        entry.value = try Audit.decodeFromReader(allocator, &value_reader);
+                                    }
+                                },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -24822,6 +25496,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+            return switch (tag.number) {
+                1 => tag.wire_type == .varint,
+                2 => tag.wire_type == .length_delimited,
+                3 => tag.wire_type == .length_delimited,
+                4 => tag.wire_type == .length_delimited,
+                5 => tag.wire_type == .length_delimited,
+                6 => tag.wire_type == .length_delimited,
+                7 => tag.wire_type == .length_delimited,
+                else => true,
+            };
+        }
+
+
+        /// Decode into an existing message, reusing repeated/map storage.
+        /// String/bytes fields still borrow the input slice.
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             var history_list: std.ArrayList(Audit) = std.ArrayList(Audit).fromOwnedSlice(@constCast(self.history));
             for (history_list.items) |*item| item.deinit(allocator);
@@ -24841,6 +25531,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
             var r = pbz.Reader.init(bytes);
             while (try r.nextTag()) |tag| {
+                if (!@This().decodeAcceptsTag(tag)) {
+                    try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                continue;
+                }
                 switch (tag.number) {
                     1 => { self.id = try r.readInt32(); },
                     2 => { const payload = try r.readBytes(); var payload_reader = try r.nested(payload); var _pbz_nested = try Audit.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); if (self.audit) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.audit = _pbz_nested; } },
@@ -24852,8 +25546,25 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         var entry_reader = try r.nested(payload);
                         while (try entry_reader.nextTag()) |entry_tag| {
                             switch (entry_tag.number) {
-                                1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
+                                1 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value = try entry_reader.readBytes();
+                                        if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                        entry.key = value;
+                                    }
+                                },
+                                2 => {
+                                    if (entry_tag.wire_type != .length_delimited) {
+                                        try entry_reader.skipValue(entry_tag);
+                                    } else {
+                                        const value_payload = try entry_reader.readBytes();
+                                        var value_reader = try entry_reader.nested(value_payload);
+                                        entry.value.deinit(allocator);
+                                        entry.value = try Audit.decodeFromReader(allocator, &value_reader);
+                                    }
+                                },
                                 else => try entry_reader.skipValue(entry_tag),
                             }
                         }
@@ -24875,6 +25586,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try decoded.cloneOwned(allocator);
         }
 
+        /// Decode and validate required fields. String/bytes fields borrow the input slice.
         pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decode(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -24882,6 +25594,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return self;
         }
 
+        /// Decode, deep-copy, and validate required fields.
         pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
             var self = try @This().decodeOwned(allocator, bytes);
             errdefer self.deinit(allocator);
@@ -25937,8 +26650,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             // no same-file extension accessors
 
+            /// Merge other into self. String/bytes payloads, raw message payloads,
+            /// and map keys/values are deep-copied, so other remains independently valid.
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-                if (other.actor.len != 0) self.actor = other.actor;
+                const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                if (other.actor.len != 0) self.actor = try _pbz_owned_allocator.dupe(u8, other.actor);
                 if (other.at_unix != 0) self.at_unix = other.at_unix;
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
@@ -25987,6 +26703,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return buffer[0..index];
             }
 
+            /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+            /// must guarantee that all string fields contain valid UTF-8.
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.actor.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
@@ -26039,11 +26757,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try self.encode(allocator);
             }
 
+            /// Decode from wire bytes. String/bytes fields borrow the input slice;
+            /// use decodeOwned when the decoded message must outlive the input.
             pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var r = pbz.Reader.init(bytes);
                 return try @This().decodeFromReader(allocator, &r);
             }
 
+            /// Decode from an existing reader. String/bytes fields borrow the reader input.
             pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
@@ -26063,6 +26784,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return self;
             }
 
+            /// Decode into an existing message, reusing repeated/map storage.
+            /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
@@ -26091,6 +26814,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try decoded.cloneOwned(allocator);
             }
 
+            /// Decode and validate required fields. String/bytes fields borrow the input slice.
             pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decode(allocator, bytes);
                 errdefer self.deinit(allocator);
@@ -26098,6 +26822,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return self;
             }
 
+            /// Decode, deep-copy, and validate required fields.
             pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decodeOwned(allocator, bytes);
                 errdefer self.deinit(allocator);

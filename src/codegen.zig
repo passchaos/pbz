@@ -2250,6 +2250,10 @@ fn writeEncode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
 
     try writer.writeAll("\n");
     try indent(writer, depth);
+    try writer.writeAll("/// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// must guarantee that all string fields contain valid UTF-8.\n");
+    try indent(writer, depth);
     try writer.writeAll("pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {\n");
     if (messageCanFastDirectEncode(ctx, message)) {
         try writeFastDirectEncodeIntoAssumeCapacity(ctx, message, false, writer, depth + 1);
@@ -4056,7 +4060,15 @@ fn writeMessageExtensionTypedAccessor(ctx: *const CodegenContext, field: *const 
 
 fn writeMergeFrom(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("/// Merge other into self. String/bytes payloads, raw message payloads,\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// and map keys/values are deep-copied, so other remains independently valid.\n");
+    try indent(writer, depth);
     try writer.writeAll("pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {\n");
+    if (mergeUsesOwnedAllocator(ctx, message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
+    }
     for (message.fields.items) |*field| {
         if (field.oneof_name == null) try writeMergeField(ctx, field, writer, depth + 1);
     }
@@ -4065,6 +4077,42 @@ fn writeMergeFrom(ctx: *const CodegenContext, message: *const schema.MessageDesc
     try writer.writeAll("try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
+}
+
+fn mergeUsesOwnedAllocator(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null and mergeFieldUsesOwnedAllocator(ctx, field)) return true;
+    }
+    for (message.oneofs.items) |oneof| {
+        for (message.fields.items) |*field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name) and mergeFieldUsesOwnedAllocator(ctx, field)) return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn mergeFieldUsesOwnedAllocator(ctx: *const CodegenContext, field: *const schema.FieldDescriptor) bool {
+    if (field.kind == .map) {
+        const map_type = field.kind.map;
+        if (map_type.key == .string) return true;
+        const value_kind = map_type.value.*;
+        if (value_kind == .scalar and (value_kind.scalar == .string or value_kind.scalar == .bytes)) return true;
+        if ((value_kind == .message or value_kind == .group) and typedMapMessageValueWithContext(ctx, field) == null) return true;
+        return false;
+    }
+    if (field.kind == .scalar and (field.kind.scalar == .string or field.kind.scalar == .bytes)) return true;
+    if (field.kind == .message or field.kind == .group) {
+        const typed = if (field.cardinality == .repeated)
+            typedRepeatedMessageFieldWithContext(ctx, field)
+        else if (field.oneof_name != null)
+            typedOneofMessageFieldWithContext(ctx, field)
+        else
+            typedSingularMessageFieldWithContext(ctx, field);
+        return typed == null;
+    }
+    return false;
 }
 
 fn writeMergeField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -4080,6 +4128,10 @@ fn writeMergeField(ctx: *const CodegenContext, field: *const schema.FieldDescrip
 }
 
 fn writeMergeRepeatedField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const typed_message = typedRepeatedMessageFieldWithContext(ctx, field);
+    const raw_message = typed_message == null and (field.kind == .message or field.kind == .group);
+    const string_or_bytes = field.kind == .scalar and (field.kind.scalar == .string or field.kind.scalar == .bytes);
+    const needs_dup = raw_message or string_or_bytes;
     try indent(writer, depth);
     try writer.writeAll("if (other.");
     try writeQuotedIdent(field.name, writer);
@@ -4089,8 +4141,10 @@ fn writeMergeRepeatedField(ctx: *const CodegenContext, field: *const schema.Fiel
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(";\n");
     try indent(writer, depth + 1);
+    try writer.writeAll("{\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("const merged = try allocator.alloc(");
-    if (typedRepeatedMessageFieldWithContext(ctx, field)) |type_name| {
+    if (typed_message) |type_name| {
         try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
     } else {
         try writeRepeatedElementType(field.*, writer);
@@ -4098,22 +4152,36 @@ fn writeMergeRepeatedField(ctx: *const CodegenContext, field: *const schema.Fiel
     try writer.writeAll(", old.len + other.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(".len);\n");
-    try indent(writer, depth + 1);
+    try indent(writer, depth + 2);
+    try writer.writeAll("errdefer allocator.free(merged);\n");
+    try indent(writer, depth + 2);
     try writer.writeAll("@memcpy(merged[0..old.len], old);\n");
-    try indent(writer, depth + 1);
-    if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
+    if (typed_message != null) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("var _pbz_cloned: usize = 0;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("errdefer for (merged[old.len..old.len + _pbz_cloned]) |*item| item.deinit(allocator);\n");
+        try indent(writer, depth + 2);
         try writer.writeAll("for (other.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(", 0..) |item, i| merged[old.len + i] = try item.cloneOwned(allocator);\n");
+        try writer.writeAll(", 0..) |item, i| { merged[old.len + i] = try item.cloneOwned(allocator); _pbz_cloned += 1; }\n");
+    } else if (needs_dup) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("for (other.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(", 0..) |item, i| merged[old.len + i] = try _pbz_owned_allocator.dupe(u8, item);\n");
     } else {
+        try indent(writer, depth + 2);
         try writer.writeAll("@memcpy(merged[old.len..], other.");
         try writeQuotedIdent(field.name, writer);
         try writer.writeAll(");\n");
     }
-    try indent(writer, depth + 1);
+    try indent(writer, depth + 2);
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
     try writer.writeAll(" = merged;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
     try indent(writer, depth + 1);
     try writer.writeAll("if (old.len != 0) allocator.free(old);\n");
     try indent(writer, depth);
@@ -4121,7 +4189,14 @@ fn writeMergeRepeatedField(ctx: *const CodegenContext, field: *const schema.Fiel
 }
 
 fn writeMergeMapField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const typed_message_value = typedMapMessageValueWithContext(ctx, field) != null;
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    const typed_message_value = typedMapMessageValueWithContext(ctx, field);
+    const raw_message_value = typed_message_value == null and (map_type.value.* == .message or map_type.value.* == .group);
+    const string_key = map_type.key == .string;
+    const string_value = map_type.value.* == .scalar and (map_type.value.scalar == .string or map_type.value.scalar == .bytes);
     try indent(writer, depth);
     try writer.writeAll("const ");
     try writeQuotedIdentWithSuffix(field.name, "_other_count", writer);
@@ -4144,23 +4219,33 @@ fn writeMergeMapField(ctx: *const CodegenContext, field: *const schema.FieldDesc
     try writer.writeAll(".iterator();\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (other_it.next()) |entry| {\n");
-    if (typed_message_value) {
+    if (string_key) {
         try indent(writer, depth + 2);
-        try writer.writeAll("const cloned_value = try entry.value_ptr.cloneOwned(allocator);\n");
+        try writer.writeAll("const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);\n");
+    } else {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const key = entry.key_ptr.*;\n");
+    }
+    if (typed_message_value) |_| {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value = try entry.value_ptr.cloneOwned(allocator);\n");
+    } else if (string_value or raw_message_value) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);\n");
+    } else {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value = entry.value_ptr.*;\n");
     }
     try indent(writer, depth + 2);
     try writer.writeAll("const result = self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(".getOrPutAssumeCapacity(entry.key_ptr.*);\n");
-    if (typed_message_value) {
+    try writer.writeAll(".getOrPutAssumeCapacity(key);\n");
+    if (typed_message_value != null) {
         try indent(writer, depth + 2);
         try writer.writeAll("if (result.found_existing) result.value_ptr.deinit(allocator);\n");
-        try indent(writer, depth + 2);
-        try writer.writeAll("result.value_ptr.* = cloned_value;\n");
-    } else {
-        try indent(writer, depth + 2);
-        try writer.writeAll("result.value_ptr.* = entry.value_ptr.*;\n");
     }
+    try indent(writer, depth + 2);
+    try writer.writeAll("result.value_ptr.* = value;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth);
@@ -4228,9 +4313,9 @@ fn writeMergeSingularMessageField(ctx: *const CodegenContext, field: *const sche
     try indent(writer, depth + 2);
     try writer.writeAll("self.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(" = other.");
+    try writer.writeAll(" = try _pbz_owned_allocator.dupe(u8, other.");
     try writeQuotedIdent(field.name, writer);
-    try writer.writeAll(";\n");
+    try writer.writeAll(");\n");
     try indent(writer, depth + 1);
     try writer.writeAll("}\n");
     try indent(writer, depth + 1);
@@ -4242,14 +4327,22 @@ fn writeMergeSingularMessageField(ctx: *const CodegenContext, field: *const sche
 }
 
 fn writeMergeSingularScalarField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scalar: schema.ScalarType, writer: *std.Io.Writer, depth: usize) Error!void {
+    const needs_dup = scalar == .string or scalar == .bytes;
     try indent(writer, depth);
     if (hasPresence(file, field.*)) {
         try writer.writeAll("if (other.");
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(") { self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = other.");
-        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = ");
+        if (needs_dup) {
+            try writer.writeAll("try _pbz_owned_allocator.dupe(u8, other.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(")");
+        } else {
+            try writer.writeAll("other.");
+            try writeQuotedIdent(field.name, writer);
+        }
         try writer.writeAll("; self.");
         try writePresenceIdent(field.name, writer);
         try writer.writeAll(" = true; }\n");
@@ -4259,8 +4352,15 @@ fn writeMergeSingularScalarField(file: *const schema.FileDescriptor, field: *con
         try writer.writeAll(defaultSkipCondition(scalar));
         try writer.writeAll("self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(" = other.");
-        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = ");
+        if (needs_dup) {
+            try writer.writeAll("try _pbz_owned_allocator.dupe(u8, other.");
+            try writeQuotedIdent(field.name, writer);
+            try writer.writeAll(")");
+        } else {
+            try writer.writeAll("other.");
+            try writeQuotedIdent(field.name, writer);
+        }
         try writer.writeAll(";\n");
     }
 }
@@ -4303,6 +4403,14 @@ fn writeMergeOneof(ctx: *const CodegenContext, message: *const schema.MessageDes
                 try writeQuotedIdent(field.name, writer);
                 if (typedOneofMessageFieldWithContext(ctx, field)) |_| {
                     try writer.writeAll(" => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); ");
+                    try writeOneofDeinitCall(oneof.name, writer);
+                    try writer.writeAll(" self.");
+                    try writeQuotedIdent(oneof.name, writer);
+                    try writer.writeAll(" = .{ .");
+                    try writeQuotedIdent(field.name, writer);
+                    try writer.writeAll(" = owned_value }; },\n");
+                } else if (field.kind == .message or field.kind == .group or (field.kind == .scalar and (field.kind.scalar == .string or field.kind.scalar == .bytes))) {
+                    try writer.writeAll(" => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); ");
                     try writeOneofDeinitCall(oneof.name, writer);
                     try writer.writeAll(" self.");
                     try writeQuotedIdent(oneof.name, writer);
@@ -5315,6 +5423,10 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     if (messageCanFastRawTagDecode(ctx.file, message)) return try writeDecodeFastRawTag(ctx, message, writer, depth);
 
     try indent(writer, depth);
+    try writer.writeAll("/// Decode from wire bytes. String/bytes fields borrow the input slice;\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// use decodeOwned when the decoded message must outlive the input.\n");
+    try indent(writer, depth);
     try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
@@ -5323,6 +5435,8 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
+    try indent(writer, depth);
+    try writer.writeAll("/// Decode from an existing reader. String/bytes fields borrow the reader input.\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {\n");
     try indent(writer, depth + 1);
@@ -5336,6 +5450,13 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);\n");
     try indent(writer, depth + 1);
     try writer.writeAll("while (try r.nextTag()) |tag| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("if (!@This().decodeAcceptsTag(tag)) {\n");
+    try writeUnknownFieldFallback(writer, depth + 3, true);
+    try indent(writer, depth + 2);
+    try writer.writeAll("continue;\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("}\n");
     try indent(writer, depth + 2);
     try writer.writeAll("switch (tag.number) {\n");
     for (message.fields.items) |*field| try writeDecodeField(ctx, field, writer, depth + 3);
@@ -5351,7 +5472,60 @@ fn writeDecode(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try indent(writer, depth + 1);
     try writer.writeAll("return self;\n");
     try indent(writer, depth);
-    try writer.writeAll("}\n");
+    try writer.writeAll("}\n\n");
+    try writeDecodeAcceptsTag(ctx, message, writer, depth);
+}
+
+fn writeUnknownFieldFallback(writer: *std.Io.Writer, depth: usize, reader_is_pointer: bool) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, ");
+    try writer.writeAll(if (reader_is_pointer) "r" else "&r");
+    try writer.writeAll(", r.lastTagStart(), tag);\n");
+}
+
+fn writeDecodeAcceptsTag(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {\n");
+    if (message.fields.items.len == 0) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = tag;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return true;\n");
+    } else {
+        try indent(writer, depth + 1);
+        try writer.writeAll("return switch (tag.number) {\n");
+        for (message.fields.items) |*field| {
+            try indent(writer, depth + 2);
+            try writer.print("{d} => ", .{field.number});
+            try writeDecodeAcceptedWireType(ctx.file, field, writer);
+            try writer.writeAll(",\n");
+        }
+        try indent(writer, depth + 2);
+        try writer.writeAll("else => true,\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("};\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeDecodeAcceptedWireType(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
+    if (field.cardinality == .repeated and field.kind.packable()) {
+        try writer.writeAll("tag.wire_type == .");
+        try writer.writeAll(@tagName(field.kind.wireType()));
+        try writer.writeAll(" or tag.wire_type == .length_delimited");
+        return;
+    }
+    if (field.kind == .message) {
+        if (fieldMessageEncoding(file, field) == .delimited) {
+            try writer.writeAll("tag.wire_type == .start_group");
+        } else {
+            try writer.writeAll("tag.wire_type == .length_delimited");
+        }
+        return;
+    }
+    try writer.writeAll("tag.wire_type == .");
+    try writer.writeAll(@tagName(field.kind.wireType()));
 }
 
 fn messageCanFastRawTagDecode(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) bool {
@@ -5372,6 +5546,10 @@ fn messageCanFastRawTagDecode(file: *const schema.FileDescriptor, message: *cons
 
 fn writeDecodeFastRawTag(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("/// Decode from wire bytes. String/bytes fields borrow the input slice;\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// use decodeOwned when the decoded message must outlive the input.\n");
+    try indent(writer, depth);
     try writer.writeAll("pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var r = pbz.Reader.init(bytes);\n");
@@ -5380,6 +5558,8 @@ fn writeDecodeFastRawTag(ctx: *const CodegenContext, message: *const schema.Mess
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
+    try indent(writer, depth);
+    try writer.writeAll("/// Decode from an existing reader. String/bytes fields borrow the reader input.\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {\n");
     try indent(writer, depth + 1);
@@ -5576,6 +5756,10 @@ fn knownReuseRepeatedScalarSupported(scalar: schema.ScalarType) bool {
 
 fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
+    try writer.writeAll("/// Decode into an existing message, reusing repeated/map storage.\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// String/bytes fields still borrow the input slice.\n");
+    try indent(writer, depth);
     try writer.writeAll("pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
     for (message.fields.items) |*field| try writeRepeatedReuseListDecl(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
@@ -5598,6 +5782,13 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     } else {
         try indent(writer, depth + 1);
         try writer.writeAll("while (try r.nextTag()) |tag| {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (!@This().decodeAcceptsTag(tag)) {\n");
+        try writeUnknownFieldFallback(writer, depth + 3, false);
+        try indent(writer, depth + 2);
+        try writer.writeAll("continue;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
         try indent(writer, depth + 2);
         try writer.writeAll("switch (tag.number) {\n");
         for (message.fields.items) |*field| try writeDecodeField(ctx, field, writer, depth + 3);
@@ -6034,6 +6225,8 @@ fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
+    try writer.writeAll("/// Decode and validate required fields. String/bytes fields borrow the input slice.\n");
+    try indent(writer, depth);
     try writer.writeAll("pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = try @This().decode(allocator, bytes);\n");
@@ -6047,6 +6240,8 @@ fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("}\n");
 
     try writer.writeAll("\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// Decode, deep-copy, and validate required fields.\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
@@ -6449,40 +6644,67 @@ fn wireMapEntryCanSkip(file: *const schema.FileDescriptor, map_type: schema.MapT
 
 fn writeMapEntryDecodeAssign(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, target: []const u8, number: u29, kind: schema.FieldKind, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
+    const typed_message_value = if (number == 2) typedMapMessageValueWithContext(ctx, field) else null;
     try indent(writer, depth);
+    try writer.print("{d} => {{\n", .{number});
+    try indent(writer, depth + 1);
+    try writer.print("if (entry_tag.wire_type != .{s}) {{\n", .{@tagName(kind.wireType())});
+    try indent(writer, depth + 2);
+    try writer.writeAll("try entry_reader.skipValue(entry_tag);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("} else {\n");
     if (kind == .scalar and kind.scalar == .string and fieldUtf8Validation(file, field) == .verify) {
-        try writer.print("{d} => {{ const value = ", .{number});
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value = ");
         try writeEntryReadExpr(kind, "entry_reader", writer);
-        try writer.writeAll("; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; ");
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (!pbz.validateUtf8(value)) return error.InvalidUtf8;\n");
+        try indent(writer, depth + 2);
         try writer.writeAll(target);
-        try writer.writeAll(" = value; },\n");
+        try writer.writeAll(" = value;\n");
     } else if (kind == .enumeration and enumIsClosed(file, kind.enumeration)) {
-        try writer.print("{d} => {{ const value = ", .{number});
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value = ");
         try writeEntryReadExpr(kind, "entry_reader", writer);
-        try writer.writeAll("; if (!@This().enumKnown(value, ");
+        try writer.writeAll(";\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("if (!@This().enumKnown(value, ");
         try writeEnumNumberArray(file, kind.enumeration, writer);
-        try writer.writeAll(")) { skip_entry = true; } else { ");
+        try writer.writeAll(")) {\n");
+        try indent(writer, depth + 3);
+        try writer.writeAll("skip_entry = true;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("} else {\n");
+        try indent(writer, depth + 3);
         try writer.writeAll(target);
-        try writer.writeAll(" = value; } },\n");
+        try writer.writeAll(" = value;\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("}\n");
+    } else if (typed_message_value) |type_name| {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value_payload = try entry_reader.readBytes();\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("var value_reader = try entry_reader.nested(value_payload);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll(target);
+        try writer.writeAll(".deinit(allocator);\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll(target);
+        try writer.writeAll(" = try ");
+        try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
+        try writer.writeAll(".decodeFromReader(allocator, &value_reader);\n");
     } else {
-        try writer.print("{d} => ", .{number});
-        if (number == 2) {
-            if (typedMapMessageValueWithContext(ctx, field)) |type_name| {
-                try writer.writeAll("{ const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); ");
-                try writer.writeAll(target);
-                try writer.writeAll(".deinit(allocator); ");
-                try writer.writeAll(target);
-                try writer.writeAll(" = try ");
-                try writeMessageTypeReferenceWithContext(ctx, type_name, writer);
-                try writer.writeAll(".decodeFromReader(allocator, &value_reader); },\n");
-                return;
-            }
-        }
+        try indent(writer, depth + 2);
         try writer.writeAll(target);
         try writer.writeAll(" = ");
         try writeEntryReadExpr(kind, "entry_reader", writer);
-        try writer.writeAll(",\n");
+        try writer.writeAll(";\n");
     }
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth);
+    try writer.writeAll("},\n");
 }
 
 fn writeOneofDecodeAssign(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, reader_method: []const u8, writer: *std.Io.Writer) Error!void {
@@ -12399,7 +12621,10 @@ test "codegen with registry emits imported message type refs and accessors" {
     try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.common_proto.demo.common.User.Profile = .{}") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "picked: imports.common_proto.demo.common.User,") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try profiles_list.append(allocator, _pbz_nested);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try imports.common_proto.demo.common.User.Profile.decodeFromReader(allocator, &value_reader);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value_payload = try entry_reader.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var value_reader = try entry_reader.nested(value_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.common_proto.demo.common.User.Profile.decodeFromReader(allocator, &value_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var _pbz_nested = try imports.common_proto.demo.common.User.decodeFromReader(allocator, &payload_reader); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .picked = _pbz_nested };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value.writeTo(w);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".picked => |value| { const payload_len = value.encodedSize(); try w.writeTag(4, .length_delimited); try w.writeVarint(payload_len); try value.writeTo(w); },") != null);
@@ -12516,7 +12741,10 @@ test "codegen with registry resolves same-package imported unqualified refs" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const default_value = \"7\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "user: ?imports.common_proto.demo.User = null") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "value: imports.common_proto.demo.User = .{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try imports.common_proto.demo.User.decodeFromReader(allocator, &value_reader);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value_payload = try entry_reader.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "var value_reader = try entry_reader.nested(value_payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value.deinit(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try imports.common_proto.demo.User.decodeFromReader(allocator, &value_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try entry.value_ptr.validateRequiredRecursive(allocator);") != null);
 
     const source = try allocator.dupeZ(u8, content);
@@ -13300,6 +13528,74 @@ test "codegen encodes and decodes packed repeated scalar and enum fields" {
     try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
 }
 
+test "codegen validates known-field wire types during decode" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Child { int32 id = 1; }
+        \\message M {
+        \\  int32 id = 1;
+        \\  string name = 2;
+        \\  repeated int32 ids = 3;
+        \\  repeated string names = 4;
+        \\  Child child = 5;
+        \\  repeated Child children = 6;
+        \\  map<string, int32> counts = 7;
+        \\  oneof pick {
+        \\    string label = 8;
+        \\    Child picked = 9;
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().decodeAcceptsTag(tag)) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => tag.wire_type == .varint,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "3 => tag.wire_type == .varint or tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "4 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "5 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "6 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "7 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "8 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "9 => tag.wire_type == .length_delimited,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (entry_tag.wire_type != .length_delimited) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (entry_tag.wire_type != .varint) {") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen accepts group wire type for delimited message fields" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2023";
+        \\message Child { int32 id = 1; }
+        \\message Parent {
+        \\  Child child = 1 [features.message_encoding = DELIMITED];
+        \\  repeated Child children = 2 [features.message_encoding = DELIMITED];
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "1 => tag.wire_type == .start_group,") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "2 => tag.wire_type == .start_group,") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
 test "codegen emits known-schema decode reuse for packed-only scalar and enum messages" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
@@ -13650,7 +13946,7 @@ test "codegen emits map duplicate-key last-wins helpers" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (existing.key == entry.key) { existing.* = entry; return; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const counts_other_count = other.counts.count();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, counts_other_count);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "const result = self.counts.getOrPutAssumeCapacity(entry.key_ptr.*);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const result = self.counts.getOrPutAssumeCapacity(key);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const result = try map.getOrPut(allocator, entry.key);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.clearRetainingCapacity();") != null);
@@ -13863,8 +14159,11 @@ test "codegen decodes map fields into entry slices" {
     defer allocator.free(content);
     try std.testing.expect(std.mem.indexOf(u8, content, "var counts_list: std.ArrayList(countsEntry) = .empty") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "var entry = countsEntry{}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => entry.value = try entry_reader.readInt32()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (entry_tag.wire_type != .length_delimited) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value = try entry_reader.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.key = value;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (entry_tag.wire_type != .varint) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = try entry_reader.readInt32();") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().appendOrReplaceMapEntry_counts(allocator, &counts_list, entry)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try self.counts.ensureUnusedCapacity(allocator, counts_list.items.len)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.counts.putAssumeCapacityNoClobber(entry.key, entry.value);") != null);
@@ -14195,6 +14494,44 @@ test "codegen emits mergeFrom for singular message payloads and groups" {
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const payload = try r.readGroupBytes(4); var payload_reader = try r.nested(payload); var _pbz_nested = try Box.decodeFromReader(allocator, &payload_reader);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |value| { try w.writeTag(4, .start_group); try value.writeTo(w); try w.writeTag(4, .end_group); }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (self.box) |_pbz_nested|") != null);
+
+    const source = try allocator.dupeZ(u8, content);
+    defer allocator.free(source);
+    var tree = try std.zig.Ast.parse(allocator, source, .zig);
+    defer tree.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 0), tree.errors.len);
+}
+
+test "codegen deep-copies string and bytes payloads in mergeFrom" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Child { string name = 1; }
+        \\message Parent {
+        \\  string name = 1;
+        \\  bytes payload = 2;
+        \\  repeated string tags = 3;
+        \\  repeated bytes chunks = 4;
+        \\  map<string, string> labels = 5;
+        \\  Child child = 6;
+        \\  oneof pick {
+        \\    string label = 7;
+        \\    bytes token = 8;
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+    const content = try generateZigFile(allocator, &file);
+    defer allocator.free(content);
+
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.name = try _pbz_owned_allocator.dupe(u8, other.name);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.payload = try _pbz_owned_allocator.dupe(u8, other.payload);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "merged[old.len + i] = try _pbz_owned_allocator.dupe(u8, item);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".label => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".token => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value);") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
@@ -14739,8 +15076,10 @@ test "codegen honors utf8 validation features for wire strings" {
     try std.testing.expect(std.mem.indexOf(u8, content, "4 => { const value = try r.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; self._pbzDeinitOneof_pick(allocator); self.pick = .{ .alias = value }; }") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (!pbz.validateUtf8(entry.value)) return error.InvalidUtf8;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.value = value; }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (entry_tag.wire_type != .length_delimited) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value = try entry_reader.readBytes();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.key = value;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = value;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"strict: \"); const value = self.strict; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"key: \"); if (!pbz.validateUtf8(entry.key)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.key, writer);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"value: \"); if (!pbz.validateUtf8(entry.value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(entry.value, writer);") != null);
@@ -14815,7 +15154,11 @@ test "codegen validates closed enum map values in wire decode" {
     defer allocator.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "var skip_entry = false;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "2 => { const value = try entry_reader.readInt32(); if (!@This().enumKnown(value, &.{0, 1})) { skip_entry = true; } else { entry.value = value; } }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (entry_tag.wire_type != .varint) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "const value = try entry_reader.readInt32();") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "if (!@This().enumKnown(value, &.{0, 1})) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "skip_entry = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "entry.value = value;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (skip_entry) { try pbz.wire.appendConsumedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart()); } else try @This().putMapEntry_keyed(allocator, &self.keyed, entry);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try @This().putMapEntry_keyed(allocator, &self.keyed, entry);") != null);
 }

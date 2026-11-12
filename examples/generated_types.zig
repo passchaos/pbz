@@ -80,6 +80,28 @@ pub fn main() !void {
     defer allocator.free(unknown_roundtrip);
     std.debug.assert(std.mem.eql(u8, unknown_roundtrip, &noncanonical_unknown));
 
+    // A known field number with an unexpected wire type is an unknown field,
+    // not a value to reinterpret. The first occurrence below is field 1
+    // encoded as length-delimited; it must be preserved byte-for-byte while
+    // the following valid varint occurrence still sets id = 42.
+    const wrong_wire_type = [_]u8{ 0x0A, 0x01, 0x08, 0x08, 0x2A };
+    var wrong_wire_decoded = try person_pb.demo.Person.decode(allocator, &wrong_wire_type);
+    defer wrong_wire_decoded.deinit(allocator);
+    std.debug.assert(wrong_wire_decoded.id == 42);
+    std.debug.assert(wrong_wire_decoded.unknownFieldCount() == 1);
+    std.debug.assert(std.mem.eql(u8, wrong_wire_decoded.unknownFields()[0], &.{ 0x0A, 0x01, 0x08 }));
+
+    // mergeFrom owns its destination strings/bytes. Merging from a JSON-parsed
+    // source must not alias the source arena; freeing the source below proves
+    // the destination remains valid.
+    var merge_source = try person_pb.demo.Person.jsonParse(allocator, "{\"name\":\"merged\"}");
+    errdefer merge_source.deinit(allocator);
+    var merge_target = person_pb.demo.Person.init();
+    defer merge_target.deinit(allocator);
+    try merge_target.mergeFrom(allocator, merge_source);
+    merge_source.deinit(allocator);
+    std.debug.assert(std.mem.eql(u8, merge_target.name, "merged"));
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,

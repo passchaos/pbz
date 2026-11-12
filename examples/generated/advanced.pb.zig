@@ -322,7 +322,10 @@ pub const demo = struct {
 
             // no same-file extension accessors
 
+            /// Merge other into self. String/bytes payloads, raw message payloads,
+            /// and map keys/values are deep-copied, so other remains independently valid.
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+                const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 if (other.id != 0) self.id = other.id;
                 if (other.kind != 0) self.kind = other.kind;
                 if (other.audit) |other_value| {
@@ -333,16 +336,17 @@ pub const demo = struct {
                     try self.audits.ensureUnusedCapacity(allocator, audits_other_count);
                     var other_it = other.audits.iterator();
                     while (other_it.next()) |entry| {
-                        const cloned_value = try entry.value_ptr.cloneOwned(allocator);
-                        const result = self.audits.getOrPutAssumeCapacity(entry.key_ptr.*);
+                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        const value = try entry.value_ptr.cloneOwned(allocator);
+                        const result = self.audits.getOrPutAssumeCapacity(key);
                         if (result.found_existing) result.value_ptr.deinit(allocator);
-                        result.value_ptr.* = cloned_value;
+                        result.value_ptr.* = value;
                     }
                 }
                 switch (other.subject) {
                     .none => {},
-                    .user_name => |value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = value }; },
-                    .organization_id => |value| { self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = value }; },
+                    .user_name => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = owned_value }; },
+                    .organization_id => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = owned_value }; },
                     .audit_subject => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = owned_value }; },
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -452,6 +456,8 @@ pub const demo = struct {
                 return buffer[0..index];
             }
 
+            /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+            /// must guarantee that all string fields contain valid UTF-8.
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
@@ -617,17 +623,24 @@ pub const demo = struct {
                 return try self.encode(allocator);
             }
 
+            /// Decode from wire bytes. String/bytes fields borrow the input slice;
+            /// use decodeOwned when the decoded message must outlive the input.
             pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var r = pbz.Reader.init(bytes);
                 return try @This().decodeFromReader(allocator, &r);
             }
 
+            /// Decode from an existing reader. String/bytes fields borrow the reader input.
             pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 while (try r.nextTag()) |tag| {
+                    if (!@This().decodeAcceptsTag(tag)) {
+                        try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, r, r.lastTagStart(), tag);
+                    continue;
+                    }
                     switch (tag.number) {
                         1 => { self.id = try r.readInt32(); },
                         2 => { const value = try r.readInt32(); self.kind = value; },
@@ -642,8 +655,25 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                    2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
+                                    1 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.key = value;
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value_payload = try entry_reader.readBytes();
+                                            var value_reader = try entry_reader.nested(value_payload);
+                                            entry.value.deinit(allocator);
+                                            entry.value = try Audit.decodeFromReader(allocator, &value_reader);
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -656,6 +686,22 @@ pub const demo = struct {
                 return self;
             }
 
+            fn decodeAcceptsTag(tag: pbz.wire.Tag) bool {
+                return switch (tag.number) {
+                    1 => tag.wire_type == .varint,
+                    2 => tag.wire_type == .varint,
+                    3 => tag.wire_type == .length_delimited,
+                    4 => tag.wire_type == .length_delimited,
+                    5 => tag.wire_type == .length_delimited,
+                    6 => tag.wire_type == .length_delimited,
+                    7 => tag.wire_type == .length_delimited,
+                    else => true,
+                };
+            }
+
+
+            /// Decode into an existing message, reusing repeated/map storage.
+            /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
@@ -671,6 +717,10 @@ pub const demo = struct {
                 errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
                 var r = pbz.Reader.init(bytes);
                 while (try r.nextTag()) |tag| {
+                    if (!@This().decodeAcceptsTag(tag)) {
+                        try pbz.wire.appendSkippedRawField(allocator, &_unknown_fields_list, &r, r.lastTagStart(), tag);
+                    continue;
+                    }
                     switch (tag.number) {
                         1 => { self.id = try r.readInt32(); },
                         2 => { const value = try r.readInt32(); self.kind = value; },
@@ -685,8 +735,25 @@ pub const demo = struct {
                             var entry_reader = try r.nested(payload);
                             while (try entry_reader.nextTag()) |entry_tag| {
                                 switch (entry_tag.number) {
-                                    1 => { const value = try entry_reader.readBytes(); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; entry.key = value; },
-                                    2 => { const value_payload = try entry_reader.readBytes(); var value_reader = try entry_reader.nested(value_payload); entry.value.deinit(allocator); entry.value = try Audit.decodeFromReader(allocator, &value_reader); },
+                                    1 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value = try entry_reader.readBytes();
+                                            if (!pbz.validateUtf8(value)) return error.InvalidUtf8;
+                                            entry.key = value;
+                                        }
+                                    },
+                                    2 => {
+                                        if (entry_tag.wire_type != .length_delimited) {
+                                            try entry_reader.skipValue(entry_tag);
+                                        } else {
+                                            const value_payload = try entry_reader.readBytes();
+                                            var value_reader = try entry_reader.nested(value_payload);
+                                            entry.value.deinit(allocator);
+                                            entry.value = try Audit.decodeFromReader(allocator, &value_reader);
+                                        }
+                                    },
                                     else => try entry_reader.skipValue(entry_tag),
                                 }
                             }
@@ -704,6 +771,7 @@ pub const demo = struct {
                 return try decoded.cloneOwned(allocator);
             }
 
+            /// Decode and validate required fields. String/bytes fields borrow the input slice.
             pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decode(allocator, bytes);
                 errdefer self.deinit(allocator);
@@ -711,6 +779,7 @@ pub const demo = struct {
                 return self;
             }
 
+            /// Decode, deep-copy, and validate required fields.
             pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                 var self = try @This().decodeOwned(allocator, bytes);
                 errdefer self.deinit(allocator);
@@ -1736,8 +1805,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
                 // no same-file extension accessors
 
+                /// Merge other into self. String/bytes payloads, raw message payloads,
+                /// and map keys/values are deep-copied, so other remains independently valid.
                 pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
-                    if (other.actor.len != 0) self.actor = other.actor;
+                    const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                    if (other.actor.len != 0) self.actor = try _pbz_owned_allocator.dupe(u8, other.actor);
                     if (other.at_unix != 0) self.at_unix = other.at_unix;
                     try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
                 }
@@ -1786,6 +1858,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return buffer[0..index];
                 }
 
+                /// Like encodeIntoAssumeCapacity, but skips UTF-8 validation. The caller
+                /// must guarantee that all string fields contain valid UTF-8.
                 pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
                     if (self.actor.len != 0) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.actor.len); @memcpy(buffer[index..][0..self.actor.len], self.actor); index += self.actor.len; }
@@ -1838,11 +1912,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return try self.encode(allocator);
                 }
 
+                /// Decode from wire bytes. String/bytes fields borrow the input slice;
+                /// use decodeOwned when the decoded message must outlive the input.
                 pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                     var r = pbz.Reader.init(bytes);
                     return try @This().decodeFromReader(allocator, &r);
                 }
 
+                /// Decode from an existing reader. String/bytes fields borrow the reader input.
                 pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
                     var self = @This().init();
                     errdefer self.deinit(allocator);
@@ -1862,6 +1939,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return self;
                 }
 
+                /// Decode into an existing message, reusing repeated/map storage.
+                /// String/bytes fields still borrow the input slice.
                 pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                     pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                     if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
@@ -1890,6 +1969,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return try decoded.cloneOwned(allocator);
                 }
 
+                /// Decode and validate required fields. String/bytes fields borrow the input slice.
                 pub fn decodeInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                     var self = try @This().decode(allocator, bytes);
                     errdefer self.deinit(allocator);
@@ -1897,6 +1977,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return self;
                 }
 
+                /// Decode, deep-copy, and validate required fields.
                 pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
                     var self = try @This().decodeOwned(allocator, bytes);
                     errdefer self.deinit(allocator);
