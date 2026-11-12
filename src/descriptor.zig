@@ -6836,7 +6836,7 @@ test "descriptor rejects invalid field feature support" {
 test "descriptor preserves FeatureSet options across declaration scopes" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2026";
         \\option features.json_format = LEGACY_BEST_EFFORT;
         \\message M {
         \\  option features.message_encoding = DELIMITED;

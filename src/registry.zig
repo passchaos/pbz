@@ -859,15 +859,45 @@ pub const Registry = struct {
             if (file.package.len != 0) {
                 if (std.mem.startsWith(u8, normalized, file.package) and normalized.len > file.package.len and normalized[file.package.len] == '.') {
                     const rest = normalized[file.package.len + 1 ..];
-                    if (findInFile(file, rest)) |found| return found;
+                    if (findInFile(file, rest)) |found| {
+                        if (typeVisibleFromFile(from_file, file, found)) return found;
+                    }
                 }
                 continue;
             }
-            if (findInFile(file, normalized)) |found| return found;
+            if (findInFile(file, normalized)) |found| {
+                if (typeVisibleFromFile(from_file, file, found)) return found;
+            }
         }
         return null;
     }
 };
+
+fn typeVisibleFromFile(from_file: *const schema.FileDescriptor, file: *const schema.FileDescriptor, found: TypeRef) bool {
+    if (sameFile(from_file, file)) return true;
+    return switch (file.features.default_symbol_visibility) {
+        .export_all => true,
+        .export_top_level => switch (found) {
+            .message => |message| messageIsTopLevel(file, message),
+            .enumeration => |enumeration| enumIsTopLevel(file, enumeration),
+        },
+        .local_all, .strict => false,
+    };
+}
+
+fn messageIsTopLevel(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor) bool {
+    for (file.messages.items) |*message| {
+        if (message == target) return true;
+    }
+    return false;
+}
+
+fn enumIsTopLevel(file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) bool {
+    for (file.enums.items) |*enumeration| {
+        if (enumeration == target) return true;
+    }
+    return false;
+}
 
 pub fn sameFile(a: *const schema.FileDescriptor, b: *const schema.FileDescriptor) bool {
     if (a == b) return true;

@@ -7,7 +7,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var file = try pbz.ProtoParser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2026";
         \\package demo.editions;
         \\option features.field_presence = EXPLICIT;
         \\option features.repeated_field_encoding = EXPANDED;

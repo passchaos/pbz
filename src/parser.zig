@@ -985,6 +985,7 @@ pub const Parser = struct {
     fn addFileOption(self: *Parser, option: schema.FieldOption) Error!void {
         if (isFeatureOption(option.name)) {
             if (self.file.syntax != .editions) return error.InvalidSyntax;
+            try self.validateFeatureOptionEdition(option);
             try applyFeatureOptionValue(&self.file.features, option);
             try self.appendFieldOption(&self.file.options, option);
         } else {
@@ -992,9 +993,19 @@ pub const Parser = struct {
         }
     }
 
+    fn validateFeatureOptionEdition(self: *const Parser, option: schema.FieldOption) Error!void {
+        const leaf = optionLeaf(option.name);
+        if (std.mem.eql(u8, leaf, "default_symbol_visibility") or std.mem.eql(u8, leaf, "enforce_naming_style")) {
+            if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2024)) return error.InvalidFieldType;
+        } else if (std.mem.eql(u8, leaf, "enforce_proto_limits")) {
+            if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2026)) return error.InvalidFieldType;
+        }
+    }
+
     fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption) Error!void {
         if (!isFeatureOption(option.name)) return;
         if (self.file.syntax != .editions) return error.InvalidSyntax;
+        try self.validateFeatureOptionEdition(option);
         var features = target.* orelse schema.FeatureSet.defaults(self.file.syntax);
         try applyFeatureOptionValue(&features, option);
         target.* = features;
@@ -3623,7 +3634,7 @@ test "parser parses field edition_defaults and feature_support aggregates" {
 test "parser applies feature options across declaration scopes" {
     const allocator = std.testing.allocator;
     var file = try Parser.parse(allocator,
-        \\edition = "2023";
+        \\edition = "2026";
         \\option features.json_format = LEGACY_BEST_EFFORT;
         \\message M {
         \\  option features.message_encoding = DELIMITED;
@@ -3664,6 +3675,29 @@ test "parser applies feature options across declaration scopes" {
     const service = file.services.items[0];
     try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, service.features.?.enforce_naming_style);
     try std.testing.expectEqual(schema.FeatureSet.EnforceProtoLimits.proto_limits2026, service.methods.items[0].features.?.enforce_proto_limits);
+}
+
+test "parser gates edition-2024 and edition-2026 feature options" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.default_symbol_visibility = LOCAL_ALL;
+        \\message A {}
+    ));
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2023";
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message A {}
+    ));
+    var file = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\option features.default_symbol_visibility = LOCAL_ALL;
+        \\option features.enforce_naming_style = STYLE2024;
+        \\message A {}
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(schema.FeatureSet.DefaultSymbolVisibility.local_all, file.features.default_symbol_visibility);
+    try std.testing.expectEqual(schema.FeatureSet.EnforceNamingStyle.style2024, file.features.enforce_naming_style);
 }
 
 test "parser rejects invalid feature option names and values" {

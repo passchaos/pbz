@@ -179,6 +179,100 @@ test "memory loader allows missing weak imports" {
     try std.testing.expect(loaded.registry.findMessage("Root", null) != null);
 }
 
+test "memory loader enforces editions local symbol visibility" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("a.proto",
+        \\edition = "2024";
+        \\package v;
+        \\option features.default_symbol_visibility = LOCAL_ALL;
+        \\message A { int32 x = 1; }
+        \\message C { A a = 1; }
+    );
+    try tree.add("b.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "a.proto";
+        \\message B { v.A a = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &tree, "b.proto"));
+    // Same-file references remain valid under LOCAL_ALL.
+    var same_file = try loadMemory(allocator, &tree, "a.proto");
+    defer same_file.deinit();
+}
+
+test "memory loader enforces editions enum and strict visibility" {
+    const allocator = std.testing.allocator;
+    var enum_tree = MemorySourceTree.init(allocator);
+    defer enum_tree.deinit();
+    try enum_tree.add("a.proto",
+        \\edition = "2024";
+        \\package v;
+        \\option features.default_symbol_visibility = LOCAL_ALL;
+        \\enum E { E_UNKNOWN = 0; }
+    );
+    try enum_tree.add("b.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "a.proto";
+        \\message B { v.E e = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &enum_tree, "b.proto"));
+
+    var strict_tree = MemorySourceTree.init(allocator);
+    defer strict_tree.deinit();
+    try strict_tree.add("a.proto",
+        \\edition = "2024";
+        \\package v;
+        \\option features.default_symbol_visibility = STRICT;
+        \\message A { int32 x = 1; }
+    );
+    try strict_tree.add("b.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "a.proto";
+        \\message B { v.A a = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &strict_tree, "b.proto"));
+}
+
+test "memory loader enforces editions top-level symbol visibility" {
+    const allocator = std.testing.allocator;
+    var top_tree = MemorySourceTree.init(allocator);
+    defer top_tree.deinit();
+    try top_tree.add("a.proto",
+        \\edition = "2024";
+        \\package v;
+        \\option features.default_symbol_visibility = EXPORT_TOP_LEVEL;
+        \\message A { message N { int32 y = 1; } int32 x = 1; }
+    );
+    try top_tree.add("b.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "a.proto";
+        \\message B { v.A a = 1; }
+    );
+    var top_loaded = try loadMemory(allocator, &top_tree, "b.proto");
+    defer top_loaded.deinit();
+
+    var nested_tree = MemorySourceTree.init(allocator);
+    defer nested_tree.deinit();
+    try nested_tree.add("a.proto",
+        \\edition = "2024";
+        \\package v;
+        \\option features.default_symbol_visibility = EXPORT_TOP_LEVEL;
+        \\message A { message N { int32 y = 1; } int32 x = 1; }
+    );
+    try nested_tree.add("b.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "a.proto";
+        \\message B { v.A.N n = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &nested_tree, "b.proto"));
+}
+
 test "memory loader rejects unresolved type references" {
     const allocator = std.testing.allocator;
     var tree = MemorySourceTree.init(allocator);
