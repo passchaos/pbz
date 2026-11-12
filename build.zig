@@ -144,6 +144,17 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(conformance_exe);
 
+    const cli_exe = b.addExecutable(.{
+        .name = "pbz",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/pbz_cli.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "pbz", .module = mod }},
+        }),
+    });
+    b.installArtifact(cli_exe);
+
     const tests = b.addTest(.{
         .root_module = mod,
     });
@@ -287,6 +298,15 @@ pub fn build(b: *std.Build) void {
     const conformance_smoke_step = b.step("conformance-smoke", "Run lightweight pbz-conformance smoke test");
     conformance_smoke_step.dependOn(&run_conformance_smoke.step);
 
+    const run_cli_smoke = b.addSystemCommand(&.{
+        "python3",
+        "tools/smoke_cli.py",
+        "--exe",
+    });
+    run_cli_smoke.addArtifactArg(cli_exe);
+    const cli_smoke_step = b.step("cli-smoke", "Run lightweight pbz CLI smoke test");
+    cli_smoke_step.dependOn(&run_cli_smoke.step);
+
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(examples_step);
@@ -296,4 +316,5 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(test_step);
     check_step.dependOn(generated_examples_check_step);
     check_step.dependOn(conformance_smoke_step);
+    check_step.dependOn(cli_smoke_step);
 }

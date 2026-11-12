@@ -648,6 +648,41 @@ This repository verifies the helper with:
 zig build build-codegen-smoke
 ```
 
+### Generated descriptors and dynamic bridges
+
+Generated modules embed their serialized `google.protobuf.FileDescriptorProto`.
+This enables registry/reflection workflows without re-parsing `.proto` source at
+runtime:
+
+```zig
+var file_descriptor = try person_pb.decodeFileDescriptor(allocator);
+defer file_descriptor.deinit();
+
+const person_descriptor = person_pb.demo.Person.descriptor(&file_descriptor).?;
+var dynamic = try person.toDynamic(allocator, &file_descriptor);
+defer dynamic.deinit();
+const roundtrip = try person_pb.demo.Person.fromDynamic(allocator, &file_descriptor, &dynamic);
+```
+
+Pass `descriptor=false` to `protoc-gen-pbz` / `generateProtobuf` to omit the
+embedded descriptor and the generated descriptor/dynamic-bridge helpers.
+
+### CLI
+
+The `pbz` executable converts between binary, TextFormat, and JSON using a
+descriptor set:
+
+```sh
+pbz encode   --descriptor-set descriptors.pb --type demo.Person < person.text > person.bin
+pbz decode   --descriptor-set descriptors.pb --type demo.Person --json < person.bin
+pbz convert  --descriptor-set descriptors.pb --type demo.Person --from json --to text
+pbz describe --descriptor-set descriptors.pb --type demo.Person
+```
+
+Use `--json` / `--text` as shorthand for the relevant direction. `pbz` reads
+stdin and writes stdout; `tools/smoke_cli.py` verifies the round-trip in
+`zig build check`.
+
 ## Examples
 
 Run all examples:
@@ -694,6 +729,7 @@ zig build examples
 zig build build-codegen-smoke
 zig build check-generated-examples
 zig build conformance-smoke
+zig build cli-smoke
 python3 bench/summarize_compare.py --self-test
 tools/run_conformance.sh
 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
