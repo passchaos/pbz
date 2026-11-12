@@ -1128,6 +1128,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const Pipe = struct {
                 pub const name = "Pipe";
                 pub const deprecated = true;
+                /// Look up this service's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.ServiceDescriptor {
+                    return file.findService("Pipe");
+                }
                 pub const Get = struct {
                     pub const name = "Get";
                     pub const deprecated = false;
@@ -1141,6 +1145,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const output_type_ref = Event;
                     pub const client_streaming = false;
                     pub const server_streaming = false;
+                    /// Look up this method's descriptor in a decoded service descriptor.
+                    pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {
+                        return service.findMethod("Get");
+                    }
                 };
                 pub const Upload = struct {
                     pub const name = "Upload";
@@ -1155,6 +1163,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const output_type_ref = Event;
                     pub const client_streaming = true;
                     pub const server_streaming = false;
+                    /// Look up this method's descriptor in a decoded service descriptor.
+                    pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {
+                        return service.findMethod("Upload");
+                    }
                 };
                 pub const Watch = struct {
                     pub const name = "Watch";
@@ -1169,6 +1181,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const output_type_ref = Event;
                     pub const client_streaming = false;
                     pub const server_streaming = true;
+                    /// Look up this method's descriptor in a decoded service descriptor.
+                    pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {
+                        return service.findMethod("Watch");
+                    }
                 };
                 pub const Chat = struct {
                     pub const name = "Chat";
@@ -1183,6 +1199,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const output_type_ref = Event;
                     pub const client_streaming = true;
                     pub const server_streaming = true;
+                    /// Look up this method's descriptor in a decoded service descriptor.
+                    pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {
+                        return service.findMethod("Chat");
+                    }
                 };
 
                 pub fn Handler(comptime Impl: type) type {

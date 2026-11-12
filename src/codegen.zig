@@ -12216,6 +12216,18 @@ fn writeServiceDecl(ctx: *const CodegenContext, service: *const schema.ServiceDe
     try writer.writeAll("pub const deprecated = ");
     try writer.writeAll(if (optionListBool(service.options.items, "deprecated") orelse false) "true" else "false");
     try writer.writeAll(";\n");
+    if (ctx.emit_descriptor) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("/// Look up this service's descriptor in a decoded file descriptor.\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.ServiceDescriptor {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("return file.findService(");
+        try writeZigStringLiteral(service.name, writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+    }
     for (service.methods.items) |*method| try writeMethodDecl(ctx, method, writer, depth + 1);
     if (serviceHasAdapters(ctx, service)) {
         try writeServiceHandlerDecl(ctx, service, writer, depth + 1);
@@ -12277,6 +12289,18 @@ fn writeMethodDecl(ctx: *const CodegenContext, method: *const schema.MethodDescr
     try writer.writeAll("pub const server_streaming = ");
     try writer.writeAll(if (method.server_streaming) "true" else "false");
     try writer.writeAll(";\n");
+    if (ctx.emit_descriptor) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("/// Look up this method's descriptor in a decoded service descriptor.\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {\n");
+        try indent(writer, depth + 2);
+        try writer.writeAll("return service.findMethod(");
+        try writeZigStringLiteral(method.name, writer);
+        try writer.writeAll(");\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("}\n");
+    }
     try indent(writer, depth);
     try writer.writeAll("};\n");
 }
@@ -15152,6 +15176,10 @@ test "codegen emits service metadata and unary adapters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const server_streaming = true") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const idempotency_level = \"IDEMPOTENT\";") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const idempotency_level_number = 2;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.ServiceDescriptor {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return file.findService(\"Directory\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return service.findMethod(\"Get\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Handler(comptime Impl: type) type") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Client(comptime Transport: type) type") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn Get(self: @This(), allocator: std.mem.Allocator, request: Req) !Res") != null);

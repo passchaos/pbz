@@ -113,6 +113,10 @@ summarized in `/tmp/pbz-summary-current-cpu3.txt`) ended with:
 All parsed cross-language rows are pbz wins.
 ```
 
+That run uses the default mixed-mode matrix, which includes zero-copy borrowed
+slice/view rows. Use `--exclude-zero-copy` for owning/contiguous results; do not
+read the mixed-mode table as a like-for-like owning comparison.
+
 Pivoted rows from that run. Baseline cells show `ns/op (baseline / pbz)`:
 
 | workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |

@@ -2881,6 +2881,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const Directory = struct {
                 pub const name = "Directory";
                 pub const deprecated = false;
+                /// Look up this service's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.ServiceDescriptor {
+                    return file.findService("Directory");
+                }
                 pub const Get = struct {
                     pub const name = "Get";
                     pub const deprecated = false;
@@ -2894,6 +2898,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const output_type_ref = Envelope;
                     pub const client_streaming = false;
                     pub const server_streaming = false;
+                    /// Look up this method's descriptor in a decoded service descriptor.
+                    pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {
+                        return service.findMethod("Get");
+                    }
                 };
                 pub const Watch = struct {
                     pub const name = "Watch";
@@ -2908,6 +2916,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const output_type_ref = Envelope;
                     pub const client_streaming = false;
                     pub const server_streaming = true;
+                    /// Look up this method's descriptor in a decoded service descriptor.
+                    pub fn descriptor(service: *const pbz.schema.ServiceDescriptor) ?*const pbz.schema.MethodDescriptor {
+                        return service.findMethod("Watch");
+                    }
                 };
 
                 pub fn Handler(comptime Impl: type) type {
