@@ -10,8 +10,10 @@ It provides:
 - dynamic messages
 - reflection facade over registry descriptors and dynamic messages
 - generated Zig message types through `protoc-gen-pbz`
-- JSON and TextFormat support
+- embedded generated descriptors, descriptor lookup, and generated↔dynamic bridges
+- JSON and TextFormat support, including conformant generated parsers
 - selected well-known types
+- `pbz` encode/decode/convert/describe CLI
 - upstream protobuf conformance runner integration
 - generated-code performance paths intended to beat common C++/Rust/Go protobuf implementations on covered workloads
 
@@ -676,8 +678,15 @@ defer dynamic.deinit();
 const roundtrip = try person_pb.demo.Person.fromDynamic(allocator, &file_descriptor, &dynamic);
 ```
 
+Generated messages, enums, services, and methods also expose `descriptor(...)`
+lookup helpers. `parseTextConformant` / `jsonParseConformant` delegate to the
+dynamic parsers for the full TextFormat/JSON surface when the fast generated
+parser does not cover a construct. `adoptOwned` converts a borrowed decode into
+owned storage in place, and `clear` releases owned storage and resets a message.
+
 Pass `descriptor=false` to `protoc-gen-pbz` / `generateProtobuf` to omit the
-embedded descriptor and the generated descriptor/dynamic-bridge helpers.
+embedded descriptor and the generated descriptor/dynamic-bridge/conformant-parser
+helpers.
 
 ### CLI
 

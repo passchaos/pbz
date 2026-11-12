@@ -58,7 +58,7 @@ library API.
   required-field initialization checks, unknown-field record accessors, binary, and JSON round-trips.
 - `build_codegen.zig` — generated module imported from the `generateProtobuf`
   build.zig helper; run with `zig build build-codegen-smoke`.
-- `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing.
+- `generated_types.zig` — C++/Rust-style use of the checked-in generated module `generated/person.pb.zig` from `proto/person.proto`, including generated JSON integer numeric-exponent parsing, embedded descriptor/dynamic bridges, descriptor lookups, conformant JSON/TextFormat parsers, `clear`, and `mergeFrom` ownership.
 - `generated_performance.zig` — generated fastest-path APIs: trusted buffer encode, borrowed length-delimited slices/views, packed fixed-width views/slices, packed varint iterators, and known-schema decode reuse.
 - `generated_advanced.zig` — generated package namespaces, enum helpers, typed nested message fields, typed map message values, oneof union storage, JSON/TextFormat round-trips, and service metadata from `proto/advanced.proto`.
 - `generated_required.zig` — generated proto2 required-field initialization gates for binary, deterministic binary, JSON, and TextFormat from `proto/required.proto`.

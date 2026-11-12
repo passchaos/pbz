@@ -336,15 +336,20 @@ benchmark harness.
 - `examples/any_type_url.zig` covers custom `Any` type URL/name prefixes/accessors/matching, leading-dot
   protobuf type names, JSON parse for custom prefixes, default prefix
   canonicalization, and type mismatch errors.
+- `examples/generated_types.zig` covers embedded generated descriptors,
+  message/enum/service/method descriptor lookups, generated↔dynamic bridges,
+  conformant JSON/TextFormat parsers, `adoptOwned`, `clear`, and `mergeFrom`
+  deep-copy ownership.
+- `tools/smoke_cli.py` covers the `pbz encode` / `decode` / `convert` /
+  `describe` CLI round-trip in `zig build check`.
 - `src/pbz_conformance.zig`, `tools/smoke_conformance.py`,
   `tools/fetch_conformance_runner.sh`, and `tools/run_conformance.sh` provide a
   conformance-test-runner-compatible subprocess executable, descriptor-set
   smoke test, reproducible fetch/build path for the upstream runner, and a
-  passing upstream conformance run. The latest accepted upstream run is recorded
-  in `/tmp/pbz-upstream-conformance-after-textbytes-slices.log`: Binary/JSON reported `2808
-  successes, 0 skipped, 0 expected failures, 0 unexpected failures`, and
-  TextFormat reported `445 successes, 0 skipped, 0 expected failures, 0
-  unexpected failures`.
+  passing upstream conformance run. The latest local rerun with protobuf v35.1
+  via `tools/run_conformance.sh` reported Binary/JSON `2808 successes, 0
+  skipped, 0 expected failures, 0 unexpected failures` and TextFormat `445
+  successes, 0 skipped, 0 expected failures, 0 unexpected failures`.
 - `src/dynamic.zig` and `src/wire.zig` tests cover dynamic decode recursion
   limits for nested length-delimited messages, maps, MessageSet payloads, and
   groups.
