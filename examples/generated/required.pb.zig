@@ -159,7 +159,7 @@ pub const demo = struct {
             /// Take ownership of borrowed string/bytes payloads after decode.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.has_label) self.label = try _pbz_owned_allocator.dupe(u8, self.label);
+                if (self.has_label) self.label = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.label);
             }
 
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -237,7 +237,7 @@ pub const demo = struct {
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 if (other.has_id) { self.id = other.id; self.has_id = true; }
-                if (other.has_label) { self.label = try _pbz_owned_allocator.dupe(u8, other.label); self.has_label = true; }
+                if (other.has_label) { self.label = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.label); self.has_label = true; }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
 
@@ -280,7 +280,7 @@ pub const demo = struct {
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.has_id) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                if (self.has_label) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                if (self.has_label) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); pbz.wire.copyBytes(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
             }
@@ -290,7 +290,7 @@ pub const demo = struct {
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.has_id) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                if (self.has_label) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                if (self.has_label) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); pbz.wire.copyBytes(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
             }
@@ -1295,7 +1295,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             /// Take ownership of borrowed string/bytes payloads after decode.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.has_name) self.name = try _pbz_owned_allocator.dupe(u8, self.name);
+                if (self.has_name) self.name = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.name);
                 if (self.child) |*value| try value.adoptOwned(allocator);
                 for (@constCast(self.history)) |*item| try item.adoptOwned(allocator);
             }
@@ -1374,7 +1374,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             /// and map keys/values are deep-copied, so other remains independently valid.
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (other.has_name) { self.name = try _pbz_owned_allocator.dupe(u8, other.name); self.has_name = true; }
+                if (other.has_name) { self.name = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.name); self.has_name = true; }
                 if (other.child) |other_value| {
                     if (self.child) |*self_value| { try self_value.mergeFrom(allocator, other_value); } else { self.child = try other_value.cloneOwned(allocator); }
                 }
@@ -1435,7 +1435,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
-                if (self.has_name) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); @memcpy(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
+                if (self.has_name) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); pbz.wire.copyBytes(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
                 if (self.child) |value| { const payload_len = value.encodedSize(); buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
                 for (self.history) |item| { const payload_len = item.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try item.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
@@ -1446,7 +1446,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             /// must guarantee that all string fields contain valid UTF-8.
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
-                if (self.has_name) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); @memcpy(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
+                if (self.has_name) { buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); pbz.wire.copyBytes(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
                 if (self.child) |value| { const payload_len = value.encodedSize(); buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
                 for (self.history) |item| { const payload_len = item.encodedSize(); buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try item.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }

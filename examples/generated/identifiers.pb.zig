@@ -306,22 +306,22 @@ pub const demo = struct {
             /// Take ownership of borrowed string/bytes payloads after decode.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.@"error".len != 0) self.@"error" = try _pbz_owned_allocator.dupe(u8, self.@"error");
-                for (@constCast(self.@"test")) |*item| item.* = try _pbz_owned_allocator.dupe(u8, item.*);
+                if (self.@"error".len != 0) self.@"error" = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.@"error");
+                for (@constCast(self.@"test")) |*item| item.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,item.*);
                 if (self.@"align".count() != 0) {
                     var align_owned_map = alignMap.empty;
                     errdefer align_owned_map.deinit(allocator);
                     try align_owned_map.ensureUnusedCapacity(allocator, self.@"align".count());
                     var align_map_it = self.@"align".iterator();
                     while (align_map_it.next()) |entry| {
-                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        const key = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.key_ptr.*);
                         align_owned_map.putAssumeCapacityNoClobber(key, entry.value_ptr.*);
                     }
                     self.@"align".deinit(allocator);
                     self.@"align" = align_owned_map;
                 }
                 switch (self.async) {
-                    .await => |value| self.async = .{ .await = try _pbz_owned_allocator.dupe(u8, value) },
+                    .await => |value| self.async = .{ .await = try pbz.wire.dupeBytes(_pbz_owned_allocator,value) },
                     else => {},
                 }
             }
@@ -422,14 +422,14 @@ pub const demo = struct {
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 if (other.@"type" != 0) self.@"type" = other.@"type";
-                if (other.@"error".len != 0) self.@"error" = try _pbz_owned_allocator.dupe(u8, other.@"error");
+                if (other.@"error".len != 0) self.@"error" = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.@"error");
                 if (other.@"test".len != 0) {
                     const old = self.@"test";
                     {
                         const merged = try allocator.alloc([]const u8, old.len + other.@"test".len);
                         errdefer allocator.free(merged);
                         @memcpy(merged[0..old.len], old);
-                        for (other.@"test", 0..) |item, i| merged[old.len + i] = try _pbz_owned_allocator.dupe(u8, item);
+                        for (other.@"test", 0..) |item, i| merged[old.len + i] = try pbz.wire.dupeBytes(_pbz_owned_allocator,item);
                         self.@"test" = merged;
                     }
                     if (old.len != 0) allocator.free(old);
@@ -439,7 +439,7 @@ pub const demo = struct {
                     try self.@"align".ensureUnusedCapacity(allocator, align_other_count);
                     var other_it = other.@"align".iterator();
                     while (other_it.next()) |entry| {
-                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        const key = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.key_ptr.*);
                         const value = entry.value_ptr.*;
                         const result = self.@"align".getOrPutAssumeCapacity(key);
                         result.value_ptr.* = value;
@@ -448,7 +448,7 @@ pub const demo = struct {
                 if (other.@"null") self.@"null" = other.@"null";
                 switch (other.async) {
                     .none => {},
-                    .await => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_async(allocator); self.async = .{ .await = owned_value }; },
+                    .await => |value| { const owned_value = try pbz.wire.dupeBytes(_pbz_owned_allocator,value); self._pbzDeinitOneof_async(allocator); self.async = .{ .await = owned_value }; },
                     .@"opaque" => |value| { self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = value }; },
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
@@ -537,21 +537,21 @@ pub const demo = struct {
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.@"type" != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.@"type")))); }
-                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.@"error".len); @memcpy(buffer[index..][0..self.@"error".len], self.@"error"); index += self.@"error".len; }
-                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
+                if (self.@"error".len != 0) { if (!pbz.validateUtf8(self.@"error")) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.@"error".len); pbz.wire.copyBytes(buffer[index..][0..self.@"error".len], self.@"error"); index += self.@"error".len; }
+                for (self.@"test") |item| { if (!pbz.validateUtf8(item)) return error.InvalidUtf8; buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); pbz.wire.copyBytes(buffer[index..][0..item.len], item); index += item.len; }
                 { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
                     if (!pbz.validateUtf8(key)) return error.InvalidUtf8;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value))));
                     buffer[index] = 34; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
-                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
+                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); pbz.wire.copyBytes(buffer[index..][0..key.len], key); index += key.len;
                     buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value))));
                 } }
                 if (self.@"null") { buffer[index] = 56; index += 1; buffer[index] = if (self.@"null") 1 else 0; index += 1; }
                 switch (self.async) {
                     .none => {},
-                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .await => |value| { if (!pbz.validateUtf8(value)) return error.InvalidUtf8; buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len; },
                     .@"opaque" => |value| { buffer[index] = 48; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
                 }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
@@ -563,20 +563,20 @@ pub const demo = struct {
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.@"type" != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.@"type")))); }
-                if (self.@"error".len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.@"error".len); @memcpy(buffer[index..][0..self.@"error".len], self.@"error"); index += self.@"error".len; }
-                for (self.@"test") |item| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); @memcpy(buffer[index..][0..item.len], item); index += item.len; }
+                if (self.@"error".len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.@"error".len); pbz.wire.copyBytes(buffer[index..][0..self.@"error".len], self.@"error"); index += self.@"error".len; }
+                for (self.@"test") |item| { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, item.len); pbz.wire.copyBytes(buffer[index..][0..item.len], item); index += item.len; }
                 { var map_it = self.@"align".iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
                     const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + 1 + pbz.wire.encodedVarintSize(@as(u64, @bitCast(@as(i64, value))));
                     buffer[index] = 34; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
-                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
+                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); pbz.wire.copyBytes(buffer[index..][0..key.len], key); index += key.len;
                     buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value))));
                 } }
                 if (self.@"null") { buffer[index] = 56; index += 1; buffer[index] = if (self.@"null") 1 else 0; index += 1; }
                 switch (self.async) {
                     .none => {},
-                    .await => |value| { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .await => |value| { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len; },
                     .@"opaque" => |value| { buffer[index] = 48; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, value)))); },
                 }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }

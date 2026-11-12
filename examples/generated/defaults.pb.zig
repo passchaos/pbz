@@ -353,8 +353,8 @@ pub const demo = struct {
             /// Take ownership of borrowed string/bytes payloads after decode.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.has_label) self.label = try _pbz_owned_allocator.dupe(u8, self.label);
-                if (self.has_raw) self.raw = try _pbz_owned_allocator.dupe(u8, self.raw);
+                if (self.has_label) self.label = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.label);
+                if (self.has_raw) self.raw = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.raw);
             }
 
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -450,8 +450,8 @@ pub const demo = struct {
                 if (other.has_count) { self.count = other.count; self.has_count = true; }
                 if (other.has_max_count) { self.max_count = other.max_count; self.has_max_count = true; }
                 if (other.has_enabled) { self.enabled = other.enabled; self.has_enabled = true; }
-                if (other.has_label) { self.label = try _pbz_owned_allocator.dupe(u8, other.label); self.has_label = true; }
-                if (other.has_raw) { self.raw = try _pbz_owned_allocator.dupe(u8, other.raw); self.has_raw = true; }
+                if (other.has_label) { self.label = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.label); self.has_label = true; }
+                if (other.has_raw) { self.raw = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.raw); self.has_raw = true; }
                 if (other.has_mode) { self.mode = other.mode; self.has_mode = true; }
                 if (other.has_ratio) { self.ratio = other.ratio; self.has_ratio = true; }
                 if (other.has_neg_ratio) { self.neg_ratio = other.neg_ratio; self.has_neg_ratio = true; }
@@ -517,8 +517,8 @@ pub const demo = struct {
                 if (self.has_count) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.count)))); }
                 if (self.has_max_count) { buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, self.max_count); }
                 if (self.has_enabled) { buffer[index] = 24; index += 1; buffer[index] = if (self.enabled) 1 else 0; index += 1; }
-                if (self.has_label) { buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
-                if (self.has_raw) { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.raw.len); @memcpy(buffer[index..][0..self.raw.len], self.raw); index += self.raw.len; }
+                if (self.has_label) { buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); pbz.wire.copyBytes(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                if (self.has_raw) { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.raw.len); pbz.wire.copyBytes(buffer[index..][0..self.raw.len], self.raw); index += self.raw.len; }
                 if (self.has_mode) { buffer[index] = 48; index += 1; if (self.mode > 0 and self.mode < 0x80) { buffer[index] = @intCast(self.mode); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.mode)))); }
                 if (self.has_ratio) { buffer[index] = 61; index += 1; pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(self.ratio)); }
                 if (self.has_neg_ratio) { buffer[index] = 65; index += 1; pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(self.neg_ratio)); }
@@ -533,8 +533,8 @@ pub const demo = struct {
                 if (self.has_count) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.count)))); }
                 if (self.has_max_count) { buffer[index] = 16; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, self.max_count); }
                 if (self.has_enabled) { buffer[index] = 24; index += 1; buffer[index] = if (self.enabled) 1 else 0; index += 1; }
-                if (self.has_label) { buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
-                if (self.has_raw) { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.raw.len); @memcpy(buffer[index..][0..self.raw.len], self.raw); index += self.raw.len; }
+                if (self.has_label) { buffer[index] = 34; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); pbz.wire.copyBytes(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                if (self.has_raw) { buffer[index] = 42; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.raw.len); pbz.wire.copyBytes(buffer[index..][0..self.raw.len], self.raw); index += self.raw.len; }
                 if (self.has_mode) { buffer[index] = 48; index += 1; if (self.mode > 0 and self.mode < 0x80) { buffer[index] = @intCast(self.mode); index += 1; } else pbz.wire.writeVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.mode)))); }
                 if (self.has_ratio) { buffer[index] = 61; index += 1; pbz.wire.writeRawLittleToSlice(u32, buffer, &index, @bitCast(self.ratio)); }
                 if (self.has_neg_ratio) { buffer[index] = 65; index += 1; pbz.wire.writeRawLittleToSlice(u64, buffer, &index, @bitCast(self.neg_ratio)); }

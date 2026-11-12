@@ -79,6 +79,38 @@ pub inline fn encodedVarintSize(value: u64) usize {
     return (@as(usize, 64 - @clz(value)) + 6) / 7;
 }
 
+/// Copy bytes using an explicit vectorized loop for larger payloads. Zig's
+/// compiler_rt `memcpy` is optimized for small copies and is substantially
+/// slower than glibc's AVX memcpy for multi-kilobyte protobuf payloads.
+pub inline fn copyBytes(dst: []u8, src: []const u8) void {
+    std.debug.assert(dst.len >= src.len);
+    const builtin = @import("builtin");
+    if (src.len < 256 or !(builtin.cpu.arch == .x86_64 or builtin.cpu.arch == .x86 or builtin.cpu.arch == .aarch64)) {
+        @memcpy(dst[0..src.len], src);
+        return;
+    }
+    const Vec = @Vector(32, u8);
+    var index: usize = 0;
+    while (index + 128 <= src.len) : (index += 128) {
+        inline for (0..4) |lane| {
+            const offset = index + lane * 32;
+            const value: Vec = src[offset..][0..32].*;
+            dst[offset..][0..32].* = value;
+        }
+    }
+    while (index + 32 <= src.len) : (index += 32) {
+        const value: Vec = src[index..][0..32].*;
+        dst[index..][0..32].* = value;
+    }
+    while (index < src.len) : (index += 1) dst[index] = src[index];
+}
+
+pub fn dupeBytes(allocator: std.mem.Allocator, src: []const u8) std.mem.Allocator.Error![]u8 {
+    const out = try allocator.alloc(u8, src.len);
+    copyBytes(out, src);
+    return out;
+}
+
 pub inline fn bytesLessThan(lhs: []const u8, rhs: []const u8) bool {
     const common_len = @min(lhs.len, rhs.len);
     var i: usize = 0;
@@ -571,7 +603,9 @@ pub fn writePackedFixedWidthPayload(comptime T: type, w: *Writer, values: []cons
         @compileError("writePackedFixedWidthPayload requires u32, i32, f32, u64, i64, or f64");
     }
     if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
-        try w.appendSlice(std.mem.sliceAsBytes(values));
+        const bytes = std.mem.sliceAsBytes(values);
+        const out = try w.bytes.addManyAsSlice(w.allocator, bytes.len);
+        copyBytes(out, bytes);
     } else {
         for (values) |value| {
             if (T == f32) {
@@ -1054,7 +1088,7 @@ pub fn appendPackedFixedWidth(comptime T: type, allocator: std.mem.Allocator, li
         const out = try allocator.alloc(T, count);
         list.* = std.ArrayList(T).fromOwnedSlice(out);
         if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
-            @memcpy(std.mem.sliceAsBytes(out), payload);
+            copyBytes(std.mem.sliceAsBytes(out), payload);
         } else {
             readFixedWidthPayload(T, out, payload);
         }
@@ -1063,7 +1097,7 @@ pub fn appendPackedFixedWidth(comptime T: type, allocator: std.mem.Allocator, li
     try list.ensureTotalCapacityPrecise(allocator, list.items.len + count);
     const out = list.addManyAsSliceAssumeCapacity(count);
     if (comptime @import("builtin").target.cpu.arch.endian() == .little) {
-        @memcpy(std.mem.sliceAsBytes(out), payload);
+        copyBytes(std.mem.sliceAsBytes(out), payload);
     } else {
         readFixedWidthPayload(T, out, payload);
     }

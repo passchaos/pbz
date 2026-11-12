@@ -157,7 +157,7 @@ pub const demo = struct {
             /// Take ownership of borrowed string/bytes payloads after decode.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.has_child) self.child = try _pbz_owned_allocator.dupe(u8, self.child);
+                if (self.has_child) self.child = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.child);
                 for (@constCast(self.children)) |*item| try item.adoptOwned(allocator);
             }
 
@@ -227,7 +227,7 @@ pub const demo = struct {
                         @memcpy(merged[self.child.len..], other.child);
                         self.child = merged;
                     } else if (!self.has_child or self.child.len == 0) {
-                        self.child = try _pbz_owned_allocator.dupe(u8, other.child);
+                        self.child = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.child);
                     }
                     self.has_child = true;
                 }

@@ -146,7 +146,7 @@ pub const demo = struct {
                 /// Take ownership of borrowed string/bytes payloads after decode.
                 pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                     const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                    if (self.name.len != 0) self.name = try _pbz_owned_allocator.dupe(u8, self.name);
+                    if (self.name.len != 0) self.name = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.name);
                 }
 
                 fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -224,7 +224,7 @@ pub const demo = struct {
                 pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                     const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                     if (other.id != 0) self.id = other.id;
-                    if (other.name.len != 0) self.name = try _pbz_owned_allocator.dupe(u8, other.name);
+                    if (other.name.len != 0) self.name = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.name);
                     try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
                 }
 
@@ -267,7 +267,7 @@ pub const demo = struct {
                 pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
                     if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                    if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); @memcpy(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
+                    if (self.name.len != 0) { if (!pbz.validateUtf8(self.name)) return error.InvalidUtf8; buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); pbz.wire.copyBytes(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];
                 }
@@ -277,7 +277,7 @@ pub const demo = struct {
                 pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
                     if (self.id != 0) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                    if (self.name.len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); @memcpy(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
+                    if (self.name.len != 0) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.name.len); pbz.wire.copyBytes(buffer[index..][0..self.name.len], self.name); index += self.name.len; }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];
                 }

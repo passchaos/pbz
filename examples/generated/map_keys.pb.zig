@@ -360,15 +360,15 @@ pub const demo = struct {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 var by_int_map_it = self.by_int.iterator();
                 while (by_int_map_it.next()) |entry| {
-                    entry.value_ptr.* = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                    entry.value_ptr.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
                 }
                 var by_i64_map_it = self.by_i64.iterator();
                 while (by_i64_map_it.next()) |entry| {
-                    entry.value_ptr.* = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                    entry.value_ptr.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
                 }
                 var by_u64_map_it = self.by_u64.iterator();
                 while (by_u64_map_it.next()) |entry| {
-                    entry.value_ptr.* = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                    entry.value_ptr.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
                 }
             }
 
@@ -436,7 +436,7 @@ pub const demo = struct {
                     var other_it = other.by_int.iterator();
                     while (other_it.next()) |entry| {
                         const key = entry.key_ptr.*;
-                        const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                        const value = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
                         const result = self.by_int.getOrPutAssumeCapacity(key);
                         result.value_ptr.* = value;
                     }
@@ -458,7 +458,7 @@ pub const demo = struct {
                     var other_it = other.by_i64.iterator();
                     while (other_it.next()) |entry| {
                         const key = entry.key_ptr.*;
-                        const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                        const value = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
                         const result = self.by_i64.getOrPutAssumeCapacity(key);
                         result.value_ptr.* = value;
                     }
@@ -469,7 +469,7 @@ pub const demo = struct {
                     var other_it = other.by_u64.iterator();
                     while (other_it.next()) |entry| {
                         const key = entry.key_ptr.*;
-                        const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);
+                        const value = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
                         const result = self.by_u64.getOrPutAssumeCapacity(key);
                         result.value_ptr.* = value;
                     }
@@ -606,7 +606,7 @@ pub const demo = struct {
                     buffer[index] = 10; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
                     buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, key))));
-                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len;
+                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len;
                 } }
                 { var map_it = self.by_bool.iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
@@ -623,7 +623,7 @@ pub const demo = struct {
                     buffer[index] = 26; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
                     buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(key)));
-                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len;
+                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len;
                 } }
                 { var map_it = self.by_u64.iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
@@ -632,7 +632,7 @@ pub const demo = struct {
                     buffer[index] = 34; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
                     buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, key);
-                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len;
+                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len;
                 } }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
@@ -648,7 +648,7 @@ pub const demo = struct {
                     buffer[index] = 10; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
                     buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, key))));
-                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len;
+                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len;
                 } }
                 { var map_it = self.by_bool.iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
@@ -664,7 +664,7 @@ pub const demo = struct {
                     buffer[index] = 26; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
                     buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(key)));
-                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len;
+                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len;
                 } }
                 { var map_it = self.by_u64.iterator(); while (map_it.next()) |map_entry| {
                     const key = map_entry.key_ptr.*; const value = map_entry.value_ptr.*;
@@ -672,7 +672,7 @@ pub const demo = struct {
                     buffer[index] = 34; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
                     buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, key);
-                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len;
+                    buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len;
                 } }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];

@@ -302,7 +302,7 @@ pub const demo = struct {
                     try by_name_owned_map.ensureUnusedCapacity(allocator, self.by_name.count());
                     var by_name_map_it = self.by_name.iterator();
                     while (by_name_map_it.next()) |entry| {
-                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        const key = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.key_ptr.*);
                         try entry.value_ptr.adoptOwned(allocator);
                         by_name_owned_map.putAssumeCapacityNoClobber(key, entry.value_ptr.*);
                     }
@@ -402,7 +402,7 @@ pub const demo = struct {
                     try self.by_name.ensureUnusedCapacity(allocator, by_name_other_count);
                     var other_it = other.by_name.iterator();
                     while (other_it.next()) |entry| {
-                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        const key = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.key_ptr.*);
                         const value = try entry.value_ptr.cloneOwned(allocator);
                         const result = self.by_name.getOrPutAssumeCapacity(key);
                         if (result.found_existing) result.value_ptr.deinit(allocator);
@@ -501,7 +501,7 @@ pub const demo = struct {
                     const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + blk: { const value_len = value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     buffer[index] = 26; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
-                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
+                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); pbz.wire.copyBytes(buffer[index..][0..key.len], key); index += key.len;
                     const value_len = value.encodedSize(); buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..value_len]); index += value_len;
                 } }
                 switch (self.selected) {
@@ -524,7 +524,7 @@ pub const demo = struct {
                     const entry_len = 1 + pbz.wire.encodedVarintSize(key.len) + key.len + blk: { const value_len = value.encodedSize(); break :blk 1 + pbz.wire.encodedVarintSize(value_len) + value_len; };
                     buffer[index] = 26; index += 1;
                     pbz.wire.writeVarintToSlice(buffer, &index, entry_len);
-                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); @memcpy(buffer[index..][0..key.len], key); index += key.len;
+                    buffer[index] = 10; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, key.len); pbz.wire.copyBytes(buffer[index..][0..key.len], key); index += key.len;
                     const value_len = value.encodedSize(); buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..value_len]); index += value_len;
                 } }
                 switch (self.selected) {

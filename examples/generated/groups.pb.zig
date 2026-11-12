@@ -241,7 +241,7 @@ pub const demo = struct {
                 for (@constCast(self.item)) |*item| try item.adoptOwned(allocator);
                 switch (self.picked) {
                     .picked_box => |*value| try value.adoptOwned(allocator),
-                    .note => |value| self.picked = .{ .note = try _pbz_owned_allocator.dupe(u8, value) },
+                    .note => |value| self.picked = .{ .note = try pbz.wire.dupeBytes(_pbz_owned_allocator,value) },
                     else => {},
                 }
             }
@@ -332,7 +332,7 @@ pub const demo = struct {
                 switch (other.picked) {
                     .none => {},
                     .picked_box => |value| { const owned_value = try value.cloneOwned(allocator); errdefer owned_value.deinit(allocator); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .picked_box = owned_value }; },
-                    .note => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = owned_value }; },
+                    .note => |value| { const owned_value = try pbz.wire.dupeBytes(_pbz_owned_allocator,value); self._pbzDeinitOneof_picked(allocator); self.picked = .{ .note = owned_value }; },
                 }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
@@ -399,7 +399,7 @@ pub const demo = struct {
                 switch (self.picked) {
                     .none => {},
                     .picked_box => |value| { const payload_len = value.encodedSize(); buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacity(buffer[index..][0..payload_len]); index += payload_len; },
-                    .note => |value| { buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .note => |value| { buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len; },
                 }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
@@ -415,7 +415,7 @@ pub const demo = struct {
                 switch (self.picked) {
                     .none => {},
                     .picked_box => |value| { const payload_len = value.encodedSize(); buffer[index] = 50; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, payload_len); _ = try value.encodeIntoAssumeCapacityTrustedUtf8(buffer[index..][0..payload_len]); index += payload_len; },
-                    .note => |value| { buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); @memcpy(buffer[index..][0..value.len], value); index += value.len; },
+                    .note => |value| { buffer[index] = 58; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, value.len); pbz.wire.copyBytes(buffer[index..][0..value.len], value); index += value.len; },
                 }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
@@ -1529,7 +1529,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 /// Take ownership of borrowed string/bytes payloads after decode.
                 pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                     const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                    if (self.has_label) self.label = try _pbz_owned_allocator.dupe(u8, self.label);
+                    if (self.has_label) self.label = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.label);
                 }
 
                 fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -1606,7 +1606,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 /// and map keys/values are deep-copied, so other remains independently valid.
                 pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                     const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                    if (other.has_label) { self.label = try _pbz_owned_allocator.dupe(u8, other.label); self.has_label = true; }
+                    if (other.has_label) { self.label = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.label); self.has_label = true; }
                     try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
                 }
 
@@ -1645,7 +1645,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
                 pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
-                    if (self.has_label) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                    if (self.has_label) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); pbz.wire.copyBytes(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];
                 }
@@ -1654,7 +1654,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 /// must guarantee that all string fields contain valid UTF-8.
                 pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                     var index: usize = 0;
-                    if (self.has_label) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); @memcpy(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
+                    if (self.has_label) { buffer[index] = 26; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.label.len); pbz.wire.copyBytes(buffer[index..][0..self.label.len], self.label); index += self.label.len; }
                     for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                     return buffer[0..index];
                 }

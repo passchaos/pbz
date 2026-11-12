@@ -1589,7 +1589,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             /// Take ownership of borrowed string/bytes payloads after decode.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.has_note) self.note = try _pbz_owned_allocator.dupe(u8, self.note);
+                if (self.has_note) self.note = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.note);
             }
 
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -1667,7 +1667,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
                 if (other.has_id) { self.id = other.id; self.has_id = true; }
-                if (other.has_note) { self.note = try _pbz_owned_allocator.dupe(u8, other.note); self.has_note = true; }
+                if (other.has_note) { self.note = try pbz.wire.dupeBytes(_pbz_owned_allocator,other.note); self.has_note = true; }
                 try pbz.wire.appendRawFieldsClone(allocator, &self._unknown_fields, other._unknown_fields);
             }
 
@@ -1710,7 +1710,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn encodeIntoAssumeCapacity(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.has_id) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                if (self.has_note) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.note.len); @memcpy(buffer[index..][0..self.note.len], self.note); index += self.note.len; }
+                if (self.has_note) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.note.len); pbz.wire.copyBytes(buffer[index..][0..self.note.len], self.note); index += self.note.len; }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
             }
@@ -1720,7 +1720,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub fn encodeIntoAssumeCapacityTrustedUtf8(self: @This(), buffer: []u8) ![]u8 {
                 var index: usize = 0;
                 if (self.has_id) { buffer[index] = 8; index += 1; pbz.wire.writeDirectScalarVarintToSlice(buffer, &index, @as(u64, @bitCast(@as(i64, self.id)))); }
-                if (self.has_note) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.note.len); @memcpy(buffer[index..][0..self.note.len], self.note); index += self.note.len; }
+                if (self.has_note) { buffer[index] = 18; index += 1; pbz.wire.writeVarintToSlice(buffer, &index, self.note.len); pbz.wire.copyBytes(buffer[index..][0..self.note.len], self.note); index += self.note.len; }
                 for (self._unknown_fields) |raw| { @memcpy(buffer[index..][0..raw.len], raw); index += raw.len; }
                 return buffer[0..index];
             }
