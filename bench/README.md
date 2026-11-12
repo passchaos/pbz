@@ -12,10 +12,11 @@ Run pbz plus every available cross-language baseline with:
 bench/run_compare.sh
 ```
 
-Set `PBZ_COMPARE_LATEST_CPP=1` to additionally build and run the focused C++
-binary benchmark against the conformance-pinned protobuf release (default
-v35.1) instead of only the system libprotobuf. This requires cmake, ninja, and
-the conformance source/build cache.
+Set `PBZ_COMPARE_LATEST_CPP=1` to additionally build and run the full C++
+benchmark against the conformance-pinned protobuf release (default v35.1)
+instead of only the system libprotobuf. This requires cmake, ninja, and the
+conformance source/build cache. The focused `mini_bench.cc` subset remains
+available for quick checks.
 
 On busy development machines, set `PBZ_COMPARE_CPUSET` to run every baseline on
 the same CPU set via `taskset`; this avoids comparing pbz on one core mix

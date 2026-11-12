@@ -16,7 +16,10 @@ functionality and measured hot-path performance.
   known types.
 - The fastest relevant public pbz path should beat Rust `prost`, Rust
   `quick-protobuf`, C++ protobuf, and Go protobuf for every parsed comparison row
-  in `bench/summarize_compare.py`.
+  in `bench/summarize_compare.py`. The default matrix may include zero-copy
+  borrowed paths; `--exclude-zero-copy` tracks owning/contiguous paths
+  separately, and any residual fair-mode gap must be listed explicitly in the
+  checked-in results snapshot.
 - Performance wins should come from public generated or runtime APIs rather than
   benchmark-only hand-written code wherever possible.
 - Generated JSON parsing should avoid avoidable reserialization of nested
@@ -38,11 +41,11 @@ has current, repository-verifiable evidence:
 |---|---|---|
 | Generated-code workflow is C++/Rust-style and ergonomic. | `examples/generated_types.zig`, `examples/generated_imports.zig`, `examples/generated_groups.zig`, `examples/generated_required.zig`, `examples/generated_defaults.zig`, `examples/generated_extensions.zig`, `examples/generated_identifiers.zig`, `examples/generated_enum_alias.zig`, `examples/generated_json_names.zig`, `examples/generated_messageset.zig`, `examples/generated_map_keys.zig`, `examples/generated_nested_types.zig`, `examples/generated_unpacked.zig`, `examples/generated_public_imports.zig`, `examples/generated_proto3_optional.zig`, `examples/generated_merge_semantics.zig`, `examples/generated_clone_owned.zig`, `examples/generated_unknown_mutation.zig`, `examples/generated_closed_enum.zig`, `examples/generated_recursive.zig`, `examples/generated_streaming.zig`, and `build.zig`'s `generateProtobuf` helper exercise checked-in and build-generated modules. | Covered for the examples in this repo; continue expanding when new schema shapes are added. |
 | Generated/runtime functionality covers protobuf surfaces used by examples, benchmarks, and conformance. | `zig build check` runs library tests, examples, summarizer self-test, and conformance smoke; `examples/dynamic_editions_features.zig` covers dynamic protobuf editions feature interactions; `examples/dynamic_weak_imports.zig` covers present and missing proto2 weak-import loader behavior; `/tmp/pbz-upstream-conformance-after-textbytes-slices.log` records upstream Binary/JSON/TextFormat conformance with zero skips and zero unexpected failures. | Strong for current covered surfaces; not a proof of every possible protobuf edge case. |
-| pbz beats C++ protobuf and other tracked baselines on every parsed row. | `/tmp/pbz-compare-current-cpu3.log` summarized by `/tmp/pbz-summary-current-cpu3.txt`; fail-on-loss summary ends with `All parsed cross-language rows are pbz wins.` | Covered for the 417 workloads currently tracked by `bench/summarize_compare.py`. |
+| pbz beats C++ protobuf and other tracked baselines on every parsed row. | `bench/results/2026-11-12-linux-x86_64.md` records the mixed-mode and fair-mode pivots against C++ protobuf 35.1, Rust `prost`, Rust `quick-protobuf`, and Go protobuf on a pinned CPU. The mixed-mode fail-on-loss gate ends with `All parsed cross-language rows are pbz wins.`; fair mode has three residual rows documented in the same file. | Mixed mode covered for all tracked workloads; fair mode has a small, explicitly listed residual set. |
 | Performance wins come from public APIs, not benchmark-only one-offs. | `bench/summarize_compare.py` chooses public generated/runtime rows such as `encodeIntoAssumeCapacity`, `writeToAssumeCapacity`, `decodeKnownReuse`, field views/slices, packed iterators, and unknown-field sidecars; `examples/generated_performance.zig` demonstrates those APIs outside the benchmark harness. | Covered for the current matrix; new rows must keep using public APIs. |
 | JSON parsing avoids avoidable nested reserialization. | Generated nested-message JSON parsers use `jsonParseValueWithOptions`; complex JSON and proto-name JSON rows are in the cross-language matrix. | Covered for generated nested-message paths exercised by the matrix. |
 | Code structure remains maintainable. | Codegen/runtime helpers are grouped by generated API family; `bench/run_compare.sh` now has `PBZ_COMPARE_CPUSET` so noisy benchmark gating does not require ad-hoc command wrappers. | Ongoing.  Any newly identified awkward boundary should be refactored before claiming completion. |
-| The comparison is not overclaimed beyond covered workloads. | "Remaining non-goals / open audit items" below records limits: finite workload matrix, non-vendored full conformance runner, API differences for C++ unknown-field decode, trusted `decodeKnownReuse`, and hardware-sensitive benchmark results. | Not complete.  These limits mean the broad goal remains active unless a future audit closes or explicitly scopes them. |
+| The comparison is not overclaimed beyond covered workloads. | "Remaining non-goals / open audit items" below records limits: finite workload matrix, non-vendored full conformance runner, API differences for C++ unknown-field decode, trusted `decodeKnownReuse`, hardware-sensitive benchmark results, and the three fair-mode residual rows in `bench/results/2026-11-12-linux-x86_64.md`. | Not complete.  These limits mean the broad goal remains active unless a future audit closes or explicitly scopes them. |
 
 ## Verification commands
 
@@ -75,19 +78,16 @@ for the Go baseline:
 PBZ_COMPARE_CPUSET=3 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 ```
 
-The latest accepted full-gate evidence at the time this checklist was updated
-is `/tmp/pbz-compare-current-cpu3.log` summarized by
-`/tmp/pbz-summary-current-cpu3.txt`. The fail-on-loss summary gate:
-
-```sh
-python3 bench/summarize_compare.py /tmp/pbz-compare-current-cpu3.log --fail-on-loss
-```
-
-ended with:
+The latest accepted full-gate evidence is
+`bench/results/2026-11-12-linux-x86_64.md`, generated from a pinned run against
+protobuf 35.1. The mixed-mode fail-on-loss summary gate ended with:
 
 ```text
 All parsed cross-language rows are pbz wins.
 ```
+
+The same run also records the fair-mode (`--exclude-zero-copy`) pivot and its
+three residual rows.
 
 The same audit pass also kept these functional coverage gates green:
 
@@ -166,6 +166,9 @@ APIs:
 - `decodeKnownReuse(allocator, bytes)` for trusted same-schema hot paths
   including packed-only repeated scalar and open-enum messages where the caller
   reuses a correctly-sized destination buffer
+- `decodeOwned` / `decodeOwnedReuse` / `adoptOwned` for arena-backed owned
+  decode; `adoptOwnedInto(allocator, owned_allocator)` shares one arena across
+  nested messages so nested payloads do not pay a separate arena allocation
 - `*FieldView` / `*BytesView` / `*StringView` for length-delimited views
 - `*FieldSlices` / `*BytesSlices` / `*StringSlices` for borrowed
   length-delimited output

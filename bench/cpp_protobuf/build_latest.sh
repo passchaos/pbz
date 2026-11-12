@@ -34,13 +34,13 @@ CXX="${CXX:-c++}"
 INCLUDES="-I$SRC_DIR/src -I$BUILD_DIR/_deps/absl-src -I$SRC_DIR/third_party/utf8_range -I$OUT"
 # shellcheck disable=SC2086
 "$CXX" -O3 -DNDEBUG -std=c++17 $INCLUDES -c \
-  "$ROOT/bench/cpp_protobuf/mini_bench.cc" -o "$OUT/mini_bench.o"
+  "$ROOT/bench/cpp_protobuf/main.cc" -o "$OUT/main.o"
 # shellcheck disable=SC2086
 "$CXX" -O3 -DNDEBUG -std=c++17 $INCLUDES -c \
   "$OUT/person.pb.cc" -o "$OUT/person.pb.o"
 
 LINK_CMD="$(cd "$BUILD_DIR" && ninja -t commands conformance_test_runner | tail -n 1)"
-python3 - "$BUILD_DIR" "$OUT/mini_bench.o" "$OUT/person.pb.o" \
+python3 - "$BUILD_DIR" "$OUT/main.o" "$OUT/person.pb.o" \
   "$OUT/cpp_protobuf_latest_bench" "$LINK_CMD" <<'PY'
 import re
 import subprocess
