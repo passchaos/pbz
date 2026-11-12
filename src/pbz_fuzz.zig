@@ -158,6 +158,27 @@ fn fuzzRegistryJson(allocator: std.mem.Allocator, fixtures: *const RegistryFixtu
     allocator.free(encoded);
 }
 
+fn fuzzRegistryJsonOptions(allocator: std.mem.Allocator, fixtures: *const RegistryFixtures, bytes: []const u8) void {
+    var message = pbz.json.parseAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, fixtures.descriptor, bytes, .{ .ignore_unknown_fields = true }) catch return;
+    defer message.deinit();
+    const out = pbz.json.stringifyAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, &message, .{
+        .enum_as_name = false,
+        .preserve_proto_field_names = true,
+        .always_print_primitive_fields = true,
+    }) catch return;
+    allocator.free(out);
+}
+
+fn fuzzRegistryTextOptions(allocator: std.mem.Allocator, fixtures: *const RegistryFixtures, bytes: []const u8) void {
+    var message = pbz.text.parseAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, fixtures.descriptor, bytes) catch return;
+    defer message.deinit();
+    const out = pbz.text.formatAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, &message, .{
+        .enum_as_name = false,
+        .print_unknown_fields = true,
+    }) catch return;
+    allocator.free(out);
+}
+
 fn fuzzRegistryText(allocator: std.mem.Allocator, fixtures: *const RegistryFixtures, bytes: []const u8) void {
     var message = pbz.text.parseAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, fixtures.descriptor, bytes) catch return;
     defer message.deinit();
@@ -324,6 +345,15 @@ fn fuzzBinary(allocator: std.mem.Allocator, fixtures: *const Fixtures, bytes: []
     var writer = pbz.Writer.init(allocator);
     defer writer.deinit();
     message.encode(&fixtures.file, &writer) catch return;
+
+    const numbers = message.unknownFieldNumbersAlloc(allocator) catch return;
+    defer allocator.free(numbers);
+    const runs = message.unknownFieldNumberRunsAlloc(allocator) catch return;
+    defer allocator.free(runs);
+    if (numbers.len != 0) {
+        const by_number = message.unknownByNumberAlloc(allocator, numbers[0]) catch return;
+        allocator.free(by_number);
+    }
 }
 
 fn fuzzJson(allocator: std.mem.Allocator, fixtures: *const Fixtures, bytes: []const u8) void {
@@ -456,6 +486,8 @@ pub fn main(init: std.process.Init) !void {
         fuzzGeneratedText(scratch, text_buffer[0..text_len]);
         fuzzRegistryJson(scratch, &registry_fixtures, registry_json_buffer[0..registry_json_len]);
         fuzzRegistryText(scratch, &registry_fixtures, registry_text_buffer[0..registry_text_len]);
+        fuzzRegistryJsonOptions(scratch, &registry_fixtures, registry_json_buffer[0..registry_json_len]);
+        fuzzRegistryTextOptions(scratch, &registry_fixtures, registry_text_buffer[0..registry_text_len]);
         fuzzExtensions(scratch, &extension_fixtures, extension_buffer[0..extension_len]);
         fuzzMessageSet(scratch, &extension_fixtures, message_set_buffer[0..message_set_len]);
     }

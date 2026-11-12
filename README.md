@@ -52,8 +52,9 @@ benchmarks, and upstream conformance suite:
   descriptor decoder/set decoder, `.proto` parser, dynamic binary/JSON/
   TextFormat parsers (including registry-backed imports and WKT types), and
   generated `Person` binary decode/encode, `decodeReuse`/`decodeOwnedReuse`,
-  generated JSON/TextFormat parsers, and proto2 extensions/MessageSet dynamic
-  decoding, with a short seed-0 pass wired into `zig build check`
+  generated JSON/TextFormat parsers, proto2 extensions/MessageSet dynamic
+  decoding, JSON/TextFormat option variants, and unknown-field sidecar queries,
+  with a short seed-0 pass wired into `zig build check`
 
 For detailed feature coverage, see:
 
