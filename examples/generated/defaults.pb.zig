@@ -246,6 +246,28 @@ pub const demo = struct {
                 return file.findMessageDeep(".demo.defaults.Defaults");
             }
 
+            /// Convert to a dynamic message via the wire format for reflection workflows.
+            pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {
+                const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                var writer = pbz.Writer.init(allocator);
+                defer writer.deinit();
+                try self.writeTo(&writer);
+                var message = pbz.DynamicMessage.init(allocator, message_descriptor);
+                errdefer message.deinit();
+                try message.decode(file, writer.slice());
+                return message;
+            }
+
+            /// Build from a dynamic message via the wire format.
+            pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {
+                const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                if (message.descriptor != message_descriptor) return error.TypeMismatch;
+                var writer = pbz.Writer.init(allocator);
+                defer writer.deinit();
+                try message.encode(file, &writer);
+                return try @This().decodeOwned(allocator, writer.slice());
+            }
+
             count: i32 = 42,
             has_count: bool = false,
             max_count: u64 = 18446744073709551615,

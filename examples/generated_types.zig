@@ -114,6 +114,14 @@ pub fn main() !void {
     std.debug.assert(person_pb.demo.PresenceMix.Child.descriptor(&file_descriptor) != null);
     std.debug.assert(person_pb.demo.BenchKind.descriptor(&file_descriptor) != null);
 
+    var dynamic_person = try person.toDynamic(allocator, &file_descriptor);
+    defer dynamic_person.deinit();
+    std.debug.assert(dynamic_person.get("id").?.values.items[0].int32 == 7);
+    var bridged_person = try person_pb.demo.Person.fromDynamic(allocator, &file_descriptor, &dynamic_person);
+    defer bridged_person.deinit(allocator);
+    std.debug.assert(bridged_person.id == 7);
+    std.debug.assert(std.mem.eql(u8, bridged_person.name, "Zig"));
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,

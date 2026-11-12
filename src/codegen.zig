@@ -861,6 +861,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     for (message.fields.items) |*field| try writeFieldMetadataDecl(ctx, field, writer, depth + 1);
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeMessageDescriptorLookup(ctx, message, writer, depth + 1);
+    try writeMessageDynamicBridge(ctx, writer, depth + 1);
     for (message.fields.items) |*field| {
         if (field.kind == .map) {
             try writeMapEntryType(ctx, field, writer, depth + 1);
@@ -10909,6 +10910,50 @@ fn writeJsonEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8,
     try writer.writeAll(")");
 }
 
+fn writeMessageDynamicBridge(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!ctx.emit_descriptor) return;
+    try indent(writer, depth);
+    try writer.writeAll("/// Convert to a dynamic message via the wire format for reflection workflows.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var writer = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer writer.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.writeTo(&writer);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var message = pbz.DynamicMessage.init(allocator, message_descriptor);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer message.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try message.decode(file, writer.slice());\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return message;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// Build from a dynamic message via the wire format.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("if (message.descriptor != message_descriptor) return error.TypeMismatch;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var writer = pbz.Writer.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer writer.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try message.encode(file, &writer);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try @This().decodeOwned(allocator, writer.slice());\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
 fn writeMessageDescriptorLookup(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (!ctx.emit_descriptor) return;
     var arena = std.heap.ArenaAllocator.init(ctx.allocator);
@@ -13665,6 +13710,8 @@ test "codegen embeds a decodable file descriptor" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return file.findMessageDeep(\".demo.Person\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return file.findMessageDeep(\".demo.Person.Nested\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return file.findEnumDeep(\".demo.Kind\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

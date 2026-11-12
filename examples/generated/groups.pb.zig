@@ -134,6 +134,28 @@ pub const demo = struct {
                 return file.findMessageDeep(".demo.groups.Parent");
             }
 
+            /// Convert to a dynamic message via the wire format for reflection workflows.
+            pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {
+                const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                var writer = pbz.Writer.init(allocator);
+                defer writer.deinit();
+                try self.writeTo(&writer);
+                var message = pbz.DynamicMessage.init(allocator, message_descriptor);
+                errdefer message.deinit();
+                try message.decode(file, writer.slice());
+                return message;
+            }
+
+            /// Build from a dynamic message via the wire format.
+            pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {
+                const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                if (message.descriptor != message_descriptor) return error.TypeMismatch;
+                var writer = pbz.Writer.init(allocator);
+                defer writer.deinit();
+                try message.encode(file, &writer);
+                return try @This().decodeOwned(allocator, writer.slice());
+            }
+
             pub const pickedOneof = union(enum) {
                 none,
                 picked_box: Box,
@@ -1380,6 +1402,28 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return file.findMessageDeep(".demo.groups.Parent.Box");
                 }
 
+                /// Convert to a dynamic message via the wire format for reflection workflows.
+                pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {
+                    const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                    var writer = pbz.Writer.init(allocator);
+                    defer writer.deinit();
+                    try self.writeTo(&writer);
+                    var message = pbz.DynamicMessage.init(allocator, message_descriptor);
+                    errdefer message.deinit();
+                    try message.decode(file, writer.slice());
+                    return message;
+                }
+
+                /// Build from a dynamic message via the wire format.
+                pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {
+                    const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                    if (message.descriptor != message_descriptor) return error.TypeMismatch;
+                    var writer = pbz.Writer.init(allocator);
+                    defer writer.deinit();
+                    try message.encode(file, &writer);
+                    return try @This().decodeOwned(allocator, writer.slice());
+                }
+
                 label: []const u8 = "",
                 has_label: bool = false,
                 _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -2372,6 +2416,28 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 /// Look up this message's descriptor in a decoded file descriptor.
                 pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
                     return file.findMessageDeep(".demo.groups.Parent.Item");
+                }
+
+                /// Convert to a dynamic message via the wire format for reflection workflows.
+                pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {
+                    const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                    var writer = pbz.Writer.init(allocator);
+                    defer writer.deinit();
+                    try self.writeTo(&writer);
+                    var message = pbz.DynamicMessage.init(allocator, message_descriptor);
+                    errdefer message.deinit();
+                    try message.decode(file, writer.slice());
+                    return message;
+                }
+
+                /// Build from a dynamic message via the wire format.
+                pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {
+                    const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                    if (message.descriptor != message_descriptor) return error.TypeMismatch;
+                    var writer = pbz.Writer.init(allocator);
+                    defer writer.deinit();
+                    try message.encode(file, &writer);
+                    return try @This().decodeOwned(allocator, writer.slice());
                 }
 
                 rank: i32 = 0,
