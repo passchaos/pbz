@@ -853,8 +853,13 @@ const TextParser = struct {
     input: []const u8,
     registry: ?*const registry_mod.Registry = null,
     index: usize = 0,
+    recursion_depth: u32 = 0,
+    recursion_limit: u32 = 100,
 
     fn parseMessage(self: *TextParser, file: *const schema.FileDescriptor, message: *dynamic.DynamicMessage, end: ?u8) anyerror!void {
+        if (self.recursion_depth >= self.recursion_limit) return error.RecursionLimitExceeded;
+        self.recursion_depth += 1;
+        defer self.recursion_depth -= 1;
         while (true) {
             self.skipSpace();
             if (self.eof()) {
@@ -2652,4 +2657,24 @@ test "text format parser accepts decimal hex and octal integers" {
     try std.testing.expectEqual(@as(u32, 16), msg.get("c").?.values.items[0].uint32);
     try std.testing.expectEqual(@as(u64, 8), msg.get("d").?.values.items[0].fixed64);
     try std.testing.expectEqual(@as(i32, -8), msg.get("e").?.values.items[0].sfixed32);
+}
+
+test "text parser enforces recursion limit" {
+    const allocator = std.testing.allocator;
+    const source =
+        \\syntax = "proto3";
+        \\message Node { Node child = 1; }
+    ;
+    var file = try @import("parser.zig").Parser.parse(allocator, source);
+    defer file.deinit();
+    const desc = file.findMessage("Node").?;
+
+    var input: std.ArrayList(u8) = .empty;
+    defer input.deinit(allocator);
+    const depth: usize = 150;
+    for (0..depth) |_| try input.appendSlice(allocator, "child { ");
+    try input.appendSlice(allocator, "}");
+    for (0..depth) |_| try input.appendSlice(allocator, " }");
+
+    try std.testing.expectError(error.RecursionLimitExceeded, parseAlloc(allocator, &file, desc, input.items));
 }
