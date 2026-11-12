@@ -285,6 +285,89 @@ fn fuzzMessageSet(allocator: std.mem.Allocator, fixtures: *const ExtensionFixtur
     allocator.free(encoded);
 }
 
+const EditionFixtures = struct {
+    file: pbz.schema.FileDescriptor,
+    descriptor: *const pbz.schema.MessageDescriptor,
+    binary: []u8,
+    json: []u8,
+    text: []u8,
+};
+
+const edition_schema =
+    \\edition = "2023";
+    \\package fuzzed;
+    \\option features.field_presence = IMPLICIT;
+    \\option features.enum_type = CLOSED;
+    \\enum E { E_UNKNOWN = 0; E_ONE = 1; }
+    \\message M {
+    \\  int32 id = 1;
+    \\  repeated int32 nums = 2 [features.repeated_field_encoding = PACKED];
+    \\  repeated int32 expanded = 3 [features.repeated_field_encoding = EXPANDED];
+    \\  string name = 4 [features.utf8_validation = NONE];
+    \\  E kind = 5 [features.field_presence = EXPLICIT];
+    \\  oneof pick { string label = 6; int64 code = 7; }
+    \\  M child = 8 [features.message_encoding = DELIMITED];
+    \\}
+;
+
+fn makeEditionFixtures(allocator: std.mem.Allocator) !EditionFixtures {
+    var file = try pbz.ProtoParser.parse(allocator, edition_schema);
+    errdefer file.deinit();
+    const descriptor = file.findMessage("M") orelse return error.MissingMessage;
+
+    var message = pbz.DynamicMessage.init(allocator, descriptor);
+    defer message.deinit();
+    try message.add(descriptor.findField("id").?, .{ .int32 = 7 });
+    for ([_]i32{ 1, 2 }) |value| try message.add(descriptor.findField("nums").?, .{ .int32 = value });
+    for ([_]i32{ 3, 4 }) |value| try message.add(descriptor.findField("expanded").?, .{ .int32 = value });
+    try message.add(descriptor.findField("name").?, .{ .string = try allocator.dupe(u8, "edition") });
+    try message.add(descriptor.findField("kind").?, .{ .enumeration = 1 });
+    try message.add(descriptor.findField("label").?, .{ .string = try allocator.dupe(u8, "pick") });
+    {
+        const child = try allocator.create(pbz.DynamicMessage);
+        child.* = pbz.DynamicMessage.init(allocator, descriptor);
+        try child.add(descriptor.findField("id").?, .{ .int32 = 9 });
+        try message.add(descriptor.findField("child").?, .{ .message = child });
+    }
+
+    const binary = try message.encoded(&file);
+    errdefer allocator.free(binary);
+    const json = try pbz.json.stringifyAlloc(allocator, &file, &message, .{});
+    errdefer allocator.free(json);
+    const text = try pbz.text.formatAlloc(allocator, &file, &message, .{});
+    errdefer allocator.free(text);
+    return .{ .file = file, .descriptor = descriptor, .binary = binary, .json = json, .text = text };
+}
+
+fn deinitEditionFixtures(allocator: std.mem.Allocator, fixtures: *EditionFixtures) void {
+    allocator.free(fixtures.binary);
+    allocator.free(fixtures.json);
+    allocator.free(fixtures.text);
+    fixtures.file.deinit();
+}
+
+fn fuzzEditionBinary(allocator: std.mem.Allocator, fixtures: *const EditionFixtures, bytes: []const u8) void {
+    var message = pbz.DynamicMessage.init(allocator, fixtures.descriptor);
+    defer message.deinit();
+    message.decode(&fixtures.file, bytes) catch return;
+    const encoded = message.encoded(&fixtures.file) catch return;
+    allocator.free(encoded);
+}
+
+fn fuzzEditionJson(allocator: std.mem.Allocator, fixtures: *const EditionFixtures, bytes: []const u8) void {
+    var message = pbz.json.parseAlloc(allocator, &fixtures.file, fixtures.descriptor, bytes, .{}) catch return;
+    defer message.deinit();
+    const out = pbz.json.stringifyAlloc(allocator, &fixtures.file, &message, .{}) catch return;
+    allocator.free(out);
+}
+
+fn fuzzEditionText(allocator: std.mem.Allocator, fixtures: *const EditionFixtures, bytes: []const u8) void {
+    var message = pbz.text.parseAlloc(allocator, &fixtures.file, fixtures.descriptor, bytes) catch return;
+    defer message.deinit();
+    const out = pbz.text.formatAlloc(allocator, &fixtures.file, &message, .{}) catch return;
+    allocator.free(out);
+}
+
 fn generate(rng: std.Random, buffer: []u8, valid: []const u8) usize {
     if (rng.intRangeLessThan(u8, 0, 3) == 0) {
         const len = rng.intRangeAtMost(usize, 0, buffer.len);
@@ -444,6 +527,8 @@ pub fn main(init: std.process.Init) !void {
     defer deinitRegistryFixtures(allocator, &registry_fixtures);
     var extension_fixtures = try makeExtensionFixtures(allocator);
     defer deinitExtensionFixtures(allocator, &extension_fixtures);
+    var edition_fixtures = try makeEditionFixtures(allocator);
+    defer deinitEditionFixtures(allocator, &edition_fixtures);
 
     var prng = std.Random.DefaultPrng.init(seed);
     const rng = prng.random();
@@ -458,6 +543,9 @@ pub fn main(init: std.process.Init) !void {
     var registry_text_buffer: [max_input_len]u8 = undefined;
     var extension_buffer: [max_input_len]u8 = undefined;
     var message_set_buffer: [max_input_len]u8 = undefined;
+    var edition_binary_buffer: [max_input_len]u8 = undefined;
+    var edition_json_buffer: [max_input_len]u8 = undefined;
+    var edition_text_buffer: [max_input_len]u8 = undefined;
 
     const start = std.Io.Clock.awake.now(io).nanoseconds;
     var iteration: usize = 0;
@@ -472,6 +560,9 @@ pub fn main(init: std.process.Init) !void {
         const registry_text_len = generate(rng, &registry_text_buffer, registry_fixtures.text);
         const extension_len = generate(rng, &extension_buffer, extension_fixtures.binary);
         const message_set_len = generate(rng, &message_set_buffer, extension_fixtures.message_set_binary);
+        const edition_binary_len = generate(rng, &edition_binary_buffer, edition_fixtures.binary);
+        const edition_json_len = generate(rng, &edition_json_buffer, edition_fixtures.json);
+        const edition_text_len = generate(rng, &edition_text_buffer, edition_fixtures.text);
 
         fuzzWire(binary_buffer[0..binary_len]);
         fuzzDescriptor(scratch, binary_buffer[0..binary_len]);
@@ -490,6 +581,9 @@ pub fn main(init: std.process.Init) !void {
         fuzzRegistryTextOptions(scratch, &registry_fixtures, registry_text_buffer[0..registry_text_len]);
         fuzzExtensions(scratch, &extension_fixtures, extension_buffer[0..extension_len]);
         fuzzMessageSet(scratch, &extension_fixtures, message_set_buffer[0..message_set_len]);
+        fuzzEditionBinary(scratch, &edition_fixtures, edition_binary_buffer[0..edition_binary_len]);
+        fuzzEditionJson(scratch, &edition_fixtures, edition_json_buffer[0..edition_json_len]);
+        fuzzEditionText(scratch, &edition_fixtures, edition_text_buffer[0..edition_text_len]);
     }
     const elapsed = std.Io.Clock.awake.now(io).nanoseconds - start;
 
