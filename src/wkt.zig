@@ -2049,7 +2049,7 @@ pub const Value = union(enum) {
 };
 
 fn parseJsonValueForStruct(allocator: std.mem.Allocator, text: []const u8) !std.json.Parsed(std.json.Value) {
-    return try std.json.parseFromSlice(std.json.Value, allocator, text, .{ .duplicate_field_behavior = .use_last });
+    return try std.json.parseFromSlice(std.json.Value, allocator, text, .{ .duplicate_field_behavior = .@"error" });
 }
 
 fn valueEqual(a: Value, b: Value) bool {
@@ -2270,28 +2270,13 @@ test "struct wire decode applies map last key wins" {
     try std.testing.expectEqualStrings("second", decoded.fields[0].value.string_value);
 }
 
-test "struct json parse applies object duplicate key last wins" {
+test "struct json parse rejects object duplicate keys" {
     const allocator = std.testing.allocator;
-    var parsed = try Struct.jsonParse(allocator,
+    try std.testing.expectError(error.DuplicateField, Struct.jsonParse(allocator,
         \\{"name":"first","name":"second","nested":{"x":1,"x":2},"items":[{"k":"old","k":"new"}]}
-    );
-    defer parsed.deinit(allocator);
-
-    const json = try parsed.jsonStringifyAlloc(allocator);
-    defer allocator.free(json);
-    try std.testing.expectEqualStrings("{\"name\":\"second\",\"nested\":{\"x\":2},\"items\":[{\"k\":\"new\"}]}", json);
-
-    var value = try Value.jsonParse(allocator, "{\"dup\":false,\"dup\":true}");
-    defer value.deinit(allocator);
-    const value_json = try value.jsonStringifyAlloc(allocator);
-    defer allocator.free(value_json);
-    try std.testing.expectEqualStrings("{\"dup\":true}", value_json);
-
-    var list = try ListValue.jsonParse(allocator, "[{\"dup\":1,\"dup\":3}]");
-    defer list.deinit(allocator);
-    const list_json = try list.jsonStringifyAlloc(allocator);
-    defer allocator.free(list_json);
-    try std.testing.expectEqualStrings("[{\"dup\":3}]", list_json);
+    ));
+    try std.testing.expectError(error.DuplicateField, Value.jsonParse(allocator, "{\"dup\":false,\"dup\":true}"));
+    try std.testing.expectError(error.DuplicateField, ListValue.jsonParse(allocator, "[{\"dup\":1,\"dup\":3}]"));
 }
 
 test "struct value and listvalue clone owned helpers" {

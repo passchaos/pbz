@@ -32,7 +32,7 @@ pub fn intValue(comptime T: type, json_value: std.json.Value) !T {
         },
         .float => |value| return try floatAsInt(T, value),
         .number_string => |value| return try intText(T, value),
-        .string => |value| return try std.fmt.parseInt(T, value, 10),
+        .string => |value| return try intText(T, value),
         else => return error.TypeMismatch,
     }
 }
@@ -103,7 +103,7 @@ pub fn parseAllocWithRegistry(
     bytes: []const u8,
     options: Options,
 ) anyerror!dynamic.DynamicMessage {
-    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{ .duplicate_field_behavior = .use_last });
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{ .duplicate_field_behavior = .@"error" });
     defer parsed.deinit();
 
     var message = dynamic.DynamicMessage.init(allocator, descriptor);
@@ -1813,7 +1813,7 @@ test "json parse dynamic message with scalars repeated maps enums and nested mes
     try std.testing.expectEqualSlices(u8, "{\"id\":7,\"big\":\"9007199254740993\",\"raw\":\"aGk=\",\"tags\":[\"a\",\"b\"],\"counts\":{\"red\":3},\"child\":{\"label\":\"kid\"},\"kind\":\"ADMIN\"}", rendered);
 }
 
-test "json parse dynamic message uses last duplicate object key" {
+test "json parse rejects duplicate object keys" {
     const allocator = std.testing.allocator;
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
@@ -1822,14 +1822,9 @@ test "json parse dynamic message uses last duplicate object key" {
     defer file.deinit();
     const desc = file.findMessage("M").?;
 
-    var msg = try parseAlloc(allocator, &file, desc,
+    try std.testing.expectError(error.DuplicateField, parseAlloc(allocator, &file, desc,
         \\{"id":1,"id":2,"counts":{"red":1,"red":3}}
-    , .{});
-    defer msg.deinit();
-
-    try std.testing.expectEqual(@as(i32, 2), msg.get("id").?.values.items[0].int32);
-    try std.testing.expectEqual(@as(usize, 1), msg.get("counts").?.values.items.len);
-    try std.testing.expectEqual(@as(i32, 3), msg.get("counts").?.values.items[0].map_entry.value.int32);
+    , .{}));
 }
 
 test "json parseInitialized validates required fields recursively" {
@@ -2652,10 +2647,11 @@ test "json accepts unquoted integral float spellings for 32-bit integers" {
     try std.testing.expectEqual(@as(i32, 100000), parsed.get("i32").?.values.items[0].int32);
     try std.testing.expectEqual(@as(u32, 4294967295), parsed.get("u32").?.values.items[0].uint32);
 
-    // Quoted integer fields intentionally remain decimal-only strings. This
-    // mirrors C++/Go protobuf JSON: numeric exponent compatibility applies to
-    // numeric tokens, not to arbitrary quoted strings.
-    try std.testing.expectError(error.InvalidCharacter, parseAlloc(allocator, &file, desc, "{\"i32\":\"1e5\"}", .{}));
+    // Quoted integer spellings may also use an exponent when the represented
+    // value is integral and in range, matching C++/Go protobuf JSON.
+    var quoted = try parseAlloc(allocator, &file, desc, "{\"i32\":\"1e5\"}", .{});
+    defer quoted.deinit();
+    try std.testing.expectEqual(@as(i32, 100000), quoted.get("i32").?.values.items[0].int32);
 
     try std.testing.expectError(error.TypeMismatch, parseAlloc(allocator, &file, desc, "{\"i32\":1.5}", .{}));
 }
