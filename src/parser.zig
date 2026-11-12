@@ -577,7 +577,11 @@ pub const Parser = struct {
                 try self.addLastFieldOptionsLocation(path);
             }
         }
-        try validateMessageFields(&message, self.file.syntax);
+        const file_json_format = if (self.file.syntax == .editions)
+            self.file.features.json_format
+        else
+            schema.FeatureSet.defaults(self.file.syntax).json_format;
+        try validateMessageFields(&message, self.file.syntax, file_json_format);
         try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return message;
     }
@@ -2166,11 +2170,11 @@ fn validateReserved(message: *const schema.MessageDescriptor) ParseError!void {
     }
 }
 
-fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schema.Syntax) ParseError!void {
+fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schema.Syntax, file_json_format: schema.FeatureSet.JsonFormat) ParseError!void {
     try validateReserved(message);
     try validateExtensionRanges(message, syntax);
     try validateOneofs(message);
-    try validateJsonNames(message);
+    try validateJsonNames(message, file_json_format);
     const max_end = message.extensionRangeMaxExclusive();
     for (message.fields.items, 0..) |field, i| {
         for (message.fields.items[i + 1 ..]) |other| {
@@ -2188,15 +2192,21 @@ fn validateMessageFields(message: *const schema.MessageDescriptor, syntax: schem
     }
 }
 
-fn validateJsonNames(message: *const schema.MessageDescriptor) ParseError!void {
+fn validateJsonNames(message: *const schema.MessageDescriptor, file_json_format: schema.FeatureSet.JsonFormat) ParseError!void {
+    const json_format = if (message.features) |features| features.json_format else file_json_format;
     for (message.fields.items, 0..) |field, i| {
         if (field.json_name) |json_name| {
             if (std.mem.indexOfScalar(u8, json_name, 0) != null) return error.InvalidFieldType;
             if (schema.jsonNameLooksLikeExtension(json_name)) return error.InvalidFieldType;
         }
         for (message.fields.items[i + 1 ..]) |other| {
-            if (schema.defaultJsonNamesEqual(field.name, other.name)) return error.DuplicateField;
-            if (effectiveJsonNamesEqual(&field, &other)) return error.DuplicateField;
+            if (schema.defaultJsonNamesEqual(field.name, other.name)) {
+                if (json_format != .legacy_best_effort) return error.DuplicateField;
+            }
+            if (effectiveJsonNamesEqual(&field, &other)) {
+                const both_custom = field.json_name != null and other.json_name != null;
+                if (both_custom or json_format != .legacy_best_effort) return error.DuplicateField;
+            }
         }
     }
 }
@@ -3177,9 +3187,14 @@ test "parser rejects duplicate field names and numbers" {
 
 test "parser rejects invalid json_name options" {
     const allocator = std.testing.allocator;
-    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+    var legacy_default_conflict = try Parser.parse(allocator,
         \\syntax = "proto2";
-        \\message Bad { optional int32 foo_bar = 1; optional int32 fooBar = 2; }
+        \\message Legacy { optional int32 foo_bar = 1; optional int32 fooBar = 2; }
+    );
+    legacy_default_conflict.deinit();
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Bad { int32 foo_bar = 1; int32 fooBar = 2; }
     ));
     try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
         \\syntax = "proto2";
@@ -3188,11 +3203,19 @@ test "parser rejects invalid json_name options" {
         \\  optional int32 bar = 2 [json_name = "sameName"];
         \\}
     ));
-    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+    var legacy_custom_default_conflict = try Parser.parse(allocator,
         \\syntax = "proto2";
-        \\message Bad {
+        \\message Legacy {
         \\  optional int32 foo = 1 [json_name = "barBaz"];
         \\  optional int32 bar_baz = 2;
+        \\}
+    );
+    legacy_custom_default_conflict.deinit();
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message Bad {
+        \\  int32 foo = 1 [json_name = "barBaz"];
+        \\  int32 bar_baz = 2;
         \\}
     ));
     try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,

@@ -4,7 +4,16 @@ const wire = @import("wire.zig");
 
 pub const TypeKind = enum { message, enumeration };
 
-pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, InvalidExtensionDeclaration, InvalidFieldType };
+pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, DuplicateJsonName, InvalidExtensionDeclaration, InvalidFieldType };
+
+const JsonNameOwner = struct {
+    is_custom: bool,
+};
+
+fn messageJsonFormat(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) schema.FeatureSet.JsonFormat {
+    if (message.features) |features| return features.json_format;
+    return file.features.json_format;
+}
 
 pub const max_import_chain_depth = 32;
 
@@ -54,6 +63,7 @@ pub const Registry = struct {
     pub fn addFile(self: *Registry, file: *const schema.FileDescriptor) Error!void {
         try self.validateNoSymbolConflicts(file);
         try self.validateNoExtensionConflicts(file);
+        try self.validateNoJsonNameConflicts(file);
         try self.files.append(self.allocator, file);
         errdefer self.files.items.len -= 1;
         try self.validateExtensionDeclarations();
@@ -64,6 +74,7 @@ pub const Registry = struct {
         try self.validateLoadedSymbolConflicts();
         try self.validateLoadedExtensionConflicts();
         try self.validateExtensionDeclarations();
+        for (self.files.items) |file| try self.validateNoJsonNameConflicts(file);
         try self.validateAllFileReferences();
     }
 
@@ -188,6 +199,62 @@ pub const Registry = struct {
         }
         for (self.files.items) |existing| try self.collectFileSymbols(&seen, &owned_names, existing);
         try self.collectFileSymbols(&seen, &owned_names, file);
+    }
+
+    fn validateNoJsonNameConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
+        for (file.messages.items) |*message| try self.validateMessageJsonNameConflicts(file, message);
+    }
+
+    fn validateMessageJsonNameConflicts(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor) Error!void {
+        if (message.deprecatedLegacyJsonFieldConflicts()) {
+            for (message.messages.items) |*nested| try self.validateMessageJsonNameConflicts(file, nested);
+            return;
+        }
+        const json_format = messageJsonFormat(file, message);
+
+        var default_names = std.StringHashMap(void).init(self.allocator);
+        defer default_names.deinit();
+        var owned_default: std.ArrayList([]u8) = .empty;
+        defer {
+            for (owned_default.items) |name| self.allocator.free(name);
+            owned_default.deinit(self.allocator);
+        }
+        for (message.fields.items) |*field| {
+            const name = try field.camelcaseName(self.allocator);
+            owned_default.append(self.allocator, name) catch |err| {
+                self.allocator.free(name);
+                return err;
+            };
+            if (default_names.contains(name)) {
+                if (json_format != .legacy_best_effort) return error.DuplicateJsonName;
+            } else {
+                try default_names.put(name, {});
+            }
+        }
+
+        var effective_names = std.StringHashMap(JsonNameOwner).init(self.allocator);
+        defer effective_names.deinit();
+        var owned_effective: std.ArrayList([]u8) = .empty;
+        defer {
+            for (owned_effective.items) |name| self.allocator.free(name);
+            owned_effective.deinit(self.allocator);
+        }
+        for (message.fields.items) |*field| {
+            const name = try field.jsonName(self.allocator);
+            owned_effective.append(self.allocator, name) catch |err| {
+                self.allocator.free(name);
+                return err;
+            };
+            const owner = JsonNameOwner{ .is_custom = field.hasExplicitJsonName() };
+            if (effective_names.get(name)) |existing| {
+                const both_custom = owner.is_custom and existing.is_custom;
+                if (both_custom or json_format != .legacy_best_effort) return error.DuplicateJsonName;
+            } else {
+                try effective_names.put(name, owner);
+            }
+        }
+
+        for (message.messages.items) |*nested| try self.validateMessageJsonNameConflicts(file, nested);
     }
 
     fn validateNoExtensionConflicts(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
@@ -1987,4 +2054,71 @@ test "registry rejects invalid extension declarations" {
         \\syntax = "proto2";
         \\message Host { extensions 100 to max [declaration = { number: 100 full_name: ".missing.type" }]; }
     ));
+}
+
+test "parser rejects duplicate default JSON names in proto3" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateField, @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  int32 foo_bar = 1;
+        \\  int32 fooBar = 2;
+        \\}
+    ));
+}
+
+test "registry allows legacy proto2 default JSON name conflicts" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  optional int32 foo_bar = 1;
+        \\  optional int32 fooBar = 2;
+        \\}
+    );
+    defer file.deinit();
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try registry.addFile(&file);
+}
+
+test "parser rejects duplicate custom JSON names" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateField, @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  int32 foo = 1 [json_name = "bar"];
+        \\  int32 baz = 2 [json_name = "bar"];
+        \\}
+    ));
+}
+
+test "parser rejects custom JSON name colliding with default name" {
+    const allocator = std.testing.allocator;
+    try std.testing.expectError(error.DuplicateField, @import("parser.zig").Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  int32 foo = 1 [json_name = "bar"];
+        \\  int32 bar = 2;
+        \\}
+    ));
+}
+
+test "registry rejects duplicate JSON names from decoded descriptors" {
+    const allocator = std.testing.allocator;
+    var file = schema.FileDescriptor{
+        .allocator = allocator,
+        .name = "m.proto",
+        .syntax = .proto3,
+        .features = schema.FeatureSet.defaults(.proto3),
+    };
+    defer file.deinit();
+    var message = schema.MessageDescriptor{ .name = "M" };
+    try message.fields.append(allocator, .{ .name = "foo_bar", .number = 1, .kind = .{ .scalar = .int32 } });
+    try message.fields.append(allocator, .{ .name = "fooBar", .number = 2, .kind = .{ .scalar = .int32 } });
+    try file.messages.append(allocator, message);
+
+    var registry = Registry.init(allocator);
+    defer registry.deinit();
+    try std.testing.expectError(error.DuplicateJsonName, registry.addFile(&file));
 }
