@@ -12,6 +12,7 @@ bench/rust_prost/target/
 
 # C++ benchmark generated build artifacts
 bench/cpp_protobuf/generated/
+bench/cpp_protobuf/generated_latest/
 
 # Go benchmark generated protobuf sources
 bench/go_protobuf/personpb/
