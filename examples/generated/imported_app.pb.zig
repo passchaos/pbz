@@ -181,6 +181,27 @@ pub const demo = struct {
                     return try @This().decodeOwned(allocator, writer.slice());
                 }
 
+                /// Full TextFormat parser backed by the dynamic parser. Use this when the
+                /// fast line-oriented parseText does not cover the input syntax.
+                pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+                    var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+                    defer file.deinit();
+                    const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+                    var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+                    defer dynamic.deinit();
+                    return try @This().fromDynamic(allocator, &file, &dynamic);
+                }
+
+                /// Full JSON parser backed by the dynamic parser.
+                pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+                    var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+                    defer file.deinit();
+                    const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+                    var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+                    defer dynamic.deinit();
+                    return try @This().fromDynamic(allocator, &file, &dynamic);
+                }
+
                 pub const by_nameMap = std.StringArrayHashMapUnmanaged(pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile);
 
                 pub const by_nameEntry = struct {

@@ -3,6 +3,7 @@ const pbz = @import("pbz");
 
 pub const proto_package = "demo";
 pub const proto_syntax = "proto3";
+const pbz_generated_file = @This();
 
 /// Serialized google.protobuf.FileDescriptorProto for this generated file.
 /// Use decodeFileDescriptor() to build registry/reflection metadata.
@@ -362,6 +363,27 @@ pub const demo = struct {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         pub const countsMap = std.StringArrayHashMapUnmanaged(i32);
@@ -2031,6 +2053,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         active: bool = false,
@@ -3720,6 +3763,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         title: []const u8 = "",
         payload: []const u8 = "",
         tags: []const []const u8 = &.{},
@@ -4946,6 +5010,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         payload: []const u8 = "",
         chunks: []const []const u8 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -6148,6 +6233,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         pub const pickOneof = union(enum) {
@@ -7518,6 +7624,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try @This().decodeOwned(allocator, writer.slice());
             }
 
+            /// Full TextFormat parser backed by the dynamic parser. Use this when the
+            /// fast line-oriented parseText does not cover the input syntax.
+            pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+                var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+                defer file.deinit();
+                const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+                var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+                defer dynamic.deinit();
+                return try @This().fromDynamic(allocator, &file, &dynamic);
+            }
+
+            /// Full JSON parser backed by the dynamic parser.
+            pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+                var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+                defer file.deinit();
+                const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+                var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+                defer dynamic.deinit();
+                return try @This().fromDynamic(allocator, &file, &dynamic);
+            }
+
             id: i32 = 0,
             label: []const u8 = "",
             _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -8559,6 +8686,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const i32 = &.{},
@@ -9695,6 +9843,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const u32 = &.{},
@@ -10835,6 +11004,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         values: []const u64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -11963,6 +12153,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const i32 = &.{},
@@ -13095,6 +13306,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         values: []const i64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -14223,6 +14455,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const f32 = &.{},
@@ -15355,6 +15608,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         values: []const f64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -16483,6 +16757,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const u64 = &.{},
@@ -17621,6 +17916,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         values: []const u32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -18755,6 +19071,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const i64 = &.{},
@@ -19893,6 +20230,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         values: []const i32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -21027,6 +21385,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const i64 = &.{},
@@ -22165,6 +22544,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
         values: []const bool = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -23277,6 +23677,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         values: []const i32 = &.{},
@@ -24426,6 +24847,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         pub const countsMap = std.StringArrayHashMapUnmanaged(i32);
@@ -25769,6 +26211,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             defer writer.deinit();
             try message.encode(file, &writer);
             return try @This().decodeOwned(allocator, writer.slice());
+        }
+
+        /// Full TextFormat parser backed by the dynamic parser. Use this when the
+        /// fast line-oriented parseText does not cover the input syntax.
+        pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
+        }
+
+        /// Full JSON parser backed by the dynamic parser.
+        pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+            defer file.deinit();
+            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, &file, &dynamic);
         }
 
         pub const auditsMap = std.StringArrayHashMapUnmanaged(Audit);
@@ -27380,6 +27843,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 defer writer.deinit();
                 try message.encode(file, &writer);
                 return try @This().decodeOwned(allocator, writer.slice());
+            }
+
+            /// Full TextFormat parser backed by the dynamic parser. Use this when the
+            /// fast line-oriented parseText does not cover the input syntax.
+            pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+                var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+                defer file.deinit();
+                const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+                var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
+                defer dynamic.deinit();
+                return try @This().fromDynamic(allocator, &file, &dynamic);
+            }
+
+            /// Full JSON parser backed by the dynamic parser.
+            pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
+                var file = try pbz_generated_file.decodeFileDescriptor(allocator);
+                defer file.deinit();
+                const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
+                var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});
+                defer dynamic.deinit();
+                return try @This().fromDynamic(allocator, &file, &dynamic);
             }
 
             actor: []const u8 = "",

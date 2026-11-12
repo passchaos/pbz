@@ -122,6 +122,24 @@ pub fn main() !void {
     std.debug.assert(bridged_person.id == 7);
     std.debug.assert(std.mem.eql(u8, bridged_person.name, "Zig"));
 
+    // The generated fast TextFormat parser is line-oriented; the conformant
+    // entry point delegates to the dynamic parser for the full TextFormat
+    // surface, including repeated list syntax.
+    var conformant_text = try person_pb.demo.Person.parseTextConformant(allocator,
+        \\scores: [10, 20]
+        \\counts { key: "red" value: 1 }
+    );
+    defer conformant_text.deinit(allocator);
+    std.debug.assert(std.mem.eql(i32, conformant_text.scores, &.{ 10, 20 }));
+    std.debug.assert(conformant_text.counts.get("red").? == 1);
+
+    var conformant_json = try person_pb.demo.Person.jsonParseConformant(allocator,
+        \\{"id":7,"name":"Zig","scores":[10,20]}
+    );
+    defer conformant_json.deinit(allocator);
+    std.debug.assert(conformant_json.id == 7);
+    std.debug.assert(std.mem.eql(u8, conformant_json.name, "Zig"));
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,

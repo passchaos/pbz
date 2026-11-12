@@ -752,6 +752,8 @@ fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: 
         for (file.imports.items) |import| try writeImportDecl(ctx, import, writer, depth + 1);
         try indent(writer, depth);
         try writer.writeAll("};\n");
+    }
+    if (file.imports.items.len != 0 or ctx.emit_descriptor) {
         try indent(writer, depth);
         try writer.writeAll("const pbz_generated_file = @This();\n");
     }
@@ -862,6 +864,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     try writeMessageDescriptorLookup(ctx, message, writer, depth + 1);
     try writeMessageDynamicBridge(ctx, writer, depth + 1);
+    try writeMessageConformantParsers(ctx, writer, depth + 1);
     for (message.fields.items) |*field| {
         if (field.kind == .map) {
             try writeMapEntryType(ctx, field, writer, depth + 1);
@@ -10954,6 +10957,52 @@ fn writeMessageDynamicBridge(ctx: *const CodegenContext, writer: *std.Io.Writer,
     try writer.writeAll("}\n\n");
 }
 
+fn writeMessageConformantParsers(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!ctx.emit_descriptor) return;
+    if (ctx.emit_text) {
+        try indent(writer, depth);
+        try writer.writeAll("/// Full TextFormat parser backed by the dynamic parser. Use this when the\n");
+        try indent(writer, depth);
+        try writer.writeAll("/// fast line-oriented parseText does not cover the input syntax.\n");
+        try indent(writer, depth);
+        try writer.writeAll("pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var file = try pbz_generated_file.decodeFileDescriptor(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer file.deinit();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer dynamic.deinit();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try @This().fromDynamic(allocator, &file, &dynamic);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    }
+    if (ctx.emit_json) {
+        try indent(writer, depth);
+        try writer.writeAll("/// Full JSON parser backed by the dynamic parser.\n");
+        try indent(writer, depth);
+        try writer.writeAll("pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var file = try pbz_generated_file.decodeFileDescriptor(allocator);\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer file.deinit();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("var dynamic = try pbz.json.parseAlloc(allocator, &file, message_descriptor, text, .{});\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("defer dynamic.deinit();\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("return try @This().fromDynamic(allocator, &file, &dynamic);\n");
+        try indent(writer, depth);
+        try writer.writeAll("}\n\n");
+    }
+}
+
 fn writeMessageDescriptorLookup(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     if (!ctx.emit_descriptor) return;
     var arena = std.heap.ArenaAllocator.init(ctx.allocator);
@@ -13712,6 +13761,8 @@ test "codegen embeds a decodable file descriptor" {
     try std.testing.expect(std.mem.indexOf(u8, content, "return file.findEnumDeep(\".demo.Kind\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn toDynamic(self: @This(), allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor) !pbz.DynamicMessage {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn jsonParseConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);
