@@ -72,6 +72,99 @@ fn deinitFixtures(allocator: std.mem.Allocator, fixtures: *Fixtures) void {
     fixtures.file.deinit();
 }
 
+const RegistryFixtures = struct {
+    loaded: pbz.loader.LoadResult,
+    file: *const pbz.schema.FileDescriptor,
+    descriptor: *const pbz.schema.MessageDescriptor,
+    json: []u8,
+    text: []u8,
+};
+
+const dep_source =
+    \\syntax = "proto3";
+    \\package fuzzdep;
+    \\message Dep { string name = 1; int32 n = 2; }
+;
+const any_source =
+    \\syntax = "proto3";
+    \\package google.protobuf;
+    \\message Any { string type_url = 1; bytes value = 2; }
+    \\message Timestamp { int64 seconds = 1; int32 nanos = 2; }
+;
+const main_source =
+    \\syntax = "proto3";
+    \\package fuzzmain;
+    \\import "dep.proto";
+    \\import "google/protobuf/any.proto";
+    \\message M {
+    \\  fuzzdep.Dep dep = 1;
+    \\  google.protobuf.Any any = 2;
+    \\  google.protobuf.Timestamp ts = 3;
+    \\  repeated fuzzdep.Dep deps = 4;
+    \\}
+;
+
+fn makeRegistryFixtures(allocator: std.mem.Allocator) !RegistryFixtures {
+    var tree = pbz.loader.MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("dep.proto", dep_source);
+    try tree.add("google/protobuf/any.proto", any_source);
+    try tree.add("main.proto", main_source);
+    var loaded = try pbz.loader.loadMemory(allocator, &tree, "main.proto");
+    errdefer loaded.deinit();
+
+    var main_file: ?*const pbz.schema.FileDescriptor = null;
+    for (loaded.files.items) |*file| {
+        if (std.mem.eql(u8, file.name, "main.proto")) main_file = file;
+    }
+    const file = main_file orelse return error.MissingMainFile;
+    const descriptor = file.findMessage("M") orelse return error.MissingMessage;
+    const dep_descriptor = loaded.registry.findMessage("fuzzdep.Dep", null) orelse return error.MissingMessage;
+
+    var message = pbz.DynamicMessage.init(allocator, descriptor);
+    defer message.deinit();
+    {
+        const dep = try allocator.create(pbz.DynamicMessage);
+        dep.* = pbz.DynamicMessage.init(allocator, dep_descriptor);
+        try dep.add(dep_descriptor.findField("name").?, .{ .string = try allocator.dupe(u8, "dep") });
+        try dep.add(dep_descriptor.findField("n").?, .{ .int32 = 3 });
+        try message.add(descriptor.findField("dep").?, .{ .message = dep });
+    }
+    {
+        const ts_descriptor = loaded.registry.findMessage("google.protobuf.Timestamp", null) orelse return error.MissingMessage;
+        const ts = try allocator.create(pbz.DynamicMessage);
+        ts.* = pbz.DynamicMessage.init(allocator, ts_descriptor);
+        try ts.add(ts_descriptor.findField("seconds").?, .{ .int64 = 1 });
+        try ts.add(ts_descriptor.findField("nanos").?, .{ .int32 = 2 });
+        try message.add(descriptor.findField("ts").?, .{ .message = ts });
+    }
+    const json = try pbz.json.stringifyAllocWithRegistry(allocator, file, &loaded.registry, &message, .{});
+    errdefer allocator.free(json);
+    const text = try pbz.text.formatAllocWithRegistry(allocator, file, &loaded.registry, &message, .{});
+    errdefer allocator.free(text);
+    return .{ .loaded = loaded, .file = file, .descriptor = descriptor, .json = json, .text = text };
+}
+
+fn deinitRegistryFixtures(allocator: std.mem.Allocator, fixtures: *RegistryFixtures) void {
+    allocator.free(fixtures.json);
+    allocator.free(fixtures.text);
+    fixtures.loaded.deinit();
+}
+
+fn fuzzRegistryJson(allocator: std.mem.Allocator, fixtures: *const RegistryFixtures, bytes: []const u8) void {
+    var message = pbz.json.parseAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, fixtures.descriptor, bytes, .{}) catch return;
+    defer message.deinit();
+    const encoded = message.encodedDeterministicWithRegistry(fixtures.file, &fixtures.loaded.registry) catch return;
+    allocator.free(encoded);
+}
+
+fn fuzzRegistryText(allocator: std.mem.Allocator, fixtures: *const RegistryFixtures, bytes: []const u8) void {
+    var message = pbz.text.parseAllocWithRegistry(allocator, fixtures.file, &fixtures.loaded.registry, fixtures.descriptor, bytes) catch return;
+    defer message.deinit();
+    const encoded = message.encodedDeterministicWithRegistry(fixtures.file, &fixtures.loaded.registry) catch return;
+    allocator.free(encoded);
+}
+
 fn generate(rng: std.Random, buffer: []u8, valid: []const u8) usize {
     if (rng.intRangeLessThan(u8, 0, 3) == 0) {
         const len = rng.intRangeAtMost(usize, 0, buffer.len);
@@ -107,6 +200,14 @@ fn fuzzDescriptor(allocator: std.mem.Allocator, bytes: []const u8) void {
     if (pbz.decodeFileDescriptorProto(allocator, bytes)) |file_value| {
         var file = file_value;
         file.deinit();
+    } else |_| {}
+}
+
+fn fuzzDescriptorSet(allocator: std.mem.Allocator, bytes: []const u8) void {
+    if (pbz.decodeFileDescriptorSet(allocator, bytes)) |files_value| {
+        const files = files_value;
+        for (files) |*file| file.deinit();
+        allocator.free(files);
     } else |_| {}
 }
 
@@ -196,6 +297,8 @@ pub fn main(init: std.process.Init) !void {
     // Fixtures must outlive the per-iteration arena reset.
     var fixtures = try makeFixtures(allocator);
     defer deinitFixtures(allocator, &fixtures);
+    var registry_fixtures = try makeRegistryFixtures(allocator);
+    defer deinitRegistryFixtures(allocator, &registry_fixtures);
 
     var prng = std.Random.DefaultPrng.init(seed);
     const rng = prng.random();
@@ -206,6 +309,8 @@ pub fn main(init: std.process.Init) !void {
     var binary_buffer: [max_input_len]u8 = undefined;
     var json_buffer: [max_input_len]u8 = undefined;
     var text_buffer: [max_input_len]u8 = undefined;
+    var registry_json_buffer: [max_input_len]u8 = undefined;
+    var registry_text_buffer: [max_input_len]u8 = undefined;
 
     const start = std.Io.Clock.awake.now(io).nanoseconds;
     var iteration: usize = 0;
@@ -216,15 +321,20 @@ pub fn main(init: std.process.Init) !void {
         const binary_len = generate(rng, &binary_buffer, fixtures.binary);
         const json_len = generate(rng, &json_buffer, fixtures.json);
         const text_len = generate(rng, &text_buffer, fixtures.text);
+        const registry_json_len = generate(rng, &registry_json_buffer, registry_fixtures.json);
+        const registry_text_len = generate(rng, &registry_text_buffer, registry_fixtures.text);
 
         fuzzWire(binary_buffer[0..binary_len]);
         fuzzDescriptor(scratch, binary_buffer[0..binary_len]);
+        fuzzDescriptorSet(scratch, binary_buffer[0..binary_len]);
         fuzzProtoParser(scratch, binary_buffer[0..binary_len]);
         fuzzBinary(scratch, &fixtures, binary_buffer[0..binary_len]);
         fuzzJson(scratch, &fixtures, json_buffer[0..json_len]);
         fuzzText(scratch, &fixtures, text_buffer[0..text_len]);
         fuzzGenerated(scratch, binary_buffer[0..binary_len]);
         fuzzGeneratedReuse(allocator, &reuse_message, binary_buffer[0..binary_len]);
+        fuzzRegistryJson(scratch, &registry_fixtures, registry_json_buffer[0..registry_json_len]);
+        fuzzRegistryText(scratch, &registry_fixtures, registry_text_buffer[0..registry_text_len]);
     }
     const elapsed = std.Io.Clock.awake.now(io).nanoseconds - start;
 
