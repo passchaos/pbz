@@ -165,6 +165,105 @@ fn fuzzRegistryText(allocator: std.mem.Allocator, fixtures: *const RegistryFixtu
     allocator.free(encoded);
 }
 
+const ExtensionFixtures = struct {
+    loaded: pbz.loader.LoadResult,
+    file: *const pbz.schema.FileDescriptor,
+    message_desc: *const pbz.schema.MessageDescriptor,
+    message_set_desc: *const pbz.schema.MessageDescriptor,
+    binary: []u8,
+    message_set_binary: []u8,
+};
+
+const extension_source =
+    \\syntax = "proto2";
+    \\package fuzzext;
+    \\message M {
+    \\  optional int32 id = 1;
+    \\  extensions 100 to 200;
+    \\}
+    \\extend M {
+    \\  optional string ext_str = 100;
+    \\  optional int32 ext_num = 101;
+    \\  optional M ext_msg = 102;
+    \\}
+    \\message MS {
+    \\  option message_set_wire_format = true;
+    \\  extensions 4 to max;
+    \\}
+    \\extend MS {
+    \\  optional M ms_ext = 100;
+    \\}
+;
+
+fn makeExtensionFixtures(allocator: std.mem.Allocator) !ExtensionFixtures {
+    var tree = pbz.loader.MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("ext.proto", extension_source);
+    var loaded = try pbz.loader.loadMemory(allocator, &tree, "ext.proto");
+    errdefer loaded.deinit();
+
+    var ext_file: ?*const pbz.schema.FileDescriptor = null;
+    for (loaded.files.items) |*file| {
+        if (std.mem.eql(u8, file.name, "ext.proto")) ext_file = file;
+    }
+    const file = ext_file orelse return error.MissingMainFile;
+    const message_desc = file.findMessage("M") orelse return error.MissingMessage;
+    const message_set_desc = file.findMessage("MS") orelse return error.MissingMessage;
+
+    var inner = pbz.Writer.init(allocator);
+    defer inner.deinit();
+    try inner.writeInt32(1, 9);
+
+    var writer = pbz.Writer.init(allocator);
+    defer writer.deinit();
+    try writer.writeInt32(1, 7);
+    try writer.writeString(100, "ext");
+    try writer.writeInt32(101, 5);
+    try writer.writeBytes(102, inner.slice());
+    const binary = try allocator.dupe(u8, writer.slice());
+    errdefer allocator.free(binary);
+
+    var message_set_writer = pbz.Writer.init(allocator);
+    defer message_set_writer.deinit();
+    try message_set_writer.writeTag(1, .start_group);
+    try message_set_writer.writeInt32(2, 100);
+    try message_set_writer.writeBytes(3, inner.slice());
+    try message_set_writer.writeTag(1, .end_group);
+    const message_set_binary = try allocator.dupe(u8, message_set_writer.slice());
+    errdefer allocator.free(message_set_binary);
+
+    return .{
+        .loaded = loaded,
+        .file = file,
+        .message_desc = message_desc,
+        .message_set_desc = message_set_desc,
+        .binary = binary,
+        .message_set_binary = message_set_binary,
+    };
+}
+
+fn deinitExtensionFixtures(allocator: std.mem.Allocator, fixtures: *ExtensionFixtures) void {
+    allocator.free(fixtures.binary);
+    allocator.free(fixtures.message_set_binary);
+    fixtures.loaded.deinit();
+}
+
+fn fuzzExtensions(allocator: std.mem.Allocator, fixtures: *const ExtensionFixtures, bytes: []const u8) void {
+    var message = pbz.DynamicMessage.init(allocator, fixtures.message_desc);
+    defer message.deinit();
+    message.decodeWithRegistry(fixtures.file, &fixtures.loaded.registry, bytes) catch return;
+    const encoded = message.encodedDeterministicWithRegistry(fixtures.file, &fixtures.loaded.registry) catch return;
+    allocator.free(encoded);
+}
+
+fn fuzzMessageSet(allocator: std.mem.Allocator, fixtures: *const ExtensionFixtures, bytes: []const u8) void {
+    var message = pbz.DynamicMessage.init(allocator, fixtures.message_set_desc);
+    defer message.deinit();
+    message.decodeWithRegistry(fixtures.file, &fixtures.loaded.registry, bytes) catch return;
+    const encoded = message.encodedDeterministicWithRegistry(fixtures.file, &fixtures.loaded.registry) catch return;
+    allocator.free(encoded);
+}
+
 fn generate(rng: std.Random, buffer: []u8, valid: []const u8) usize {
     if (rng.intRangeLessThan(u8, 0, 3) == 0) {
         const len = rng.intRangeAtMost(usize, 0, buffer.len);
@@ -313,6 +412,8 @@ pub fn main(init: std.process.Init) !void {
     defer deinitFixtures(allocator, &fixtures);
     var registry_fixtures = try makeRegistryFixtures(allocator);
     defer deinitRegistryFixtures(allocator, &registry_fixtures);
+    var extension_fixtures = try makeExtensionFixtures(allocator);
+    defer deinitExtensionFixtures(allocator, &extension_fixtures);
 
     var prng = std.Random.DefaultPrng.init(seed);
     const rng = prng.random();
@@ -325,6 +426,8 @@ pub fn main(init: std.process.Init) !void {
     var text_buffer: [max_input_len]u8 = undefined;
     var registry_json_buffer: [max_input_len]u8 = undefined;
     var registry_text_buffer: [max_input_len]u8 = undefined;
+    var extension_buffer: [max_input_len]u8 = undefined;
+    var message_set_buffer: [max_input_len]u8 = undefined;
 
     const start = std.Io.Clock.awake.now(io).nanoseconds;
     var iteration: usize = 0;
@@ -337,6 +440,8 @@ pub fn main(init: std.process.Init) !void {
         const text_len = generate(rng, &text_buffer, fixtures.text);
         const registry_json_len = generate(rng, &registry_json_buffer, registry_fixtures.json);
         const registry_text_len = generate(rng, &registry_text_buffer, registry_fixtures.text);
+        const extension_len = generate(rng, &extension_buffer, extension_fixtures.binary);
+        const message_set_len = generate(rng, &message_set_buffer, extension_fixtures.message_set_binary);
 
         fuzzWire(binary_buffer[0..binary_len]);
         fuzzDescriptor(scratch, binary_buffer[0..binary_len]);
@@ -351,6 +456,8 @@ pub fn main(init: std.process.Init) !void {
         fuzzGeneratedText(scratch, text_buffer[0..text_len]);
         fuzzRegistryJson(scratch, &registry_fixtures, registry_json_buffer[0..registry_json_len]);
         fuzzRegistryText(scratch, &registry_fixtures, registry_text_buffer[0..registry_text_len]);
+        fuzzExtensions(scratch, &extension_fixtures, extension_buffer[0..extension_len]);
+        fuzzMessageSet(scratch, &extension_fixtures, message_set_buffer[0..message_set_len]);
     }
     const elapsed = std.Io.Clock.awake.now(io).nanoseconds - start;
 
