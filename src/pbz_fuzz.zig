@@ -149,6 +149,21 @@ fn fuzzGenerated(allocator: std.mem.Allocator, bytes: []const u8) void {
     allocator.free(encoded);
 }
 
+/// decodeReuse/decodeOwnedReuse deinit the destination on error, so reset the
+/// persistent message to a valid empty state after a failed decode.
+fn fuzzGeneratedReuse(allocator: std.mem.Allocator, message: *person_pb.demo.Person, bytes: []const u8) void {
+    message.decodeReuse(allocator, bytes) catch {
+        message.* = person_pb.demo.Person.init();
+        return;
+    };
+    message.decodeOwnedReuse(allocator, bytes) catch {
+        message.* = person_pb.demo.Person.init();
+        return;
+    };
+    const encoded = message.encode(allocator) catch return;
+    allocator.free(encoded);
+}
+
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
@@ -185,6 +200,9 @@ pub fn main(init: std.process.Init) !void {
     var prng = std.Random.DefaultPrng.init(seed);
     const rng = prng.random();
 
+    var reuse_message = person_pb.demo.Person.init();
+    defer reuse_message.deinit(allocator);
+
     var binary_buffer: [max_input_len]u8 = undefined;
     var json_buffer: [max_input_len]u8 = undefined;
     var text_buffer: [max_input_len]u8 = undefined;
@@ -206,6 +224,7 @@ pub fn main(init: std.process.Init) !void {
         fuzzJson(scratch, &fixtures, json_buffer[0..json_len]);
         fuzzText(scratch, &fixtures, text_buffer[0..text_len]);
         fuzzGenerated(scratch, binary_buffer[0..binary_len]);
+        fuzzGeneratedReuse(allocator, &reuse_message, binary_buffer[0..binary_len]);
     }
     const elapsed = std.Io.Clock.awake.now(io).nanoseconds - start;
 
