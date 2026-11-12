@@ -49,8 +49,9 @@ benchmarks, and upstream conformance suite:
   requests decode/encode through generated code, while JSON/TextFormat use the
   registry-aware dynamic bridge
 - standalone deterministic fuzzer (`pbz-fuzz`) covering the wire reader,
-  descriptor decoder, `.proto` parser, and dynamic binary/JSON/TextFormat
-  parsers, with a short seed-0 pass wired into `zig build check`
+  descriptor decoder, `.proto` parser, dynamic binary/JSON/TextFormat parsers,
+  and generated `Person` decode/encode, with a short seed-0 pass wired into
+  `zig build check`
 
 For detailed feature coverage, see:
 

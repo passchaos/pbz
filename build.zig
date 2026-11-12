@@ -193,7 +193,15 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/pbz_fuzz.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "pbz", .module = mod }},
+            .imports = &.{
+                .{ .name = "pbz", .module = mod },
+                .{ .name = "person_pb", .module = b.createModule(.{
+                    .root_source_file = b.path("examples/generated/person.pb.zig"),
+                    .target = target,
+                    .optimize = optimize,
+                    .imports = &.{.{ .name = "pbz", .module = mod }},
+                }) },
+            },
         }),
     });
     const run_fuzz = b.addRunArtifact(fuzz_exe);

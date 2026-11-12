@@ -1,5 +1,6 @@
 const std = @import("std");
 const pbz = @import("pbz");
+const person_pb = @import("person_pb");
 
 const default_iterations: usize = 100_000;
 const default_seed: u64 = 0;
@@ -141,6 +142,13 @@ fn fuzzText(allocator: std.mem.Allocator, fixtures: *const Fixtures, bytes: []co
     message.encode(&fixtures.file, &writer) catch return;
 }
 
+fn fuzzGenerated(allocator: std.mem.Allocator, bytes: []const u8) void {
+    var message = person_pb.demo.Person.decodeOwned(allocator, bytes) catch return;
+    defer message.deinit(allocator);
+    const encoded = message.encode(allocator) catch return;
+    allocator.free(encoded);
+}
+
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
     const io = init.io;
@@ -197,6 +205,7 @@ pub fn main(init: std.process.Init) !void {
         fuzzBinary(scratch, &fixtures, binary_buffer[0..binary_len]);
         fuzzJson(scratch, &fixtures, json_buffer[0..json_len]);
         fuzzText(scratch, &fixtures, text_buffer[0..text_len]);
+        fuzzGenerated(scratch, binary_buffer[0..binary_len]);
     }
     const elapsed = std.Io.Clock.awake.now(io).nanoseconds - start;
 

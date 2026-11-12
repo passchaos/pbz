@@ -140,6 +140,7 @@ pub const Parser = struct {
     current: Token,
     file: schema.FileDescriptor,
     previous_end: usize = 0,
+    pending_lex_error: ?ParseError = null,
     saw_syntax_or_edition: bool = false,
     last_field_options_start: ?usize = null,
     last_field_options_end: ?usize = null,
@@ -164,6 +165,7 @@ pub const Parser = struct {
         var self = try Parser.init(allocator, input);
         errdefer self.file.deinit();
         try self.parseFile();
+        if (self.pending_lex_error) |err| return err;
         try self.validateImports();
         try self.validateTypeSymbols();
         try self.validateServices();
@@ -1182,17 +1184,23 @@ pub const Parser = struct {
 
     fn parseExtensionDeclarationAggregate(self: *Parser, aggregate: []const u8) Error!schema.ExtensionDeclaration {
         var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
-        return try parser.parseExtensionDeclaration();
+        const result = try parser.parseExtensionDeclaration();
+        if (parser.pending_lex_error) |err| return err;
+        return result;
     }
 
     fn parseFieldEditionDefaultAggregate(self: *Parser, aggregate: []const u8) Error!schema.FieldEditionDefault {
         var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
-        return try parser.parseFieldEditionDefault();
+        const result = try parser.parseFieldEditionDefault();
+        if (parser.pending_lex_error) |err| return err;
+        return result;
     }
 
     fn parseFeatureSupportAggregate(self: *Parser, aggregate: []const u8) Error!schema.FeatureSupport {
         var parser = try AggregateOptionParser.init(self.allocator, &self.file.owned_strings, aggregate);
-        return try parser.parseFeatureSupport();
+        const result = try parser.parseFeatureSupport();
+        if (parser.pending_lex_error) |err| return err;
+        return result;
     }
 
     fn parseReserved(self: *Parser, ranges: *std.ArrayList(schema.ReservedRange), names: *std.ArrayList([]const u8)) Error!void {
@@ -1771,6 +1779,7 @@ pub const Parser = struct {
     }
 
     fn advance(self: *Parser) ParseError!Token {
+        if (self.pending_lex_error) |err| return err;
         const old = self.current;
         self.previous_end = old.end;
         self.current = try self.lexer.next();
@@ -1833,7 +1842,10 @@ pub const Parser = struct {
     fn consumeSymbol(self: *Parser, symbol: u8) bool {
         if (self.current.tag == .symbol and self.current.symbol == symbol) {
             self.previous_end = self.current.end;
-            self.current = self.lexer.next() catch unreachable;
+            self.current = self.lexer.next() catch |err| {
+                self.pending_lex_error = err;
+                return true;
+            };
             return true;
         }
         return false;
@@ -1842,7 +1854,10 @@ pub const Parser = struct {
     fn matchIdent(self: *Parser, text: []const u8) bool {
         if (self.current.tag == .identifier and std.mem.eql(u8, self.current.text, text)) {
             self.previous_end = self.current.end;
-            self.current = self.lexer.next() catch unreachable;
+            self.current = self.lexer.next() catch |err| {
+                self.pending_lex_error = err;
+                return true;
+            };
             return true;
         }
         return false;
@@ -1880,6 +1895,7 @@ const AggregateOptionParser = struct {
     owned_strings: *std.ArrayList([]u8),
     lexer: Lexer,
     current: Token,
+    pending_lex_error: ?ParseError = null,
 
     fn init(allocator: std.mem.Allocator, owned_strings: *std.ArrayList([]u8), input: []const u8) Error!AggregateOptionParser {
         var lexer = Lexer{ .input = input };
@@ -2048,13 +2064,17 @@ const AggregateOptionParser = struct {
 
     fn consumeSymbol(self: *AggregateOptionParser, symbol: u8) bool {
         if (self.current.tag == .symbol and self.current.symbol == symbol) {
-            self.advanceVoid() catch unreachable;
+            self.advanceVoid() catch |err| {
+                self.pending_lex_error = err;
+                return true;
+            };
             return true;
         }
         return false;
     }
 
     fn advanceVoid(self: *AggregateOptionParser) ParseError!void {
+        if (self.pending_lex_error) |err| return err;
         self.current = try self.lexer.next();
     }
 };
