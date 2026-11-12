@@ -68,6 +68,13 @@ else
   echo "protoc or c++ not found; skipping C++ protobuf benchmark" >&2
 fi
 
+if [ "${PBZ_COMPARE_LATEST_CPP:-0}" = "1" ]; then
+  echo
+  echo "== C++ protobuf latest (conformance-pinned) baseline =="
+  if ! run_pinned bench/cpp_protobuf/build_latest.sh; then
+    echo "latest C++ protobuf baseline failed; install cmake/ninja or run tools/fetch_conformance_runner.sh" >&2
+  fi
+fi
 
 echo
 if command -v go >/dev/null 2>&1 && command -v protoc >/dev/null 2>&1; then
