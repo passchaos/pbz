@@ -18,6 +18,13 @@ instead of only the system libprotobuf. This requires cmake, ninja, and the
 conformance source/build cache. The focused `mini_bench.cc` subset remains
 available for quick checks.
 
+Set `PBZ_COMPARE_UPB=1` to additionally build and run the upb C-runtime
+benchmark against the same conformance-pinned protobuf release. upb is the C
+implementation behind Google's production protobuf runtimes (C++, Ruby, PHP),
+so it is the closest "latest C implementation" baseline. The script builds the
+`protoc-gen-upb*` plugins on demand with ninja and requires the conformance
+source/build cache.
+
 On busy development machines, set `PBZ_COMPARE_CPUSET` to run every baseline on
 the same CPU set via `taskset`; this avoids comparing pbz on one core mix
 against C++/Go/Rust on another. When `GOMAXPROCS` is not already set, the
@@ -43,7 +50,8 @@ row where the fastest relevant public pbz path is still slower than the fastest
 baseline path for the same workload. Use `--pivot` to emit the README-style
 workload-by-baseline table without manually transposing the detailed summary.
 The summary compares the fastest relevant public pbz path against Rust
-`prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf rows when present.
+`prost`, Rust `quick-protobuf`, C++ protobuf, upb protobuf, and Go protobuf
+rows when present.
 
 The default matrix may select zero-copy borrowed slices/views, which are not
 semantically equivalent to baselines that materialize or copy payloads. Pass
@@ -156,12 +164,20 @@ Cross-language baselines:
   `SerializeToArray` reuse paths, deterministic `CodedOutputStream` encoding,
   protobuf util JSON stringify/parse, protobuf TextFormat format/parse,
   UnknownFieldSet stress decode/count rows, plus decode into fresh and reused
-  message objects. `bench/cpp_protobuf/build_latest.sh` builds the focused
-  binary/largebytes/packed benchmark (`mini_bench.cc`) against the protobuf
-  release used by conformance (default v35.1) instead of the system
-  libprotobuf; it reuses the conformance cache and requires cmake/ninja.
+  message objects. `bench/cpp_protobuf/build_latest.sh` builds the full
+  benchmark (`main.cc`) against the protobuf release used by conformance
+  (default v35.1) instead of the system libprotobuf; it reuses the conformance
+  cache and requires cmake/ninja.
   `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
   ignored `bench/cpp_protobuf/generated/` directory before compiling.
+- `bench/upb_protobuf`: upb C-runtime binary encode/decode, deterministic
+  encode, packed scalar, large-map, unknown-field count, and JSON
+  stringify/parse rows for the same schema. It uses `protoc-gen-upb`,
+  `protoc-gen-upb_minitable`, and `protoc-gen-upbdefs` from the
+  conformance-pinned protobuf build, links `libupb.a` plus `utf8_range`, and
+  writes generated sources into an ignored `bench/upb_protobuf/generated/`
+  directory. `bench/upb_protobuf/build_and_run.sh` builds the plugins on
+  demand with ninja.
 - `bench/go_protobuf`: Go `google.golang.org/protobuf` generated-code binary
   encode/decode, deterministic `MarshalOptions`, plus `protojson`
   stringify/parse and `prototext` format/parse for the same schema. It requires Go, `protoc`, and

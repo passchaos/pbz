@@ -76,6 +76,14 @@ if [ "${PBZ_COMPARE_LATEST_CPP:-0}" = "1" ]; then
   fi
 fi
 
+if [ "${PBZ_COMPARE_UPB:-0}" = "1" ]; then
+  echo
+  echo "== upb protobuf (conformance-pinned) baseline =="
+  if ! run_pinned bench/upb_protobuf/build_and_run.sh; then
+    echo "upb protobuf baseline failed; install ninja and run tools/fetch_conformance_runner.sh" >&2
+  fi
+fi
+
 echo
 if command -v go >/dev/null 2>&1 && command -v protoc >/dev/null 2>&1; then
   echo "== Go protobuf baseline =="

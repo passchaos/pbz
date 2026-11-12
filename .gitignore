@@ -14,6 +14,9 @@ bench/rust_prost/target/
 bench/cpp_protobuf/generated/
 bench/cpp_protobuf/generated_latest/
 
+# upb benchmark generated protobuf sources
+bench/upb_protobuf/generated/
+
 # Go benchmark generated protobuf sources
 bench/go_protobuf/personpb/
 

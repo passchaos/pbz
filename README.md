@@ -114,19 +114,21 @@ Run pbz's local benchmark:
 zig build bench -Doptimize=ReleaseFast
 ```
 
-Run pbz plus Rust `prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf
-baselines in one pinned session:
+Run pbz plus Rust `prost`, Rust `quick-protobuf`, C++ protobuf, upb protobuf,
+and Go protobuf baselines in one pinned session:
 
 ```sh
-PBZ_COMPARE_CPUSET=3 PBZ_COMPARE_LATEST_CPP=1 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
+PBZ_COMPARE_CPUSET=3 PBZ_COMPARE_LATEST_CPP=1 PBZ_COMPARE_UPB=1 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot --exclude-zero-copy > /tmp/pbz-compare-fair.md
 ```
 
 `PBZ_COMPARE_LATEST_CPP=1` builds the full C++ benchmark against the protobuf
 release used by the upstream conformance suite (default 35.1) instead of the
-system libprotobuf. The compare script derives `GOMAXPROCS` from the CPU set
-when it is not already set.
+system libprotobuf. `PBZ_COMPARE_UPB=1` builds the upb C-runtime benchmark
+against the same release; upb is the C implementation behind Google's
+production protobuf runtimes. The compare script derives `GOMAXPROCS` from the
+CPU set when it is not already set.
 
 The default summary selects the fastest public pbz path, which can include
 zero-copy borrowed slices/views for `largebytes`, packed fixed-width, and
@@ -182,12 +184,15 @@ pinned to one CPU on an i9-13900K. Baseline cells show
 | complex TextFormat format | 280.05 | — | — | 2472.90 (8.83x) | 5435.66 (19.41x) |
 | complex TextFormat parse | 1845.00 | — | — | 5040.36 (2.73x) | 8525.87 (4.62x) |
 
-In mixed mode every parsed cross-language row is a pbz win; a 2026-11-13
-re-run on a loaded machine re-confirmed that gate. In fair mode the 2026-11-12
-snapshot's residual rows were two 64-bit packed encode rows within 0.5% and
-packed bool encode at 14.18 ns vs 11.42 ns; a follow-up copy-path change
-brought same-run focused measurements to 10-11 ns for pbz versus 11.8 ns for
-C++ (see the results snapshot). See the results snapshot for the full table,
+Binary and TextFormat rows are pbz wins against every tracked baseline,
+including upb. The one consistent cross-language gap found by the upb baseline
+is JSON parse: upb's direct-to-message JSON decoder is 1.5-2.3x faster than
+pbz's current two-pass `std.json.Value` parse, so closing that gap is the
+active performance item. In fair mode the 2026-11-12 snapshot's other residual
+rows were two 64-bit packed encode rows within 0.5% and packed bool encode at
+14.18 ns vs 11.42 ns; a follow-up copy-path change brought same-run focused
+measurements to 10-11 ns for pbz versus 11.8 ns for C++ (see the results
+snapshot). See the results snapshot for the full table, the upb comparison,
 the noise caveat, and the exact commands.
 
 The full fair-mode table for every tracked workload is in

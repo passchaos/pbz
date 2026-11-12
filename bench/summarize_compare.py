@@ -1409,6 +1409,89 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
 )
 
+# Workloads covered by bench/upb_protobuf. upb (the protobuf C runtime used by
+# Google's production runtimes) emits one row per workload named
+# "upb protobuf <workload>", so the mapping is derived instead of repeated in
+# every Workload literal above.
+UPB_WORKLOAD_NAMES = frozenset(
+    {
+        "binary encode",
+        "binary decode",
+        "unknown fields count by number",
+        "deterministic binary encode",
+        "scalarmix encode",
+        "scalarmix decode",
+        "ScalarMix JSON stringify",
+        "ScalarMix JSON parse",
+        "textbytes encode",
+        "textbytes decode",
+        "TextBytes JSON stringify",
+        "TextBytes JSON parse",
+        "largebytes encode",
+        "largebytes decode",
+        "presencemix encode",
+        "presencemix decode",
+        "PresenceMix JSON stringify",
+        "PresenceMix JSON parse",
+        "complex encode",
+        "complex decode",
+        "complex deterministic binary encode",
+        "complex JSON stringify",
+        "complex JSON parse",
+        "Complex ProtoName JSON stringify",
+        "Complex ProtoName JSON parse",
+        "JSON stringify",
+        "AlwaysPrint JSON stringify",
+        "ProtoName JSON stringify",
+        "EnumNumber JSON stringify",
+        "JSON parse",
+        "packed int32 encode",
+        "packed int32 decode",
+        "packed fixed32 encode",
+        "packed fixed32 decode",
+        "packed fixed64 encode",
+        "packed fixed64 decode",
+        "packed sfixed32 encode",
+        "packed sfixed32 decode",
+        "packed sfixed64 encode",
+        "packed sfixed64 decode",
+        "packed float encode",
+        "packed float decode",
+        "packed double encode",
+        "packed double decode",
+        "packed uint64 encode",
+        "packed uint64 decode",
+        "packed uint32 encode",
+        "packed uint32 decode",
+        "packed int64 encode",
+        "packed int64 decode",
+        "packed sint32 encode",
+        "packed sint32 decode",
+        "packed sint64 encode",
+        "packed sint64 decode",
+        "packed bool encode",
+        "packed bool decode",
+        "packed enum encode",
+        "packed enum decode",
+        "large map encode",
+        "shuffled large map deterministic binary encode",
+        "large map decode",
+        "LargeMap JSON stringify",
+        "LargeMap JSON parse",
+    }
+)
+
+
+def _with_upb_baseline(workload: Workload) -> Workload:
+    if workload.name not in UPB_WORKLOAD_NAMES:
+        return workload
+    baselines = dict(workload.baselines)
+    baselines["upb protobuf"] = (f"upb protobuf {workload.name}",)
+    return Workload(workload.name, workload.pbz, baselines)
+
+
+WORKLOADS = tuple(_with_upb_baseline(workload) for workload in WORKLOADS)
+
 
 def validate_workloads() -> None:
     assert len(WORKLOADS) == EXPECTED_WORKLOAD_COUNT, (len(WORKLOADS), EXPECTED_WORKLOAD_COUNT)
@@ -1526,7 +1609,13 @@ def summarize_pivot(results: dict[str, float], exclude_zero_copy: bool = False) 
     ``has_gap`` for callers that also pass ``--fail-on-loss``.
     """
 
-    baseline_order = ("rust prost", "rust quick-protobuf", "c++ protobuf", "go protobuf")
+    baseline_order = (
+        "rust prost",
+        "rust quick-protobuf",
+        "c++ protobuf",
+        "upb protobuf",
+        "go protobuf",
+    )
     rows: list[tuple[str, float, dict[str, tuple[float, float]]]] = []
     has_gap = False
 
@@ -1552,8 +1641,8 @@ def summarize_pivot(results: dict[str, float], exclude_zero_copy: bool = False) 
         return "No comparable benchmark rows found.", True
 
     lines = [
-        "| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | upb protobuf | Go protobuf |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for workload, pbz_ns, baseline_cells in rows:
         cells = []
@@ -1576,6 +1665,9 @@ def self_test() -> None:
         benchmark_line("generated unknown field number run sidecar count", 4016, 5.0),
         benchmark_line("dynamic unknown field number run sidecar count", 4016, 6.0),
         benchmark_line("c++ protobuf unknown fields count by number", 4016, 100.0),
+        benchmark_line("upb protobuf unknown fields count by number", 4016, 120.0),
+        benchmark_line("upb protobuf binary encode", 47, 60.0),
+        benchmark_line("upb protobuf binary decode", 47, 150.0),
         benchmark_line("generated textbytes borrowed slices encode", 134, 20.0),
         benchmark_line("quick-protobuf textbytes encode reuse", 134, 30.0),
         benchmark_line("generated TextBytes JSON stringify", 160, 110.0),
@@ -1713,6 +1805,8 @@ def self_test() -> None:
     assert "generated unknown field number run sidecar count" in output
     assert "dynamic unknown field number run sidecar count" not in output
     assert "c++ protobuf unknown fields count by number" in output
+    assert "upb protobuf unknown fields count by number" in output
+    assert "upb protobuf binary encode" in output
     assert "textbytes encode" in output
     assert "generated textbytes borrowed slices encode" in output
     assert "quick-protobuf textbytes encode reuse" in output
@@ -1740,7 +1834,7 @@ def self_test() -> None:
     assert dynamic_has_loss
 
     pivot_output, pivot_has_loss = summarize_pivot(results)
-    assert "| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | Go protobuf |" in pivot_output
+    assert "| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf | upb protobuf | Go protobuf |" in pivot_output
     assert "| binary encode |" in pivot_output
     assert "50.00 (1.25x)" in pivot_output
     assert "| Any WKT JSON stringify |" in pivot_output
