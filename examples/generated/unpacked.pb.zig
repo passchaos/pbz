@@ -238,9 +238,15 @@ pub const demo = struct {
             }
 
             /// Take ownership of borrowed string/bytes payloads after decode.
+            /// Owned payloads, including nested message payloads, live in this message's arena.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 _ = self;
                 _ = allocator;
+            }
+            pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
+                _ = allocator;
+                _ = _pbz_owned_allocator;
+                _ = self;
             }
 
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -601,10 +607,7 @@ pub const demo = struct {
                         },
                         18 => {
                             const payload = try r.readBytes();
-                            for (payload) |byte| {
-                                flags_buffer[flags_len] = byte != 0;
-                                flags_len += 1;
-                            }
+                            try pbz.wire.decodePackedBoolInto(flags_buffer, &flags_len, payload);
                         },
                         16 => {
                             flags_buffer[flags_len] = try r.readBool();

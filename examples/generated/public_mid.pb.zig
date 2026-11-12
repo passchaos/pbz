@@ -132,8 +132,13 @@ pub const demo = struct {
                 }
 
                 /// Take ownership of borrowed string/bytes payloads after decode.
+                /// Owned payloads, including nested message payloads, live in this message's arena.
                 pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
-                    if (self.leaf) |*value| try value.adoptOwned(allocator);
+                    const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                    try self.adoptOwnedInto(allocator, _pbz_owned_allocator);
+                }
+                pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
+                    if (self.leaf) |*value| try value.adoptOwnedInto(allocator, _pbz_owned_allocator);
                 }
 
                 fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {

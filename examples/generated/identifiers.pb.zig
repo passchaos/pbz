@@ -304,24 +304,40 @@ pub const demo = struct {
             }
 
             /// Take ownership of borrowed string/bytes payloads after decode.
+            /// Owned payloads, including nested message payloads, live in this message's arena.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.@"error".len != 0) self.@"error" = try pbz.wire.dupeBytes(_pbz_owned_allocator,self.@"error");
-                for (@constCast(self.@"test")) |*item| item.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,item.*);
+                try self.adoptOwnedInto(allocator, _pbz_owned_allocator);
+            }
+            pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
+                var _pbz_owned_total: usize = 0;
+                _pbz_owned_total += self.@"error".len;
+                for (self.@"test") |item| _pbz_owned_total += item.len;
+                var align_owned_total_it = self.@"align".iterator();
+                while (align_owned_total_it.next()) |entry| {
+                    _pbz_owned_total += entry.key_ptr.*.len;
+                }
+                switch (self.async) {
+                    .await => |value| _pbz_owned_total += value.len,
+                    else => {},
+                }
+                var _pbz_owned_block = pbz.wire.OwnedBlock.init(if (_pbz_owned_total == 0) &.{} else try _pbz_owned_allocator.alloc(u8, _pbz_owned_total));
+                if (self.@"error".len != 0) self.@"error" = _pbz_owned_block.take(self.@"error");
+                for (@constCast(self.@"test")) |*item| item.* = _pbz_owned_block.take(item.*);
                 if (self.@"align".count() != 0) {
                     var align_owned_map = alignMap.empty;
                     errdefer align_owned_map.deinit(allocator);
                     try align_owned_map.ensureUnusedCapacity(allocator, self.@"align".count());
                     var align_map_it = self.@"align".iterator();
                     while (align_map_it.next()) |entry| {
-                        const key = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.key_ptr.*);
+                        const key = _pbz_owned_block.take(entry.key_ptr.*);
                         align_owned_map.putAssumeCapacityNoClobber(key, entry.value_ptr.*);
                     }
                     self.@"align".deinit(allocator);
                     self.@"align" = align_owned_map;
                 }
                 switch (self.async) {
-                    .await => |value| self.async = .{ .await = try pbz.wire.dupeBytes(_pbz_owned_allocator,value) },
+                    .await => |value| self.async = .{ .await = _pbz_owned_block.take(value) },
                     else => {},
                 }
             }

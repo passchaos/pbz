@@ -356,19 +356,38 @@ pub const demo = struct {
             }
 
             /// Take ownership of borrowed string/bytes payloads after decode.
+            /// Owned payloads, including nested message payloads, live in this message's arena.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                try self.adoptOwnedInto(allocator, _pbz_owned_allocator);
+            }
+            pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
+                _ = allocator;
+                var _pbz_owned_total: usize = 0;
+                var by_int_owned_total_it = self.by_int.iterator();
+                while (by_int_owned_total_it.next()) |entry| {
+                    _pbz_owned_total += entry.value_ptr.*.len;
+                }
+                var by_i64_owned_total_it = self.by_i64.iterator();
+                while (by_i64_owned_total_it.next()) |entry| {
+                    _pbz_owned_total += entry.value_ptr.*.len;
+                }
+                var by_u64_owned_total_it = self.by_u64.iterator();
+                while (by_u64_owned_total_it.next()) |entry| {
+                    _pbz_owned_total += entry.value_ptr.*.len;
+                }
+                var _pbz_owned_block = pbz.wire.OwnedBlock.init(if (_pbz_owned_total == 0) &.{} else try _pbz_owned_allocator.alloc(u8, _pbz_owned_total));
                 var by_int_map_it = self.by_int.iterator();
                 while (by_int_map_it.next()) |entry| {
-                    entry.value_ptr.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
+                    entry.value_ptr.* = _pbz_owned_block.take(entry.value_ptr.*);
                 }
                 var by_i64_map_it = self.by_i64.iterator();
                 while (by_i64_map_it.next()) |entry| {
-                    entry.value_ptr.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
+                    entry.value_ptr.* = _pbz_owned_block.take(entry.value_ptr.*);
                 }
                 var by_u64_map_it = self.by_u64.iterator();
                 while (by_u64_map_it.next()) |entry| {
-                    entry.value_ptr.* = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.value_ptr.*);
+                    entry.value_ptr.* = _pbz_owned_block.take(entry.value_ptr.*);
                 }
             }
 

@@ -292,25 +292,35 @@ pub const demo = struct {
             }
 
             /// Take ownership of borrowed string/bytes payloads after decode.
+            /// Owned payloads, including nested message payloads, live in this message's arena.
             pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                 const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
-                if (self.primary) |*value| try value.adoptOwned(allocator);
-                for (@constCast(self.history)) |*item| try item.adoptOwned(allocator);
+                try self.adoptOwnedInto(allocator, _pbz_owned_allocator);
+            }
+            pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
+                var _pbz_owned_total: usize = 0;
+                var by_name_owned_total_it = self.by_name.iterator();
+                while (by_name_owned_total_it.next()) |entry| {
+                    _pbz_owned_total += entry.key_ptr.*.len;
+                }
+                var _pbz_owned_block = pbz.wire.OwnedBlock.init(if (_pbz_owned_total == 0) &.{} else try _pbz_owned_allocator.alloc(u8, _pbz_owned_total));
+                if (self.primary) |*value| try value.adoptOwnedInto(allocator, _pbz_owned_allocator);
+                for (@constCast(self.history)) |*item| try item.adoptOwnedInto(allocator, _pbz_owned_allocator);
                 if (self.by_name.count() != 0) {
                     var by_name_owned_map = by_nameMap.empty;
                     errdefer by_name_owned_map.deinit(allocator);
                     try by_name_owned_map.ensureUnusedCapacity(allocator, self.by_name.count());
                     var by_name_map_it = self.by_name.iterator();
                     while (by_name_map_it.next()) |entry| {
-                        const key = try pbz.wire.dupeBytes(_pbz_owned_allocator,entry.key_ptr.*);
-                        try entry.value_ptr.adoptOwned(allocator);
+                        const key = _pbz_owned_block.take(entry.key_ptr.*);
+                        try entry.value_ptr.adoptOwnedInto(allocator, _pbz_owned_allocator);
                         by_name_owned_map.putAssumeCapacityNoClobber(key, entry.value_ptr.*);
                     }
                     self.by_name.deinit(allocator);
                     self.by_name = by_name_owned_map;
                 }
                 switch (self.selected) {
-                    .chosen => |*value| try value.adoptOwned(allocator),
+                    .chosen => |*value| try value.adoptOwnedInto(allocator, _pbz_owned_allocator),
                     else => {},
                 }
             }
@@ -1893,9 +1903,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 /// Take ownership of borrowed string/bytes payloads after decode.
+                /// Owned payloads, including nested message payloads, live in this message's arena.
                 pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
                     _ = self;
                     _ = allocator;
+                }
+                pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
+                    _ = allocator;
+                    _ = _pbz_owned_allocator;
+                    _ = self;
                 }
 
                 fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {

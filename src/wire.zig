@@ -82,6 +82,8 @@ pub inline fn encodedVarintSize(value: u64) usize {
 /// Copy bytes using an explicit vectorized loop for larger payloads. Zig's
 /// compiler_rt `memcpy` is optimized for small copies and is substantially
 /// slower than glibc's AVX memcpy for multi-kilobyte protobuf payloads.
+/// Unaligned 32-byte stores split cache lines, so larger copies first advance
+/// to a 32-byte-aligned destination with a short scalar prefix.
 pub inline fn copyBytes(dst: []u8, src: []const u8) void {
     std.debug.assert(dst.len >= src.len);
     const builtin = @import("builtin");
@@ -91,6 +93,14 @@ pub inline fn copyBytes(dst: []u8, src: []const u8) void {
     }
     const Vec = @Vector(32, u8);
     var index: usize = 0;
+    const misalign = @intFromPtr(dst.ptr) & 31;
+    if (misalign != 0) {
+        const head = @min(32 - misalign, src.len);
+        while (index + 8 <= head) : (index += 8) {
+            dst[index..][0..8].* = src[index..][0..8].*;
+        }
+        while (index < head) : (index += 1) dst[index] = src[index];
+    }
     while (index + 128 <= src.len) : (index += 128) {
         inline for (0..4) |lane| {
             const offset = index + lane * 32;
@@ -102,14 +112,39 @@ pub inline fn copyBytes(dst: []u8, src: []const u8) void {
         const value: Vec = src[index..][0..32].*;
         dst[index..][0..32].* = value;
     }
+    while (index + 8 <= src.len) : (index += 8) {
+        dst[index..][0..8].* = src[index..][0..8].*;
+    }
     while (index < src.len) : (index += 1) dst[index] = src[index];
 }
 
-pub fn dupeBytes(allocator: std.mem.Allocator, src: []const u8) std.mem.Allocator.Error![]u8 {
+pub inline fn dupeBytes(allocator: std.mem.Allocator, src: []const u8) std.mem.Allocator.Error![]u8 {
     const out = try allocator.alloc(u8, src.len);
     copyBytes(out, src);
     return out;
 }
+
+/// Copies borrowed string/bytes payloads into one caller-provided block so a
+/// message with many small fields pays a single allocator call instead of one
+/// per payload.  Zero-length payloads stay borrowed, matching `dupeBytes`
+/// callers that skip empty fields.
+pub const OwnedBlock = struct {
+    buffer: []u8,
+    offset: usize = 0,
+
+    pub inline fn init(buffer: []u8) OwnedBlock {
+        return .{ .buffer = buffer };
+    }
+
+    pub inline fn take(self: *OwnedBlock, src: []const u8) []const u8 {
+        if (src.len == 0) return src;
+        std.debug.assert(self.offset + src.len <= self.buffer.len);
+        const out = self.buffer[self.offset..][0..src.len];
+        copyBytes(out, src);
+        self.offset += src.len;
+        return out;
+    }
+};
 
 pub inline fn bytesLessThan(lhs: []const u8, rhs: []const u8) bool {
     const common_len = @min(lhs.len, rhs.len);
@@ -1850,7 +1885,11 @@ pub inline fn appendPackedBool(allocator: std.mem.Allocator, list: *std.ArrayLis
     if (packedVarintPayloadAllSingleByte(payload)) {
         try list.ensureUnusedCapacity(allocator, payload.len);
         const out = list.addManyAsSliceAssumeCapacity(payload.len);
-        for (payload, out) |byte, *value| value.* = byte != 0;
+        if (packedBoolPayloadAllZeroOrOne(payload)) {
+            @memcpy(std.mem.sliceAsBytes(out), payload);
+        } else {
+            for (payload, out) |byte, *value| value.* = byte != 0;
+        }
         return;
     }
 
@@ -1892,6 +1931,41 @@ fn packedVarintPayloadAllSingleByte(payload: []const u8) bool {
 
 pub inline fn packedEnumAllSingleByte(payload: []const u8) bool {
     return packedVarintPayloadAllSingleByte(payload);
+}
+
+/// Decode a packed bool payload into a caller-provided buffer at `len`.
+/// Canonical 0/1 payloads are copied directly, matching the in-memory bool
+/// representation; other single-byte values fall back to a `!= 0` loop.
+pub inline fn decodePackedBoolInto(buffer: []bool, len: *usize, payload: []const u8) Error!void {
+    if (len.* + payload.len > buffer.len) return error.InvalidWireType;
+    const out = buffer[len.*..][0..payload.len];
+    if (packedBoolPayloadAllZeroOrOne(payload)) {
+        @memcpy(std.mem.sliceAsBytes(out), payload);
+    } else {
+        for (payload, out) |byte, *value| value.* = byte != 0;
+    }
+    len.* += payload.len;
+}
+
+fn packedBoolPayloadAllZeroOrOne(payload: []const u8) bool {
+    const vector_len = std.simd.suggestVectorLength(u8) orelse 0;
+    if (vector_len >= 8) {
+        const V = @Vector(vector_len, u8);
+        var index: usize = 0;
+        const high_bits: V = @splat(0xFE);
+        while (index + vector_len <= payload.len) : (index += vector_len) {
+            const chunk: V = payload[index..][0..vector_len].*;
+            if (@reduce(.Or, chunk & high_bits) != 0) return false;
+        }
+        for (payload[index..]) |byte| {
+            if (byte > 1) return false;
+        }
+        return true;
+    }
+    for (payload) |byte| {
+        if (byte > 1) return false;
+    }
+    return true;
 }
 
 pub inline fn appendPackedUInt32(allocator: std.mem.Allocator, list: *std.ArrayList(u32), payload: []const u8) (std.mem.Allocator.Error || Error)!void {
