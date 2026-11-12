@@ -93,6 +93,12 @@ pub const demo = struct {
                 self.* = undefined;
             }
 
+            /// Release owned storage and reset to the protobuf default value.
+            pub fn clear(self: *@This(), allocator: std.mem.Allocator) void {
+                self.deinit(allocator);
+                self.* = @This().init();
+            }
+
             pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
                 var out = @This().init();
                 errdefer out.deinit(allocator);
@@ -1187,6 +1193,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pbz.wire.freeRawFields(allocator, self._unknown_fields);
                 if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }
                 self.* = undefined;
+            }
+
+            /// Release owned storage and reset to the protobuf default value.
+            pub fn clear(self: *@This(), allocator: std.mem.Allocator) void {
+                self.deinit(allocator);
+                self.* = @This().init();
             }
 
             pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {

@@ -885,6 +885,8 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeDeinit(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeClear(writer, depth + 1);
+    try writer.writeAll("\n");
     try writeCloneOwned(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
     try writeAdoptOwned(ctx, message, writer, depth + 1);
@@ -4560,6 +4562,19 @@ fn writeDeinit(ctx: *const CodegenContext, message: *const schema.MessageDescrip
     try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); }\n");
     try indent(writer, depth + 1);
     try writer.writeAll("self.* = undefined;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeClear(writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("/// Release owned storage and reset to the protobuf default value.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn clear(self: *@This(), allocator: std.mem.Allocator) void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.* = @This().init();\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -13038,6 +13053,7 @@ test "codegen emits owned clone helper" {
     const content = try generateZigFile(allocator, &file);
     defer allocator.free(content);
 
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn clear(self: *@This(), allocator: std.mem.Allocator) void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);

@@ -136,6 +136,12 @@ pub fn main() !void {
     std.debug.assert(conformant_json.id == 7);
     std.debug.assert(std.mem.eql(u8, conformant_json.name, "Zig"));
 
+    var clear_target = try person_pb.demo.Person.jsonParse(allocator, "{\"id\":7,\"name\":\"Zig\"}");
+    defer clear_target.deinit(allocator);
+    clear_target.clear(allocator);
+    std.debug.assert(clear_target.id == 0);
+    std.debug.assert(clear_target.name.len == 0);
+
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,
         .always_print_primitive_fields = true,

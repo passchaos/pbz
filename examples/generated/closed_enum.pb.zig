@@ -184,6 +184,12 @@ pub const demo = struct {
                 self.* = undefined;
             }
 
+            /// Release owned storage and reset to the protobuf default value.
+            pub fn clear(self: *@This(), allocator: std.mem.Allocator) void {
+                self.deinit(allocator);
+                self.* = @This().init();
+            }
+
             pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
                 var out = @This().init();
                 errdefer out.deinit(allocator);
