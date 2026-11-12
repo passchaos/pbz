@@ -19,12 +19,26 @@ if [ ! -f "$DESCRIPTOR_SET" ]; then
   echo "descriptor set not found: $DESCRIPTOR_SET" >&2
   exit 2
 fi
+MODE="${PBZ_CONFORMANCE_MODE:-generated}"
+OPTIMIZE="${PBZ_CONFORMANCE_OPTIMIZE:-ReleaseFast}"
+TARGET="$ROOT/zig-out/bin/pbz-conformance"
+FAILURE_LIST=/dev/null
 mkdir -p "$OUTPUT_DIR"
-zig build -Doptimize=ReleaseFast >/dev/null
+if [ "$MODE" = "generated" ]; then
+  if zig build -Doptimize="$OPTIMIZE" conformance-generated >/dev/null; then
+    TARGET="$ROOT/zig-out/bin/pbz-conformance-generated"
+    FAILURE_LIST="$ROOT/tools/conformance_generated_failure_list.txt"
+  else
+    echo "generated conformance runner failed to build; falling back to the dynamic runner" >&2
+    zig build -Doptimize="$OPTIMIZE" >/dev/null
+  fi
+else
+  zig build -Doptimize="$OPTIMIZE" >/dev/null
+fi
 exec "$RUNNER" \
   --enforce_recommended \
   --output_dir "$OUTPUT_DIR" \
-  --failure_list /dev/null \
+  --failure_list "$FAILURE_LIST" \
   --text_format_failure_list /dev/null \
-  "$ROOT/zig-out/bin/pbz-conformance" \
+  "$TARGET" \
   --descriptor_set "$DESCRIPTOR_SET"

@@ -215,7 +215,7 @@ pub const demo = struct {
                 self.* = @This().init();
             }
 
-            pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This() {
+            pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) anyerror!@This() {
                 var out = @This().init();
                 errdefer out.deinit(allocator);
                 if (self.values.len != 0) {
@@ -239,14 +239,14 @@ pub const demo = struct {
 
             /// Take ownership of borrowed string/bytes payloads after decode.
             /// Owned payloads, including nested message payloads, live in this message's arena.
-            pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
+            pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) anyerror!void {
                 _ = self;
                 _ = allocator;
             }
-            pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) !void {
-                _ = allocator;
-                _ = _pbz_owned_allocator;
-                _ = self;
+            pub fn adoptOwnedInto(self: *@This(), allocator: std.mem.Allocator, _pbz_owned_allocator: std.mem.Allocator) anyerror!void {
+                _ = &self;
+                _ = &allocator;
+                _ = &_pbz_owned_allocator;
             }
 
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
@@ -305,7 +305,7 @@ pub const demo = struct {
 
             /// Merge other into self. String/bytes payloads, raw message payloads,
             /// and map keys/values are deep-copied, so other remains independently valid.
-            pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) !void {
+            pub fn mergeFrom(self: *@This(), allocator: std.mem.Allocator, other: @This()) anyerror!void {
                 if (other.values.len != 0) {
                     const old = self.values;
                     {
@@ -351,14 +351,14 @@ pub const demo = struct {
                 return size;
             }
 
-            pub fn writeTo(self: @This(), w: *pbz.Writer) !void {
+            pub fn writeTo(self: @This(), w: *pbz.Writer) anyerror!void {
                 for (self.values) |item| try w.writeInt32(1, item);
                 for (self.flags) |item| try w.writeBool(2, item);
                 for (self.kinds) |item| try w.writeInt32(3, item);
                 for (self._unknown_fields) |raw| try w.appendSlice(raw);
             }
 
-            pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) !void {
+            pub fn writeToAssumeCapacity(self: @This(), w: *pbz.Writer) anyerror!void {
                 for (self.values) |item| w.writeInt32AssumeCapacity(1, item);
                 for (self.flags) |item| w.writeBoolAssumeCapacity(2, item);
                 for (self.kinds) |item| w.writeInt32AssumeCapacity(3, item);
@@ -393,14 +393,14 @@ pub const demo = struct {
                 return try self.encodeIntoAssumeCapacity(buffer);
             }
 
-            pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
+            pub fn writeDeterministicTo(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) anyerror!void {
                 for (self.values) |item| try w.writeInt32(1, item);
                 for (self.flags) |item| try w.writeBool(2, item);
                 for (self.kinds) |item| try w.writeInt32(3, item);
                 try pbz.wire.writeRawFieldsDeterministic(allocator, self._unknown_fields, w);
             }
 
-            pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) !void {
+            pub fn writeDeterministicToAssumeCapacity(self: @This(), allocator: std.mem.Allocator, w: *pbz.Writer) anyerror!void {
                 for (self.values) |item| w.writeInt32AssumeCapacity(1, item);
                 for (self.flags) |item| w.writeBoolAssumeCapacity(2, item);
                 for (self.kinds) |item| w.writeInt32AssumeCapacity(3, item);
@@ -447,7 +447,7 @@ pub const demo = struct {
             }
 
             /// Decode from an existing reader. String/bytes fields borrow the reader input.
-            pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) !@This() {
+            pub fn decodeFromReader(allocator: std.mem.Allocator, r: *pbz.Reader) anyerror!@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var values_list: std.ArrayList(i32) = .empty;
@@ -667,12 +667,12 @@ pub const demo = struct {
             }
 
             pub fn missingRequiredFieldName(self: @This()) ?[]const u8 {
-                _ = self;
+                _ = &self;
                 return null;
             }
 
-            pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) !?[]u8 {
-                _ = self; _ = allocator;
+            pub fn missingRequiredFieldPath(self: @This(), allocator: std.mem.Allocator) anyerror!?[]u8 {
+                _ = &self; _ = &allocator;
                 return null;
             }
 
@@ -680,9 +680,9 @@ pub const demo = struct {
                 if (self.missingRequiredFieldName() != null) return error.MissingRequiredField;
             }
 
-            pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) !void {
+            pub fn validateRequiredRecursive(self: @This(), allocator: std.mem.Allocator) anyerror!void {
                 try self.validateRequired();
-                _ = allocator;
+                _ = &allocator;
             }
 
             pub const JsonStringifyOptions = struct { enum_as_name: bool = true, preserve_proto_field_names: bool = false, always_print_primitive_fields: bool = false };
@@ -707,7 +707,8 @@ pub const demo = struct {
             }
 
             pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
-                _ = allocator;
+                _ = &allocator;
+                _ = &options;
                 try writer.writeAll("{");
                 var first = true;
                 if (self.values.len != 0 or options.always_print_primitive_fields) {
@@ -755,7 +756,7 @@ pub const demo = struct {
             }
 
             /// Option-bearing variant of jsonParseValue for generated nested-message parsers.
-            pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !@This() {
+            pub fn jsonParseValueWithOptions(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) anyerror!@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 try self.jsonFillFromValue(allocator, arena_allocator, json_value, options);
@@ -777,7 +778,9 @@ pub const demo = struct {
             }
 
             fn jsonFillFromValue(self: *@This(), allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, json_value: std.json.Value, options: @This().JsonParseOptions) !void {
-                _ = arena_allocator;
+                _ = &self;
+                _ = &allocator;
+                _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
                 var it = object.iterator();
                 while (it.next()) |entry| {
@@ -1353,8 +1356,9 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try self.formatTextWithOptions(allocator, writer, .{});
             }
 
-            pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) !void {
-                _ = allocator;
+            pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) anyerror!void {
+                _ = &allocator;
+                _ = &options;
                 for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
                 for (self.flags) |value| { try writer.writeAll("flags: "); try writer.writeAll(if (value) "true" else "false"); try writer.writeByte('\n'); }
                 for (self.kinds) |value| { try writer.writeAll("kinds: "); try @This().textWriteEnum(writer, value, &.{"KIND_UNKNOWN", "KIND_A", "KIND_B"}, &.{0, 1, 2}, options.enum_as_name); try writer.writeByte('\n'); }
@@ -1365,11 +1369,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 
             pub const TextParseOptions = struct { ignore_unknown_fields: bool = false };
 
-            pub fn parseText(allocator: std.mem.Allocator, text: []const u8) !@This() {
+            pub fn parseText(allocator: std.mem.Allocator, text: []const u8) anyerror!@This() {
                 return try @This().parseTextWithOptions(allocator, text, .{});
             }
 
-            pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) !@This() {
+            pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var values_list: std.ArrayList(i32) = .empty;

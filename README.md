@@ -45,6 +45,9 @@ benchmarks, and upstream conformance suite:
 - dynamic JSON and TextFormat parse/format
 - WKT JSON/wire helpers for Timestamp, Duration, FieldMask, Any, Empty,
   Struct/Value/ListValue, and wrappers
+- generated Zig types validated by the upstream conformance suite: binary
+  requests decode/encode through generated code, while JSON/TextFormat use the
+  registry-aware dynamic bridge
 
 For detailed feature coverage, see:
 
@@ -61,12 +64,30 @@ set:
 tools/run_conformance.sh
 ```
 
-Latest accepted local result:
+By default the script builds `pbz-conformance-generated`, which runs the
+`protobuf_test_messages.*` binary tests through generated Zig message types and
+bridges JSON/TextFormat through the registry-aware dynamic path. Set
+`PBZ_CONFORMANCE_MODE=dynamic` to run the dynamic-only binary instead. The
+generated runner is large; `PBZ_CONFORMANCE_OPTIMIZE=Debug` builds it much
+faster for local iteration.
+
+Latest accepted local results (protobuf 35.1):
 
 ```text
+# dynamic path
 CONFORMANCE SUITE PASSED: 2808 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
+
+# generated path
+CONFORMANCE SUITE PASSED: 2806 successes, 0 skipped, 2 expected failures, 0 unexpected failures.
+CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 ```
+
+The two generated-path expected failures are documented in
+`tools/conformance_generated_failure_list.txt`: cyclic message fields are stored
+as raw wire bytes, so merging two occurrences of a cyclic oneof message field
+preserves message semantics but not the canonical merged byte layout that those
+recommended tests compare byte-for-byte. The dynamic path passes both.
 
 A lightweight smoke test is also available:
 

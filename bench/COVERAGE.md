@@ -41,6 +41,7 @@ has current, repository-verifiable evidence:
 |---|---|---|
 | Generated-code workflow is C++/Rust-style and ergonomic. | `examples/generated_types.zig`, `examples/generated_imports.zig`, `examples/generated_groups.zig`, `examples/generated_required.zig`, `examples/generated_defaults.zig`, `examples/generated_extensions.zig`, `examples/generated_identifiers.zig`, `examples/generated_enum_alias.zig`, `examples/generated_json_names.zig`, `examples/generated_messageset.zig`, `examples/generated_map_keys.zig`, `examples/generated_nested_types.zig`, `examples/generated_unpacked.zig`, `examples/generated_public_imports.zig`, `examples/generated_proto3_optional.zig`, `examples/generated_merge_semantics.zig`, `examples/generated_clone_owned.zig`, `examples/generated_unknown_mutation.zig`, `examples/generated_closed_enum.zig`, `examples/generated_recursive.zig`, `examples/generated_streaming.zig`, and `build.zig`'s `generateProtobuf` helper exercise checked-in and build-generated modules. | Covered for the examples in this repo; continue expanding when new schema shapes are added. |
 | Generated/runtime functionality covers protobuf surfaces used by examples, benchmarks, and conformance. | `zig build check` runs library tests, examples, summarizer self-test, and conformance smoke; `examples/dynamic_editions_features.zig` covers dynamic protobuf editions feature interactions; `examples/dynamic_weak_imports.zig` covers present and missing proto2 weak-import loader behavior; `/tmp/pbz-upstream-conformance-after-textbytes-slices.log` records upstream Binary/JSON/TextFormat conformance with zero skips and zero unexpected failures. | Strong for current covered surfaces; not a proof of every possible protobuf edge case. |
+| Generated Zig code is validated by the upstream conformance suite. | `tools/run_conformance.sh` builds `pbz-conformance-generated`, which runs the `protobuf_test_messages.*` binary tests through generated Zig types and bridges JSON/TextFormat through the registry-aware dynamic path. Result: 2806 successes with 2 documented expected failures (RECOMMENDED cyclic-oneof merge byte layout) and 445 TextFormat successes. `tools/conformance_generated_failure_list.txt` records the exceptions. | Covered; the two exceptions are documented and scoped to byte-exact canonical layout for cyclic oneof message merges. |
 | pbz beats C++ protobuf and other tracked baselines on every parsed row. | `bench/results/2026-11-12-linux-x86_64.md` records the mixed-mode and fair-mode pivots against C++ protobuf 35.1, Rust `prost`, Rust `quick-protobuf`, and Go protobuf on a pinned CPU. The mixed-mode fail-on-loss gate ends with `All parsed cross-language rows are pbz wins.`; fair mode has three residual rows documented in the same file. | Mixed mode covered for all tracked workloads; fair mode has a small, explicitly listed residual set. |
 | Performance wins come from public APIs, not benchmark-only one-offs. | `bench/summarize_compare.py` chooses public generated/runtime rows such as `encodeIntoAssumeCapacity`, `writeToAssumeCapacity`, `decodeKnownReuse`, field views/slices, packed iterators, and unknown-field sidecars; `examples/generated_performance.zig` demonstrates those APIs outside the benchmark harness. | Covered for the current matrix; new rows must keep using public APIs. |
 | JSON parsing avoids avoidable nested reserialization. | Generated nested-message JSON parsers use `jsonParseValueWithOptions`; complex JSON and proto-name JSON rows are in the cross-language matrix. | Covered for generated nested-message paths exercised by the matrix. |
@@ -304,6 +305,12 @@ benchmark harness.
 - `tools/check_generated_examples.py` and `zig build check-generated-examples`
   regenerate every checked-in `examples/generated/*.pb.zig` module from
   `examples/proto/*.proto` and fail on drift.
+- `tools/generate_conformance_messages.sh` and `zig build conformance-generated`
+  generate the upstream `test_messages_proto2`, `test_messages_proto3`, and
+  editions golden message modules from the conformance source cache.
+  `src/pbz_conformance_generated.zig` runs binary conformance requests through
+  those generated types, validates required fields, and uses the
+  registry-aware dynamic path for JSON/TextFormat input and output.
 - `examples/generated_streaming.zig` covers generated service client/handler
   adapters over a transport abstraction for unary, client-streaming,
   server-streaming, and bidirectional-streaming RPC shapes, plus generated
@@ -367,8 +374,12 @@ claiming broad superiority beyond the covered workloads:
 
 - The full Protobuf conformance test suite is not vendored here; use
   `tools/run_conformance.sh` to fetch/build and run the upstream runner. The
-  current upstream audit is a passing gate with zero skips and zero unexpected
-  failures.
+  dynamic path is a passing gate with zero skips and zero unexpected failures.
+  The generated path passes with two documented RECOMMENDED expected failures:
+  cyclic message fields are stored as raw wire bytes, so merging two occurrences
+  of a cyclic oneof message field preserves message semantics but not the
+  canonical merged byte layout those tests compare byte-for-byte
+  (`tools/conformance_generated_failure_list.txt`).
 - The comparison matrix is intentionally broad but not infinite: additional
   workloads such as remaining well-known-type edge cases may deserve separate
   rows.

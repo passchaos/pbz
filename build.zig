@@ -145,6 +145,37 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(conformance_exe);
 
+    // Generated-code conformance runner. The test message modules are generated
+    // from the conformance source cache, so this is a separate step instead of
+    // part of the default install/check graph.
+    const conformance_generated_run = b.addSystemCommand(&.{
+        "sh",
+        b.pathFromRoot("tools/generate_conformance_messages.sh"),
+    });
+    conformance_generated_run.addArtifactArg(plugin_exe);
+    const conformance_generated_dir = conformance_generated_run.addOutputDirectoryArg("conformance-generated");
+    const conformance_generated_module = b.createModule(.{
+        .root_source_file = conformance_generated_dir.path(b, "root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "pbz", .module = mod }},
+    });
+    const conformance_generated_exe = b.addExecutable(.{
+        .name = "pbz-conformance-generated",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/pbz_conformance_generated.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "pbz", .module = mod },
+                .{ .name = "conformance_generated", .module = conformance_generated_module },
+            },
+        }),
+    });
+    const install_conformance_generated = b.addInstallArtifact(conformance_generated_exe, .{});
+    const conformance_generated_step = b.step("conformance-generated", "Build the generated-code conformance runner");
+    conformance_generated_step.dependOn(&install_conformance_generated.step);
+
     const cli_exe = b.addExecutable(.{
         .name = "pbz",
         .root_module = b.createModule(.{

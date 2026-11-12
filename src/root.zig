@@ -150,12 +150,9 @@ pub const isIdentifier = schema.isIdentifier;
 pub inline fn validateUtf8(value: []const u8) bool {
     const std = @import("std");
     const word_size = @sizeOf(usize);
-    const high_bit_mask = comptime blk: {
-        var mask: usize = 0;
-        var i: usize = 0;
-        while (i < word_size) : (i += 1) mask |= @as(usize, 0x80) << @intCast(i * 8);
-        break :blk mask;
-    };
+    // 0x8080...80 without a comptime loop: inline call sites in very large
+    // generated files would otherwise exhaust the default eval branch quota.
+    const high_bit_mask = ~@as(usize, 0) / 0xFF * 0x80;
 
     var index: usize = 0;
     while (index + word_size <= value.len) : (index += word_size) {
