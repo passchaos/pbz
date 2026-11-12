@@ -87,7 +87,15 @@ baselines when those toolchains are available:
 bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot > /tmp/pbz-compare-pivot.md
+python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot --exclude-zero-copy
 ```
+
+The default summary selects the fastest public pbz path, which can include
+zero-copy borrowed slices/views for `largebytes`, packed fixed-width, and
+borrowed-decode rows. Those rows are useful for scatter/gather I/O but are not
+semantically identical to a baseline that materializes/copies the payload. Use
+`--exclude-zero-copy` to prefer owning/contiguous paths (`decode owned`,
+contiguous encode/decode) and exclude borrowed slice/view rows.
 
 For noisy shared machines, run all compared implementations on the same CPU set
 with `PBZ_COMPARE_CPUSET`. The compare script also derives `GOMAXPROCS` from

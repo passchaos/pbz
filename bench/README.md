@@ -38,6 +38,16 @@ baseline path for the same workload. Use `--pivot` to emit the README-style
 workload-by-baseline table without manually transposing the detailed summary.
 The summary compares the fastest relevant public pbz path against Rust
 `prost`, Rust `quick-protobuf`, C++ protobuf, and Go protobuf rows when present.
+
+The default matrix may select zero-copy borrowed slices/views, which are not
+semantically equivalent to baselines that materialize or copy payloads. Pass
+`--exclude-zero-copy` to prefer owning/contiguous paths (`decode owned`,
+contiguous encode/decode) and exclude borrowed slice/view rows:
+
+```sh
+python3 bench/summarize_compare.py /tmp/pbz-compare.log --pivot --exclude-zero-copy
+```
+
 See [`COVERAGE.md`](COVERAGE.md) for the current feature/performance audit
 checklist and the remaining non-goal/open-audit items.
 

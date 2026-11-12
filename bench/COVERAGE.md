@@ -59,6 +59,13 @@ bench/run_compare.sh 2>&1 | tee /tmp/pbz-compare.log
 python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss
 ```
 
+The default matrix includes zero-copy borrowed slices/views. For a
+semantically owning/contiguous comparison, add `--exclude-zero-copy`:
+
+```sh
+python3 bench/summarize_compare.py /tmp/pbz-compare.log --fail-on-loss --exclude-zero-copy
+```
+
 If unrelated machine load makes per-row timings unstable, set
 `PBZ_COMPARE_CPUSET` so every compared implementation runs on the same CPU set.
 If `GOMAXPROCS` is unset, `bench/run_compare.sh` derives it from that CPU set

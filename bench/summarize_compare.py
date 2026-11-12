@@ -10,6 +10,10 @@ compares the fastest relevant public pbz path against each available
 cross-language implementation for the same workload. It is intentionally a
 summary/audit tool: by default it exits successfully even when pbz loses a row or
 when a baseline is missing; use ``--fail-on-loss`` for CI-style gating.
+
+Pass ``--exclude-zero-copy`` to prefer owning/contiguous pbz paths (for example
+``decode owned``) and exclude borrowed slice/view rows that do not materialize
+the payload.
 """
 
 from __future__ import annotations
@@ -270,7 +274,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "binary decode",
-        ("generated binary decode", "generated binary decode reuse"),
+        ("generated binary decode", "generated binary decode reuse", "generated binary decode owned"),
         {
             "rust prost": ("prost binary decode",),
             "rust quick-protobuf": ("quick-protobuf binary decode",),
@@ -369,7 +373,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "textbytes decode",
-        ("generated textbytes decode", "generated textbytes decode reuse"),
+        ("generated textbytes decode", "generated textbytes decode reuse", "generated textbytes decode owned"),
         {
             "rust prost": ("prost textbytes decode",),
             "rust quick-protobuf": ("quick-protobuf textbytes decode",),
@@ -414,7 +418,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "largebytes decode",
-        ("generated largebytes decode", "generated largebytes decode reuse", "generated largebytes borrowed view decode"),
+        ("generated largebytes decode", "generated largebytes decode reuse", "generated largebytes decode owned", "generated largebytes borrowed view decode"),
         {
             "rust prost": ("prost largebytes decode",),
             "rust quick-protobuf": ("quick-protobuf largebytes decode",),
@@ -443,7 +447,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "presencemix decode",
-        ("generated presencemix decode", "generated presencemix decode reuse"),
+        ("generated presencemix decode", "generated presencemix decode reuse", "generated presencemix decode owned"),
         {
             "rust prost": ("prost presencemix decode",),
             "rust quick-protobuf": ("quick-protobuf presencemix decode",),
@@ -488,7 +492,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "complex decode",
-        ("generated complex decode", "generated complex decode reuse"),
+        ("generated complex decode", "generated complex decode reuse", "generated complex decode owned"),
         {
             "rust prost": ("prost complex decode",),
             "rust quick-protobuf": ("quick-protobuf complex decode",),
@@ -1379,7 +1383,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "large map decode",
-        ("generated large map decode", "generated large map decode reuse"),
+        ("generated large map decode", "generated large map decode reuse", "generated large map decode owned"),
         {
             "rust prost": ("prost large map decode",),
             "rust quick-protobuf": ("quick-protobuf large map decode",),
@@ -1437,26 +1441,36 @@ def parse_results(text: str) -> dict[str, float]:
     return results
 
 
-def best(results: dict[str, float], names: tuple[str, ...]) -> tuple[str, float] | None:
+def best(
+    results: dict[str, float],
+    names: tuple[str, ...],
+    exclude_zero_copy: bool = False,
+) -> tuple[str, float] | None:
+    if exclude_zero_copy:
+        filtered = tuple(name for name in names if "borrowed" not in name and " view" not in name)
+        owned = tuple(name for name in filtered if " owned" in name)
+        if owned:
+            filtered = owned
+        names = filtered
     available = [(name, results[name]) for name in names if name in results]
     if not available:
         return None
     return min(available, key=lambda item: item[1])
 
 
-def summarize(results: dict[str, float]) -> tuple[str, bool]:
+def summarize(results: dict[str, float], exclude_zero_copy: bool = False) -> tuple[str, bool]:
     rows: list[tuple[str, str, str, float, str, float, float, str]] = []
     uncovered: list[tuple[str, str, tuple[str, ...]]] = []
     has_gap = False
     for workload in WORKLOADS:
-        pbz_best = best(results, workload.pbz)
+        pbz_best = best(results, workload.pbz, exclude_zero_copy)
         if pbz_best is None:
             uncovered.append((workload.name, "pbz", workload.pbz))
             has_gap = True
             continue
         pbz_name, pbz_ns = pbz_best
         for impl, names in workload.baselines.items():
-            baseline_best = best(results, names)
+            baseline_best = best(results, names, exclude_zero_copy)
             if baseline_best is None:
                 uncovered.append((workload.name, impl, names))
                 has_gap = True
@@ -1502,7 +1516,7 @@ def summarize(results: dict[str, float]) -> tuple[str, bool]:
     return "\n".join(lines), has_gap
 
 
-def summarize_pivot(results: dict[str, float]) -> tuple[str, bool]:
+def summarize_pivot(results: dict[str, float], exclude_zero_copy: bool = False) -> tuple[str, bool]:
     """Return a README-friendly workload-by-baseline comparison table.
 
     This intentionally uses the same workload matrix and gap accounting as the
@@ -1517,14 +1531,14 @@ def summarize_pivot(results: dict[str, float]) -> tuple[str, bool]:
     has_gap = False
 
     for workload in WORKLOADS:
-        pbz_best = best(results, workload.pbz)
+        pbz_best = best(results, workload.pbz, exclude_zero_copy)
         if pbz_best is None:
             has_gap = True
             continue
         _pbz_name, pbz_ns = pbz_best
         baseline_cells: dict[str, tuple[float, float]] = {}
         for impl, names in workload.baselines.items():
-            baseline_best = best(results, names)
+            baseline_best = best(results, names, exclude_zero_copy)
             if baseline_best is None:
                 has_gap = True
                 continue
@@ -1739,6 +1753,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("log", nargs="?", help="run_compare output log; stdin is used when omitted")
     parser.add_argument("--fail-on-loss", action="store_true", help="exit non-zero if any parsed row is a pbz loss or missing baseline")
     parser.add_argument("--pivot", action="store_true", help="print a README-friendly workload-by-baseline table")
+    parser.add_argument(
+        "--exclude-zero-copy",
+        action="store_true",
+        help="compare owning/contiguous pbz paths instead of borrowed slices/views",
+    )
     parser.add_argument("--self-test", action="store_true", help="run parser self-test")
     args = parser.parse_args(argv)
 
@@ -1751,7 +1770,11 @@ def main(argv: list[str]) -> int:
     else:
         text = sys.stdin.read()
     results = parse_results(text)
-    output, has_loss = summarize_pivot(results) if args.pivot else summarize(results)
+    output, has_loss = (
+        summarize_pivot(results, args.exclude_zero_copy)
+        if args.pivot
+        else summarize(results, args.exclude_zero_copy)
+    )
     print(output)
     return 1 if args.fail_on_loss and has_loss else 0
 
