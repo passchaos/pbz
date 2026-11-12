@@ -95,11 +95,12 @@ pub inline fn copyBytes(dst: []u8, src: []const u8) void {
     var index: usize = 0;
     const misalign = @intFromPtr(dst.ptr) & 31;
     if (misalign != 0) {
-        const head = @min(32 - misalign, src.len);
-        while (index + 8 <= head) : (index += 8) {
-            dst[index..][0..8].* = src[index..][0..8].*;
-        }
-        while (index < head) : (index += 1) dst[index] = src[index];
+        // One overlapping 32-byte store replaces up to 31 scalar prefix bytes.
+        // The aligned loop below re-copies the overlap from `head`.
+        const head = 32 - misalign;
+        const value: Vec = src[0..32].*;
+        dst[0..32].* = value;
+        index = head;
     }
     while (index + 128 <= src.len) : (index += 128) {
         inline for (0..4) |lane| {
