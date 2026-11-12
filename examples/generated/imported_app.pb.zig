@@ -154,6 +154,11 @@ pub const demo = struct {
                     pub const is_packed = false;
                 };
 
+                /// Look up this message's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                    return file.findMessageDeep(".demo.imports.app.Request");
+                }
+
                 pub const by_nameMap = std.StringArrayHashMapUnmanaged(pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile);
 
                 pub const by_nameEntry = struct {

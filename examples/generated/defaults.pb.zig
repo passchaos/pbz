@@ -95,6 +95,11 @@ pub const demo = struct {
             pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
                 try std.json.Stringify.value(self.protoName(), .{}, writer);
             }
+            /// Look up this enum's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {
+                return file.findEnumDeep(".demo.defaults.Mode");
+            }
+
         };
 
         pub const Defaults = struct {
@@ -235,6 +240,11 @@ pub const demo = struct {
                 pub const default_value = "-inf";
                 pub const is_packed = false;
             };
+
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.defaults.Defaults");
+            }
 
             count: i32 = 42,
             has_count: bool = false,

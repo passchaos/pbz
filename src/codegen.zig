@@ -195,7 +195,7 @@ fn writePackageNamespace(ctx: *const CodegenContext, package: []const u8, writer
 }
 
 fn writeFileDecls(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: usize) Error!void {
-    for (ctx.file.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth);
+    for (ctx.file.enums.items) |*enumeration| try writeEnum(ctx, enumeration, writer, depth);
     for (ctx.file.messages.items) |*message| try writeMessage(ctx, message, writer, depth);
     try writeExtensionMetadata(ctx, writer, depth);
     try writeServiceMetadata(ctx, writer, depth);
@@ -405,6 +405,30 @@ fn nestedMessageFullNameForCodegen(allocator: std.mem.Allocator, package: []cons
 fn joinFullProtoName(allocator: std.mem.Allocator, package: []const u8, relative: []const u8) std.mem.Allocator.Error![]const u8 {
     if (package.len == 0) return try std.fmt.allocPrint(allocator, ".{s}", .{relative});
     return try std.fmt.allocPrint(allocator, ".{s}.{s}", .{ package, relative });
+}
+
+fn enumFullNameForCodegen(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]const u8 {
+    for (file.enums.items) |*enumeration| {
+        if (enumeration == target) return try joinFullProtoName(allocator, file.package, enumeration.name);
+    }
+    for (file.messages.items) |*message| {
+        if (try nestedEnumFullNameForCodegen(allocator, file.package, message.name, message, target)) |full_name| return full_name;
+    }
+    return null;
+}
+
+fn nestedEnumFullNameForCodegen(allocator: std.mem.Allocator, package: []const u8, prefix: []const u8, message: *const schema.MessageDescriptor, target: *const schema.EnumDescriptor) std.mem.Allocator.Error!?[]const u8 {
+    for (message.enums.items) |*enumeration| {
+        if (enumeration == target) {
+            const path = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, enumeration.name });
+            return try joinFullProtoName(allocator, package, path);
+        }
+    }
+    for (message.messages.items) |*nested| {
+        const path = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, nested.name });
+        if (try nestedEnumFullNameForCodegen(allocator, package, path, nested, target)) |full_name| return full_name;
+    }
+    return null;
 }
 
 const PluginParameterOptions = struct {
@@ -836,6 +860,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     if (message.fields.items.len != 0) try writer.writeAll("\n");
     for (message.fields.items) |*field| try writeFieldMetadataDecl(ctx, field, writer, depth + 1);
     if (message.fields.items.len != 0) try writer.writeAll("\n");
+    try writeMessageDescriptorLookup(ctx, message, writer, depth + 1);
     for (message.fields.items) |*field| {
         if (field.kind == .map) {
             try writeMapEntryType(ctx, field, writer, depth + 1);
@@ -900,7 +925,7 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
         try writeTextMethods(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
     }
-    for (message.enums.items) |*enumeration| try writeEnum(enumeration, writer, depth + 1);
+    for (message.enums.items) |*enumeration| try writeEnum(ctx, enumeration, writer, depth + 1);
     for (message.messages.items) |*nested| try writeMessage(ctx, nested, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
@@ -10884,7 +10909,41 @@ fn writeJsonEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8,
     try writer.writeAll(")");
 }
 
-fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeMessageDescriptorLookup(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!ctx.emit_descriptor) return;
+    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+    defer arena.deinit();
+    const full_name = (try messageFullNameForCodegen(arena.allocator(), ctx.file, message)) orelse return;
+    try indent(writer, depth);
+    try writer.writeAll("/// Look up this message's descriptor in a decoded file descriptor.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return file.findMessageDeep(");
+    try writeZigStringLiteral(full_name, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeEnumDescriptorLookup(ctx: *const CodegenContext, enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (!ctx.emit_descriptor) return;
+    var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+    defer arena.deinit();
+    const full_name = (try enumFullNameForCodegen(arena.allocator(), ctx.file, enumeration)) orelse return;
+    try indent(writer, depth);
+    try writer.writeAll("/// Look up this enum's descriptor in a decoded file descriptor.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return file.findEnumDeep(");
+    try writeZigStringLiteral(full_name, writer);
+    try writer.writeAll(");\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+}
+
+fn writeEnum(ctx: *const CodegenContext, enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub const ");
     try writeQuotedIdent(enumeration.name, writer);
@@ -10907,6 +10966,7 @@ fn writeEnum(enumeration: *const schema.EnumDescriptor, writer: *std.Io.Writer, 
         try writer.writeAll(";\n");
     }
     try writeEnumHelpers(enumeration, writer, depth + 1);
+    try writeEnumDescriptorLookup(ctx, enumeration, writer, depth + 1);
     try indent(writer, depth);
     try writer.writeAll("};\n\n");
 }
@@ -13585,7 +13645,14 @@ test "codegen embeds a decodable file descriptor" {
     var file = try @import("parser.zig").Parser.parse(allocator,
         \\syntax = "proto3";
         \\package demo;
-        \\message Person { int32 id = 1; string name = 2; }
+        \\enum Kind { UNKNOWN = 0; }
+        \\message Person {
+        \\  message Nested { int32 id = 1; }
+        \\  int32 id = 1;
+        \\  string name = 2;
+        \\  Kind kind = 3;
+        \\  Nested nested = 4;
+        \\}
     );
     defer file.deinit();
     file.name = "person.proto";
@@ -13595,6 +13662,9 @@ test "codegen embeds a decodable file descriptor" {
     try std.testing.expect(std.mem.indexOf(u8, content, "pub const file_descriptor_proto = [_]u8{") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeFileDescriptor(allocator: std.mem.Allocator) !pbz.schema.FileDescriptor {") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return pbz.decodeFileDescriptorProto(allocator, &file_descriptor_proto);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return file.findMessageDeep(\".demo.Person\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return file.findMessageDeep(\".demo.Person.Nested\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "return file.findEnumDeep(\".demo.Kind\");") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

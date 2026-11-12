@@ -154,6 +154,11 @@ pub const demo = struct {
                 pub const map_value_enum_ref = void;
             };
 
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.mapkeys.MapKeys");
+            }
+
             pub const by_intMap = std.AutoArrayHashMapUnmanaged(i32, []const u8);
 
             pub const by_intEntry = struct {

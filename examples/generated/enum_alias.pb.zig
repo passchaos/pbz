@@ -83,6 +83,11 @@ pub const demo = struct {
             pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
                 try std.json.Stringify.value(self.protoName(), .{}, writer);
             }
+            /// Look up this enum's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {
+                return file.findEnumDeep(".demo.alias.Status");
+            }
+
         };
 
         pub const Job = struct {
@@ -121,6 +126,11 @@ pub const demo = struct {
                 pub const default_value = "";
                 pub const is_packed = true;
             };
+
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.alias.Job");
+            }
 
             status: i32 = 0,
             history: []const i32 = &.{},

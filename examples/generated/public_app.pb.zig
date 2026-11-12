@@ -74,6 +74,11 @@ pub const demo = struct {
                     pub const is_packed = false;
                 };
 
+                /// Look up this message's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                    return file.findMessageDeep(".demo.publics.app.App");
+                }
+
                 direct_leaf: ?imports.public_mid_proto.imports.public_leaf_proto.demo.publics.leaf.Leaf = null,
                 mid: ?imports.public_mid_proto.demo.publics.mid.Mid = null,
                 _json_arena: ?*std.heap.ArenaAllocator = null,

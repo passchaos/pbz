@@ -252,6 +252,11 @@ pub const demo = struct {
         pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
             try std.json.Stringify.value(self.protoName(), .{}, writer);
         }
+        /// Look up this enum's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {
+            return file.findEnumDeep(".demo.BenchKind");
+        }
+
     };
 
     pub const Person = struct {
@@ -331,6 +336,11 @@ pub const demo = struct {
             pub const map_value_has_enum_ref = false;
             pub const map_value_enum_ref = void;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.Person");
+        }
 
         pub const countsMap = std.StringArrayHashMapUnmanaged(i32);
 
@@ -1973,6 +1983,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.ScalarMix");
+        }
 
         active: bool = false,
         count: u32 = 0,
@@ -3634,6 +3649,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = false;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.TextBytes");
+        }
+
         title: []const u8 = "",
         payload: []const u8 = "",
         tags: []const []const u8 = &.{},
@@ -4833,6 +4853,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = false;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.LargeBytes");
+        }
+
         payload: []const u8 = "",
         chunks: []const []const u8 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -6009,6 +6034,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = false;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.PresenceMix");
+        }
 
         pub const pickOneof = union(enum) {
             none,
@@ -7351,6 +7381,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub const is_packed = false;
             };
 
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.PresenceMix.Child");
+            }
+
             id: i32 = 0,
             label: []const u8 = "",
             _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -8366,6 +8401,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.Packed");
+        }
 
         values: []const i32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -9475,6 +9515,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.FixedPacked");
+        }
 
         values: []const u32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -10587,6 +10632,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.Fixed64Packed");
+        }
+
         values: []const u64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -11689,6 +11739,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.SFixedPacked");
+        }
 
         values: []const i32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -12793,6 +12848,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.SFixed64Packed");
+        }
+
         values: []const i64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -13895,6 +13955,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.FloatPacked");
+        }
 
         values: []const f32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -14999,6 +15064,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.DoublePacked");
+        }
+
         values: []const f64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -16101,6 +16171,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.UInt64Packed");
+        }
 
         values: []const u64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -17211,6 +17286,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.UInt32Packed");
+        }
+
         values: []const u32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -18319,6 +18399,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.Int64Packed");
+        }
 
         values: []const i64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -19429,6 +19514,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.SInt32Packed");
+        }
+
         values: []const i32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -20537,6 +20627,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.SInt64Packed");
+        }
 
         values: []const i64 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -21647,6 +21742,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const is_packed = true;
         };
 
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.BoolPacked");
+        }
+
         values: []const bool = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
         _unknown_fields: []const []const u8 = &.{},
@@ -22733,6 +22833,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = true;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.EnumPacked");
+        }
 
         values: []const i32 = &.{},
         _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -23855,6 +23960,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const map_value_has_enum_ref = false;
             pub const map_value_enum_ref = void;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.LargeMap");
+        }
 
         pub const countsMap = std.StringArrayHashMapUnmanaged(i32);
 
@@ -25171,6 +25281,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             pub const default_value = "";
             pub const is_packed = false;
         };
+
+        /// Look up this message's descriptor in a decoded file descriptor.
+        pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+            return file.findMessageDeep(".demo.Complex");
+        }
 
         pub const auditsMap = std.StringArrayHashMapUnmanaged(Audit);
 
@@ -26755,6 +26870,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub const default_value = "";
                 pub const is_packed = false;
             };
+
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.Complex.Audit");
+            }
 
             actor: []const u8 = "",
             at_unix: i64 = 0,

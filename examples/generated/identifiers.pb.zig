@@ -170,6 +170,11 @@ pub const demo = struct {
                 pub const is_packed = false;
             };
 
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.identifiers.type");
+            }
+
             pub const alignMap = std.StringArrayHashMapUnmanaged(i32);
 
             pub const alignEntry = struct {

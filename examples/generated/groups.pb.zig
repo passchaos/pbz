@@ -129,6 +129,11 @@ pub const demo = struct {
                 pub const is_packed = false;
             };
 
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.groups.Parent");
+            }
+
             pub const pickedOneof = union(enum) {
                 none,
                 picked_box: Box,
@@ -1370,6 +1375,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const is_packed = false;
                 };
 
+                /// Look up this message's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                    return file.findMessageDeep(".demo.groups.Parent.Box");
+                }
+
                 label: []const u8 = "",
                 has_label: bool = false,
                 _json_arena: ?*std.heap.ArenaAllocator = null,
@@ -2358,6 +2368,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const default_value = "";
                     pub const is_packed = false;
                 };
+
+                /// Look up this message's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                    return file.findMessageDeep(".demo.groups.Parent.Item");
+                }
 
                 rank: i32 = 0,
                 has_rank: bool = false,

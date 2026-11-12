@@ -65,6 +65,11 @@ pub const demo = struct {
                 pub const is_packed = false;
             };
 
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.recursive.Node");
+            }
+
             child: []const u8 = "",
             has_child: bool = false,
             children: []const Node = &.{},

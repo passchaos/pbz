@@ -101,9 +101,19 @@ pub const demo = struct {
             pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
                 try std.json.Stringify.value(self.protoName(), .{}, writer);
             }
+            /// Look up this enum's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {
+                return file.findEnumDeep(".demo.extgen.Role");
+            }
+
         };
 
         pub const Host = struct {
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.extgen.Host");
+            }
+
             _json_arena: ?*std.heap.ArenaAllocator = null,
             _unknown_fields: []const []const u8 = &.{},
             pub fn init() @This() {
@@ -1426,6 +1436,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub const default_value = "";
                 pub const is_packed = false;
             };
+
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.extgen.Payload");
+            }
 
             id: i32 = 0,
             has_id: bool = false,

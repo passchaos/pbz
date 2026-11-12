@@ -156,6 +156,11 @@ pub const demo = struct {
                 pub const is_packed = false;
             };
 
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.nested.Outer");
+            }
+
             pub const by_nameMap = std.StringArrayHashMapUnmanaged(Inner);
 
             pub const by_nameEntry = struct {
@@ -1681,6 +1686,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
                     try std.json.Stringify.value(self.protoName(), .{}, writer);
                 }
+                /// Look up this enum's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {
+                    return file.findEnumDeep(".demo.nested.Outer.State");
+                }
+
             };
 
             pub const Inner = struct {
@@ -1719,6 +1729,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const default_value = "";
                     pub const is_packed = false;
                 };
+
+                /// Look up this message's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                    return file.findMessageDeep(".demo.nested.Outer.Inner");
+                }
 
                 id: i32 = 0,
                 state: i32 = 0,

@@ -110,6 +110,9 @@ pub fn main() !void {
     std.debug.assert(std.mem.eql(u8, file_descriptor.package, "demo"));
     const person_descriptor = file_descriptor.findMessage("Person") orelse unreachable;
     std.debug.assert(person_descriptor.fields.items.len == 4);
+    std.debug.assert(person_pb.demo.Person.descriptor(&file_descriptor).? == person_descriptor);
+    std.debug.assert(person_pb.demo.PresenceMix.Child.descriptor(&file_descriptor) != null);
+    std.debug.assert(person_pb.demo.BenchKind.descriptor(&file_descriptor) != null);
 
     const json = try decoded.jsonStringifyAllocWithOptions(allocator, .{
         .preserve_proto_field_names = true,

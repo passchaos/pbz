@@ -121,6 +121,11 @@ pub const demo = struct {
             pub fn jsonStringify(self: @This(), writer: *std.Io.Writer) !void {
                 try std.json.Stringify.value(self.protoName(), .{}, writer);
             }
+            /// Look up this enum's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.EnumDescriptor {
+                return file.findEnumDeep(".demo.advanced.Kind");
+            }
+
         };
 
         pub const Envelope = struct {
@@ -251,6 +256,11 @@ pub const demo = struct {
                 pub const map_value_has_enum_ref = false;
                 pub const map_value_enum_ref = void;
             };
+
+            /// Look up this message's descriptor in a decoded file descriptor.
+            pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                return file.findMessageDeep(".demo.advanced.Envelope");
+            }
 
             pub const auditsMap = std.StringArrayHashMapUnmanaged(Audit);
 
@@ -1778,6 +1788,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     pub const default_value = "";
                     pub const is_packed = false;
                 };
+
+                /// Look up this message's descriptor in a decoded file descriptor.
+                pub fn descriptor(file: *const pbz.schema.FileDescriptor) ?*const pbz.schema.MessageDescriptor {
+                    return file.findMessageDeep(".demo.advanced.Envelope.Audit");
+                }
 
                 actor: []const u8 = "",
                 at_unix: i64 = 0,
