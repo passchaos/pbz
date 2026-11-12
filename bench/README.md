@@ -150,7 +150,11 @@ Cross-language baselines:
   `SerializeToArray` reuse paths, deterministic `CodedOutputStream` encoding,
   protobuf util JSON stringify/parse, protobuf TextFormat format/parse,
   UnknownFieldSet stress decode/count rows, plus decode into fresh and reused
-  message objects. `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
+  message objects. `bench/cpp_protobuf/build_latest.sh` builds the focused
+  binary/largebytes/packed benchmark (`mini_bench.cc`) against the protobuf
+  release used by conformance (default v35.1) instead of the system
+  libprotobuf; it reuses the conformance cache and requires cmake/ninja.
+  `bench/cpp_protobuf/build_and_run.sh` generates C++ sources into an
   ignored `bench/cpp_protobuf/generated/` directory before compiling.
 - `bench/go_protobuf`: Go `google.golang.org/protobuf` generated-code binary
   encode/decode, deterministic `MarshalOptions`, plus `protojson`
