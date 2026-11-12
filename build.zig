@@ -108,6 +108,7 @@ fn outputNameForProto(b: *std.Build, proto_file: []const u8, suffix: []const u8,
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const python = b.findProgram(&.{ "python3", "python" }, &.{}) catch "python3";
 
     const mod = b.addModule("pbz", .{
         .root_source_file = b.path("src/root.zig"),
@@ -277,12 +278,12 @@ pub fn build(b: *std.Build) void {
     bench_step.dependOn(&run_bench.step);
 
     const run_summary_self_test = b.addSystemCommand(&.{
-        "python3",
+        python,
         "bench/summarize_compare.py",
         "--self-test",
     });
     const run_generated_examples_check = b.addSystemCommand(&.{
-        "python3",
+        python,
         "tools/check_generated_examples.py",
         "--plugin",
     });
@@ -290,7 +291,7 @@ pub fn build(b: *std.Build) void {
     const generated_examples_check_step = b.step("check-generated-examples", "Regenerate checked-in protobuf examples and verify no drift");
     generated_examples_check_step.dependOn(&run_generated_examples_check.step);
     const run_conformance_smoke = b.addSystemCommand(&.{
-        "python3",
+        python,
         "tools/smoke_conformance.py",
         "--exe",
     });
@@ -299,7 +300,7 @@ pub fn build(b: *std.Build) void {
     conformance_smoke_step.dependOn(&run_conformance_smoke.step);
 
     const run_cli_smoke = b.addSystemCommand(&.{
-        "python3",
+        python,
         "tools/smoke_cli.py",
         "--exe",
     });
