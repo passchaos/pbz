@@ -182,12 +182,13 @@ pinned to one CPU on an i9-13900K. Baseline cells show
 | complex TextFormat format | 280.05 | — | — | 2472.90 (8.83x) | 5435.66 (19.41x) |
 | complex TextFormat parse | 1845.00 | — | — | 5040.36 (2.73x) | 8525.87 (4.62x) |
 
-In mixed mode every parsed cross-language row is a pbz win. In fair mode the
-only residual rows in the snapshot are two 64-bit packed encode rows within 0.5%
-(run-to-run noise) and packed bool encode at 14.18 ns vs 11.42 ns; a follow-up
-copy-path change brought same-run focused measurements to 11 ns for pbz versus
-11.48 ns for C++ (see the results snapshot). See the results snapshot for the
-full table and the exact commands.
+In mixed mode every parsed cross-language row is a pbz win; a 2026-11-13
+re-run on a loaded machine re-confirmed that gate. In fair mode the 2026-11-12
+snapshot's residual rows were two 64-bit packed encode rows within 0.5% and
+packed bool encode at 14.18 ns vs 11.42 ns; a follow-up copy-path change
+brought same-run focused measurements to 10-11 ns for pbz versus 11.8 ns for
+C++ (see the results snapshot). See the results snapshot for the full table,
+the noise caveat, and the exact commands.
 
 The full fair-mode table for every tracked workload is in
 `bench/results/2026-11-12-linux-x86_64.md`. Use `--pivot` without
