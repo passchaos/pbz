@@ -651,7 +651,7 @@ pub const demo = struct {
             /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-                if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
                 self.count = 42;
                 self.has_count = false;
                 self.max_count = 18446744073709551615;
@@ -690,6 +690,13 @@ pub const demo = struct {
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+            }
+
+            /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+            pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                errdefer self.deinit(allocator);
+                try self.decodeReuse(allocator, bytes);
+                try self.adoptOwned(allocator);
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {

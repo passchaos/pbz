@@ -1056,6 +1056,12 @@ fn generatedTextBytesDecodeReuse(ctx: GeneratedTextBytesDecodeReuseCtx) !void {
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+const GeneratedTextBytesDecodeOwnedReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.TextBytes };
+fn generatedTextBytesDecodeOwnedReuse(ctx: GeneratedTextBytesDecodeOwnedReuseCtx) !void {
+    try ctx.message.decodeOwnedReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedTextBytesJsonStringifyCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.TextBytes };
 fn generatedTextBytesJsonStringify(ctx: GeneratedTextBytesJsonStringifyCtx) !void {
     const json = try ctx.message.jsonStringifyAlloc(ctx.allocator);
@@ -1123,6 +1129,12 @@ fn generatedLargeBytesDecodeReuse(ctx: GeneratedLargeBytesDecodeReuseCtx) !void 
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+const GeneratedLargeBytesDecodeOwnedReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.LargeBytes };
+fn generatedLargeBytesDecodeOwnedReuse(ctx: GeneratedLargeBytesDecodeOwnedReuseCtx) !void {
+    try ctx.message.decodeOwnedReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedLargeBytesDecodeOwnedCtx = struct { allocator: std.mem.Allocator, bytes: []const u8 };
 fn generatedLargeBytesDecodeOwned(ctx: GeneratedLargeBytesDecodeOwnedCtx) !void {
     var decoded = try person_pb.demo.LargeBytes.decodeOwned(ctx.allocator, ctx.bytes);
@@ -1172,6 +1184,12 @@ fn generatedPresenceMixDecodeOwned(ctx: GeneratedPresenceMixDecodeOwnedCtx) !voi
 const GeneratedPresenceMixDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.PresenceMix };
 fn generatedPresenceMixDecodeReuse(ctx: GeneratedPresenceMixDecodeReuseCtx) !void {
     try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const GeneratedPresenceMixDecodeOwnedReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.PresenceMix };
+fn generatedPresenceMixDecodeOwnedReuse(ctx: GeneratedPresenceMixDecodeOwnedReuseCtx) !void {
+    try ctx.message.decodeOwnedReuse(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
@@ -1250,6 +1268,12 @@ fn generatedComplexDecodeOwned(ctx: GeneratedComplexDecodeOwnedCtx) !void {
 const GeneratedComplexDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Complex };
 fn generatedComplexDecodeReuse(ctx: GeneratedComplexDecodeReuseCtx) !void {
     try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const GeneratedComplexDecodeOwnedReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Complex };
+fn generatedComplexDecodeOwnedReuse(ctx: GeneratedComplexDecodeOwnedReuseCtx) !void {
+    try ctx.message.decodeOwnedReuse(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
@@ -1794,6 +1818,12 @@ fn generatedLargeMapDecodeReuse(ctx: GeneratedLargeMapDecodeReuseCtx) !void {
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
+const GeneratedLargeMapDecodeOwnedReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.LargeMap };
+fn generatedLargeMapDecodeOwnedReuse(ctx: GeneratedLargeMapDecodeOwnedReuseCtx) !void {
+    try ctx.message.decodeOwnedReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
 const GeneratedLargeMapJsonStringifyCtx = struct { allocator: std.mem.Allocator, message: *const person_pb.demo.LargeMap };
 fn generatedLargeMapJsonStringify(ctx: GeneratedLargeMapJsonStringifyCtx) !void {
     const json = try ctx.message.jsonStringifyAlloc(ctx.allocator);
@@ -2203,6 +2233,12 @@ fn generatedDecodeOwned(ctx: GeneratedDecodeOwnedCtx) !void {
 const GeneratedDecodeReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Person };
 fn generatedDecodeReuse(ctx: GeneratedDecodeReuseCtx) !void {
     try ctx.message.decodeReuse(ctx.allocator, ctx.bytes);
+    std.mem.doNotOptimizeAway(ctx.message);
+}
+
+const GeneratedDecodeOwnedReuseCtx = struct { allocator: std.mem.Allocator, bytes: []const u8, message: *person_pb.demo.Person };
+fn generatedDecodeOwnedReuse(ctx: GeneratedDecodeOwnedReuseCtx) !void {
+    try ctx.message.decodeOwnedReuse(ctx.allocator, ctx.bytes);
     std.mem.doNotOptimizeAway(ctx.message);
 }
 
@@ -3938,6 +3974,7 @@ pub fn main() !void {
         try runTimed(io, "generated binary decode", iters.generated_binary, generated_bytes.len, GeneratedDecodeCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecode),
         try runTimed(io, "generated binary decode owned", iters.generated_binary, generated_bytes.len, GeneratedDecodeOwnedCtx{ .allocator = allocator, .bytes = generated_bytes }, generatedDecodeOwned),
         try runTimed(io, "generated binary decode reuse", iters.generated_binary, generated_bytes.len, GeneratedDecodeReuseCtx{ .allocator = allocator, .bytes = generated_bytes, .message = &generated_person_decode_reuse }, generatedDecodeReuse),
+        try runTimed(io, "generated binary decode owned reuse", iters.generated_binary, generated_bytes.len, GeneratedDecodeOwnedReuseCtx{ .allocator = allocator, .bytes = generated_bytes, .message = &generated_person_decode_reuse }, generatedDecodeOwnedReuse),
         try runTimed(io, "generated unknown fields decode", iters.large_map, generated_unknown_bytes.len, GeneratedUnknownDecodeCtx{ .allocator = allocator, .bytes = generated_unknown_bytes }, generatedUnknownDecode),
         try runTimed(io, "generated unknown fields count by number", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownQueryCtx{ .message = &generated_unknown_person, .number = UnknownFieldStressFirstNumber }, generatedUnknownCountByNumber),
         try runTimed(io, "generated unknown field number sidecar count", iters.generated_binary, generated_unknown_bytes.len, GeneratedUnknownNumberQueryCtx{ .numbers = generated_unknown_numbers, .number = UnknownFieldStressFirstNumber }, generatedUnknownNumberCountByNumber),
@@ -3957,6 +3994,7 @@ pub fn main() !void {
         try runTimed(io, "generated textbytes decode", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes }, generatedTextBytesDecode),
         try runTimed(io, "generated textbytes decode owned", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeOwnedCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes }, generatedTextBytesDecodeOwned),
         try runTimed(io, "generated textbytes decode reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes, .message = &generated_text_bytes_decode_reuse }, generatedTextBytesDecodeReuse),
+        try runTimed(io, "generated textbytes decode owned reuse", iters.generated_binary, generated_text_bytes_bytes.len, GeneratedTextBytesDecodeOwnedReuseCtx{ .allocator = allocator, .bytes = generated_text_bytes_bytes, .message = &generated_text_bytes_decode_reuse }, generatedTextBytesDecodeOwnedReuse),
         try runTimed(io, "generated TextBytes JSON stringify", iters.json, generated_text_bytes_json.len, GeneratedTextBytesJsonStringifyCtx{ .allocator = allocator, .message = &generated_text_bytes }, generatedTextBytesJsonStringify),
         try runTimed(io, "generated TextBytes JSON parse", iters.json, generated_text_bytes_json.len, GeneratedTextBytesJsonParseCtx{ .allocator = allocator, .json = generated_text_bytes_json }, generatedTextBytesJsonParse),
         try runTimed(io, "generated largebytes encode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesEncodeCtx{ .allocator = allocator, .message = &generated_large_bytes }, generatedLargeBytesEncode),
@@ -3966,6 +4004,7 @@ pub fn main() !void {
         try runTimed(io, "generated largebytes decode", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes }, generatedLargeBytesDecode),
         try runTimed(io, "generated largebytes decode owned", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeOwnedCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes }, generatedLargeBytesDecodeOwned),
         try runTimed(io, "generated largebytes decode reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes, .message = &generated_large_bytes_decode_reuse }, generatedLargeBytesDecodeReuse),
+        try runTimed(io, "generated largebytes decode owned reuse", iters.generated_binary, generated_large_bytes_bytes.len, GeneratedLargeBytesDecodeOwnedReuseCtx{ .allocator = allocator, .bytes = generated_large_bytes_bytes, .message = &generated_large_bytes_decode_reuse }, generatedLargeBytesDecodeOwnedReuse),
         try runTimed(io, "generated largebytes borrowed view decode", iters.generated_binary, generated_large_bytes_bytes.len, LargeBytesBorrowedViewCtx{ .bytes = generated_large_bytes_bytes }, largeBytesBorrowedViewDecode),
         try runTimed(io, "generated presencemix encode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixEncodeCtx{ .allocator = allocator, .message = &generated_presence_mix }, generatedPresenceMixEncode),
         try runTimed(io, "generated presencemix writeToAssumeCapacity reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixWriteToCtx{ .writer = &reusable_presence_mix_writer, .message = &generated_presence_mix }, generatedPresenceMixWriteToReuse),
@@ -3974,6 +4013,7 @@ pub fn main() !void {
         try runTimed(io, "generated presencemix decode", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes }, generatedPresenceMixDecode),
         try runTimed(io, "generated presencemix decode owned", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeOwnedCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes }, generatedPresenceMixDecodeOwned),
         try runTimed(io, "generated presencemix decode reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeReuseCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes, .message = &generated_presence_mix_decode_reuse }, generatedPresenceMixDecodeReuse),
+        try runTimed(io, "generated presencemix decode owned reuse", iters.generated_binary, generated_presence_mix_bytes.len, GeneratedPresenceMixDecodeOwnedReuseCtx{ .allocator = allocator, .bytes = generated_presence_mix_bytes, .message = &generated_presence_mix_decode_reuse }, generatedPresenceMixDecodeOwnedReuse),
         try runTimed(io, "generated PresenceMix JSON stringify", iters.json, generated_presence_mix_json.len, GeneratedPresenceMixJsonStringifyCtx{ .allocator = allocator, .message = &generated_presence_mix }, generatedPresenceMixJsonStringify),
         try runTimed(io, "generated PresenceMix JSON parse", iters.json, generated_presence_mix_json.len, GeneratedPresenceMixJsonParseCtx{ .allocator = allocator, .json = generated_presence_mix_json }, generatedPresenceMixJsonParse),
         try runTimed(io, "generated complex encode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexEncodeCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexEncode),
@@ -3983,6 +4023,7 @@ pub fn main() !void {
         try runTimed(io, "generated complex decode", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeCtx{ .allocator = allocator, .bytes = generated_complex_bytes }, generatedComplexDecode),
         try runTimed(io, "generated complex decode owned", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeOwnedCtx{ .allocator = allocator, .bytes = generated_complex_bytes }, generatedComplexDecodeOwned),
         try runTimed(io, "generated complex decode reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeReuseCtx{ .allocator = allocator, .bytes = generated_complex_bytes, .message = &generated_complex_decode_reuse }, generatedComplexDecodeReuse),
+        try runTimed(io, "generated complex decode owned reuse", iters.generated_binary, generated_complex_bytes.len, GeneratedComplexDecodeOwnedReuseCtx{ .allocator = allocator, .bytes = generated_complex_bytes, .message = &generated_complex_decode_reuse }, generatedComplexDecodeOwnedReuse),
         try runTimed(io, "generated complex JSON stringify", iters.json, generated_complex_json.len, GeneratedComplexJsonStringifyCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexJsonStringify),
         try runTimed(io, "generated complex JSON parse", iters.json, generated_complex_json.len, GeneratedComplexJsonParseCtx{ .allocator = allocator, .json = generated_complex_json }, generatedComplexJsonParse),
         try runTimed(io, "generated Complex ProtoName JSON stringify", iters.json, generated_complex_proto_name_json.len, GeneratedComplexJsonStringifyCtx{ .allocator = allocator, .message = &generated_complex }, generatedComplexProtoNameJsonStringify),
@@ -4118,6 +4159,7 @@ pub fn main() !void {
         try runTimed(io, "generated large map decode", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeCtx{ .allocator = allocator, .bytes = generated_large_map_bytes }, generatedLargeMapDecode),
         try runTimed(io, "generated large map decode owned", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeOwnedCtx{ .allocator = allocator, .bytes = generated_large_map_bytes }, generatedLargeMapDecodeOwned),
         try runTimed(io, "generated large map decode reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeReuseCtx{ .allocator = allocator, .bytes = generated_large_map_bytes, .message = &generated_large_map_decode_reuse }, generatedLargeMapDecodeReuse),
+        try runTimed(io, "generated large map decode owned reuse", iters.large_map, generated_large_map_bytes.len, GeneratedLargeMapDecodeOwnedReuseCtx{ .allocator = allocator, .bytes = generated_large_map_bytes, .message = &generated_large_map_decode_reuse }, generatedLargeMapDecodeOwnedReuse),
         try runTimed(io, "generated LargeMap JSON stringify", iters.large_map, generated_large_map_json.len, GeneratedLargeMapJsonStringifyCtx{ .allocator = allocator, .message = &generated_large_map }, generatedLargeMapJsonStringify),
         try runTimed(io, "generated LargeMap JSON parse", iters.large_map, generated_large_map_json.len, GeneratedLargeMapJsonParseCtx{ .allocator = allocator, .json = generated_large_map_json }, generatedLargeMapJsonParse),
         try runTimed(io, "dynamic large map encode", iters.large_map, dynamic_large_map_bytes.len, DynamicLargeMapEncodeCtx{ .message = &dynamic_large_map, .file = &file }, dynamicLargeMapEncode),

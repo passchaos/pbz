@@ -274,7 +274,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "binary decode",
-        ("generated binary decode", "generated binary decode reuse", "generated binary decode owned"),
+        ("generated binary decode", "generated binary decode reuse", "generated binary decode owned", "generated binary decode owned reuse"),
         {
             "rust prost": ("prost binary decode",),
             "rust quick-protobuf": ("quick-protobuf binary decode",),
@@ -373,7 +373,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "textbytes decode",
-        ("generated textbytes decode", "generated textbytes decode reuse", "generated textbytes decode owned"),
+        ("generated textbytes decode", "generated textbytes decode reuse", "generated textbytes decode owned", "generated textbytes decode owned reuse"),
         {
             "rust prost": ("prost textbytes decode",),
             "rust quick-protobuf": ("quick-protobuf textbytes decode",),
@@ -418,7 +418,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "largebytes decode",
-        ("generated largebytes decode", "generated largebytes decode reuse", "generated largebytes decode owned", "generated largebytes borrowed view decode"),
+        ("generated largebytes decode", "generated largebytes decode reuse", "generated largebytes decode owned", "generated largebytes decode owned reuse", "generated largebytes borrowed view decode"),
         {
             "rust prost": ("prost largebytes decode",),
             "rust quick-protobuf": ("quick-protobuf largebytes decode",),
@@ -492,7 +492,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "complex decode",
-        ("generated complex decode", "generated complex decode reuse", "generated complex decode owned"),
+        ("generated complex decode", "generated complex decode reuse", "generated complex decode owned", "generated complex decode owned reuse"),
         {
             "rust prost": ("prost complex decode",),
             "rust quick-protobuf": ("quick-protobuf complex decode",),
@@ -1383,7 +1383,7 @@ WORKLOADS: tuple[Workload, ...] = (
     ),
     Workload(
         "large map decode",
-        ("generated large map decode", "generated large map decode reuse", "generated large map decode owned"),
+        ("generated large map decode", "generated large map decode reuse", "generated large map decode owned", "generated large map decode owned reuse"),
         {
             "rust prost": ("prost large map decode",),
             "rust quick-protobuf": ("quick-protobuf large map decode",),

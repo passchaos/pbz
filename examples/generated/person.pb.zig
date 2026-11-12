@@ -936,7 +936,7 @@ pub const demo = struct {
             errdefer scores_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             self.counts.clearRetainingCapacity();
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             self.id = 0;
             self.name = "";
             errdefer self.deinit(allocator);
@@ -991,6 +991,13 @@ pub const demo = struct {
             }
             self.scores = if (scores_list.items.len != 0 and scores_list.items.len == scores_list.capacity) scores_list.toOwnedSliceAssert() else try scores_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -2609,7 +2616,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.ids = &.{};
             errdefer ids_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             self.active = false;
             self.count = 0;
             self.total = 0;
@@ -2659,6 +2666,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.flags = if (flags_list.items.len != 0 and flags_list.items.len == flags_list.capacity) flags_list.toOwnedSliceAssert() else try flags_list.toOwnedSlice(allocator);
             self.ids = if (ids_list.items.len != 0 and ids_list.items.len == ids_list.capacity) ids_list.toOwnedSliceAssert() else try ids_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -4187,7 +4201,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.chunks = &.{};
             errdefer chunks_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             self.title = "";
             self.payload = "";
             errdefer self.deinit(allocator);
@@ -4209,6 +4223,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.tags = if (tags_list.items.len != 0 and tags_list.items.len == tags_list.capacity) tags_list.toOwnedSliceAssert() else try tags_list.toOwnedSlice(allocator);
             self.chunks = if (chunks_list.items.len != 0 and chunks_list.items.len == chunks_list.capacity) chunks_list.toOwnedSliceAssert() else try chunks_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -5373,7 +5394,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.chunks = &.{};
             errdefer chunks_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             self.payload = "";
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
@@ -5391,6 +5412,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.chunks = if (chunks_list.items.len != 0 and chunks_list.items.len == chunks_list.capacity) chunks_list.toOwnedSliceAssert() else try chunks_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -6749,7 +6777,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             self._pbzDeinitOneof_pick(allocator);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             self.count = 0;
             self.has_count = false;
             self.note = "";
@@ -6780,6 +6808,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
             }
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -7985,7 +8020,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-                if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
                 self.id = 0;
                 self.label = "";
                 errdefer self.deinit(allocator);
@@ -8003,6 +8038,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+            }
+
+            /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+            pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                errdefer self.deinit(allocator);
+                try self.decodeReuse(allocator, bytes);
+                try self.adoptOwned(allocator);
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -9130,7 +9172,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -9154,6 +9196,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -10292,7 +10341,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -10316,6 +10365,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -11457,7 +11513,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -11481,6 +11537,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -12622,7 +12685,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -12646,6 +12709,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -13787,7 +13857,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -13811,6 +13881,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -14952,7 +15029,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -14976,6 +15053,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -16117,7 +16201,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -16141,6 +16225,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -17299,7 +17390,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -17323,6 +17414,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -18470,7 +18568,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -18494,6 +18592,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -19641,7 +19746,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -19665,6 +19770,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -20812,7 +20924,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -20836,6 +20948,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -21983,7 +22102,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -22007,6 +22126,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -23133,7 +23259,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -23157,6 +23283,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -24299,7 +24432,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             self.values = &.{};
             errdefer values_list.deinit(allocator);
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -24323,6 +24456,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.values = if (values_list.items.len != 0 and values_list.items.len == values_list.capacity) values_list.toOwnedSliceAssert() else try values_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         /// Trusted same-schema hot path that reuses existing repeated buffers.
@@ -25584,7 +25724,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
             pbz.wire.clearRawFields(allocator, &self._unknown_fields);
             self.counts.clearRetainingCapacity();
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
             errdefer pbz.wire.deinitRawFieldList(allocator, &_unknown_fields_list);
@@ -25626,6 +25766,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
             }
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -27147,7 +27294,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             { var map_it = self.audits.iterator(); while (map_it.next()) |entry| entry.value_ptr.deinit(allocator); }
             self.audits.clearRetainingCapacity();
             self._pbzDeinitOneof_subject(allocator);
-            if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+            if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
             self.id = 0;
             if (self.audit) |*value| value.deinit(allocator);
             self.audit = null;
@@ -27203,6 +27350,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
             self.history = if (history_list.items.len != 0 and history_list.items.len == history_list.capacity) history_list.toOwnedSliceAssert() else try history_list.toOwnedSlice(allocator);
             self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+        }
+
+        /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+        pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+            errdefer self.deinit(allocator);
+            try self.decodeReuse(allocator, bytes);
+            try self.adoptOwned(allocator);
         }
 
         pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
@@ -28475,7 +28629,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             /// String/bytes fields still borrow the input slice.
             pub fn decodeReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
-                if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
                 self.actor = "";
                 self.at_unix = 0;
                 errdefer self.deinit(allocator);
@@ -28493,6 +28647,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                 }
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+            }
+
+            /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+            pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                errdefer self.deinit(allocator);
+                try self.decodeReuse(allocator, bytes);
+                try self.adoptOwned(allocator);
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {

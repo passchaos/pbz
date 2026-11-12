@@ -913,6 +913,8 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeDecodeReuse(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeDecodeOwnedReuse(ctx, message, writer, depth + 1);
+    try writer.writeAll("\n");
     if (messageCanDecodeKnownReuse(ctx.file, message)) {
         try writeDecodeKnownReuse(ctx, message, writer, depth + 1);
         try writer.writeAll("\n");
@@ -6120,7 +6122,7 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     for (message.fields.items) |*field| try writeDecodeReuseClearMap(ctx, field, writer, depth + 1);
     for (message.oneofs.items) |oneof| try writeDecodeReuseClearOneof(oneof, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }\n");
+    try writer.writeAll("if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }\n");
     for (message.fields.items) |*field| try writeDecodeReuseResetField(ctx, field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("errdefer self.deinit(allocator);\n");
@@ -6155,6 +6157,23 @@ fn writeDecodeReuse(ctx: *const CodegenContext, message: *const schema.MessageDe
     for (message.fields.items) |*field| try writeRepeatedAssignForDecode(field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeDecodeOwnedReuse(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    _ = ctx;
+    _ = message;
+    try indent(writer, depth);
+    try writer.writeAll("/// Decode into an existing message, reusing arrays/maps and retained owned string storage.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.decodeReuse(allocator, bytes);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.adoptOwned(allocator);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }

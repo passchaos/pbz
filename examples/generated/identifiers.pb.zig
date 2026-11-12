@@ -805,7 +805,7 @@ pub const demo = struct {
                 pbz.wire.clearRawFields(allocator, &self._unknown_fields);
                 self.@"align".clearRetainingCapacity();
                 self._pbzDeinitOneof_async(allocator);
-                if (self._json_arena) |arena| { const child_allocator = arena.child_allocator; arena.deinit(); child_allocator.destroy(arena); self._json_arena = null; }
+                if (self._json_arena) |arena| { _ = arena.reset(.retain_capacity); }
                 self.@"type" = 0;
                 self.@"error" = "";
                 self.@"null" = false;
@@ -857,6 +857,13 @@ pub const demo = struct {
                 }
                 self.@"test" = if (test_list.items.len != 0 and test_list.items.len == test_list.capacity) test_list.toOwnedSliceAssert() else try test_list.toOwnedSlice(allocator);
                 self._unknown_fields = try pbz.wire.rawFieldListToOwnedSlice(allocator, &_unknown_fields_list);
+            }
+
+            /// Decode into an existing message, reusing arrays/maps and retained owned string storage.
+            pub fn decodeOwnedReuse(self: *@This(), allocator: std.mem.Allocator, bytes: []const u8) !void {
+                errdefer self.deinit(allocator);
+                try self.decodeReuse(allocator, bytes);
+                try self.adoptOwned(allocator);
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
