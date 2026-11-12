@@ -11212,7 +11212,9 @@ fn writeMessageDynamicBridge(ctx: *const CodegenContext, writer: *std.Io.Writer,
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
     try indent(writer, depth);
-    try writer.writeAll("/// Build from a dynamic message via the wire format.\n");
+    try writer.writeAll("/// Build from a dynamic message via the wire format. `file` must be the\n");
+    try indent(writer, depth);
+    try writer.writeAll("/// same decoded descriptor used to create `message`.\n");
     try indent(writer, depth);
     try writer.writeAll("pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {\n");
     try indent(writer, depth + 1);

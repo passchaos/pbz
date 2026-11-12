@@ -275,7 +275,8 @@ pub const demo = struct {
                 return message;
             }
 
-            /// Build from a dynamic message via the wire format.
+            /// Build from a dynamic message via the wire format. `file` must be the
+            /// same decoded descriptor used to create `message`.
             pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {
                 const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
                 if (message.descriptor != message_descriptor) return error.TypeMismatch;
@@ -1882,7 +1883,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return message;
                 }
 
-                /// Build from a dynamic message via the wire format.
+                /// Build from a dynamic message via the wire format. `file` must be the
+                /// same decoded descriptor used to create `message`.
                 pub fn fromDynamic(allocator: std.mem.Allocator, file: *const pbz.schema.FileDescriptor, message: *const pbz.DynamicMessage) !@This() {
                     const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
                     if (message.descriptor != message_descriptor) return error.TypeMismatch;
