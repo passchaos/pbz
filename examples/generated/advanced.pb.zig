@@ -383,6 +383,31 @@ pub const demo = struct {
                 return out;
             }
 
+            /// Take ownership of borrowed string/bytes payloads after decode.
+            pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
+                const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                if (self.audit) |*value| try value.adoptOwned(allocator);
+                if (self.audits.count() != 0) {
+                    var audits_owned_map = auditsMap.empty;
+                    errdefer audits_owned_map.deinit(allocator);
+                    try audits_owned_map.ensureUnusedCapacity(allocator, self.audits.count());
+                    var audits_map_it = self.audits.iterator();
+                    while (audits_map_it.next()) |entry| {
+                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        try entry.value_ptr.adoptOwned(allocator);
+                        audits_owned_map.putAssumeCapacityNoClobber(key, entry.value_ptr.*);
+                    }
+                    self.audits.deinit(allocator);
+                    self.audits = audits_owned_map;
+                }
+                switch (self.subject) {
+                    .user_name => |value| self.subject = .{ .user_name = try _pbz_owned_allocator.dupe(u8, value) },
+                    .organization_id => |value| self.subject = .{ .organization_id = try _pbz_owned_allocator.dupe(u8, value) },
+                    .audit_subject => |*value| try value.adoptOwned(allocator),
+                    else => {},
+                }
+            }
+
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
                 if (self._json_arena == null) {
                     const arena = try allocator.create(std.heap.ArenaAllocator);
@@ -889,9 +914,10 @@ pub const demo = struct {
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
-                var decoded = try @This().decode(allocator, bytes);
-                defer decoded.deinit(allocator);
-                return try decoded.cloneOwned(allocator);
+                var self = try @This().decode(allocator, bytes);
+                errdefer self.deinit(allocator);
+                try self.adoptOwned(allocator);
+                return self;
             }
 
             /// Decode and validate required fields. String/bytes fields borrow the input slice.
@@ -1906,6 +1932,12 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     return out;
                 }
 
+                /// Take ownership of borrowed string/bytes payloads after decode.
+                pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
+                    const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                    if (self.actor.len != 0) self.actor = try _pbz_owned_allocator.dupe(u8, self.actor);
+                }
+
                 fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
                     if (self._json_arena == null) {
                         const arena = try allocator.create(std.heap.ArenaAllocator);
@@ -2135,9 +2167,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 }
 
                 pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
-                    var decoded = try @This().decode(allocator, bytes);
-                    defer decoded.deinit(allocator);
-                    return try decoded.cloneOwned(allocator);
+                    var self = try @This().decode(allocator, bytes);
+                    errdefer self.deinit(allocator);
+                    try self.adoptOwned(allocator);
+                    return self;
                 }
 
                 /// Decode and validate required fields. String/bytes fields borrow the input slice.

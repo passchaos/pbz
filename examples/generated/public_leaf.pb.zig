@@ -136,6 +136,12 @@ pub const demo = struct {
                     return out;
                 }
 
+                /// Take ownership of borrowed string/bytes payloads after decode.
+                pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
+                    const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                    if (self.name.len != 0) self.name = try _pbz_owned_allocator.dupe(u8, self.name);
+                }
+
                 fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
                     if (self._json_arena == null) {
                         const arena = try allocator.create(std.heap.ArenaAllocator);
@@ -365,9 +371,10 @@ pub const demo = struct {
                 }
 
                 pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
-                    var decoded = try @This().decode(allocator, bytes);
-                    defer decoded.deinit(allocator);
-                    return try decoded.cloneOwned(allocator);
+                    var self = try @This().decode(allocator, bytes);
+                    errdefer self.deinit(allocator);
+                    try self.adoptOwned(allocator);
+                    return self;
                 }
 
                 /// Decode and validate required fields. String/bytes fields borrow the input slice.

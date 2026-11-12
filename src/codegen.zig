@@ -887,6 +887,8 @@ fn writeMessage(ctx: *const CodegenContext, message: *const schema.MessageDescri
     try writer.writeAll("\n");
     try writeCloneOwned(ctx, message, writer, depth + 1);
     try writer.writeAll("\n");
+    try writeAdoptOwned(ctx, message, writer, depth + 1);
+    try writer.writeAll("\n");
     try writeOwnedAllocator(writer, depth + 1);
     try writer.writeAll("\n");
     try writeUnknownFieldMethods(writer, depth + 1);
@@ -4750,6 +4752,261 @@ fn writeCloneUnknownFields(writer: *std.Io.Writer, depth: usize) Error!void {
     try writer.writeAll("out._unknown_fields = try pbz.wire.cloneRawFields(allocator, self._unknown_fields);\n");
 }
 
+fn writeAdoptOwned(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.writeAll("/// Take ownership of borrowed string/bytes payloads after decode.\n");
+    try indent(writer, depth);
+    try writer.writeAll("pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {\n");
+    if (mergeUsesOwnedAllocator(ctx, message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);\n");
+    }
+    for (message.fields.items) |*field| {
+        if (field.oneof_name == null) try writeAdoptField(ctx, field, writer, depth + 1);
+    }
+    for (message.oneofs.items) |oneof| try writeAdoptOneof(ctx, message, oneof, writer, depth + 1);
+    if (!adoptHasWork(ctx, message)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = self;\n");
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = allocator;\n");
+    }
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn adoptHasWork(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) bool {
+    if (mergeUsesOwnedAllocator(ctx, message)) return true;
+    for (message.fields.items) |*field| {
+        if (field.oneof_name != null) continue;
+        if (typedSingularMessageFieldWithContext(ctx, field) != null) return true;
+        if (field.cardinality == .repeated and typedRepeatedMessageFieldWithContext(ctx, field) != null) return true;
+    }
+    for (message.oneofs.items) |oneof| {
+        for (message.fields.items) |*field| {
+            if (field.oneof_name) |name| {
+                if (std.mem.eql(u8, name, oneof.name) and typedOneofMessageFieldWithContext(ctx, field) != null) return true;
+            }
+        }
+    }
+    return false;
+}
+
+fn writeAdoptField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const file = ctx.file;
+    if (field.kind == .map) return try writeAdoptMapField(ctx, field, writer, depth);
+    if (field.cardinality == .repeated) return try writeAdoptRepeatedField(ctx, field, writer, depth);
+    if (typedSingularMessageFieldWithContext(ctx, field)) |_| {
+        try indent(writer, depth);
+        try writer.writeAll("if (self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(") |*value| try value.adoptOwned(allocator);\n");
+        return;
+    }
+    switch (field.kind) {
+        .message, .group => {
+            try indent(writer, depth);
+            if (hasPresence(file, field.*)) {
+                try writer.writeAll("if (self.");
+                try writePresenceIdent(field.name, writer);
+                try writer.writeAll(") self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" = try _pbz_owned_allocator.dupe(u8, self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(");\n");
+            } else {
+                try writer.writeAll("if (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(".len != 0) self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" = try _pbz_owned_allocator.dupe(u8, self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(");\n");
+            }
+        },
+        .scalar => |scalar| {
+            if (scalar != .string and scalar != .bytes) return;
+            try indent(writer, depth);
+            if (hasPresence(file, field.*)) {
+                try writer.writeAll("if (self.");
+                try writePresenceIdent(field.name, writer);
+                try writer.writeAll(") self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" = try _pbz_owned_allocator.dupe(u8, self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(");\n");
+            } else {
+                try writer.writeAll("if (self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(".len != 0) self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" = try _pbz_owned_allocator.dupe(u8, self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(");\n");
+            }
+        },
+        else => {},
+    }
+}
+
+fn writeAdoptRepeatedField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
+        try indent(writer, depth);
+        try writer.writeAll("for (@constCast(self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(")) |*item| try item.adoptOwned(allocator);\n");
+        return;
+    }
+    const raw_message = field.kind == .message or field.kind == .group;
+    const string_or_bytes = field.kind == .scalar and (field.kind.scalar == .string or field.kind.scalar == .bytes);
+    if (!raw_message and !string_or_bytes) return;
+    try indent(writer, depth);
+    try writer.writeAll("for (@constCast(self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(")) |*item| item.* = try _pbz_owned_allocator.dupe(u8, item.*);\n");
+}
+
+fn writeAdoptMapField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const map_type = switch (field.kind) {
+        .map => |map| map,
+        else => return,
+    };
+    const typed_message_value = typedMapMessageValueWithContext(ctx, field);
+    const raw_message_value = typed_message_value == null and (map_type.value.* == .message or map_type.value.* == .group);
+    const string_key = map_type.key == .string;
+    const string_value = map_type.value.* == .scalar and (map_type.value.scalar == .string or map_type.value.scalar == .bytes);
+    if (!string_key) {
+        if (typed_message_value == null and !string_value and !raw_message_value) return;
+        try indent(writer, depth);
+        try writer.writeAll("var ");
+        try writeQuotedIdentWithSuffix(field.name, "_map_it", writer);
+        try writer.writeAll(" = self.");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(".iterator();\n");
+        try indent(writer, depth);
+        try writer.writeAll("while (");
+        try writeQuotedIdentWithSuffix(field.name, "_map_it", writer);
+        try writer.writeAll(".next()) |entry| {\n");
+        if (typed_message_value != null) {
+            try indent(writer, depth + 1);
+            try writer.writeAll("try entry.value_ptr.adoptOwned(allocator);\n");
+        } else {
+            try indent(writer, depth + 1);
+            try writer.writeAll("entry.value_ptr.* = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);\n");
+        }
+        try indent(writer, depth);
+        try writer.writeAll("}\n");
+        return;
+    }
+
+    try indent(writer, depth);
+    try writer.writeAll("if (self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".count() != 0) {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var ");
+    try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+    try writer.writeAll(" = ");
+    try writeQuotedIdentWithSuffix(field.name, "Map", writer);
+    try writer.writeAll(".empty;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("errdefer ");
+    try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+    try writer.writeAll(".deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("try ");
+    try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+    try writer.writeAll(".ensureUnusedCapacity(allocator, self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".count());\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var ");
+    try writeQuotedIdentWithSuffix(field.name, "_map_it", writer);
+    try writer.writeAll(" = self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".iterator();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("while (");
+    try writeQuotedIdentWithSuffix(field.name, "_map_it", writer);
+    try writer.writeAll(".next()) |entry| {\n");
+    try indent(writer, depth + 2);
+    try writer.writeAll("const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);\n");
+    if (typed_message_value != null) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("try entry.value_ptr.adoptOwned(allocator);\n");
+        try indent(writer, depth + 2);
+        try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+        try writer.writeAll(".putAssumeCapacityNoClobber(key, entry.value_ptr.*);\n");
+    } else if (string_value or raw_message_value) {
+        try indent(writer, depth + 2);
+        try writer.writeAll("const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);\n");
+        try indent(writer, depth + 2);
+        try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+        try writer.writeAll(".putAssumeCapacityNoClobber(key, value);\n");
+    } else {
+        try indent(writer, depth + 2);
+        try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+        try writer.writeAll(".putAssumeCapacityNoClobber(key, entry.value_ptr.*);\n");
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("}\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(".deinit(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("self.");
+    try writeQuotedIdent(field.name, writer);
+    try writer.writeAll(" = ");
+    try writeQuotedIdentWithSuffix(field.name, "_owned_map", writer);
+    try writer.writeAll(";\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
+fn writeAdoptOneof(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, oneof: schema.OneofDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    var any = false;
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            if (!std.mem.eql(u8, name, oneof.name)) continue;
+            if (typedOneofMessageFieldWithContext(ctx, field) != null) {
+                any = true;
+            } else if (field.kind == .message or field.kind == .group or (field.kind == .scalar and (field.kind.scalar == .string or field.kind.scalar == .bytes))) {
+                any = true;
+            }
+        }
+    }
+    if (!any) return;
+    try indent(writer, depth);
+    try writer.writeAll("switch (self.");
+    try writeQuotedIdent(oneof.name, writer);
+    try writer.writeAll(") {\n");
+    for (message.fields.items) |*field| {
+        if (field.oneof_name) |name| {
+            if (!std.mem.eql(u8, name, oneof.name)) continue;
+            if (typedOneofMessageFieldWithContext(ctx, field) != null) {
+                try indent(writer, depth + 1);
+                try writer.writeAll(".");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" => |*value| try value.adoptOwned(allocator),\n");
+            } else if (field.kind == .message or field.kind == .group or (field.kind == .scalar and (field.kind.scalar == .string or field.kind.scalar == .bytes))) {
+                try indent(writer, depth + 1);
+                try writer.writeAll(".");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" => |value| self.");
+                try writeQuotedIdent(oneof.name, writer);
+                try writer.writeAll(" = .{ .");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" = try _pbz_owned_allocator.dupe(u8, value) },\n");
+            }
+        }
+    }
+    try indent(writer, depth + 1);
+    try writer.writeAll("else => {},\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
+}
+
 fn writeCloneFieldValueExpr(kind: schema.FieldKind, field_name: []const u8, writer: *std.Io.Writer) Error!void {
     switch (kind) {
         .scalar => |scalar| switch (scalar) {
@@ -6297,11 +6554,13 @@ fn writeDecodeInitialized(writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("var decoded = try @This().decode(allocator, bytes);\n");
+    try writer.writeAll("var self = try @This().decode(allocator, bytes);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("defer decoded.deinit(allocator);\n");
+    try writer.writeAll("errdefer self.deinit(allocator);\n");
     try indent(writer, depth + 1);
-    try writer.writeAll("return try decoded.cloneOwned(allocator);\n");
+    try writer.writeAll("try self.adoptOwned(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return self;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n\n");
 
@@ -12780,8 +13039,9 @@ test "codegen emits owned clone helper" {
     defer allocator.free(content);
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn cloneOwned(self: @This(), allocator: std.mem.Allocator) !@This()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "return try decoded.cloneOwned(allocator);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "try self.adoptOwned(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn decodeOwnedInitialized(allocator: std.mem.Allocator, bytes: []const u8) !@This()") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "const owned_allocator = try out._pbzOwnedAllocator(allocator);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "out.name = try owned_allocator.dupe(u8, self.name);") != null);
@@ -14799,6 +15059,9 @@ test "codegen deep-copies string and bytes payloads in mergeFrom" {
     try std.testing.expect(std.mem.indexOf(u8, content, "const value = try _pbz_owned_allocator.dupe(u8, entry.value_ptr.*);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".label => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, ".token => |value| { const owned_value = try _pbz_owned_allocator.dupe(u8, value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self.name = try _pbz_owned_allocator.dupe(u8, self.name);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "for (@constCast(self.tags)) |*item| item.* = try _pbz_owned_allocator.dupe(u8, item.*);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, ".label => |value| self.pick = .{ .label = try _pbz_owned_allocator.dupe(u8, value) },") != null);
 
     const source = try allocator.dupeZ(u8, content);
     defer allocator.free(source);

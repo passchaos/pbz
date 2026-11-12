@@ -296,6 +296,29 @@ pub const demo = struct {
                 return out;
             }
 
+            /// Take ownership of borrowed string/bytes payloads after decode.
+            pub fn adoptOwned(self: *@This(), allocator: std.mem.Allocator) !void {
+                const _pbz_owned_allocator = try self._pbzOwnedAllocator(allocator);
+                if (self.@"error".len != 0) self.@"error" = try _pbz_owned_allocator.dupe(u8, self.@"error");
+                for (@constCast(self.@"test")) |*item| item.* = try _pbz_owned_allocator.dupe(u8, item.*);
+                if (self.@"align".count() != 0) {
+                    var align_owned_map = alignMap.empty;
+                    errdefer align_owned_map.deinit(allocator);
+                    try align_owned_map.ensureUnusedCapacity(allocator, self.@"align".count());
+                    var align_map_it = self.@"align".iterator();
+                    while (align_map_it.next()) |entry| {
+                        const key = try _pbz_owned_allocator.dupe(u8, entry.key_ptr.*);
+                        align_owned_map.putAssumeCapacityNoClobber(key, entry.value_ptr.*);
+                    }
+                    self.@"align".deinit(allocator);
+                    self.@"align" = align_owned_map;
+                }
+                switch (self.async) {
+                    .await => |value| self.async = .{ .await = try _pbz_owned_allocator.dupe(u8, value) },
+                    else => {},
+                }
+            }
+
             fn _pbzOwnedAllocator(self: *@This(), allocator: std.mem.Allocator) !std.mem.Allocator {
                 if (self._json_arena == null) {
                     const arena = try allocator.create(std.heap.ArenaAllocator);
@@ -830,9 +853,10 @@ pub const demo = struct {
             }
 
             pub fn decodeOwned(allocator: std.mem.Allocator, bytes: []const u8) !@This() {
-                var decoded = try @This().decode(allocator, bytes);
-                defer decoded.deinit(allocator);
-                return try decoded.cloneOwned(allocator);
+                var self = try @This().decode(allocator, bytes);
+                errdefer self.deinit(allocator);
+                try self.adoptOwned(allocator);
+                return self;
             }
 
             /// Decode and validate required fields. String/bytes fields borrow the input slice.
