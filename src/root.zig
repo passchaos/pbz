@@ -183,6 +183,7 @@ test {
     _ = plugin;
     _ = codegen;
     _ = conformance;
+    _ = @import("fuzz.zig");
 }
 
 test "root exports descriptor schema support types" {
