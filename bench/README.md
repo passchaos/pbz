@@ -131,6 +131,10 @@ of three measured samples. This reduces one-off cold-cache and scheduler noise;
 compare complete `bench/run_compare.sh` runs rather than individual lines copied
 from different runs.
 
+The pbz benchmark uses `std.heap.c_allocator` (libc malloc) so owning/allocating
+paths are compared against malloc-based C++/Go/Rust baselines without
+`smp_allocator` page-return overhead dominating large decode/clone workloads.
+
 Cross-language baselines:
 
 - `bench/rust_prost`: Rust `prost` binary encode/decode for the same schema and

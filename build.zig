@@ -262,6 +262,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("bench/pbz_bench.zig"),
             .target = target,
             .optimize = optimize,
+            .link_libc = true,
             .imports = &.{
                 .{ .name = "pbz", .module = mod },
                 .{ .name = "person_pb", .module = b.createModule(.{

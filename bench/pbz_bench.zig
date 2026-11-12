@@ -2462,7 +2462,10 @@ fn dynamicTextParse(ctx: DynamicTextParseCtx) !void {
 }
 
 pub fn main() !void {
-    const allocator = std.heap.smp_allocator;
+    // Use the libc allocator so allocation-heavy owning paths are compared
+    // against malloc-based C++/Go/Rust baselines without smp_allocator's
+    // page-return overhead dominating large decode/clone workloads.
+    const allocator = std.heap.c_allocator;
     const io = std.Io.Threaded.global_single_threaded.io();
     const iters = Iterations{};
 
