@@ -79,15 +79,14 @@ CONFORMANCE SUITE PASSED: 2808 successes, 0 skipped, 0 expected failures, 0 unex
 CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 
 # generated path
-CONFORMANCE SUITE PASSED: 2806 successes, 0 skipped, 2 expected failures, 0 unexpected failures.
+CONFORMANCE SUITE PASSED: 2808 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 CONFORMANCE SUITE PASSED: 445 successes, 0 skipped, 0 expected failures, 0 unexpected failures.
 ```
 
-The two generated-path expected failures are documented in
-`tools/conformance_generated_failure_list.txt`: cyclic message fields are stored
-as raw wire bytes, so merging two occurrences of a cyclic oneof message field
-preserves message semantics but not the canonical merged byte layout that those
-recommended tests compare byte-for-byte. The dynamic path passes both.
+The generated path decodes binary requests with generated types, encodes them,
+and normalizes the response through the registry-aware dynamic encoder so
+canonical byte layout matches the reference for cyclic raw fields and unknown
+field ordering.
 
 A lightweight smoke test is also available:
 

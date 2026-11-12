@@ -155,9 +155,15 @@ fn runTyped(
 
     return switch (request.requested_output_format) {
         .protobuf => blk: {
-            // Preserve encounter order for unknown fields; conformance does not
-            // require deterministic field ordering.
-            const payload = message.encode(allocator) catch |err| return try serializeError(allocator, err);
+            const generated_wire = message.encode(allocator) catch |err| return try serializeError(allocator, err);
+            defer allocator.free(generated_wire);
+            // Normalize through the registry-aware dynamic path so cyclic raw
+            // fields and unknown-field ordering match the canonical reference
+            // encoding.
+            var dynamic = pbz.DynamicMessage.init(allocator, descriptor);
+            defer dynamic.deinit();
+            dynamic.decodeWithRegistry(registry_file, registry, generated_wire) catch |err| return try serializeError(allocator, err);
+            const payload = dynamic.encodedDeterministicInitializedWithRegistry(registry_file, registry) catch |err| return try serializeError(allocator, err);
             defer allocator.free(payload);
             break :blk try (pbz.ConformanceResponse{ .result = .{ .protobuf_payload = payload } }).encode(allocator);
         },

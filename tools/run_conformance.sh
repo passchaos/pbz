@@ -27,7 +27,6 @@ mkdir -p "$OUTPUT_DIR"
 if [ "$MODE" = "generated" ]; then
   if zig build -Doptimize="$OPTIMIZE" conformance-generated >/dev/null; then
     TARGET="$ROOT/zig-out/bin/pbz-conformance-generated"
-    FAILURE_LIST="$ROOT/tools/conformance_generated_failure_list.txt"
   else
     echo "generated conformance runner failed to build; falling back to the dynamic runner" >&2
     zig build -Doptimize="$OPTIMIZE" >/dev/null
