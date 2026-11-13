@@ -27,6 +27,34 @@ if [ "${PBZ_COMPARE_CPUSET:-}" ]; then
   fi
 fi
 
+if [ -z "${PBZ_COMPARE_DRY_RUN:-}" ]; then
+  echo "== Toolchain versions =="
+  printf 'Zig: '
+  zig version
+  if command -v rustc >/dev/null 2>&1; then
+    printf 'Rust: '
+    rustc --version
+  fi
+  if command -v cargo >/dev/null 2>&1; then
+    printf 'Cargo: '
+    cargo --version
+  fi
+  if command -v go >/dev/null 2>&1; then
+    printf 'Go: '
+    go version
+  fi
+  printf 'Go benchmark toolchain: %s\n' "${PBZ_GO_TOOLCHAIN:-go1.27.4}"
+  if command -v protoc >/dev/null 2>&1; then
+    printf 'protoc: '
+    protoc --version
+  fi
+  if command -v c++ >/dev/null 2>&1; then
+    printf 'C++: '
+    c++ --version | head -n 1
+  fi
+  echo
+fi
+
 run_pinned() {
   if [ "${PBZ_COMPARE_DRY_RUN:-}" ]; then
     printf 'DRY RUN:'
