@@ -141,7 +141,9 @@ pub inline fn copyBytes(dst: []u8, src: []const u8) void {
         return;
     }
     if (comptime builtin.cpu.arch == .x86_64) {
-        if (src.len >= 2048 and src.len < 32768 and ermsEnabled()) {
+        // `rep movsb` wins big on P-cores from ~8 KiB but loses on E-cores
+        // for small copies, so keep the range where the trade-off is safe.
+        if (src.len >= 8192 and src.len < 32768 and ermsEnabled()) {
             var d = @intFromPtr(dst.ptr);
             var s = @intFromPtr(src.ptr);
             var n = src.len;
