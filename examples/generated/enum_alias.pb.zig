@@ -714,16 +714,22 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(2).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "status")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.status = 0;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "history")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             const old = self.history; self.history = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
@@ -731,10 +737,14 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "status")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         self.status = @This().jsonEnum(value, &.{"STATUS_UNKNOWN", "STATUS_STARTED", "STATUS_RUNNING", "STATUS_DONE"}, &.{0, 1, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "history")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);

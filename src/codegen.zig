@@ -9520,6 +9520,53 @@ fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writeJsonParseMethods(ctx, message, writer, depth);
 }
 
+fn messageContainsJsonField(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) bool {
+    for (message.fields.items) |*candidate| {
+        if (candidate == field) return true;
+    }
+    for (message.messages.items) |*nested| {
+        if (messageContainsJsonField(nested, field)) return true;
+    }
+    return false;
+}
+
+fn findJsonFieldMessage(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+    for (file.messages.items) |*message| {
+        if (messageContainsJsonField(message, field)) return message;
+    }
+    return null;
+}
+
+/// Emit duplicate-field tracking for a JSON object key that matched `field`.
+/// Protobuf JSON rejects the same field spelled twice, including through
+/// different accepted spellings (`big_delta` and `bigDelta`), and rejects two
+/// different members of the same oneof.
+fn writeJsonSeenCheck(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    const message = findJsonFieldMessage(file, field) orelse return;
+    var field_index: ?usize = null;
+    for (message.fields.items, 0..) |*candidate, i| {
+        if (candidate == field) {
+            field_index = i;
+            break;
+        }
+    }
+    const seen_index = field_index orelse return;
+    try indent(writer, depth);
+    try writer.print("if (_pbz_seen.isSet({d})) return error.DuplicateField;\n", .{seen_index});
+    try indent(writer, depth);
+    try writer.print("_pbz_seen.set({d});\n", .{seen_index});
+    if (field.oneof_name) |oneof_name| {
+        for (message.oneofs.items, 0..) |oneof, oneof_index| {
+            if (!std.mem.eql(u8, oneof.name, oneof_name)) continue;
+            try indent(writer, depth);
+            try writer.print("if (_pbz_seen_oneofs.isSet({d})) return error.DuplicateField;\n", .{oneof_index});
+            try indent(writer, depth);
+            try writer.print("_pbz_seen_oneofs.set({d});\n", .{oneof_index});
+            break;
+        }
+    }
+}
+
 fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
     try indent(writer, depth);
@@ -9625,6 +9672,18 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("_ = &arena_allocator;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };\n");
+    if (message.fields.items.len != 0) {
+        try indent(writer, depth + 1);
+        try writer.print("var _pbz_seen = std.StaticBitSet({d}).initEmpty();\n", .{message.fields.items.len});
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = &_pbz_seen;\n");
+    }
+    if (message.oneofs.items.len != 0) {
+        try indent(writer, depth + 1);
+        try writer.print("var _pbz_seen_oneofs = std.StaticBitSet({d}).initEmpty();\n", .{message.oneofs.items.len});
+        try indent(writer, depth + 1);
+        try writer.writeAll("_ = &_pbz_seen_oneofs;\n");
+    }
     try indent(writer, depth + 1);
     try writer.writeAll("var it = object.iterator();\n");
     try indent(writer, depth + 1);
@@ -9646,7 +9705,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
         for (message.oneofs.items) |oneof| {
             for (message.fields.items) |*field| {
                 if (field.oneof_name) |name| {
-                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonClearOneofField(oneof, field, writer, depth + 3);
+                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonClearOneofField(file, oneof, field, writer, depth + 3);
                 }
             }
         }
@@ -9883,6 +9942,7 @@ fn writeJsonClearField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenCheck(file, field, writer, depth + 1);
     if (field.kind == .map) {
         try indent(writer, depth + 1);
         try writer.writeAll("@This().");
@@ -9931,13 +9991,17 @@ fn writeJsonClearField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try writer.writeAll("}\n");
 }
 
-fn writeJsonClearOneofField(oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonClearOneofField(file: *const schema.FileDescriptor, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
-    try writer.writeAll(") { ");
+    try writer.writeAll(") {\n");
+    try writeJsonSeenCheck(file, field, writer, depth + 1);
+    try indent(writer, depth + 1);
     try writeOneofDeinitCall(oneof.name, writer);
-    try writer.writeAll(" continue; }\n");
+    try writer.writeAll(" continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn writeJsonClearExtensions(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -9974,6 +10038,7 @@ fn writeJsonParseField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenCheck(file, field, writer, depth + 1);
     if (field.cardinality == .repeated) {
         try indent(writer, depth + 1);
         try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
@@ -10038,6 +10103,7 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenCheck(file, field, writer, depth + 1);
     if (field.cardinality == .repeated) {
         if (typedRepeatedMessageFieldWithContext(ctx, field)) |_| {
             try indent(writer, depth + 1);
@@ -10292,6 +10358,7 @@ fn writeJsonParseMapField(ctx: *const CodegenContext, field: *const schema.Field
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenCheck(file, field, writer, depth + 1);
     try indent(writer, depth + 1);
     try writer.writeAll("const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };\n");
     try indent(writer, depth + 1);
@@ -10380,6 +10447,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenCheck(file, field, writer, depth + 1);
     try indent(writer, depth + 1);
     const maybe_message_type = switch (field.kind) {
         .message, .group => |type_name| type_name,

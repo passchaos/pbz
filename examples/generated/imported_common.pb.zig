@@ -528,16 +528,22 @@ pub const demo = struct {
                     _ = &allocator;
                     _ = &arena_allocator;
                     const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                    var _pbz_seen = std.StaticBitSet(2).initEmpty();
+                    _ = &_pbz_seen;
                     var it = object.iterator();
                     while (it.next()) |entry| {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
                             if (std.mem.eql(u8, key, "id")) {
+                                if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                                _pbz_seen.set(0);
                                 self.id = 0;
                                 continue;
                             }
                             if (std.mem.eql(u8, key, "name")) {
+                                if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                                _pbz_seen.set(1);
                                 self.name = "";
                                 continue;
                             }
@@ -545,10 +551,14 @@ pub const demo = struct {
                             return error.UnknownField;
                         }
                         if (std.mem.eql(u8, key, "id")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.id = try @This().jsonInt(i32, value);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "name")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             self.name = try @This().jsonString(value);
                             continue;
                         }

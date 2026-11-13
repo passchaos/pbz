@@ -581,17 +581,23 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(2).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "child")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.child = "";
                             self.has_child = false;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "children")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             const old = self.children; self.children = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                             continue;
                         }
@@ -599,6 +605,8 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "child")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         var _pbz_nested = try Node.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer _pbz_nested.deinit(arena_allocator);
                         self.child = try _pbz_nested.encode(arena_allocator);
@@ -606,6 +614,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "children")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(Node) = .empty;
                         errdefer { for (list.items) |item| { var mutable = item; mutable.deinit(allocator); } list.deinit(allocator); }

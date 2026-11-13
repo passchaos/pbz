@@ -1485,24 +1485,34 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(4).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "by_int") or std.mem.eql(u8, key, "byInt")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             @This().deinitMap_by_int(allocator, &self.by_int);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "by_bool") or std.mem.eql(u8, key, "byBool")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             @This().deinitMap_by_bool(allocator, &self.by_bool);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "by_i64") or std.mem.eql(u8, key, "byI64")) {
+                            if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                            _pbz_seen.set(2);
                             @This().deinitMap_by_i64(allocator, &self.by_i64);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "by_u64") or std.mem.eql(u8, key, "byU64")) {
+                            if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                            _pbz_seen.set(3);
                             @This().deinitMap_by_u64(allocator, &self.by_u64);
                             continue;
                         }
@@ -1510,6 +1520,8 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "by_int") or std.mem.eql(u8, key, "byInt")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         @This().deinitMap_by_int(allocator, &self.by_int);
                         try self.by_int.ensureUnusedCapacity(allocator, object_value.count());
@@ -1520,6 +1532,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "by_bool") or std.mem.eql(u8, key, "byBool")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         @This().deinitMap_by_bool(allocator, &self.by_bool);
                         try self.by_bool.ensureUnusedCapacity(allocator, object_value.count());
@@ -1530,6 +1544,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "by_i64") or std.mem.eql(u8, key, "byI64")) {
+                        if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                        _pbz_seen.set(2);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         @This().deinitMap_by_i64(allocator, &self.by_i64);
                         try self.by_i64.ensureUnusedCapacity(allocator, object_value.count());
@@ -1540,6 +1556,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "by_u64") or std.mem.eql(u8, key, "byU64")) {
+                        if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                        _pbz_seen.set(3);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         @This().deinitMap_by_u64(allocator, &self.by_u64);
                         try self.by_u64.ensureUnusedCapacity(allocator, object_value.count());

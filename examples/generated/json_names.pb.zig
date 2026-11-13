@@ -584,20 +584,28 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(3).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "display_name") or std.mem.eql(u8, key, "shownName")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.display_name = "";
                             continue;
                         }
                         if (std.mem.eql(u8, key, "legacy_count") or std.mem.eql(u8, key, "legacy-count")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             self.legacy_count = 0;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "same_name")) {
+                            if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                            _pbz_seen.set(2);
                             self.same_name = "";
                             continue;
                         }
@@ -605,14 +613,20 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "display_name") or std.mem.eql(u8, key, "shownName")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         self.display_name = try @This().jsonString(value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "legacy_count") or std.mem.eql(u8, key, "legacy-count")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         self.legacy_count = try @This().jsonInt(i32, value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "same_name")) {
+                        if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                        _pbz_seen.set(2);
                         self.same_name = try @This().jsonString(value);
                         continue;
                     }

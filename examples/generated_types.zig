@@ -32,6 +32,22 @@ pub fn main() !void {
         \\{"counts":{"red":1,"red":3}}
     ));
 
+    // The same field reached through two accepted spellings is also a
+    // duplicate, and two different members of one oneof are rejected.
+    try std.testing.expectError(error.DuplicateField, person_pb.demo.ScalarMix.jsonParse(allocator,
+        \\{"big_delta":1,"bigDelta":2}
+    ));
+    try std.testing.expectError(error.DuplicateField, person_pb.demo.PresenceMix.jsonParse(allocator,
+        \\{"name":"a","code":2}
+    ));
+    {
+        var oneof = try person_pb.demo.PresenceMix.jsonParse(allocator,
+            \\{"name":"a"}
+        );
+        defer oneof.deinit(allocator);
+        std.debug.assert(std.meta.activeTag(oneof.pick) == .name);
+    }
+
     // Packed fixed-width numeric fields expose zero-copy helpers when the
     // wire buffer can be inspected directly (little-endian targets).
     var signed_fixed = person_pb.demo.SFixedPacked.init();

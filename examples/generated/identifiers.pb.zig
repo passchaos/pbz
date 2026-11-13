@@ -1054,45 +1054,77 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(7).initEmpty();
+                _ = &_pbz_seen;
+                var _pbz_seen_oneofs = std.StaticBitSet(1).initEmpty();
+                _ = &_pbz_seen_oneofs;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "type")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.@"type" = 0;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "error")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             self.@"error" = "";
                             continue;
                         }
                         if (std.mem.eql(u8, key, "test")) {
+                            if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                            _pbz_seen.set(2);
                             const old = self.@"test"; self.@"test" = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "align")) {
+                            if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                            _pbz_seen.set(3);
                             @This().deinitMap_align(allocator, &self.@"align");
                             continue;
                         }
                         if (std.mem.eql(u8, key, "null")) {
+                            if (_pbz_seen.isSet(6)) return error.DuplicateField;
+                            _pbz_seen.set(6);
                             self.@"null" = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "await")) { self._pbzDeinitOneof_async(allocator); continue; }
-                        if (std.mem.eql(u8, key, "opaque")) { self._pbzDeinitOneof_async(allocator); continue; }
+                        if (std.mem.eql(u8, key, "await")) {
+                            if (_pbz_seen.isSet(4)) return error.DuplicateField;
+                            _pbz_seen.set(4);
+                            if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                            _pbz_seen_oneofs.set(0);
+                            self._pbzDeinitOneof_async(allocator); continue;
+                        }
+                        if (std.mem.eql(u8, key, "opaque")) {
+                            if (_pbz_seen.isSet(5)) return error.DuplicateField;
+                            _pbz_seen.set(5);
+                            if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                            _pbz_seen_oneofs.set(0);
+                            self._pbzDeinitOneof_async(allocator); continue;
+                        }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "type")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         self.@"type" = try @This().jsonInt(i32, value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "error")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         self.@"error" = try @This().jsonString(value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "test")) {
+                        if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                        _pbz_seen.set(2);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList([]const u8) = .empty;
                         errdefer list.deinit(allocator);
@@ -1101,6 +1133,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "align")) {
+                        if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                        _pbz_seen.set(3);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         @This().deinitMap_align(allocator, &self.@"align");
                         try self.@"align".ensureUnusedCapacity(allocator, object_value.count());
@@ -1111,14 +1145,24 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "null")) {
+                        if (_pbz_seen.isSet(6)) return error.DuplicateField;
+                        _pbz_seen.set(6);
                         self.@"null" = try @This().jsonBool(value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "await")) {
+                        if (_pbz_seen.isSet(4)) return error.DuplicateField;
+                        _pbz_seen.set(4);
+                        if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                        _pbz_seen_oneofs.set(0);
                         self._pbzDeinitOneof_async(allocator); self.async = .{ .await = try @This().jsonString(value) };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "opaque")) {
+                        if (_pbz_seen.isSet(5)) return error.DuplicateField;
+                        _pbz_seen.set(5);
+                        if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                        _pbz_seen_oneofs.set(0);
                         self._pbzDeinitOneof_async(allocator); self.async = .{ .@"opaque" = try @This().jsonInt(i32, value) };
                         continue;
                     }

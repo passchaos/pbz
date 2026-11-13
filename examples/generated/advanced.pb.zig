@@ -1131,48 +1131,86 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(7).initEmpty();
+                _ = &_pbz_seen;
+                var _pbz_seen_oneofs = std.StaticBitSet(1).initEmpty();
+                _ = &_pbz_seen_oneofs;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "id")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.id = 0;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "kind")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             self.kind = 0;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "audit")) {
+                            if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                            _pbz_seen.set(2);
                             if (self.audit) |*old_value| old_value.deinit(allocator); self.audit = null;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "audits")) {
+                            if (_pbz_seen.isSet(6)) return error.DuplicateField;
+                            _pbz_seen.set(6);
                             @This().deinitMap_audits(allocator, &self.audits);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) { self._pbzDeinitOneof_subject(allocator); continue; }
-                        if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) { self._pbzDeinitOneof_subject(allocator); continue; }
-                        if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) { self._pbzDeinitOneof_subject(allocator); continue; }
+                        if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
+                            if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                            _pbz_seen.set(3);
+                            if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                            _pbz_seen_oneofs.set(0);
+                            self._pbzDeinitOneof_subject(allocator); continue;
+                        }
+                        if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
+                            if (_pbz_seen.isSet(4)) return error.DuplicateField;
+                            _pbz_seen.set(4);
+                            if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                            _pbz_seen_oneofs.set(0);
+                            self._pbzDeinitOneof_subject(allocator); continue;
+                        }
+                        if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                            if (_pbz_seen.isSet(5)) return error.DuplicateField;
+                            _pbz_seen.set(5);
+                            if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                            _pbz_seen_oneofs.set(0);
+                            self._pbzDeinitOneof_subject(allocator); continue;
+                        }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "id")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         self.id = try @This().jsonInt(i32, value);
                         continue;
                     }
                     if (std.mem.eql(u8, key, "kind")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         self.kind = @This().jsonEnum(value, &.{"KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "audit")) {
+                        if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                        _pbz_seen.set(2);
                         var _pbz_nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         errdefer _pbz_nested.deinit(allocator);
                         if (self.audit) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.audit = _pbz_nested; }
                         continue;
                     }
                     if (std.mem.eql(u8, key, "audits")) {
+                        if (_pbz_seen.isSet(6)) return error.DuplicateField;
+                        _pbz_seen.set(6);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
                         @This().deinitMap_audits(allocator, &self.audits);
                         try self.audits.ensureUnusedCapacity(allocator, object_value.count());
@@ -1187,14 +1225,26 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
+                        if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                        _pbz_seen.set(3);
+                        if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                        _pbz_seen_oneofs.set(0);
                         self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = try @This().jsonString(value) };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
+                        if (_pbz_seen.isSet(4)) return error.DuplicateField;
+                        _pbz_seen.set(4);
+                        if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                        _pbz_seen_oneofs.set(0);
                         self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = try @This().jsonBytes(arena_allocator, value) };
                         continue;
                     }
                     if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                        if (_pbz_seen.isSet(5)) return error.DuplicateField;
+                        _pbz_seen.set(5);
+                        if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
+                        _pbz_seen_oneofs.set(0);
                         { var _pbz_nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_subject(allocator); self.subject = .{ .audit_subject = _pbz_nested }; }
                         continue;
                     }
@@ -2364,6 +2414,8 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     _ = &allocator;
                     _ = &arena_allocator;
                     const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                    var _pbz_seen = std.StaticBitSet(2).initEmpty();
+                    _ = &_pbz_seen;
                     var it = object.iterator();
                     while (it.next()) |entry| {
                         const key = entry.key;

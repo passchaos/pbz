@@ -1987,17 +1987,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(2).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "id")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             self.id = 0;
                             self.has_id = false;
                             continue;
                         }
                         if (std.mem.eql(u8, key, "note")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             self.note = "";
                             self.has_note = false;
                             continue;
@@ -2006,11 +2012,15 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "id")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         self.id = try @This().jsonInt(i32, value);
                         self.has_id = true;
                         continue;
                     }
                     if (std.mem.eql(u8, key, "note")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         self.note = try @This().jsonString(value);
                         self.has_note = true;
                         continue;

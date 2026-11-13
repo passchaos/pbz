@@ -493,12 +493,16 @@ pub const demo = struct {
                     _ = &allocator;
                     _ = &arena_allocator;
                     const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                    var _pbz_seen = std.StaticBitSet(1).initEmpty();
+                    _ = &_pbz_seen;
                     var it = object.iterator();
                     while (it.next()) |entry| {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
                             if (std.mem.eql(u8, key, "leaf")) {
+                                if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                                _pbz_seen.set(0);
                                 if (self.leaf) |*old_value| old_value.deinit(allocator); self.leaf = null;
                                 continue;
                             }
@@ -506,6 +510,8 @@ pub const demo = struct {
                             return error.UnknownField;
                         }
                         if (std.mem.eql(u8, key, "leaf")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             var _pbz_nested = try imports.public_leaf_proto.demo.publics.leaf.Leaf.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                             errdefer _pbz_nested.deinit(allocator);
                             if (self.leaf) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.leaf = _pbz_nested; }

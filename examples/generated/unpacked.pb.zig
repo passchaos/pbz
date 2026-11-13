@@ -784,20 +784,28 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(3).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
                         if (std.mem.eql(u8, key, "values")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
                             const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "flags")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
                             const old = self.flags; self.flags = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
                         if (std.mem.eql(u8, key, "kinds")) {
+                            if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                            _pbz_seen.set(2);
                             const old = self.kinds; self.kinds = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
@@ -805,6 +813,8 @@ pub const demo = struct {
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "values")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);
@@ -813,6 +823,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "flags")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(bool) = .empty;
                         errdefer list.deinit(allocator);
@@ -821,6 +833,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "kinds")) {
+                        if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                        _pbz_seen.set(2);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         var list: std.ArrayList(i32) = .empty;
                         errdefer list.deinit(allocator);
