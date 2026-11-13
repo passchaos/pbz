@@ -1405,11 +1405,11 @@ pub fn writeJsonKeyCondition(field: *const schema.FieldDescriptor, writer: *std.
 
 pub fn writeExtensionJsonKeyCondition(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
     try writer.writeAll("std.mem.eql(u8, key, ");
-    try cg.writeExtensionTextNameLiteral(file, field, true, writer);
+    try cg.text_emit.writeExtensionTextNameLiteral(file, field, true, writer);
     try writer.writeAll(")");
-    if (cg.extensionHasLeafAlias(file, field)) {
+    if (cg.text_emit.extensionHasLeafAlias(file, field)) {
         try writer.writeAll(" or std.mem.eql(u8, key, ");
-        try cg.writeExtensionTextNameLiteral(file, field, false, writer);
+        try cg.text_emit.writeExtensionTextNameLiteral(file, field, false, writer);
         try writer.writeAll(")");
     }
 }
@@ -2512,9 +2512,9 @@ pub fn writeJsonExtensionValue(ctx: *const CodegenContext, kind: schema.FieldKin
 pub fn writeJsonExtensionPrefix(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try cg.indent(writer, depth);
     try writer.writeAll("try writer.writeAll(if (first) \"\\\"[");
-    try cg.writeExtensionTextNameContents(file, field, true, writer);
+    try cg.text_emit.writeExtensionTextNameContents(file, field, true, writer);
     try writer.writeAll("]\\\":\" else \",\\\"[");
-    try cg.writeExtensionTextNameContents(file, field, true, writer);
+    try cg.text_emit.writeExtensionTextNameContents(file, field, true, writer);
     try writer.writeAll("]\\\":\"); first = false;\n");
 }
 
