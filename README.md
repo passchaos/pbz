@@ -133,6 +133,17 @@ A lightweight smoke test is also available:
 python3 tools/smoke_conformance.py
 ```
 
+The corpus differential compares source parsing, strict option validation, and
+`FileDescriptorSet` round-trips against the pinned protoc (default 36.2):
+
+```sh
+tools/run_corpus_differential.sh
+```
+
+It currently reports zero parser false rejections, exact strict-option parity
+(161 accepted / 22 rejected), and zero descriptor round-trip errors or text
+differences across the 183-file protobuf corpus.
+
 ### Performance
 
 Run pbz's local benchmark:

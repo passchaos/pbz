@@ -55,6 +55,13 @@ has current, repository-verifiable evidence:
 
 ## Verification commands
 
+Run the protoc corpus differential (source parsing, strict options, and
+descriptor round-trip against the pinned protobuf release):
+
+```sh
+tools/run_corpus_differential.sh
+```
+
 Run the local generated/dynamic baseline:
 
 ```sh
