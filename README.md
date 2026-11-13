@@ -159,91 +159,69 @@ semantically identical to a baseline that materializes/copies the payload. Use
 `decode owned reuse`, contiguous encode/decode) and exclude borrowed
 slice/view rows.
 
-Latest same-session matrix (`bench/results/2026-11-12-linux-x86_64.md`,
-2026-11-13 re-run after the lean JSON parser change), fair mode, pinned to one
-CPU on an i9-13900K. Baseline cells show `ns/op (baseline / pbz)`; ratios above
-1.0 mean pbz is faster. The machine was shared, so sub-10% cells are noise; the
-JSON parse rows were also measured in a standalone bench run that removes
-allocator/thermal carry-over from earlier rows.
+Latest accepted cross-language matrix (`bench/results/2026-11-12-linux-x86_64.md`):
+protobuf 36.2 C++/upb baselines, three full-matrix rounds with the same binaries
+interleaved on one pinned core and merged per row. Fair mode
+(`--exclude-zero-copy`); baseline cells show `ns/op (baseline / pbz)`, and
+ratios above 1.0 mean pbz is faster. Mixed mode reports every parsed row as a
+pbz win.
 
-| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf 35.1 | upb protobuf 35.1 | Go protobuf |
+| workload | pbz ns/op | Rust prost | Rust quick-protobuf | C++ protobuf 36.2 | upb protobuf 36.2 | Go protobuf |
 |---|---:|---:|---:|---:|---:|---:|
-| binary encode | 20.47 | 121.48 (5.93x) | 66.63 (3.26x) | 93.20 (4.55x) | 150.32 (7.34x) | 1194.28 (58.34x) |
-| binary decode | 143.45 | 382.18 (2.66x) | 381.16 (2.66x) | 281.55 (1.96x) | 276.48 (1.93x) | 1441.92 (10.05x) |
-| deterministic binary encode | 69.94 | — | — | 138.47 (1.98x) | 263.15 (3.76x) | 1767.38 (25.27x) |
-| unknown fields count by number | 3.60 | — | — | 390.65 (108.51x) | 1953.23 (542.56x) | — |
-| scalarmix encode | 16.70 | 132.28 (7.92x) | 73.00 (4.37x) | 48.11 (2.88x) | 178.82 (10.71x) | 303.77 (18.19x) |
-| scalarmix decode | 42.19 | 238.22 (5.65x) | 197.62 (4.68x) | 85.80 (2.03x) | 164.78 (3.91x) | 563.92 (13.37x) |
-| textbytes encode | 22.37 | 100.91 (4.51x) | 50.37 (2.25x) | 89.56 (4.00x) | 118.58 (5.30x) | 154.74 (6.92x) |
-| textbytes decode | 85.82 | 560.92 (6.54x) | 293.05 (3.41x) | 223.17 (2.60x) | 178.50 (2.08x) | 1109.82 (12.93x) |
-| largebytes encode | 2614.86 | 2816.10 (1.08x) | 2768.96 (1.06x) | 2821.86 (1.08x) | 174962.00 (66.91x) | 2735.35 (1.05x) |
-| largebytes decode | 2818.64 | 6871.80 (2.44x) | 3468.44 (1.23x) | 4196.62 (1.49x) | 3048.63 (1.08x) | 24602.66 (8.73x) |
-| presencemix encode | 17.62 | 88.49 (5.02x) | 41.17 (2.34x) | 46.72 (2.65x) | 126.20 (7.16x) | 321.15 (18.23x) |
-| presencemix decode | 115.83 | 187.36 (1.62x) | 134.17 (1.16x) | 121.11 (1.05x) | 128.80 (1.11x) | 877.41 (7.57x) |
-| complex encode | 60.20 | 182.18 (3.03x) | 118.57 (1.97x) | 134.33 (2.23x) | 294.05 (4.88x) | 1077.53 (17.90x) |
-| complex decode | 422.13 | 524.81 (1.24x) | 449.24 (1.06x) | 345.81 (0.82x) | 493.53 (1.17x) | 2157.43 (5.11x) |
-| complex deterministic binary encode | 96.33 | — | — | 158.24 (1.64x) | 320.94 (3.33x) | 1490.54 (15.47x) |
-| packed int32 encode | 901.53 | 4193.83 (4.65x) | 2955.92 (3.28x) | 1663.13 (1.84x) | 6472.01 (7.18x) | 3739.14 (4.15x) |
-| packed int32 decode | 808.90 | 2558.80 (3.16x) | 4165.06 (5.15x) | 2031.75 (2.51x) | 3370.77 (4.17x) | 4012.93 (4.96x) |
-| packed fixed32 encode | 32.32 | 836.61 (25.89x) | 606.39 (18.76x) | 39.28 (1.22x) | 352.85 (10.92x) | 527.88 (16.33x) |
-| packed fixed32 decode | 34.28 | 1412.83 (41.21x) | 2333.20 (68.06x) | 46.03 (1.34x) | 179.81 (5.25x) | 1973.67 (57.57x) |
-| packed fixed64 encode | 62.09 | 685.87 (11.05x) | 741.64 (11.94x) | 68.92 (1.11x) | 399.88 (6.44x) | 547.07 (8.81x) |
-| packed fixed64 decode | 67.71 | 1583.00 (23.38x) | 2173.49 (32.10x) | 88.20 (1.30x) | 134.86 (1.99x) | 3198.51 (47.24x) |
-| packed bool encode | 10.61 | 1375.38 (129.63x) | 578.39 (54.51x) | 12.65 (1.19x) | 666.83 (62.85x) | 2953.39 (278.36x) |
-| packed bool decode | 29.22 | 1671.37 (57.20x) | 3729.40 (127.63x) | 86.14 (2.95x) | 1903.86 (65.16x) | 2343.87 (80.21x) |
-| packed enum encode | 276.99 | 2973.51 (10.74x) | 2418.98 (8.73x) | 1212.54 (4.38x) | 902.27 (3.26x) | 3426.32 (12.37x) |
-| packed enum decode | 156.72 | 2280.95 (14.55x) | 3955.33 (25.24x) | 272.28 (1.74x) | 1365.07 (8.71x) | 3264.82 (20.83x) |
-| large map encode | 4409.20 | 23024.88 (5.22x) | 11343.96 (2.57x) | 14417.30 (3.27x) | 24542.80 (5.57x) | 279388.02 (63.36x) |
-| large map decode | 43410.39 | 167900.29 (3.87x) | 133117.28 (3.07x) | 59495.70 (1.37x) | 91317.70 (2.10x) | 395926.70 (9.12x) |
-| ScalarMix JSON stringify | 356.04 | — | — | 3743.43 (10.51x) | 1991.78 (5.59x) | 4567.94 (12.83x) |
-| ScalarMix JSON parse | 1857.65 | — | — | 7135.76 (3.84x) | 1584.98 (0.85x) | 12785.02 (6.88x) |
-| TextBytes JSON stringify | 369.30 | — | — | 1789.43 (4.85x) | 381.92 (1.03x) | 3643.67 (9.87x) |
-| TextBytes JSON parse | 530.92 | — | — | 5325.52 (10.03x) | 650.64 (1.23x) | 6699.94 (12.62x) |
-| complex JSON stringify | 437.62 | — | — | 2944.65 (6.73x) | 1431.43 (3.27x) | 10150.31 (23.19x) |
-| complex JSON parse | 1635.63 | — | — | 7331.73 (4.48x) | 1347.69 (0.82x) | 13403.89 (8.19x) |
-| LargeMap JSON stringify | 27185.63 | — | — | 160526.00 (5.90x) | 62776.30 (2.31x) | 1051695.35 (38.69x) |
-| LargeMap JSON parse | 105665.29 | — | — | 697230.00 (6.60x) | 144091.00 (1.36x) | 752469.27 (7.12x) |
-| TextFormat format | 332.46 | — | — | 1986.80 (5.98x) | — | 3840.14 (11.55x) |
-| TextFormat parse | 1047.98 | — | — | 4960.09 (4.73x) | — | 10692.86 (10.20x) |
-| complex TextFormat format | 480.20 | — | — | 3760.29 (7.83x) | — | 6061.23 (12.62x) |
-| complex TextFormat parse | 2116.88 | — | — | 7164.40 (3.38x) | — | 11399.61 (5.39x) |
+| binary encode | 24.06 | 129.26 (5.37x) | 55.98 (2.33x) | 85.25 (3.54x) | 151.20 (6.28x) | 966.85 (40.18x) |
+| binary decode | 185.50 | 295.16 (1.59x) | 299.11 (1.61x) | 217.41 (1.17x) | 279.67 (1.51x) | 985.11 (5.31x) |
+| unknown fields count by number | 5.02 | — | — | 212.52 (42.33x) | 2976.80 (592.99x) | — |
+| deterministic binary encode | 66.77 | — | — | 127.05 (1.90x) | 188.26 (2.82x) | 1235.75 (18.51x) |
+| scalarmix encode | 25.31 | 110.35 (4.36x) | 63.50 (2.51x) | 40.59 (1.60x) | 214.22 (8.46x) | 237.33 (9.38x) |
+| scalarmix decode | 59.47 | 166.78 (2.80x) | 204.90 (3.45x) | 84.57 (1.42x) | 202.15 (3.40x) | 352.84 (5.93x) |
+| ScalarMix JSON parse | 1500.74 | — | — | 6639.88 (4.42x) | 1589.61 (1.06x) | 10295.65 (6.86x) |
+| textbytes encode | 26.82 | 88.34 (3.29x) | 46.23 (1.72x) | 87.66 (3.27x) | 117.49 (4.38x) | 169.63 (6.32x) |
+| textbytes decode | 105.45 | 471.25 (4.47x) | 304.06 (2.88x) | 193.99 (1.84x) | 206.88 (1.96x) | 800.07 (7.59x) |
+| TextBytes JSON parse | 634.63 | — | — | 3014.86 (4.75x) | 707.81 (1.12x) | 4889.22 (7.70x) |
+| largebytes encode | 3751.04 | 3870.94 (1.03x) | 3794.05 (1.01x) | 3821.57 (1.02x) | 74745.70 (19.93x) | 4109.61 (1.10x) |
+| largebytes decode (owned) | 5721.42 | 8402.14 (1.47x) | 4508.43 (0.79x) | 3996.86 (0.70x) | 4472.91 (0.78x) | 24615.47 (4.30x) |
+| presencemix encode | 23.81 | 61.84 (2.60x) | 38.49 (1.62x) | 51.98 (2.18x) | 134.50 (5.65x) | 255.27 (10.72x) |
+| presencemix decode | 115.00 | 163.64 (1.42x) | 130.64 (1.14x) | 138.45 (1.20x) | 148.59 (1.29x) | 551.75 (4.80x) |
+| complex encode | 65.00 | 159.66 (2.46x) | 117.64 (1.81x) | 149.79 (2.30x) | 294.13 (4.53x) | 940.94 (14.48x) |
+| complex decode | 327.78 | 455.12 (1.39x) | 424.38 (1.29x) | 386.70 (1.18x) | 423.41 (1.29x) | 1583.42 (4.83x) |
+| complex JSON parse | 1108.62 | — | — | 6739.92 (6.08x) | 1318.11 (1.19x) | 9928.83 (8.96x) |
+| packed int32 encode | 894.32 | 5387.80 (6.02x) | 2765.05 (3.09x) | 2205.70 (2.47x) | 4845.80 (5.42x) | 5697.26 (6.37x) |
+| packed int32 decode | 1026.95 | 2527.77 (2.46x) | 4223.35 (4.11x) | 1340.86 (1.31x) | 3668.40 (3.57x) | 4361.62 (4.25x) |
+| packed fixed64 encode | 153.11 | 705.90 (4.61x) | 630.06 (4.12x) | 153.36 (1.00x) | 581.57 (3.80x) | 569.60 (3.72x) |
+| packed fixed64 decode | 148.49 | 2008.12 (13.52x) | 2760.41 (18.59x) | 159.15 (1.07x) | 224.93 (1.51x) | 3243.03 (21.84x) |
+| packed bool encode | 17.60 | 2078.60 (118.10x) | 538.13 (30.58x) | 19.54 (1.11x) | 592.58 (33.67x) | 4377.09 (248.70x) |
+| packed bool decode | 39.62 | 2289.98 (57.80x) | 3843.66 (97.01x) | 83.84 (2.12x) | 2464.05 (62.19x) | 2644.53 (66.75x) |
+| packed enum encode | 555.99 | 4918.71 (8.85x) | 2329.29 (4.19x) | 1617.76 (2.91x) | 705.96 (1.27x) | 5018.36 (9.03x) |
+| packed enum decode | 274.65 | 2070.18 (7.54x) | 3889.52 (14.16x) | 428.57 (1.56x) | 2051.13 (7.47x) | 3207.56 (11.68x) |
+| large map encode | 5450.02 | 21817.21 (4.00x) | 12580.38 (2.31x) | 20206.60 (3.71x) | 31772.00 (5.83x) | 240231.57 (44.08x) |
+| large map decode | 50109.12 | 125988.28 (2.51x) | 130775.34 (2.61x) | 61195.00 (1.22x) | 98899.60 (1.97x) | 293631.16 (5.86x) |
+| LargeMap JSON parse | 116392.06 | — | — | 396769.00 (3.41x) | 150001.00 (1.29x) | 579789.17 (4.98x) |
+| TextFormat format | 244.99 | — | — | 2230.05 (9.10x) | — | 3079.75 (12.57x) |
+| TextFormat parse | 924.67 | — | — | 4526.37 (4.90x) | — | 7877.02 (8.52x) |
+| complex TextFormat format | 348.77 | — | — | 3366.98 (9.65x) | — | 6591.81 (18.90x) |
+| complex TextFormat parse | 2297.45 | — | — | 5846.06 (2.54x) | — | 11307.97 (4.92x) |
 
-Binary and TextFormat rows are pbz wins against every tracked baseline,
-including upb. JSON parse was the one consistent cross-language gap found by the
-upb baseline; the lean JSON value tree in `src/json_value.zig` replaced the
-two-pass `std.json.Value` DOM and cut generated JSON parse cost by 1.7-3.3x
-(ScalarMix 2730 -> 1858 ns, TextBytes 1311 -> 531 ns, complex 2343 -> 1636 ns,
-LargeMap 167725 -> 105665 ns in the same matrix). Generated JSON fill also
-rejects the same field reached through two accepted spellings
-(`big_delta`/`bigDelta`), two different members of one oneof, and duplicate
-extension keys using a comptime `StaticBitSet`; the focused probe shows the
-checks inside noise.
-Generated fields typed as `Timestamp`, `Duration`, `FieldMask`, `Empty`, a
-wrapper type, or `Struct`/`Value`/`ListValue` now parse and emit their canonical
-JSON forms instead of generic message objects. The opt-in
-`PBZ_CONFORMANCE_GENERATED_JSON=1` audit mode runs the conformance suite through
-generated parse and stringify and now passes 2817/2817 plus 445/445 TextFormat;
-generated `Any` JSON uses a per-field dynamic fallback with a descriptor
-registry built from the embedded file descriptor and imports.
-A best-of-runs check with the
-same binaries interleaved on one CPU confirms the close rows: pbz wins every
-JSON parse row against upb by 1.14-1.99x, packed fixed64/sfixed64 encode and
-decode are 1.03-1.08x faster than C++, and complex `decode owned` is 1.17x
-faster. `pbz.wire.copyBytes` now uses ERMS `rep movsb` for 2-32 KiB copies,
-cutting an 8 KiB copy from ~61 ns to ~54-58 ns and a 4 KiB copy from ~31 ns to
-~28 ns; the packed 64-bit rows moved from roughly 62-67 ns to 60-63 ns. The only
-cell still inside the run-to-run spread is packed double encode: across
-repeated interleaved rounds the medians are 62.70 ns for pbz and 62.71 ns for
-C++ 35.1, while one C++ round produced a 52.89 ns outlier that keeps the
-best-of-runs ratio at 0.88x. It is the same 8 KiB copy path and is treated as
-variance, not a real gap. See
-the results snapshot for the full table, the best-of-runs evidence, the upb
-comparison, the noise caveat, and the exact commands.
+Every binary/TextFormat/JSON row is a pbz win against the 36.2 baselines
+except the close or core-sensitive cells below:
 
-The full fair-mode table for every tracked workload is in
-`bench/results/2026-11-12-linux-x86_64.md`. Use `--pivot` without
-`--exclude-zero-copy` for mixed-mode results; do not compare mixed-mode rows to
-materializing baselines.
+- `packed fixed64/sfixed64/double encode` are 0.97-1.00x vs C++ (inside the
+  1-3% run-to-run spread on this shared machine).
+- `largebytes decode (owned)` is 0.70-0.79x on the pinned E-core because
+  `rep movsb` is slower than libc memcpy there; on a P-core the same fixture
+  measures 2765 ns for pbz vs 4865 ns for C++ 36.2 (1.76x) and 2740 ns for
+  upb 36.2 (1.01x). The ERMS range now starts at 8 KiB so 2-8 KiB copies use
+  the vector loop, which is within 4-16% of libc on E-cores and faster on
+  P-cores.
+
+The earlier TextBytes JSON parse gap is closed: the benchmark row now measures
+634.63 ns vs upb 36.2 at 707.81 ns (1.12x) after replacing the two-pass
+per-byte base64 decoder with a single table-driven pass; the focused
+`json-probe` TextBytes row dropped from ~1085 ns to ~505 ns. Generated JSON
+parse uses the lean `src/json_value.zig` tree, rejects duplicate spellings,
+oneof members, and extension keys, emits canonical WKT JSON, and the opt-in
+`PBZ_CONFORMANCE_GENERATED_JSON=1` audit passes 2817/2817 plus 445/445
+TextFormat. The full fair-mode table, the upb comparison, the noise caveat, and
+the exact commands are in the results snapshot.
 
 ## Basic usage
 
