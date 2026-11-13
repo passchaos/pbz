@@ -194,8 +194,9 @@ two-pass `std.json.Value` DOM and cut generated JSON parse cost by 1.7-3.3x
 (ScalarMix 2730 -> 1858 ns, TextBytes 1311 -> 531 ns, complex 2343 -> 1636 ns,
 LargeMap 167725 -> 105665 ns in the same matrix). Generated JSON fill also
 rejects the same field reached through two accepted spellings
-(`big_delta`/`bigDelta`) and two different members of one oneof using a
-comptime `StaticBitSet`; the focused probe shows the checks inside noise.
+(`big_delta`/`bigDelta`), two different members of one oneof, and duplicate
+extension keys using a comptime `StaticBitSet`; the focused probe shows the
+checks inside noise.
 Generated fields typed as `Timestamp`, `Duration`, `FieldMask`, `Empty`, a
 wrapper type, or `Struct`/`Value`/`ListValue` now parse and emit their canonical
 JSON forms instead of generic message objects. The opt-in

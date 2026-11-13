@@ -9758,8 +9758,14 @@ fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error
     try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzJsonAnyRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    var dynamic = pbz.DynamicMessage.init(allocator, any_desc);\n    defer dynamic.deinit();\n    try dynamic.addClone(any_desc.findField(\"type_url\").?, .{ .string = @constCast(value.type_url) });\n    try dynamic.addClone(any_desc.findField(\"value\").?, .{ .bytes = @constCast(value.value) });\n    const json = try pbz.json.stringifyAnyAllocWithRegistry(allocator, file, &registry, &dynamic, .{});\n    defer allocator.free(json);\n    try writer.writeAll(json);\n}\n\n");
 }
 
+fn writeJsonSeenIndexCheck(index: usize, writer: *std.Io.Writer, depth: usize) Error!void {
+    try indent(writer, depth);
+    try writer.print("if (_pbz_seen.isSet({d})) return error.DuplicateField;\n", .{index});
+    try indent(writer, depth);
+    try writer.print("_pbz_seen.set({d});\n", .{index});
+}
+
 fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    const file = ctx.file;
     try indent(writer, depth);
     try writer.writeAll("pub const JsonParseOptions = struct { ignore_unknown_fields: bool = false };\n\n");
 
@@ -9863,9 +9869,10 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
     try writer.writeAll("_ = &arena_allocator;\n");
     try indent(writer, depth + 1);
     try writer.writeAll("const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };\n");
-    if (message.fields.items.len != 0) {
+    const seen_count = message.fields.items.len + messageJsonExtensionCount(ctx, message);
+    if (seen_count != 0) {
         try indent(writer, depth + 1);
-        try writer.print("var _pbz_seen = std.StaticBitSet({d}).initEmpty();\n", .{message.fields.items.len});
+        try writer.print("var _pbz_seen = std.StaticBitSet({d}).initEmpty();\n", .{seen_count});
         try indent(writer, depth + 1);
         try writer.writeAll("_ = &_pbz_seen;\n");
     }
@@ -9900,7 +9907,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
                 }
             }
         }
-        try writeJsonClearExtensions(file, message, writer, depth + 3);
+        try writeJsonClearExtensions(ctx, message, writer, depth + 3);
         try indent(writer, depth + 3);
         try writer.writeAll("if (options.ignore_unknown_fields) continue;\n");
         try indent(writer, depth + 3);
@@ -10236,27 +10243,57 @@ fn writeJsonClearOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
     try writer.writeAll("}\n");
 }
 
-fn writeJsonClearExtensions(file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
-    for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionSupported(file, field)) try writeJsonClearExtension(file, field, writer, depth);
+fn messageJsonExtensionCount(ctx: *const CodegenContext, message: *const schema.MessageDescriptor) usize {
+    var count: usize = 0;
+    for (ctx.file.extensions.items) |*field| {
+        if (extensionAppliesToMessage(ctx.file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) count += 1;
     }
-    for (file.messages.items) |*scope| try writeJsonClearScopedExtensions(file, message, scope, writer, depth);
+    for (ctx.file.messages.items) |*scope| count += scopedJsonExtensionCount(ctx, message, scope);
+    return count;
 }
 
-fn writeJsonClearScopedExtensions(file: *const schema.FileDescriptor, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn scopedJsonExtensionCount(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor) usize {
+    var count: usize = 0;
     for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupported(file, field)) try writeJsonClearExtension(file, field, writer, depth);
+        if (extensionAppliesToMessage(ctx.file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) count += 1;
     }
-    for (scope.messages.items) |*nested| try writeJsonClearScopedExtensions(file, target, nested, writer, depth);
+    for (scope.messages.items) |*nested| count += scopedJsonExtensionCount(ctx, target, nested);
+    return count;
 }
 
-fn writeJsonClearExtension(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonClearExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+    var seen_index = message.fields.items.len;
+    for (ctx.file.extensions.items) |*field| {
+        if (extensionAppliesToMessage(ctx.file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) {
+            try writeJsonClearExtension(ctx.file, field, writer, depth, seen_index);
+            seen_index += 1;
+        }
+    }
+    for (ctx.file.messages.items) |*scope| try writeJsonClearScopedExtensions(ctx, message, scope, writer, depth, &seen_index);
+}
+
+fn writeJsonClearScopedExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: *usize) Error!void {
+    for (scope.extensions.items) |*field| {
+        if (extensionAppliesToMessage(ctx.file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) {
+            try writeJsonClearExtension(ctx.file, field, writer, depth, seen_index.*);
+            seen_index.* += 1;
+        }
+    }
+    for (scope.messages.items) |*nested| try writeJsonClearScopedExtensions(ctx, target, nested, writer, depth, seen_index);
+}
+
+fn writeJsonClearExtension(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeExtensionJsonKeyCondition(file, field, writer);
-    try writer.writeAll(") { try self.clearUnknownFieldsByNumber(allocator, ");
+    try writer.writeAll(") {\n");
+    try writeJsonSeenIndexCheck(seen_index, writer, depth + 1);
+    try indent(writer, depth + 1);
+    try writer.writeAll("try self.clearUnknownFieldsByNumber(allocator, ");
     try writeExtensionHelperReference(field, writer);
-    try writer.writeAll(".number); continue; }\n");
+    try writer.writeAll(".number); continue;\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n");
 }
 
 fn writeJsonParseField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -10493,34 +10530,42 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
 
 fn writeJsonParseExtensions(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const file = ctx.file;
+    var seen_index = message.fields.items.len;
     for (file.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) try writeJsonParseExtensionField(ctx, field, writer, depth);
+        if (extensionAppliesToMessage(file, message, field) and jsonExtensionSupportedWithContext(ctx, field)) {
+            try writeJsonParseExtensionField(ctx, field, writer, depth, seen_index);
+            seen_index += 1;
+        }
     }
-    for (file.messages.items) |*scope| try writeJsonParseScopedExtensions(ctx, message, scope, writer, depth);
+    for (file.messages.items) |*scope| try writeJsonParseScopedExtensions(ctx, message, scope, writer, depth, &seen_index);
 }
 
-fn writeJsonParseScopedExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonParseScopedExtensions(ctx: *const CodegenContext, target: *const schema.MessageDescriptor, scope: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: *usize) Error!void {
     const file = ctx.file;
     for (scope.extensions.items) |*field| {
-        if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) try writeJsonParseExtensionField(ctx, field, writer, depth);
+        if (extensionAppliesToMessage(file, target, field) and jsonExtensionSupportedWithContext(ctx, field)) {
+            try writeJsonParseExtensionField(ctx, field, writer, depth, seen_index.*);
+            seen_index.* += 1;
+        }
     }
-    for (scope.messages.items) |*nested| try writeJsonParseScopedExtensions(ctx, target, nested, writer, depth);
+    for (scope.messages.items) |*nested| try writeJsonParseScopedExtensions(ctx, target, nested, writer, depth, seen_index);
 }
 
-fn writeJsonParseExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonParseExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
     const file = ctx.file;
     switch (field.kind) {
-        .scalar, .enumeration => return try writeJsonParseScalarExtensionField(file, field, writer, depth),
-        .message, .group => |type_name| return try writeJsonParseMessageExtensionField(ctx, field, type_name, writer, depth),
+        .scalar, .enumeration => return try writeJsonParseScalarExtensionField(file, field, writer, depth, seen_index),
+        .message, .group => |type_name| return try writeJsonParseMessageExtensionField(ctx, field, type_name, writer, depth, seen_index),
         else => return,
     }
 }
 
-fn writeJsonParseScalarExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonParseScalarExtensionField(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeExtensionJsonKeyCondition(file, field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenIndexCheck(seen_index, writer, depth + 1);
     if (field.cardinality == .repeated) {
         try indent(writer, depth + 1);
         try writer.writeAll("try self.clearUnknownFieldsByNumber(allocator, ");
@@ -10567,13 +10612,14 @@ fn writeJsonParseScalarExtensionField(file: *const schema.FileDescriptor, field:
     try writer.writeAll("}\n");
 }
 
-fn writeJsonParseMessageExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonParseMessageExtensionField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize, seen_index: usize) Error!void {
     const file = ctx.file;
     if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeExtensionJsonKeyCondition(file, field, writer);
     try writer.writeAll(") {\n");
+    try writeJsonSeenIndexCheck(seen_index, writer, depth + 1);
     if (field.cardinality == .repeated) {
         try indent(writer, depth + 1);
         try writer.writeAll("try self.clearUnknownFieldsByNumber(allocator, ");

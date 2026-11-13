@@ -779,24 +779,50 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(5).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "[demo.extgen.tag]") or std.mem.eql(u8, key, "[tag]")) { try self.clearUnknownFieldsByNumber(allocator, extensions.tag.number); continue; }
-                        if (std.mem.eql(u8, key, "[demo.extgen.nums]") or std.mem.eql(u8, key, "[nums]")) { try self.clearUnknownFieldsByNumber(allocator, extensions.nums.number); continue; }
-                        if (std.mem.eql(u8, key, "[demo.extgen.payload]") or std.mem.eql(u8, key, "[payload]")) { try self.clearUnknownFieldsByNumber(allocator, extensions.payload.number); continue; }
-                        if (std.mem.eql(u8, key, "[demo.extgen.payloads]") or std.mem.eql(u8, key, "[payloads]")) { try self.clearUnknownFieldsByNumber(allocator, extensions.payloads.number); continue; }
-                        if (std.mem.eql(u8, key, "[demo.extgen.role]") or std.mem.eql(u8, key, "[role]")) { try self.clearUnknownFieldsByNumber(allocator, extensions.role.number); continue; }
+                        if (std.mem.eql(u8, key, "[demo.extgen.tag]") or std.mem.eql(u8, key, "[tag]")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
+                            try self.clearUnknownFieldsByNumber(allocator, extensions.tag.number); continue;
+                        }
+                        if (std.mem.eql(u8, key, "[demo.extgen.nums]") or std.mem.eql(u8, key, "[nums]")) {
+                            if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                            _pbz_seen.set(1);
+                            try self.clearUnknownFieldsByNumber(allocator, extensions.nums.number); continue;
+                        }
+                        if (std.mem.eql(u8, key, "[demo.extgen.payload]") or std.mem.eql(u8, key, "[payload]")) {
+                            if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                            _pbz_seen.set(2);
+                            try self.clearUnknownFieldsByNumber(allocator, extensions.payload.number); continue;
+                        }
+                        if (std.mem.eql(u8, key, "[demo.extgen.payloads]") or std.mem.eql(u8, key, "[payloads]")) {
+                            if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                            _pbz_seen.set(3);
+                            try self.clearUnknownFieldsByNumber(allocator, extensions.payloads.number); continue;
+                        }
+                        if (std.mem.eql(u8, key, "[demo.extgen.role]") or std.mem.eql(u8, key, "[role]")) {
+                            if (_pbz_seen.isSet(4)) return error.DuplicateField;
+                            _pbz_seen.set(4);
+                            try self.clearUnknownFieldsByNumber(allocator, extensions.role.number); continue;
+                        }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.tag]") or std.mem.eql(u8, key, "[tag]")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         try extensions.tag.replaceInUnknown(self, allocator, try @This().jsonString(value));
                         continue;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.nums]") or std.mem.eql(u8, key, "[nums]")) {
+                        if (_pbz_seen.isSet(1)) return error.DuplicateField;
+                        _pbz_seen.set(1);
                         try self.clearUnknownFieldsByNumber(allocator, extensions.nums.number);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         for (array.items) |item| {
@@ -805,12 +831,16 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.payload]") or std.mem.eql(u8, key, "[payload]")) {
+                        if (_pbz_seen.isSet(2)) return error.DuplicateField;
+                        _pbz_seen.set(2);
                         var _pbz_nested = try Payload.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer _pbz_nested.deinit(arena_allocator);
                         try extensions.payload.replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));
                         continue;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.payloads]") or std.mem.eql(u8, key, "[payloads]")) {
+                        if (_pbz_seen.isSet(3)) return error.DuplicateField;
+                        _pbz_seen.set(3);
                         try self.clearUnknownFieldsByNumber(allocator, extensions.payloads.number);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
                         for (array.items) |item| {
@@ -821,6 +851,8 @@ pub const demo = struct {
                         continue;
                     }
                     if (std.mem.eql(u8, key, "[demo.extgen.role]") or std.mem.eql(u8, key, "[role]")) {
+                        if (_pbz_seen.isSet(4)) return error.DuplicateField;
+                        _pbz_seen.set(4);
                         try extensions.role.replaceInUnknown(self, allocator, @This().jsonEnum(value, &.{"ROLE_UNKNOWN", "ROLE_USER", "ROLE_ADMIN"}, &.{0, 1, 2}, true) catch |err| { if (options.ignore_unknown_fields) continue; return err; });
                         continue;
                     }

@@ -105,6 +105,15 @@ pub fn main() !void {
     try std.testing.expectEqualStrings("alpha", (try json_roundtrip.getExtension_tag(allocator)).?);
     try std.testing.expectEqual(ext.Role.ROLE_USER, (try json_roundtrip.getEnumExtension_role(allocator)).?);
 
+    // Extension fields use the same duplicate-key rejection as regular fields,
+    // including the full-name and leaf-alias spellings of one extension.
+    try std.testing.expectError(error.DuplicateField, ext.Host.jsonParse(allocator,
+        \\{"[demo.extgen.tag]":"alpha","[demo.extgen.tag]":"beta"}
+    ));
+    try std.testing.expectError(error.DuplicateField, ext.Host.jsonParse(allocator,
+        \\{"[demo.extgen.tag]":"alpha","[tag]":"beta"}
+    ));
+
     const text = try decoded.formatTextAlloc(allocator);
     defer allocator.free(text);
     try std.testing.expect(std.mem.indexOf(u8, text, "[demo.extgen.tag]: \"alpha\"") != null);

@@ -502,16 +502,24 @@ pub const demo = struct {
                 _ = &allocator;
                 _ = &arena_allocator;
                 const object = switch (json_value) { .object => |object| object, else => return error.TypeMismatch };
+                var _pbz_seen = std.StaticBitSet(1).initEmpty();
+                _ = &_pbz_seen;
                 var it = object.iterator();
                 while (it.next()) |entry| {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "[demo.messageset.note]") or std.mem.eql(u8, key, "[note]")) { try self.clearUnknownFieldsByNumber(allocator, extensions.note.number); continue; }
+                        if (std.mem.eql(u8, key, "[demo.messageset.note]") or std.mem.eql(u8, key, "[note]")) {
+                            if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                            _pbz_seen.set(0);
+                            try self.clearUnknownFieldsByNumber(allocator, extensions.note.number); continue;
+                        }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
                     if (std.mem.eql(u8, key, "[demo.messageset.note]") or std.mem.eql(u8, key, "[note]")) {
+                        if (_pbz_seen.isSet(0)) return error.DuplicateField;
+                        _pbz_seen.set(0);
                         var _pbz_nested = try Note.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
                         defer _pbz_nested.deinit(arena_allocator);
                         try extensions.note.replaceInUnknown(self, allocator, try _pbz_nested.encode(arena_allocator));
