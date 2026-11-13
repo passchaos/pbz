@@ -433,7 +433,7 @@ pub const demo = struct {
                 try self.jsonStringifyWithOptions(allocator, writer, .{});
             }
 
-            pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
+            pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) anyerror!void {
                 _ = &allocator;
                 _ = &options;
                 try writer.writeAll("{");
@@ -529,16 +529,27 @@ pub const demo = struct {
 fn jsonFloat(comptime T: type, value: pbz.json.Value) !T {
     return switch (value) {
         .integer => |v| @as(T, @floatFromInt(v)),
-        .float => |v| @floatCast(v),
-        .number_string => |text| try std.fmt.parseFloat(T, text),
+        .float => |v| blk: {
+            const out: T = @floatCast(v);
+            if (!std.math.isFinite(out)) return error.InvalidNumber;
+            break :blk out;
+        },
+        .number_string => |text| blk: {
+            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
+            if (!std.math.isFinite(out)) return error.InvalidNumber;
+            break :blk out;
+        },
         .string => |text| if (std.mem.eql(u8, text, "NaN"))
             std.math.nan(T)
         else if (std.mem.eql(u8, text, "Infinity"))
             std.math.inf(T)
         else if (std.mem.eql(u8, text, "-Infinity"))
             -std.math.inf(T)
-        else
-            try std.fmt.parseFloat(T, text),
+        else blk: {
+            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
+            if (!std.math.isFinite(out)) return error.InvalidNumber;
+            break :blk out;
+        },
         else => error.TypeMismatch,
     };
 }
@@ -998,18 +1009,7 @@ fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bo
 }
 
 fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-    return @This().jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-        @This().jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
-}
-
-fn jsonDecodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
-    const size = try decoder.calcSizeForSlice(value);
-    const out = try allocator.alloc(u8, size);
-    errdefer allocator.free(out);
-    try decoder.decode(out, value);
-    return out;
+    return try pbz.json.decodeBase64(allocator, value);
 }
 
 fn jsonMapKeyBool(key: []const u8) !bool {
@@ -1553,7 +1553,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try self.jsonStringifyWithOptions(allocator, writer, .{});
             }
 
-            pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {
+            pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) anyerror!void {
                 _ = &allocator;
                 _ = &options;
                 try writer.writeAll("{");
@@ -1673,16 +1673,27 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
 fn jsonFloat(comptime T: type, value: pbz.json.Value) !T {
     return switch (value) {
         .integer => |v| @as(T, @floatFromInt(v)),
-        .float => |v| @floatCast(v),
-        .number_string => |text| try std.fmt.parseFloat(T, text),
+        .float => |v| blk: {
+            const out: T = @floatCast(v);
+            if (!std.math.isFinite(out)) return error.InvalidNumber;
+            break :blk out;
+        },
+        .number_string => |text| blk: {
+            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
+            if (!std.math.isFinite(out)) return error.InvalidNumber;
+            break :blk out;
+        },
         .string => |text| if (std.mem.eql(u8, text, "NaN"))
             std.math.nan(T)
         else if (std.mem.eql(u8, text, "Infinity"))
             std.math.inf(T)
         else if (std.mem.eql(u8, text, "-Infinity"))
             -std.math.inf(T)
-        else
-            try std.fmt.parseFloat(T, text),
+        else blk: {
+            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
+            if (!std.math.isFinite(out)) return error.InvalidNumber;
+            break :blk out;
+        },
         else => error.TypeMismatch,
     };
 }
@@ -2142,18 +2153,7 @@ fn textBlock(allocator: std.mem.Allocator, lines: anytype, text_has_comments: bo
 }
 
 fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-    return @This().jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-        @This().jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
-}
-
-fn jsonDecodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
-    const size = try decoder.calcSizeForSlice(value);
-    const out = try allocator.alloc(u8, size);
-    errdefer allocator.free(out);
-    try decoder.decode(out, value);
-    return out;
+    return try pbz.json.decodeBase64(allocator, value);
 }
 
 fn jsonMapKeyBool(key: []const u8) !bool {

@@ -491,7 +491,7 @@ fn numberAsFloat(comptime T: type, json_value: Value) !T {
     return out;
 }
 
-fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
+pub fn decodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
     var data_chars: usize = 0;
     var padding_chars: usize = 0;
     var saw_padding = false;

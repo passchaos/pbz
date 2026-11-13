@@ -4,6 +4,11 @@ const generated = @import("conformance_generated");
 
 const default_descriptor_env = "PBZ_CONFORMANCE_DESCRIPTOR_SET";
 
+/// Experimental audit mode: parse JSON requests through the generated message
+/// parsers instead of the dynamic bridge. Used to measure generated JSON
+/// conformance coverage; the default remains the dynamic bridge.
+var generated_json_mode = false;
+
 const GeneratedCase = struct {
     name: []const u8,
     message: type,
@@ -48,6 +53,7 @@ pub fn main(init: std.process.Init) !void {
         }
     }
     if (descriptor_path == null) descriptor_path = init.environ_map.get(default_descriptor_env);
+    generated_json_mode = init.environ_map.get("PBZ_CONFORMANCE_GENERATED_JSON") != null;
 
     const path = descriptor_path orelse {
         printUsage(io);
@@ -134,12 +140,18 @@ fn runTyped(
             parsed = Message.decodeOwned(allocator, payload) catch |err| return try parseError(allocator, err);
         },
         .json_payload => |payload| {
-            parsed_dynamic = pbz.json.parseAllocWithRegistry(allocator, registry_file, registry, descriptor, payload, .{
-                .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test,
-            }) catch |err| return try parseError(allocator, err);
-            const wire = parsed_dynamic.?.encodedDeterministicWithRegistry(registry_file, registry) catch |err| return try parseError(allocator, err);
-            defer allocator.free(wire);
-            parsed = Message.decodeOwned(allocator, wire) catch |err| return try parseError(allocator, err);
+            if (generated_json_mode) {
+                parsed = Message.jsonParseWithOptions(allocator, payload, .{
+                    .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test,
+                }) catch |err| return try parseError(allocator, err);
+            } else {
+                parsed_dynamic = pbz.json.parseAllocWithRegistry(allocator, registry_file, registry, descriptor, payload, .{
+                    .ignore_unknown_fields = request.test_category == .json_ignore_unknown_parsing_test,
+                }) catch |err| return try parseError(allocator, err);
+                const wire = parsed_dynamic.?.encodedDeterministicWithRegistry(registry_file, registry) catch |err| return try parseError(allocator, err);
+                defer allocator.free(wire);
+                parsed = Message.decodeOwned(allocator, wire) catch |err| return try parseError(allocator, err);
+            }
         },
         .text_payload => |payload| {
             parsed_dynamic = pbz.text.parseAllocWithRegistry(allocator, registry_file, registry, descriptor, payload) catch |err| return try parseError(allocator, err);
@@ -168,7 +180,9 @@ fn runTyped(
             break :blk try (pbz.ConformanceResponse{ .result = .{ .protobuf_payload = payload } }).encode(allocator);
         },
         .json => blk: {
-            const payload = if (parsed_dynamic) |*dynamic|
+            const payload = if (generated_json_mode)
+                message.jsonStringifyAlloc(allocator) catch |err| return try serializeError(allocator, err)
+            else if (parsed_dynamic) |*dynamic|
                 pbz.json.stringifyAllocWithRegistry(allocator, registry_file, registry, dynamic, .{}) catch |err| return try serializeError(allocator, err)
             else blk_json: {
                 const wire = message.encode(allocator) catch |err| return try serializeError(allocator, err);

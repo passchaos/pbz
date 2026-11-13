@@ -52,6 +52,7 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
         try writeGeneratedFileDescriptor(&active_ctx, &descriptor_file, &out.writer, 0);
     }
     try writePackagedFileDecls(&active_ctx, &out.writer, 0);
+    try writeWktJsonHelpers(&active_ctx, &out.writer);
     return try finalizeGeneratedZig(ctx.allocator, try out.toOwnedSlice());
 }
 
@@ -5871,6 +5872,22 @@ fn writeMessageTypeReferenceWithContext(ctx: *const CodegenContext, type_name: [
 /// Like writeMessageTypeReferenceWithContext, but always qualifies same-file
 /// references with their message path. Use this from file-scope namespaces such
 /// as `extensions`, where a nested type's leaf name is not in scope.
+/// Reference a message from file scope (outside the package structs), where
+/// same-file leaf names are not in scope.
+fn writeFileScopeMessageReference(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
+    const reference = resolveMessageReference(ctx, type_name) orelse {
+        return try writeMessageTypeReference(type_name, writer);
+    };
+    if (reference.import_chain) |chain| {
+        try writeImportChainPrefix(ctx, chain.slice(), writer);
+        try writePackagePath(reference.file.package, writer);
+        _ = try writeMessagePathInFile(reference.file, reference.message, writer);
+    } else {
+        try writePackagePath(ctx.file.package, writer);
+        _ = try writeMessagePathInFile(ctx.file, reference.message, writer);
+    }
+}
+
 fn writeQualifiedMessageTypeReference(ctx: *const CodegenContext, type_name: []const u8, writer: *std.Io.Writer) Error!void {
     const reference = resolveMessageReference(ctx, type_name) orelse {
         return try writeMessageTypeReference(type_name, writer);
@@ -9490,7 +9507,7 @@ fn writeJsonMethods(ctx: *const CodegenContext, message: *const schema.MessageDe
     try writer.writeAll("}\n\n");
 
     try indent(writer, depth);
-    try writer.writeAll("pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) !void {\n");
+    try writer.writeAll("pub fn jsonStringifyWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().JsonStringifyOptions) anyerror!void {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("_ = &allocator;\n");
     try indent(writer, depth + 1);
@@ -9578,14 +9595,28 @@ const WktJson = union(enum) {
     duration,
     field_mask,
     empty,
+    struct_value,
+    value_value,
+    list_value,
     wrapper: WktWrapperKind,
 };
 
-fn wktJson(type_name: []const u8) ?WktJson {
+fn wktJsonSupportAvailable(ctx: *const CodegenContext) bool {
+    return codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Struct") and
+        codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Value") and
+        codegenCanReferenceMessageWithContext(ctx, "google.protobuf.ListValue");
+}
+
+fn wktJson(ctx: *const CodegenContext, type_name: []const u8) ?WktJson {
     if (std.mem.eql(u8, type_name, "google.protobuf.Timestamp")) return .timestamp;
     if (std.mem.eql(u8, type_name, "google.protobuf.Duration")) return .duration;
     if (std.mem.eql(u8, type_name, "google.protobuf.FieldMask")) return .field_mask;
     if (std.mem.eql(u8, type_name, "google.protobuf.Empty")) return .empty;
+    if (wktJsonSupportAvailable(ctx)) {
+        if (std.mem.eql(u8, type_name, "google.protobuf.Struct")) return .struct_value;
+        if (std.mem.eql(u8, type_name, "google.protobuf.Value")) return .value_value;
+        if (std.mem.eql(u8, type_name, "google.protobuf.ListValue")) return .list_value;
+    }
     const wrappers = [_]struct { name: []const u8, kind: WktWrapperKind }{
         .{ .name = "google.protobuf.DoubleValue", .kind = .{ .pbz_type = "pbz.DoubleValue", .value_type = "f64", .parse = .float } },
         .{ .name = "google.protobuf.FloatValue", .kind = .{ .pbz_type = "pbz.FloatValue", .value_type = "f32", .parse = .float } },
@@ -9611,6 +9642,9 @@ fn writeWktJsonParseExpr(kind: WktJson, value_expr: []const u8, arena_expr: []co
         .duration => try writer.print("blk: {{ const _pbz_wkt = try pbz.Duration.jsonParseUnquoted(try @This().jsonString({s})); break :blk .{{ .seconds = _pbz_wkt.seconds, .nanos = _pbz_wkt.nanos }}; }}", .{value_expr}),
         .field_mask => try writer.print("blk: {{ const _pbz_paths = try pbz.FieldMask.jsonParseUnquoted({s}, try @This().jsonString({s})); break :blk .{{ .paths = try allocator.dupe([]const u8, _pbz_paths) }}; }}", .{ arena_expr, value_expr }),
         .empty => try writer.print("blk: {{ switch ({s}) {{ .object => |_pbz_obj| if (_pbz_obj.count() != 0) return error.UnknownField, else => return error.TypeMismatch }} break :blk .{{}}; }}", .{value_expr}),
+        .struct_value => try writer.print("try _pbzJsonParseWktStruct(allocator, {s}, {s})", .{ arena_expr, value_expr }),
+        .value_value => try writer.print("try _pbzJsonParseWktValue(allocator, {s}, {s})", .{ arena_expr, value_expr }),
+        .list_value => try writer.print("try _pbzJsonParseWktListValue(allocator, {s}, {s})", .{ arena_expr, value_expr }),
         .wrapper => |wrapper| switch (wrapper.parse) {
             .float => try writer.print(".{{ .value = try @This().jsonFloat({s}, {s}) }}", .{ wrapper.value_type, value_expr }),
             .int => try writer.print(".{{ .value = try @This().jsonInt({s}, {s}) }}", .{ wrapper.value_type, value_expr }),
@@ -9627,8 +9661,59 @@ fn writeWktJsonStringifyExpr(kind: WktJson, value_expr: []const u8, writer: *std
         .duration => try writer.print("(pbz.Duration{{ .seconds = {s}.seconds, .nanos = {s}.nanos }}).jsonStringify(writer)", .{ value_expr, value_expr }),
         .field_mask => try writer.print("(pbz.FieldMask{{ .paths = {s}.paths }}).jsonStringify(writer)", .{value_expr}),
         .empty => try writer.writeAll("pbz.Empty.jsonStringify(writer)"),
+        .struct_value => try writer.print("_pbzJsonStringifyWktStruct({s}, writer)", .{value_expr}),
+        .value_value => try writer.print("_pbzJsonStringifyWktValue({s}, writer)", .{value_expr}),
+        .list_value => try writer.print("_pbzJsonStringifyWktListValue({s}, writer)", .{value_expr}),
         .wrapper => |wrapper| try writer.print("({s}{{ .value = {s}.value }}).jsonStringify(writer)", .{ wrapper.pbz_type, value_expr }),
     }
+}
+
+/// Emit the recursive Struct/Value/ListValue JSON converters once per file.
+/// These are the three WKT types whose JSON form is arbitrary JSON rather than
+/// a fixed message shape; generated message JSON cannot express them inline.
+fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
+    if (!wktJsonSupportAvailable(ctx)) return;
+    const struct_type = "google.protobuf.Struct";
+    const value_type = "google.protobuf.Value";
+    const list_type = "google.protobuf.ListValue";
+
+    try writer.writeAll("fn _pbzJsonParseWktStruct(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value) anyerror!");
+    try writeFileScopeMessageReference(ctx, struct_type, writer);
+    try writer.writeAll(" {\n    const object = switch (value) { .object => |object| object, else => return error.TypeMismatch };\n    var out = ");
+    try writeFileScopeMessageReference(ctx, struct_type, writer);
+    try writer.writeAll(".init();\n    errdefer out.deinit(allocator);\n    try out.fields.ensureTotalCapacity(allocator, object.count());\n    var it = object.iterator();\n    while (it.next()) |entry| {\n        var parsed = try _pbzJsonParseWktValue(allocator, arena_allocator, entry.value);\n        errdefer parsed.deinit(allocator);\n        try out.fields.put(allocator, entry.key, parsed);\n    }\n    return out;\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonParseWktValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value) anyerror!");
+    try writeFileScopeMessageReference(ctx, value_type, writer);
+    try writer.writeAll(" {\n    var out = ");
+    try writeFileScopeMessageReference(ctx, value_type, writer);
+    try writer.writeAll(".init();\n    errdefer out.deinit(allocator);\n    switch (value) {\n        .null => out.kind = .{ .null_value = 0 },\n        .bool => |v| out.kind = .{ .bool_value = v },\n        .integer => |v| out.kind = .{ .number_value = @floatFromInt(v) },\n        .float => |v| out.kind = .{ .number_value = v },\n        .number_string => |text| out.kind = .{ .number_value = try std.fmt.parseFloat(f64, text) },\n        .string => |text| out.kind = .{ .string_value = text },\n        .object => |object| {\n            var nested = ");
+    try writeFileScopeMessageReference(ctx, struct_type, writer);
+    try writer.writeAll(".init();\n            errdefer nested.deinit(allocator);\n            try nested.fields.ensureTotalCapacity(allocator, object.count());\n            var it = object.iterator();\n            while (it.next()) |entry| {\n                var parsed = try _pbzJsonParseWktValue(allocator, arena_allocator, entry.value);\n                errdefer parsed.deinit(allocator);\n                try nested.fields.put(allocator, entry.key, parsed);\n            }\n            out.kind = .{ .struct_value = nested };\n        },\n        .array => |array| {\n            const items = try allocator.alloc(");
+    try writeFileScopeMessageReference(ctx, value_type, writer);
+    try writer.writeAll(", array.items.len);\n            errdefer allocator.free(items);\n            var initialized: usize = 0;\n            errdefer for (items[0..initialized]) |*item| item.deinit(allocator);\n            for (array.items, 0..) |item, i| {\n                items[i] = try _pbzJsonParseWktValue(allocator, arena_allocator, item);\n                initialized += 1;\n            }\n            var list = ");
+    try writeFileScopeMessageReference(ctx, list_type, writer);
+    try writer.writeAll(".init();\n            list.values = items;\n            out.kind = .{ .list_value = list };\n        },\n    }\n    return out;\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonParseWktListValue(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value) anyerror!");
+    try writeFileScopeMessageReference(ctx, list_type, writer);
+    try writer.writeAll(" {\n    const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n    var out = ");
+    try writeFileScopeMessageReference(ctx, list_type, writer);
+    try writer.writeAll(".init();\n    errdefer out.deinit(allocator);\n    const items = try allocator.alloc(");
+    try writeFileScopeMessageReference(ctx, value_type, writer);
+    try writer.writeAll(", array.items.len);\n    errdefer allocator.free(items);\n    var initialized: usize = 0;\n    errdefer for (items[0..initialized]) |*item| item.deinit(allocator);\n    for (array.items, 0..) |item, i| {\n        items[i] = try _pbzJsonParseWktValue(allocator, arena_allocator, item);\n        initialized += 1;\n    }\n    out.values = items;\n    return out;\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonStringifyWktStruct(value: ");
+    try writeFileScopeMessageReference(ctx, struct_type, writer);
+    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"{\");\n    var it = value.fields.iterator();\n    var first = true;\n    while (it.next()) |entry| {\n        if (!first) try writer.writeAll(\",\");\n        first = false;\n        if (!pbz.validateUtf8(entry.key_ptr.*)) return error.InvalidUtf8;\n        try std.json.Stringify.value(entry.key_ptr.*, .{}, writer);\n        try writer.writeAll(\":\");\n        try _pbzJsonStringifyWktValue(entry.value_ptr.*, writer);\n    }\n    try writer.writeAll(\"}\");\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonStringifyWktValue(value: ");
+    try writeFileScopeMessageReference(ctx, value_type, writer);
+    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    switch (value.kind) {\n        .none, .null_value => try writer.writeAll(\"null\"),\n        .number_value => |v| {\n            if (!std.math.isFinite(v)) return error.InvalidNumber;\n            try std.json.Stringify.value(v, .{}, writer);\n        },\n        .string_value => |v| {\n            if (!pbz.validateUtf8(v)) return error.InvalidUtf8;\n            try std.json.Stringify.value(v, .{}, writer);\n        },\n        .bool_value => |v| try writer.writeAll(if (v) \"true\" else \"false\"),\n        .struct_value => |v| try _pbzJsonStringifyWktStruct(v, writer),\n        .list_value => |v| try _pbzJsonStringifyWktListValue(v, writer),\n    }\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonStringifyWktListValue(value: ");
+    try writeFileScopeMessageReference(ctx, list_type, writer);
+    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"[\");\n    for (value.values, 0..) |item, i| {\n        if (i != 0) try writer.writeAll(\",\");\n        try _pbzJsonStringifyWktValue(item, writer);\n    }\n    try writer.writeAll(\"]\");\n}\n\n");
 }
 
 fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -9769,7 +9854,7 @@ fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
         for (message.oneofs.items) |oneof| {
             for (message.fields.items) |*field| {
                 if (field.oneof_name) |name| {
-                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonClearOneofField(file, oneof, field, writer, depth + 3);
+                    if (std.mem.eql(u8, name, oneof.name)) try writeJsonClearOneofField(ctx, oneof, field, writer, depth + 3);
                 }
             }
         }
@@ -10007,6 +10092,25 @@ fn writeJsonClearField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
     try writeJsonSeenCheck(file, field, writer, depth + 1);
+    if (field.cardinality != .repeated) {
+        const null_value_type = switch (field.kind) {
+            .message => |name| name,
+            else => null,
+        };
+        if (null_value_type) |name| {
+            if (std.mem.eql(u8, name, "google.protobuf.Value") and wktJsonSupportAvailable(ctx)) {
+                try indent(writer, depth + 1);
+                try writer.writeAll("self.");
+                try writeQuotedIdent(field.name, writer);
+                try writer.writeAll(" = try _pbzJsonParseWktValue(allocator, arena_allocator, value);\n");
+                try indent(writer, depth + 1);
+                try writer.writeAll("continue;\n");
+                try indent(writer, depth);
+                try writer.writeAll("}\n");
+                return;
+            }
+        }
+    }
     if (field.kind == .map) {
         try indent(writer, depth + 1);
         try writer.writeAll("@This().");
@@ -10055,15 +10159,37 @@ fn writeJsonClearField(ctx: *const CodegenContext, field: *const schema.FieldDes
     try writer.writeAll("}\n");
 }
 
-fn writeJsonClearOneofField(file: *const schema.FileDescriptor, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
+fn writeJsonClearOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescriptor, field: *const schema.FieldDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
     try writer.writeAll("if (");
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
-    try writeJsonSeenCheck(file, field, writer, depth + 1);
-    try indent(writer, depth + 1);
-    try writeOneofDeinitCall(oneof.name, writer);
-    try writer.writeAll(" continue;\n");
+    const null_value_type = switch (field.kind) {
+        .message => |name| name,
+        else => null,
+    };
+    const null_enum_type = switch (field.kind) {
+        .enumeration => |name| name,
+        else => null,
+    };
+    if (null_value_type != null and std.mem.eql(u8, null_value_type.?, "google.protobuf.Value") and wktJsonSupportAvailable(ctx)) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(oneof.name, writer);
+        try writer.writeAll(" = .{ .");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = try _pbzJsonParseWktValue(allocator, arena_allocator, value) };\n");
+    } else if (null_enum_type != null and std.mem.eql(u8, null_enum_type.?, "google.protobuf.NullValue")) {
+        try indent(writer, depth + 1);
+        try writer.writeAll("self.");
+        try writeQuotedIdent(oneof.name, writer);
+        try writer.writeAll(" = .{ .");
+        try writeQuotedIdent(field.name, writer);
+        try writer.writeAll(" = 0 };\n");
+    } else {
+        try indent(writer, depth + 1);
+    }
+    try writer.writeAll("continue;\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -10168,7 +10294,7 @@ fn writeJsonParseMessageField(ctx: *const CodegenContext, field: *const schema.F
     try writeJsonKeyCondition(field, writer);
     try writer.writeAll(") {\n");
     try writeJsonSeenCheck(file, field, writer, depth + 1);
-    if (wktJson(type_name)) |wkt_kind| {
+    if (wktJson(ctx, type_name)) |wkt_kind| {
         if (field.cardinality == .repeated) {
             try indent(writer, depth + 1);
             try writer.writeAll("const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };\n");
@@ -10551,7 +10677,7 @@ fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofDescr
         else => null,
     };
     if (maybe_message_type) |type_name| {
-        if (wktJson(type_name)) |wkt_kind| {
+        if (wktJson(ctx, type_name)) |wkt_kind| {
             try indent(writer, depth + 1);
             try writer.writeAll("self.");
             try writeQuotedIdent(oneof.name, writer);
@@ -10703,7 +10829,7 @@ fn writeJsonParseMapValueExpr(ctx: *const CodegenContext, field: *const schema.F
     const file = ctx.file;
     switch (kind) {
         .message => |name| if (codegenCanReferenceMessageWithContext(ctx, name)) {
-            if (wktJson(name)) |wkt_kind| {
+            if (wktJson(ctx, name)) |wkt_kind| {
                 try writeWktJsonParseExpr(wkt_kind, value_expr, arena_expr, writer);
                 return;
             }
@@ -10775,16 +10901,27 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\fn jsonFloat(comptime T: type, value: pbz.json.Value) !T {
         \\    return switch (value) {
         \\        .integer => |v| @as(T, @floatFromInt(v)),
-        \\        .float => |v| @floatCast(v),
-        \\        .number_string => |text| try std.fmt.parseFloat(T, text),
+        \\        .float => |v| blk: {
+        \\            const out: T = @floatCast(v);
+        \\            if (!std.math.isFinite(out)) return error.InvalidNumber;
+        \\            break :blk out;
+        \\        },
+        \\        .number_string => |text| blk: {
+        \\            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
+        \\            if (!std.math.isFinite(out)) return error.InvalidNumber;
+        \\            break :blk out;
+        \\        },
         \\        .string => |text| if (std.mem.eql(u8, text, "NaN"))
         \\            std.math.nan(T)
         \\        else if (std.mem.eql(u8, text, "Infinity"))
         \\            std.math.inf(T)
         \\        else if (std.mem.eql(u8, text, "-Infinity"))
         \\            -std.math.inf(T)
-        \\        else
-        \\            try std.fmt.parseFloat(T, text),
+        \\        else blk: {
+        \\            const out = std.fmt.parseFloat(T, text) catch return error.InvalidNumber;
+        \\            if (!std.math.isFinite(out)) return error.InvalidNumber;
+        \\            break :blk out;
+        \\        },
         \\        else => error.TypeMismatch,
         \\    };
         \\}
@@ -11244,18 +11381,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\}
         \\
         \\fn jsonDecodeBase64(allocator: std.mem.Allocator, value: []const u8) ![]u8 {
-        \\    return @This().jsonDecodeBase64With(allocator, &std.base64.standard.Decoder, value) catch
-        \\        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe.Decoder, value) catch
-        \\        @This().jsonDecodeBase64With(allocator, &std.base64.standard_no_pad.Decoder, value) catch
-        \\        @This().jsonDecodeBase64With(allocator, &std.base64.url_safe_no_pad.Decoder, value);
-        \\}
-        \\
-        \\fn jsonDecodeBase64With(allocator: std.mem.Allocator, decoder: *const std.base64.Base64Decoder, value: []const u8) ![]u8 {
-        \\    const size = try decoder.calcSizeForSlice(value);
-        \\    const out = try allocator.alloc(u8, size);
-        \\    errdefer allocator.free(out);
-        \\    try decoder.decode(out, value);
-        \\    return out;
+        \\    return try pbz.json.decodeBase64(allocator, value);
         \\}
         \\
         \\fn jsonMapKeyBool(key: []const u8) !bool {
@@ -11446,7 +11572,7 @@ fn writeJsonMapField(ctx: *const CodegenContext, field: *const schema.FieldDescr
 
 fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldDescriptor, type_name: []const u8, writer: *std.Io.Writer, depth: usize) Error!void {
     if (!codegenCanReferenceMessageWithContext(ctx, type_name)) return;
-    if (wktJson(type_name)) |wkt_kind| {
+    if (wktJson(ctx, type_name)) |wkt_kind| {
         if (field.cardinality == .repeated) {
             try indent(writer, depth);
             try writer.writeAll("if (self.");
@@ -11458,7 +11584,7 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
             try indent(writer, depth + 1);
             try writer.writeAll("for (self.");
             try writeQuotedIdent(field.name, writer);
-            try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); try ");
+            try writer.writeAll(", 0..) |item, i| { if (i != 0) try writer.writeAll(\",\"); _ = &item; try ");
             try writeWktJsonStringifyExpr(wkt_kind, "item", writer);
             try writer.writeAll("; }\n");
             try indent(writer, depth + 1);
@@ -11523,7 +11649,12 @@ fn writeJsonMessageField(ctx: *const CodegenContext, field: *const schema.FieldD
         }
         try writer.writeAll("if (self.");
         try writeQuotedIdent(field.name, writer);
-        try writer.writeAll(".len != 0) {\n");
+        try writer.writeAll(".len != 0");
+        if (hasPresence(ctx.file, field.*)) {
+            try writer.writeAll(" or self.");
+            try writePresenceIdent(field.name, writer);
+        }
+        try writer.writeAll(") {\n");
         try writeJsonPrefix(field, writer, depth + 1);
         try indent(writer, depth + 1);
         try writer.writeAll("var _pbz_nested = try ");
@@ -11576,7 +11707,7 @@ fn writeJsonMapEntryValue(ctx: *const CodegenContext, field: *const schema.Field
         .scalar => |scalar| try writeJsonScalarValue(scalar, value_expr, writer),
         .enumeration => |name| try writeJsonEnumValue(file, name, value_expr, writer),
         .message => |name| if (codegenCanReferenceMessageWithContext(ctx, name)) {
-            if (wktJson(name)) |wkt_kind| {
+            if (wktJson(ctx, name)) |wkt_kind| {
                 try writer.writeAll("try ");
                 try writeWktJsonStringifyExpr(wkt_kind, value_expr, writer);
                 return;
@@ -11624,7 +11755,7 @@ fn writeJsonOneof(ctx: *const CodegenContext, message: *const schema.MessageDesc
                         try writer.writeAll(";\n");
                     },
                     .message, .group => |type_name| {
-                        if (wktJson(type_name)) |wkt_kind| {
+                        if (wktJson(ctx, type_name)) |wkt_kind| {
                             try writeJsonPrefix(field, writer, depth + 2);
                             try indent(writer, depth + 2);
                             try writer.writeAll("_ = &value;\n");
@@ -11754,6 +11885,10 @@ fn writeJsonScalarValue(scalar: schema.ScalarType, prefix: []const u8, writer: *
 }
 
 fn writeJsonEnumValue(file: *const schema.FileDescriptor, enum_name: []const u8, value_expr: []const u8, writer: *std.Io.Writer) Error!void {
+    if (std.mem.eql(u8, enum_name, "google.protobuf.NullValue")) {
+        try writer.print("_ = &{s}; try writer.writeAll(\"null\")", .{value_expr});
+        return;
+    }
     try writer.print("try @This().jsonWriteEnum(writer, {s}, ", .{value_expr});
     try writeEnumNameArray(file, enum_name, writer);
     try writer.writeAll(", ");
@@ -15526,7 +15661,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.tags = blk: { const old = self.tags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.tags = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.choice = .{ .alias = try @This().jsonString(value) };") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_choice(allocator); continue;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_choice(allocator); continue;") == null);
     try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"alt_name\") or std.mem.eql(u8, key, \"altName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.choice = .{ .pick_kind = @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: pbz.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
