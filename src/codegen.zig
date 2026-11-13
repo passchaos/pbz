@@ -763,10 +763,22 @@ fn writeFileMetadata(ctx: *const CodegenContext, writer: *std.Io.Writer, depth: 
 
 fn writeGeneratedFileDescriptor(ctx: *const CodegenContext, file: *const schema.FileDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     const descriptor_mod = @import("descriptor.zig");
+    // Imported enum references are materialized into `file.enums` with their
+    // fully qualified names so generated code can spell them. Those aliases are
+    // not part of the original FileDescriptorProto (whose enum names are simple
+    // identifiers), so filter them out before serializing the embedded
+    // descriptor; otherwise decodeFileDescriptor rejects the dotted names.
+    var descriptor_file = file.*;
+    var filtered_enums: std.ArrayList(schema.EnumDescriptor) = .empty;
+    defer filtered_enums.deinit(ctx.allocator);
+    for (file.enums.items) |enumeration| {
+        if (std.mem.indexOfScalar(u8, enumeration.name, '.') == null) try filtered_enums.append(ctx.allocator, enumeration);
+    }
+    descriptor_file.enums = .{ .items = filtered_enums.items, .capacity = filtered_enums.items.len };
     const descriptor_bytes = if (ctx.registry) |registry|
-        try descriptor_mod.encodeFileDescriptorProtoWithRegistry(ctx.allocator, file, registry, file.name)
+        try descriptor_mod.encodeFileDescriptorProtoWithRegistry(ctx.allocator, &descriptor_file, registry, file.name)
     else
-        try descriptor_mod.encodeFileDescriptorProto(ctx.allocator, file, file.name);
+        try descriptor_mod.encodeFileDescriptorProto(ctx.allocator, &descriptor_file, file.name);
     defer ctx.allocator.free(descriptor_bytes);
 
     try indent(writer, depth);
@@ -9598,6 +9610,7 @@ const WktJson = union(enum) {
     struct_value,
     value_value,
     list_value,
+    any_value,
     wrapper: WktWrapperKind,
 };
 
@@ -9605,6 +9618,10 @@ fn wktJsonSupportAvailable(ctx: *const CodegenContext) bool {
     return codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Struct") and
         codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Value") and
         codegenCanReferenceMessageWithContext(ctx, "google.protobuf.ListValue");
+}
+
+fn anyJsonSupportAvailable(ctx: *const CodegenContext) bool {
+    return codegenCanReferenceMessageWithContext(ctx, "google.protobuf.Any");
 }
 
 fn wktJson(ctx: *const CodegenContext, type_name: []const u8) ?WktJson {
@@ -9617,6 +9634,7 @@ fn wktJson(ctx: *const CodegenContext, type_name: []const u8) ?WktJson {
         if (std.mem.eql(u8, type_name, "google.protobuf.Value")) return .value_value;
         if (std.mem.eql(u8, type_name, "google.protobuf.ListValue")) return .list_value;
     }
+    if (anyJsonSupportAvailable(ctx) and std.mem.eql(u8, type_name, "google.protobuf.Any")) return .any_value;
     const wrappers = [_]struct { name: []const u8, kind: WktWrapperKind }{
         .{ .name = "google.protobuf.DoubleValue", .kind = .{ .pbz_type = "pbz.DoubleValue", .value_type = "f64", .parse = .float } },
         .{ .name = "google.protobuf.FloatValue", .kind = .{ .pbz_type = "pbz.FloatValue", .value_type = "f32", .parse = .float } },
@@ -9645,6 +9663,7 @@ fn writeWktJsonParseExpr(kind: WktJson, value_expr: []const u8, arena_expr: []co
         .struct_value => try writer.print("try _pbzJsonParseWktStruct(allocator, {s}, {s})", .{ arena_expr, value_expr }),
         .value_value => try writer.print("try _pbzJsonParseWktValue(allocator, {s}, {s})", .{ arena_expr, value_expr }),
         .list_value => try writer.print("try _pbzJsonParseWktListValue(allocator, {s}, {s})", .{ arena_expr, value_expr }),
+        .any_value => try writer.print("try _pbzJsonParseWktAny(allocator, {s}, {s}, options.ignore_unknown_fields)", .{ arena_expr, value_expr }),
         .wrapper => |wrapper| switch (wrapper.parse) {
             .float => try writer.print(".{{ .value = try @This().jsonFloat({s}, {s}) }}", .{ wrapper.value_type, value_expr }),
             .int => try writer.print(".{{ .value = try @This().jsonInt({s}, {s}) }}", .{ wrapper.value_type, value_expr }),
@@ -9664,6 +9683,7 @@ fn writeWktJsonStringifyExpr(kind: WktJson, value_expr: []const u8, writer: *std
         .struct_value => try writer.print("_pbzJsonStringifyWktStruct({s}, writer)", .{value_expr}),
         .value_value => try writer.print("_pbzJsonStringifyWktValue({s}, writer)", .{value_expr}),
         .list_value => try writer.print("_pbzJsonStringifyWktListValue({s}, writer)", .{value_expr}),
+        .any_value => try writer.print("_pbzJsonStringifyWktAny(allocator, {s}, writer)", .{value_expr}),
         .wrapper => |wrapper| try writer.print("({s}{{ .value = {s}.value }}).jsonStringify(writer)", .{ wrapper.pbz_type, value_expr }),
     }
 }
@@ -9714,6 +9734,28 @@ fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error
     try writer.writeAll("fn _pbzJsonStringifyWktListValue(value: ");
     try writeFileScopeMessageReference(ctx, list_type, writer);
     try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"[\");\n    for (value.values, 0..) |item, i| {\n        if (i != 0) try writer.writeAll(\",\");\n        try _pbzJsonStringifyWktValue(item, writer);\n    }\n    try writer.writeAll(\"]\");\n}\n\n");
+
+    if (!anyJsonSupportAvailable(ctx)) return;
+    try writer.writeAll("fn _pbzJsonAnyRegistry(arena: std.mem.Allocator, registry_out: *pbz.Registry) !*pbz.schema.FileDescriptor {\n    registry_out.* = pbz.Registry.init(arena);\n    const file = try arena.create(pbz.schema.FileDescriptor);\n    file.* = try pbz_generated_file.decodeFileDescriptor(arena);\n    try registry_out.addFile(file);\n");
+    for (ctx.file.imports.items) |import| {
+        if (import.kind == .weak) continue;
+        const alias = try makeImportAlias(ctx.allocator, import.path);
+        defer ctx.allocator.free(alias);
+        try writer.writeAll("    {\n        const imported = try arena.create(pbz.schema.FileDescriptor);\n        imported.* = try imports.");
+        try writer.writeAll(alias);
+        try writer.writeAll(".decodeFileDescriptor(arena);\n        try registry_out.addFile(imported);\n    }\n");
+    }
+    try writer.writeAll("    return file;\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonParseWktAny(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value, ignore_unknown_fields: bool) anyerror!");
+    try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
+    try writer.writeAll(" {\n    _ = arena_allocator;\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzJsonAnyRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    const wire = try pbz.json.parseAnyWireAllocWithRegistry(allocator, file, &registry, any_desc, value, .{ .ignore_unknown_fields = ignore_unknown_fields });\n    defer allocator.free(wire);\n    return try ");
+    try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
+    try writer.writeAll(".decodeOwned(allocator, wire);\n}\n\n");
+
+    try writer.writeAll("fn _pbzJsonStringifyWktAny(allocator: std.mem.Allocator, value: ");
+    try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
+    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzJsonAnyRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    var dynamic = pbz.DynamicMessage.init(allocator, any_desc);\n    defer dynamic.deinit();\n    try dynamic.addClone(any_desc.findField(\"type_url\").?, .{ .string = @constCast(value.type_url) });\n    try dynamic.addClone(any_desc.findField(\"value\").?, .{ .bytes = @constCast(value.value) });\n    const json = try pbz.json.stringifyAnyAllocWithRegistry(allocator, file, &registry, &dynamic, .{});\n    defer allocator.free(json);\n    try writer.writeAll(json);\n}\n\n");
 }
 
 fn writeJsonParseMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {

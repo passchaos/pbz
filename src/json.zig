@@ -1165,6 +1165,41 @@ fn parseKnownMessage(allocator: std.mem.Allocator, file: *const schema.FileDescr
     return null;
 }
 
+/// Stringify a dynamic Any message using the canonical `{"@type":...}` form.
+/// `stringifyAllocWithRegistry` treats the message as a normal object when
+/// called directly; this wrapper routes through the Any field logic.
+pub fn stringifyAnyAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    message: *const dynamic.DynamicMessage,
+    options: Options,
+) anyerror![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    if (!try writeKnownMessage(file, registry, "google.protobuf.Any", message, options, &out.writer)) return error.TypeMismatch;
+    return try out.toOwnedSlice();
+}
+
+/// Parse a protobuf JSON Any object (`{"@type":...}`) into deterministic wire
+/// bytes for the Any message. Generated code uses this because it has a
+/// descriptor registry but no text-level Any entry point.
+pub fn parseAnyWireAllocWithRegistry(
+    allocator: std.mem.Allocator,
+    file: *const schema.FileDescriptor,
+    registry: ?*const registry_mod.Registry,
+    any_descriptor: *const schema.MessageDescriptor,
+    json_value: Value,
+    options: Options,
+) anyerror![]u8 {
+    const message = try parseAnyMessage(allocator, file, registry, any_descriptor, json_value, options);
+    defer {
+        message.deinit();
+        allocator.destroy(message);
+    }
+    return try message.encodedDeterministicWithRegistry(file, registry);
+}
+
 fn parseAnyMessage(allocator: std.mem.Allocator, file: *const schema.FileDescriptor, registry: ?*const registry_mod.Registry, descriptor: *const schema.MessageDescriptor, json_value: Value, options: Options) anyerror!*dynamic.DynamicMessage {
     const object = switch (json_value) {
         .object => |object| object,

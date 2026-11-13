@@ -200,8 +200,9 @@ Generated fields typed as `Timestamp`, `Duration`, `FieldMask`, `Empty`, a
 wrapper type, or `Struct`/`Value`/`ListValue` now parse and emit their canonical
 JSON forms instead of generic message objects. The opt-in
 `PBZ_CONFORMANCE_GENERATED_JSON=1` audit mode runs the conformance suite through
-generated parse and stringify: 2786/2808 pass, and the 22 remaining failures are
-all `Any` JSON, which still requires the dynamic path (`jsonParseConformant`).
+generated parse and stringify and now passes 2808/2808 plus 445/445 TextFormat;
+generated `Any` JSON uses a per-field dynamic fallback with a descriptor
+registry built from the embedded file descriptor and imports.
 A best-of-runs check with the
 same binaries interleaved on one CPU confirms the close rows: pbz wins every
 JSON parse row against upb by 1.14-1.99x, packed fixed64/sfixed64 encode and
