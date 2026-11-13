@@ -790,8 +790,8 @@ pub const EnumDescriptor = struct {
     options: OptionList = .empty,
     reserved_ranges: std.ArrayList(ReservedRange) = .empty,
     reserved_names: std.ArrayList([]const u8) = .empty,
-    /// Edition 2024+ `local`/`export` source modifier. Source-retention only;
-    /// not serialized into FileDescriptorProto.
+    /// Edition 2024+ `local`/`export` modifier, serialized as
+    /// EnumDescriptorProto.visibility (field 6).
     visibility: SymbolVisibility = .default,
 
     pub fn deinit(self: *EnumDescriptor, allocator: std.mem.Allocator) void {
@@ -877,8 +877,8 @@ pub const MessageDescriptor = struct {
     map_entry: bool = false,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
-    /// Edition 2024+ `local`/`export` source modifier. Source-retention only;
-    /// not serialized into FileDescriptorProto.
+    /// Edition 2024+ `local`/`export` modifier, serialized as
+    /// EnumDescriptorProto.visibility (field 6).
     visibility: SymbolVisibility = .default,
 
     pub fn deinit(self: *MessageDescriptor, allocator: std.mem.Allocator) void {

@@ -49,6 +49,10 @@ pub fn fieldDefiningFile(default_file: *const schema.FileDescriptor, registry: ?
 pub const Registry = struct {
     allocator: std.mem.Allocator,
     files: std.ArrayList(*const schema.FileDescriptor) = .empty,
+    /// Descriptor sets strip source-retention visibility features, so decoded
+    /// sets disable this to avoid false rejections; protoc's DescriptorPool
+    /// likewise only enforces visibility when explicitly asked.
+    enforce_symbol_visibility: bool = true,
 
     pub fn init(allocator: std.mem.Allocator) Registry {
         return .{ .allocator = allocator };
@@ -859,21 +863,22 @@ pub const Registry = struct {
                 if (std.mem.startsWith(u8, normalized, file.package) and normalized.len > file.package.len and normalized[file.package.len] == '.') {
                     const rest = normalized[file.package.len + 1 ..];
                     if (findInFile(file, rest)) |found| {
-                        if (typeVisibleFromFile(from_file, file, found)) return found;
+                        if (typeVisibleFromFile(self, from_file, file, found)) return found;
                     }
                 }
                 continue;
             }
             if (findInFile(file, normalized)) |found| {
-                if (typeVisibleFromFile(from_file, file, found)) return found;
+                if (typeVisibleFromFile(self, from_file, file, found)) return found;
             }
         }
         return null;
     }
 };
 
-fn typeVisibleFromFile(from_file: *const schema.FileDescriptor, file: *const schema.FileDescriptor, found: TypeRef) bool {
+fn typeVisibleFromFile(self: *const Registry, from_file: *const schema.FileDescriptor, file: *const schema.FileDescriptor, found: TypeRef) bool {
     if (sameFile(from_file, file)) return true;
+    if (!self.enforce_symbol_visibility) return true;
     // Edition 2024+ `local`/`export` modifiers override the file default.
     const explicit: schema.SymbolVisibility = switch (found) {
         .message => |message| message.visibility,

@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 # Build and run the upb (protobuf C runtime) benchmark against the same
-# protobuf release used by the upstream conformance suite (default v35.1).
+# protobuf release used by the upstream conformance suite (default v36.2).
 # upb is the C implementation behind Google's production protobuf runtimes
 # (C++, Ruby, PHP) and is the closest "latest C implementation" baseline.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-VERSION="${PROTOBUF_VERSION:-35.1}"
+VERSION="${PROTOBUF_VERSION:-36.2}"
 CACHE_DIR="${PBZ_CONFORMANCE_CACHE:-$ROOT/.zig-cache/pbz-conformance}"
 SRC_DIR="$CACHE_DIR/protobuf-$VERSION"
 BUILD_DIR="$CACHE_DIR/build-$VERSION"

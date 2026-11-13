@@ -117,7 +117,9 @@ Source parsing is also differentially checked against `protoc` 36.2: all 183
 `pbz.ProtoParser` with zero false rejections, covering custom FeatureSet
 extensions, `local`/`export` visibility modifiers, proto2 oneof defaults,
 `packed = false` on non-packable fields, and scoped MessageSet extension
-numbers.
+numbers. `FileDescriptorSet` decode/encode round-trips every protoc 36.2
+descriptor set for that corpus, including visibility, map-entry `json_name`,
+`packed = false`, and proto2 oneof defaults.
 
 A lightweight smoke test is also available:
 

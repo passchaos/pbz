@@ -57,11 +57,12 @@ fn writeFileDescriptorProtoInner(allocator: std.mem.Allocator, file: *const sche
     for (file.extensions.items) |*field| try writeFieldDescriptor(allocator, file, registry, null, "", field, 7, writer);
     if (hasFileOptions(file)) try writeFileOptions(allocator, file, 8, writer);
     if (!file.source_code_info.isEmpty()) try writeSourceCodeInfo(allocator, &file.source_code_info, 9, writer);
-    try writer.writeString(12, switch (file.syntax) {
-        .proto2 => "proto2",
-        .proto3 => "proto3",
-        .editions => "editions",
-    });
+    // protoc omits `syntax` for proto2, which is the field's default.
+    switch (file.syntax) {
+        .proto2 => {},
+        .proto3 => try writer.writeString(12, "proto3"),
+        .editions => try writer.writeString(12, "editions"),
+    }
     if (file.syntax == .editions) try writer.writeInt32(14, @intFromEnum(file.edition));
 }
 
@@ -153,6 +154,7 @@ fn writeMessageDescriptor(
     }
     for (message.reserved_ranges.items) |range| try writeReservedRange(allocator, message, range, 9, &tmp);
     for (message.reserved_names.items) |reserved_name| try tmp.writeString(10, reserved_name);
+    if (message.visibility != .default) try tmp.writeInt32(11, symbolVisibilityNumber(message.visibility));
 
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -180,6 +182,7 @@ fn writeMapEntryDescriptor(
         .name = "key",
         .number = 1,
         .cardinality = .optional,
+        .json_name = "key",
         .kind = .{ .scalar = map_type.key },
     };
     try entry_message.fields.append(allocator, key_field);
@@ -188,6 +191,7 @@ fn writeMapEntryDescriptor(
         .name = "value",
         .number = 2,
         .cardinality = .optional,
+        .json_name = "value",
         .kind = map_type.value.*,
     };
     try entry_message.fields.append(allocator, value_field);
@@ -277,6 +281,7 @@ fn writeEnumDescriptor(allocator: std.mem.Allocator, file: *const schema.FileDes
     if (hasEnumOptions(enumeration)) try writeEnumOptions(allocator, enumeration, 3, &tmp);
     for (enumeration.reserved_ranges.items) |range| try writeEnumReservedRange(allocator, range, 4, &tmp);
     for (enumeration.reserved_names.items) |reserved_name| try tmp.writeString(5, reserved_name);
+    if (enumeration.visibility != .default) try tmp.writeInt32(6, symbolVisibilityNumber(enumeration.visibility));
 
     try writer.writeMessage(field_number, tmp.slice());
 }
@@ -568,7 +573,9 @@ fn writeFileOptions(allocator: std.mem.Allocator, file: *const schema.FileDescri
 }
 
 fn hasFileOptions(file: *const schema.FileDescriptor) bool {
-    return file.syntax == .editions or file.options.items.len != 0 or !file.features.eql(schema.FeatureSet.defaults(file.syntax));
+    // Match protoc: omit an empty FileOptions message. Editions defaults are
+    // resolved by the reader and only explicitly set features are serialized.
+    return file.options.items.len != 0 or file.features.present != 0;
 }
 
 fn writeMessageOptions(allocator: std.mem.Allocator, message: *const schema.MessageDescriptor, field_number: wire.FieldNumber, writer: *wire.Writer) Error!void {
@@ -1396,12 +1403,12 @@ test "descriptor encodes a minimal proto2 FileDescriptorProto" {
     const bytes = try encodeFileDescriptorProto(allocator, &file, "person.proto");
     defer allocator.free(bytes);
 
+    // protoc omits `syntax` for proto2.
     const expected = &[_]u8{
         0x0a, 0x0c, 'p',  'e',  'r',  's',  'o',  'n',  '.',  'p',  'r',  'o',  't',  'o',
         0x12, 0x04, 'd',  'e',  'm',  'o',  0x22, 0x22, 0x0a, 0x06, 'P',  'e',  'r',  's',
         'o',  'n',  0x12, 0x0a, 0x0a, 0x02, 'i',  'd',  0x18, 0x01, 0x20, 0x02, 0x28, 0x05,
         0x12, 0x0c, 0x0a, 0x04, 'n',  'a',  'm',  'e',  0x18, 0x02, 0x20, 0x01, 0x28, 0x09,
-        0x62, 0x06, 'p',  'r',  'o',  't',  'o',  '2',
     };
     try std.testing.expectEqualSlices(u8, expected, bytes);
 }
@@ -1871,7 +1878,7 @@ fn validateDecodedMessageDefaults(file: *const schema.FileDescriptor, message: *
 fn validateDecodedFieldDefault(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
     const value = field.default_value orelse return;
     if (file.syntax == .proto3) return error.InvalidFieldType;
-    if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null or field.proto3_optional) return error.InvalidFieldType;
+    if (field.cardinality == .repeated or field.kind == .map or field.proto3_optional) return error.InvalidFieldType;
     switch (field.kind) {
         .scalar => |scalar| try validateDecodedScalarDefault(scalar, value),
         .enumeration => |name| try validateDecodedEnumDefault(file, name, value),
@@ -1925,9 +1932,11 @@ fn validateDecodedMessagePackedOptions(file: *const schema.FileDescriptor, messa
 }
 
 fn validateDecodedPackedOption(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) Error!void {
-    if (field.packed_override == null) return;
+    const is_packed = field.packed_override orelse return;
     if (file.syntax == .editions) return error.InvalidFieldType;
-    if (!field.isPackable()) return error.InvalidFieldType;
+    // protoc only rejects `packed = true` on non-packable fields; an explicit
+    // `packed = false` is a legal no-op and is emitted in descriptor sets.
+    if (is_packed and !field.isPackable()) return error.InvalidFieldType;
 }
 
 fn validateDecodedFieldSyntax(file: *const schema.FileDescriptor) Error!void {
@@ -1987,7 +1996,8 @@ fn validateDecodedMessageFieldSyntax(file: *const schema.FileDescriptor, message
 fn validateDecodedFieldSyntaxOne(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, is_extension: bool) Error!void {
     if (is_extension) {
         if (field.extendee == null or field.oneof_name != null) return error.InvalidFieldType;
-        if (field.proto3_optional) return error.InvalidFieldType;
+        // protoc keeps proto3_optional on `optional` extensions of options
+        // messages even though they have no synthetic oneof.
     } else if (field.extendee != null) return error.InvalidFieldType;
     if (field.cardinality == .required and file.syntax != .proto2) return error.InvalidFieldType;
     if (field.cardinality == .required and is_extension) return error.InvalidFieldType;
@@ -2063,12 +2073,6 @@ fn validateDecodedMessageSetMessage(file: *const schema.FileDescriptor, message:
     if (message.messageSetWireFormat()) {
         if (file.syntax == .proto3) return error.InvalidFieldType;
         if (message.fields.items.len != 0) return error.InvalidFieldType;
-        var has_message_set_range = false;
-        for (message.extension_ranges.items) |range| {
-            const end = range.effectiveEnd(message);
-            if (range.start <= 4 and end > 4) has_message_set_range = true;
-        }
-        if (!has_message_set_range) return error.InvalidFieldType;
     }
     for (file.extensions.items) |*field| try validateDecodedMessageSetExtension(file, message, field);
     for (file.messages.items) |*scope| try validateDecodedMessageSetExtensionsInMessage(file, message, scope);
@@ -2217,6 +2221,10 @@ fn validateDecodedFileDescriptorSetReferences(allocator: std.mem.Allocator, file
     try markMissingWeakImports(allocator, files);
     var registry = registry_mod.Registry.init(allocator);
     defer registry.deinit();
+    // FileDescriptorSet loses source-retention visibility features; protoc's
+    // descriptor pool does not enforce symbol visibility for descriptor-only
+    // inputs, so neither does pbz.
+    registry.enforce_symbol_visibility = false;
     for (files) |*file| try registry.files.append(allocator, file);
     try registry.validateLoadedFiles();
     for (files) |*file| {
@@ -2368,6 +2376,7 @@ fn decodeMessageDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Arr
             8 => try appendOneofDescriptor(allocator, &message.oneofs, try decodeOneofDescriptor(allocator, try reader.readBytes())),
             9 => try message.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), false)),
             10 => try message.reserved_names.append(allocator, try reader.readBytes()),
+            11 => message.visibility = try decodeSymbolVisibility(try reader.readInt32()),
             else => try reader.skipValue(tag),
         }
     }
@@ -2664,7 +2673,7 @@ fn decodeFieldDescriptor(allocator: std.mem.Allocator, owned_strings: *std.Array
     }
 
     const kind = try kindFromType(allocator, field_type, type_name);
-    if (default_value_text != null and (cardinality == .repeated or oneof_index_text != null)) return error.InvalidFieldType;
+    if (default_value_text != null and cardinality == .repeated) return error.InvalidFieldType;
     const field = schema.FieldDescriptor{
         .name = name,
         .number = number,
@@ -2914,6 +2923,7 @@ fn decodeEnumDescriptor(allocator: std.mem.Allocator, bytes: []const u8) Error!s
             3 => try decodeEnumOptions(allocator, &enumeration, try reader.readBytes()),
             4 => try enumeration.reserved_ranges.append(allocator, try decodeReservedRange(allocator, try reader.readBytes(), true)),
             5 => try enumeration.reserved_names.append(allocator, try reader.readBytes()),
+            6 => enumeration.visibility = try decodeSymbolVisibility(try reader.readInt32()),
             else => try reader.skipValue(tag),
         }
     }
@@ -3450,6 +3460,23 @@ fn decodeUninterpretedNamePart(bytes: []const u8) Error!struct { name: []const u
         }
     }
     return .{ .name = name, .is_extension = is_extension };
+}
+
+fn symbolVisibilityNumber(visibility: schema.SymbolVisibility) i32 {
+    return switch (visibility) {
+        .default => 0,
+        .local => 1,
+        .exported => 2,
+    };
+}
+
+fn decodeSymbolVisibility(value: i32) Error!schema.SymbolVisibility {
+    return switch (value) {
+        0 => .default,
+        1 => .local,
+        2 => .exported,
+        else => error.InvalidFieldType,
+    };
 }
 
 fn decodeFeatureSet(bytes: []const u8) Error!schema.FeatureSet {
@@ -6389,7 +6416,11 @@ test "descriptor rejects required labels outside proto2 and on extensions" {
         try file.writeString(1, "extension-with-proto3-optional.proto");
         try file.writeString(12, "proto3");
         try file.writeMessage(7, field.slice());
-        try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
+        // protoc keeps proto3_optional on `optional` extensions of options
+        // messages, so this shape is accepted.
+        var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+        defer decoded.deinit();
+        try std.testing.expect(decoded.extensions.items[0].proto3_optional);
     }
 }
 
@@ -6921,6 +6952,80 @@ test "descriptor rejects invalid field feature support" {
         try file.writeMessage(4, message.slice());
         try std.testing.expectError(error.InvalidFieldType, decodeFileDescriptorProto(allocator, file.slice()));
     }
+}
+
+test "descriptor decodes protoc-compatible packed false and oneof defaults" {
+    const allocator = std.testing.allocator;
+
+    // packed=false on a non-packable field is legal and appears in protoc
+    // descriptor sets.
+    var field = wire.Writer.init(allocator);
+    defer field.deinit();
+    try field.writeString(1, "s");
+    try field.writeInt32(3, 1);
+    try field.writeInt32(4, 3);
+    try field.writeInt32(5, 9);
+    var packed_options = wire.Writer.init(allocator);
+    defer packed_options.deinit();
+    try packed_options.writeBool(2, false);
+    try field.writeMessage(8, packed_options.slice());
+    var message = wire.Writer.init(allocator);
+    defer message.deinit();
+    try message.writeString(1, "M");
+    try message.writeMessage(2, field.slice());
+    var file = wire.Writer.init(allocator);
+    defer file.deinit();
+    try file.writeString(1, "packed-false.proto");
+    try file.writeString(12, "proto3");
+    try file.writeMessage(4, message.slice());
+    var decoded = try decodeFileDescriptorProto(allocator, file.slice());
+    defer decoded.deinit();
+    try std.testing.expectEqual(false, decoded.findMessage("M").?.findField("s").?.packed_override.?);
+
+    // proto2 oneof members may carry defaults.
+    var oneof_field = wire.Writer.init(allocator);
+    defer oneof_field.deinit();
+    try oneof_field.writeString(1, "x");
+    try oneof_field.writeInt32(3, 1);
+    try oneof_field.writeInt32(4, 1);
+    try oneof_field.writeInt32(5, 5);
+    try oneof_field.writeString(7, "5");
+    try oneof_field.writeInt32(9, 0);
+    var oneof = wire.Writer.init(allocator);
+    defer oneof.deinit();
+    try oneof.writeString(1, "pick");
+    var oneof_message = wire.Writer.init(allocator);
+    defer oneof_message.deinit();
+    try oneof_message.writeString(1, "M");
+    try oneof_message.writeMessage(2, oneof_field.slice());
+    try oneof_message.writeMessage(8, oneof.slice());
+    var oneof_file = wire.Writer.init(allocator);
+    defer oneof_file.deinit();
+    try oneof_file.writeString(1, "oneof-default.proto");
+    try oneof_file.writeMessage(4, oneof_message.slice());
+    var oneof_decoded = try decodeFileDescriptorProto(allocator, oneof_file.slice());
+    defer oneof_decoded.deinit();
+    const decoded_field = oneof_decoded.findMessage("M").?.findField("x").?;
+    try std.testing.expectEqualStrings("pick", decoded_field.oneof_name.?);
+    try std.testing.expectEqual(@as(i64, 5), decoded_field.default_value.?.integer);
+}
+
+test "descriptor round-trips explicit symbol visibility" {
+    const allocator = std.testing.allocator;
+    var file = try @import("parser.zig").Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo;
+        \\local message LocalMessage { int32 x = 1; }
+        \\export enum ExportedEnum { EXPORTED_ENUM_UNKNOWN = 0; }
+    );
+    defer file.deinit();
+
+    const bytes = try encodeFileDescriptorProto(allocator, &file, "visibility.proto");
+    defer allocator.free(bytes);
+    var decoded = try decodeFileDescriptorProto(allocator, bytes);
+    defer decoded.deinit();
+    try std.testing.expectEqual(schema.SymbolVisibility.local, decoded.findMessage("LocalMessage").?.visibility);
+    try std.testing.expectEqual(schema.SymbolVisibility.exported, decoded.findEnum("ExportedEnum").?.visibility);
 }
 
 test "descriptor round-trips inherited feature values" {

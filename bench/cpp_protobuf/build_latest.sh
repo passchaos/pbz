@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
 # Build and run the C++ binary benchmark against the same protobuf release used
-# by the upstream conformance suite (default v35.1), instead of the system
+# by the upstream conformance suite (default v36.2), instead of the system
 # libprotobuf. Requires cmake, ninja, a C++17 compiler, and network access on
 # the first run.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-VERSION="${PROTOBUF_VERSION:-35.1}"
+VERSION="${PROTOBUF_VERSION:-36.2}"
 CACHE_DIR="${PBZ_CONFORMANCE_CACHE:-$ROOT/.zig-cache/pbz-conformance}"
 SRC_DIR="$CACHE_DIR/protobuf-$VERSION"
 BUILD_DIR="$CACHE_DIR/build-$VERSION"
