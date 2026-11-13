@@ -205,9 +205,13 @@ fn runTyped(
             break :blk try (pbz.ConformanceResponse{ .result = .{ .json_payload = payload } }).encode(allocator);
         },
         .text_format => blk: {
-            const payload = if (generated_text_mode)
-                message.formatTextAlloc(allocator) catch |err| return try serializeError(allocator, err)
-            else if (parsed_dynamic) |*dynamic|
+            const payload = if (generated_text_mode) blk_text_gen: {
+                var out: std.Io.Writer.Allocating = .init(allocator);
+                message.formatTextWithOptions(allocator, &out.writer, .{
+                    .print_unknown_fields = request.print_unknown_fields,
+                }) catch |err| return try serializeError(allocator, err);
+                break :blk_text_gen try out.toOwnedSlice();
+            } else if (parsed_dynamic) |*dynamic|
                 pbz.text.formatAllocWithRegistry(allocator, registry_file, registry, dynamic, .{
                     .print_unknown_fields = request.print_unknown_fields,
                 }) catch |err| return try serializeError(allocator, err)

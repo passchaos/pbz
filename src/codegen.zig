@@ -52,7 +52,9 @@ fn generateZigFileWithContext(ctx: CodegenContext) Error![]u8 {
         try writeGeneratedFileDescriptor(&active_ctx, &descriptor_file, &out.writer, 0);
     }
     try writePackagedFileDecls(&active_ctx, &out.writer, 0);
+    try writeFileRegistryHelper(&active_ctx, &out.writer);
     try writeWktJsonHelpers(&active_ctx, &out.writer);
+    try writeAnyJsonHelpers(&active_ctx, &out.writer);
     return try finalizeGeneratedZig(ctx.allocator, try out.toOwnedSlice());
 }
 
@@ -1259,6 +1261,38 @@ fn writeTextParseMethods(ctx: *const CodegenContext, message: *const schema.Mess
 
     try indent(writer, depth);
     try writer.writeAll("pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("_ = options;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var arena = std.heap.ArenaAllocator.init(allocator);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer arena.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var registry: pbz.Registry = undefined;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const file = try _pbzFileRegistry(arena.allocator(), &registry);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer registry.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("defer dynamic.deinit();\n");
+    try indent(writer, depth + 1);
+    try writer.writeAll("return try @This().fromDynamic(allocator, file, &dynamic);\n");
+    try indent(writer, depth);
+    try writer.writeAll("}\n\n");
+
+    try indent(writer, depth);
+    try writer.writeAll("fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {\n");
     try indent(writer, depth + 1);
     try writer.writeAll("var self = @This().init();\n");
     try indent(writer, depth + 1);
@@ -8891,7 +8925,7 @@ fn writeEscapedStringChar(c: u8, writer: *std.Io.Writer) Error!void {
 
 fn writeTextMethods(ctx: *const CodegenContext, message: *const schema.MessageDescriptor, writer: *std.Io.Writer, depth: usize) Error!void {
     try indent(writer, depth);
-    try writer.writeAll("pub const TextFormatOptions = struct { enum_as_name: bool = true };\n\n");
+    try writer.writeAll("pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };\n\n");
 
     try indent(writer, depth);
     try writer.writeAll("pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {\n");
@@ -9302,7 +9336,7 @@ fn writeTextUnknownFields(ctx: *const CodegenContext, message: *const schema.Mes
     try writer.writeAll("for (self._unknown_fields) |raw| {\n");
     try writeTextUnknownExtensionFields(ctx, message, writer, depth + 1);
     try indent(writer, depth + 1);
-    try writer.writeAll("try @This().textWriteUnknownRaw(raw, writer);\n");
+    try writer.writeAll("if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);\n");
     try indent(writer, depth);
     try writer.writeAll("}\n");
 }
@@ -9735,8 +9769,10 @@ fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error
     try writeFileScopeMessageReference(ctx, list_type, writer);
     try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    try writer.writeAll(\"[\");\n    for (value.values, 0..) |item, i| {\n        if (i != 0) try writer.writeAll(\",\");\n        try _pbzJsonStringifyWktValue(item, writer);\n    }\n    try writer.writeAll(\"]\");\n}\n\n");
 
-    if (!anyJsonSupportAvailable(ctx)) return;
-    try writer.writeAll("fn _pbzJsonAnyRegistry(arena: std.mem.Allocator, registry_out: *pbz.Registry) !*pbz.schema.FileDescriptor {\n    registry_out.* = pbz.Registry.init(arena);\n    const file = try arena.create(pbz.schema.FileDescriptor);\n    file.* = try pbz_generated_file.decodeFileDescriptor(arena);\n    try registry_out.addFile(file);\n");
+}
+
+fn writeFileRegistryHelper(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
+    try writer.writeAll("fn _pbzFileRegistry(arena: std.mem.Allocator, registry_out: *pbz.Registry) !*pbz.schema.FileDescriptor {\n    registry_out.* = pbz.Registry.init(arena);\n    const file = try arena.create(pbz.schema.FileDescriptor);\n    file.* = try pbz_generated_file.decodeFileDescriptor(arena);\n    try registry_out.addFile(file);\n");
     for (ctx.file.imports.items) |import| {
         if (import.kind == .weak) continue;
         const alias = try makeImportAlias(ctx.allocator, import.path);
@@ -9746,16 +9782,18 @@ fn writeWktJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error
         try writer.writeAll(".decodeFileDescriptor(arena);\n        try registry_out.addFile(imported);\n    }\n");
     }
     try writer.writeAll("    return file;\n}\n\n");
+}
 
+fn writeAnyJsonHelpers(ctx: *const CodegenContext, writer: *std.Io.Writer) Error!void {
+    if (!anyJsonSupportAvailable(ctx)) return;
     try writer.writeAll("fn _pbzJsonParseWktAny(allocator: std.mem.Allocator, arena_allocator: std.mem.Allocator, value: pbz.json.Value, ignore_unknown_fields: bool) anyerror!");
     try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
-    try writer.writeAll(" {\n    _ = arena_allocator;\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzJsonAnyRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    const wire = try pbz.json.parseAnyWireAllocWithRegistry(allocator, file, &registry, any_desc, value, .{ .ignore_unknown_fields = ignore_unknown_fields });\n    defer allocator.free(wire);\n    return try ");
+    try writer.writeAll(" {\n    _ = arena_allocator;\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzFileRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    const wire = try pbz.json.parseAnyWireAllocWithRegistry(allocator, file, &registry, any_desc, value, .{ .ignore_unknown_fields = ignore_unknown_fields });\n    defer allocator.free(wire);\n    return try ");
     try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
     try writer.writeAll(".decodeOwned(allocator, wire);\n}\n\n");
-
     try writer.writeAll("fn _pbzJsonStringifyWktAny(allocator: std.mem.Allocator, value: ");
     try writeFileScopeMessageReference(ctx, "google.protobuf.Any", writer);
-    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzJsonAnyRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    var dynamic = pbz.DynamicMessage.init(allocator, any_desc);\n    defer dynamic.deinit();\n    try dynamic.addClone(any_desc.findField(\"type_url\").?, .{ .string = @constCast(value.type_url) });\n    try dynamic.addClone(any_desc.findField(\"value\").?, .{ .bytes = @constCast(value.value) });\n    const json = try pbz.json.stringifyAnyAllocWithRegistry(allocator, file, &registry, &dynamic, .{});\n    defer allocator.free(json);\n    try writer.writeAll(json);\n}\n\n");
+    try writer.writeAll(", writer: *std.Io.Writer) anyerror!void {\n    var arena = std.heap.ArenaAllocator.init(allocator);\n    defer arena.deinit();\n    var registry: pbz.Registry = undefined;\n    const file = try _pbzFileRegistry(arena.allocator(), &registry);\n    defer registry.deinit();\n    const any_desc = registry.findMessage(\"google.protobuf.Any\", null) orelse return error.TypeMismatch;\n    var dynamic = pbz.DynamicMessage.init(allocator, any_desc);\n    defer dynamic.deinit();\n    try dynamic.addClone(any_desc.findField(\"type_url\").?, .{ .string = @constCast(value.type_url) });\n    try dynamic.addClone(any_desc.findField(\"value\").?, .{ .bytes = @constCast(value.value) });\n    const json = try pbz.json.stringifyAnyAllocWithRegistry(allocator, file, &registry, &dynamic, .{});\n    defer allocator.free(json);\n    try writer.writeAll(json);\n}\n\n");
 }
 
 fn writeJsonSeenIndexCheck(index: usize, writer: *std.Io.Writer, depth: usize) Error!void {
@@ -11112,6 +11150,7 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    errdefer out.deinit(allocator);
         \\    var quote: ?u8 = null;
         \\    var escaped = false;
+        \\    var expect_field = true;
         \\    for (text) |c| {
         \\        if (escaped) {
         \\            escaped = false;
@@ -11129,17 +11168,23 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\        }
         \\        if (c == '"' or c == '\'') {
         \\            quote = c;
+        \\            expect_field = false;
         \\            try out.append(allocator, c);
         \\        } else if (c == ';' or c == ',') {
+        \\            if (expect_field) return error.InvalidCharacter;
+        \\            expect_field = true;
         \\            try out.append(allocator, '\n');
         \\        } else if (c == '{' or c == '<') {
         \\            try out.append(allocator, c);
         \\            try out.append(allocator, '\n');
+        \\            expect_field = true;
         \\        } else if (c == '}' or c == '>') {
         \\            try out.append(allocator, '\n');
         \\            try out.append(allocator, c);
         \\            try out.append(allocator, '\n');
+        \\            expect_field = false;
         \\        } else {
+        \\            if (!std.ascii.isWhitespace(c)) expect_field = false;
         \\            try out.append(allocator, c);
         \\        }
         \\    }
@@ -11244,6 +11289,8 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\        negative = body[0] == '-';
         \\        body = body[1..];
         \\    }
+        \\    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+        \\    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
         \\    if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
         \\    if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         \\        const parsed = std.math.inf(T);
@@ -11252,7 +11299,11 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    return try std.fmt.parseFloat(T, value);
         \\}
         \\
-        \\fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+        \\fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+        \\    var value = raw_value;
+        \\    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        \\        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+        \\    }
         \\    if (value.len >= 2) {
         \\        const quote = value[0];
         \\        if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -11314,6 +11365,21 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\                    if (end == start) return error.InvalidEscape;
         \\                    try out.append(allocator, decoded);
         \\                    i = end;
+        \\                },
+        \\                'u', 'U' => {
+        \\                    const count: usize = if (esc == 'u') 4 else 8;
+        \\                    var codepoint: u32 = 0;
+        \\                    var digits: usize = 0;
+        \\                    while (digits < count) : (digits += 1) {
+        \\                        if (i >= value.len) return error.InvalidEscape;
+        \\                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+        \\                        codepoint = codepoint * 16 + digit;
+        \\                        i += 1;
+        \\                    }
+        \\                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+        \\                    var buf: [4]u8 = undefined;
+        \\                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+        \\                    try out.appendSlice(allocator, buf[0..len]);
         \\                },
         \\                '0'...'7' => {
         \\                    const start = i - 1;
@@ -11416,6 +11482,16 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\    while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
         \\}
         \\
+        \\fn textLikelyUnknownMessage(bytes: []const u8) bool {
+        \\    if (bytes.len == 0) return false;
+        \\    var reader = pbz.Reader.init(bytes);
+        \\    while (true) {
+        \\        const tag = reader.nextTag() catch return false;
+        \\        const actual = tag orelse return reader.eof();
+        \\        reader.skipValue(actual) catch return false;
+        \\    }
+        \\}
+        \\
         \\fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
         \\    try writer.writeByte('"');
         \\    for (bytes) |c| {
@@ -11430,9 +11506,17 @@ fn writeJsonParseHelpers(writer: *std.Io.Writer, depth: usize) Error!void {
         \\        .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         \\        .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         \\        .length_delimited => {
-        \\            try writer.print("{d}: ", .{tag.number});
-        \\            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-        \\            try writer.writeByte('\n');
+        \\            const bytes = try r.readBytes();
+        \\            if (@This().textLikelyUnknownMessage(bytes)) {
+        \\                try writer.print("{d} {{\n", .{tag.number});
+        \\                var _pbz_nested_reader = pbz.Reader.init(bytes);
+        \\                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+        \\                try writer.writeAll("}\n");
+        \\            } else {
+        \\                try writer.print("{d}: ", .{tag.number});
+        \\                try @This().textWriteQuotedBytes(bytes, writer);
+        \\                try writer.writeByte('\n');
+        \\            }
         \\        },
         \\        .start_group => {
         \\            try writer.print("{d} {{\n", .{tag.number});
@@ -12035,23 +12119,13 @@ fn writeMessageConformantParsers(ctx: *const CodegenContext, writer: *std.Io.Wri
     if (!ctx.emit_descriptor) return;
     if (ctx.emit_text) {
         try indent(writer, depth);
-        try writer.writeAll("/// Full TextFormat parser backed by the dynamic parser. Use this when the\n");
+        try writer.writeAll("/// Full TextFormat parser backed by the dynamic parser. parseText falls\n");
         try indent(writer, depth);
-        try writer.writeAll("/// fast line-oriented parseText does not cover the input syntax.\n");
+        try writer.writeAll("/// back to this parser when the fast line-oriented path cannot parse.\n");
         try indent(writer, depth);
         try writer.writeAll("pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {\n");
         try indent(writer, depth + 1);
-        try writer.writeAll("var file = try pbz_generated_file.decodeFileDescriptor(allocator);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("defer file.deinit();\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("defer dynamic.deinit();\n");
-        try indent(writer, depth + 1);
-        try writer.writeAll("return try @This().fromDynamic(allocator, &file, &dynamic);\n");
+        try writer.writeAll("return try @This().parseTextConformantWithOptions(allocator, text, .{});\n");
         try indent(writer, depth);
         try writer.writeAll("}\n\n");
     }
@@ -15095,7 +15169,7 @@ test "codegen emits basic TextFormat formatters" {
 
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithAllocator(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextFormatOptions = struct { enum_as_name: bool = true };") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextAllocWithOptions(self: @This(), allocator: std.mem.Allocator, options: @This().TextFormatOptions) ![]u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "pub fn formatTextWithOptions(self: @This(), allocator: std.mem.Allocator, writer: *std.Io.Writer, options: @This().TextFormatOptions) anyerror!void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.writeAll(\"id: \"); const value = self.id; try writer.print(\"{d}\", .{value});") != null);
@@ -15122,7 +15196,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writer) !void") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "try @This().textWriteQuotedBytes(try r.readBytes(), writer);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "textLikelyUnknownMessage(bytes)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"\\\\{o:0>3}\", .{c});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "try writer.print(\"{d} {{\\n\", .{tag.number});") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnknownField(allocator: std.mem.Allocator, line: []const u8) !?[]const u8") != null);
@@ -15158,7 +15232,7 @@ test "codegen emits basic TextFormat formatters" {
     try std.testing.expect(std.mem.indexOf(u8, content, "negative = body[0] == '-'") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (std.ascii.eqlIgnoreCase(body, \"nan\")) return std.math.nan(T);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "return if (negative) -parsed else parsed;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (value.len >= 2)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (escaped_or_closed == null) return try allocator.dupe(u8, body);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "while (i < value.len and std.ascii.isWhitespace(value[i])) : (i += 1) {}") != null);

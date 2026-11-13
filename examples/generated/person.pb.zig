@@ -366,15 +366,10 @@ pub const demo = struct {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -1370,6 +1365,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -1387,17 +1383,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -1502,6 +1504,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -1510,7 +1514,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -1572,6 +1580,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -1674,6 +1697,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -1688,9 +1721,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -1741,7 +1782,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -1776,7 +1817,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try writer.writeAll("}\n");
             } }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -1787,6 +1828,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var scores_list: std.ArrayList(i32) = .empty;
@@ -2126,15 +2184,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -3303,6 +3356,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -3320,17 +3374,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -3435,6 +3495,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -3443,7 +3505,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -3505,6 +3571,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -3607,6 +3688,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -3621,9 +3712,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -3674,7 +3773,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -3713,7 +3812,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self.flags) |value| { try writer.writeAll("flags: "); try writer.writeAll(if (value) "true" else "false"); try writer.writeByte('\n'); }
             for (self.ids) |value| { try writer.writeAll("ids: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -3724,6 +3823,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var flags_list: std.ArrayList(bool) = .empty;
@@ -3922,15 +4038,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -4695,6 +4806,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -4712,17 +4824,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -4827,6 +4945,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -4835,7 +4955,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -4897,6 +5021,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -4999,6 +5138,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -5013,9 +5162,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -5066,7 +5223,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -5095,7 +5252,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             for (self.tags) |value| { try writer.writeAll("tags: "); if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
             for (self.chunks) |value| { try writer.writeAll("chunks: "); try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -5106,6 +5263,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var tags_list: std.ArrayList([]const u8) = .empty;
@@ -5230,15 +5404,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -5880,6 +6049,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -5897,17 +6067,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -6012,6 +6188,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -6020,7 +6198,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -6082,6 +6264,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -6184,6 +6381,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -6198,9 +6405,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -6251,7 +6466,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -6278,7 +6493,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             if (self.payload.len != 0) { try writer.writeAll("payload: "); const value = self.payload; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
             for (self.chunks) |value| { try writer.writeAll("chunks: "); try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -6289,6 +6504,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var chunks_list: std.ArrayList([]const u8) = .empty;
@@ -6504,15 +6736,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -7423,6 +7650,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -7440,17 +7668,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -7555,6 +7789,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -7563,7 +7799,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -7625,6 +7865,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -7727,6 +7982,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -7741,9 +8006,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -7794,7 +8067,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -7844,7 +8117,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 },
             }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -7855,6 +8128,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
@@ -7991,15 +8281,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try @This().decodeOwned(allocator, writer.slice());
             }
 
-            /// Full TextFormat parser backed by the dynamic parser. Use this when the
-            /// fast line-oriented parseText does not cover the input syntax.
+            /// Full TextFormat parser backed by the dynamic parser. parseText falls
+            /// back to this parser when the fast line-oriented path cannot parse.
             pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-                var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-                defer file.deinit();
-                const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-                var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-                defer dynamic.deinit();
-                return try @This().fromDynamic(allocator, &file, &dynamic);
+                return try @This().parseTextConformantWithOptions(allocator, text, .{});
             }
 
             /// Full JSON parser backed by the dynamic parser.
@@ -8588,6 +8873,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -8605,17 +8891,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -8720,6 +9012,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -8728,7 +9022,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -8790,6 +9088,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -8892,6 +9205,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -8906,9 +9229,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -8959,7 +9290,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-            pub const TextFormatOptions = struct { enum_as_name: bool = true };
+            pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
             pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
                 return try self.formatTextAllocWithOptions(allocator, .{});
@@ -8986,7 +9317,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (self.id != 0) { try writer.writeAll("id: "); const value = self.id; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
                 if (self.label.len != 0) { try writer.writeAll("label: "); const value = self.label; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
                 for (self._unknown_fields) |raw| {
-                    try @This().textWriteUnknownRaw(raw, writer);
+                    if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
                 }
             }
 
@@ -8997,6 +9328,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+                return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+            }
+
+            pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+                _ = options;
+                var arena = std.heap.ArenaAllocator.init(allocator);
+                defer arena.deinit();
+                var registry: pbz.Registry = undefined;
+                const file = try _pbzFileRegistry(arena.allocator(), &registry);
+                defer registry.deinit();
+                const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+                defer dynamic.deinit();
+                return try @This().fromDynamic(allocator, file, &dynamic);
+            }
+
+            fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
@@ -9092,15 +9440,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -9787,6 +10130,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -9804,17 +10148,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -9919,6 +10269,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -9927,7 +10279,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -9989,6 +10345,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -10091,6 +10462,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -10105,9 +10486,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -10158,7 +10547,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -10184,7 +10573,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -10195,6 +10584,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
@@ -10287,15 +10693,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -10984,6 +11385,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -11001,17 +11403,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -11116,6 +11524,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -11124,7 +11534,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -11186,6 +11600,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -11288,6 +11717,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -11302,9 +11741,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -11355,7 +11802,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -11381,7 +11828,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -11392,6 +11839,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u32) = .empty;
@@ -11484,15 +11948,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -12173,6 +12632,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -12190,17 +12650,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -12305,6 +12771,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -12313,7 +12781,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -12375,6 +12847,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -12477,6 +12964,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -12491,9 +12988,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -12544,7 +13049,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -12570,7 +13075,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -12581,6 +13086,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u64) = .empty;
@@ -12673,15 +13195,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -13362,6 +13879,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -13379,17 +13897,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -13494,6 +14018,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -13502,7 +14028,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -13564,6 +14094,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -13666,6 +14211,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -13680,9 +14235,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -13733,7 +14296,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -13759,7 +14322,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -13770,6 +14333,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
@@ -13862,15 +14442,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -14551,6 +15126,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -14568,17 +15144,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -14683,6 +15265,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -14691,7 +15275,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -14753,6 +15341,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -14855,6 +15458,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -14869,9 +15482,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -14922,7 +15543,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -14948,7 +15569,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -14959,6 +15580,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i64) = .empty;
@@ -15051,15 +15689,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -15740,6 +16373,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -15757,17 +16391,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -15872,6 +16512,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -15880,7 +16522,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -15942,6 +16588,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -16044,6 +16705,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -16058,9 +16729,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -16111,7 +16790,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -16137,7 +16816,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -16148,6 +16827,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(f32) = .empty;
@@ -16240,15 +16936,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -16929,6 +17620,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -16946,17 +17638,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -17061,6 +17759,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -17069,7 +17769,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -17131,6 +17835,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -17233,6 +17952,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -17247,9 +17976,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -17300,7 +18037,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -17326,7 +18063,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -17337,6 +18074,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(f64) = .empty;
@@ -17429,15 +18183,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -18124,6 +18873,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -18141,17 +18891,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -18256,6 +19012,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -18264,7 +19022,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -18326,6 +19088,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -18428,6 +19205,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -18442,9 +19229,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -18495,7 +19290,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -18521,7 +19316,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -18532,6 +19327,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u64) = .empty;
@@ -18624,15 +19436,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -19319,6 +20126,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -19336,17 +20144,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -19451,6 +20265,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -19459,7 +20275,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -19521,6 +20341,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -19623,6 +20458,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -19637,9 +20482,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -19690,7 +20543,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -19716,7 +20569,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -19727,6 +20580,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(u32) = .empty;
@@ -19819,15 +20689,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -20514,6 +21379,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -20531,17 +21397,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -20646,6 +21518,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -20654,7 +21528,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -20716,6 +21594,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -20818,6 +21711,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -20832,9 +21735,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -20885,7 +21796,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -20911,7 +21822,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -20922,6 +21833,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i64) = .empty;
@@ -21014,15 +21942,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -21709,6 +22632,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -21726,17 +22650,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -21841,6 +22771,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -21849,7 +22781,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -21911,6 +22847,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -22013,6 +22964,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -22027,9 +22988,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -22080,7 +23049,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -22106,7 +23075,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -22117,6 +23086,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
@@ -22209,15 +23195,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -22904,6 +23885,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -22921,17 +23903,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -23036,6 +24024,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -23044,7 +24034,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -23106,6 +24100,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -23208,6 +24217,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -23222,9 +24241,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -23275,7 +24302,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -23301,7 +24328,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -23312,6 +24339,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i64) = .empty;
@@ -23404,15 +24448,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -24074,6 +25113,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -24091,17 +25131,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -24206,6 +25252,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -24214,7 +25262,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -24276,6 +25328,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -24378,6 +25445,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -24392,9 +25469,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -24445,7 +25530,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -24471,7 +25556,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try writer.writeAll(if (value) "true" else "false"); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -24482,6 +25567,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(bool) = .empty;
@@ -24574,15 +25676,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -25275,6 +26372,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -25292,17 +26390,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -25407,6 +26511,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -25415,7 +26521,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -25477,6 +26587,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -25579,6 +26704,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -25593,9 +26728,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -25646,7 +26789,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -25672,7 +26815,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             _ = &options;
             for (self.values) |value| { try writer.writeAll("values: "); try @This().textWriteEnum(writer, value, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, options.enum_as_name); try writer.writeByte('\n'); }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -25683,6 +26826,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var values_list: std.ArrayList(i32) = .empty;
@@ -25783,15 +26943,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -26577,6 +27732,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -26594,17 +27750,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -26709,6 +27871,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -26717,7 +27881,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -26779,6 +27947,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -26881,6 +28064,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -26895,9 +28088,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -26948,7 +28149,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -26980,7 +28181,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 try writer.writeAll("}\n");
             } }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -26991,6 +28192,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var counts_list: std.ArrayList(countsEntry) = .empty;
@@ -27203,15 +28421,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             return try @This().decodeOwned(allocator, writer.slice());
         }
 
-        /// Full TextFormat parser backed by the dynamic parser. Use this when the
-        /// fast line-oriented parseText does not cover the input syntax.
+        /// Full TextFormat parser backed by the dynamic parser. parseText falls
+        /// back to this parser when the fast line-oriented path cannot parse.
         pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-            var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-            defer file.deinit();
-            const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-            var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-            defer dynamic.deinit();
-            return try @This().fromDynamic(allocator, &file, &dynamic);
+            return try @This().parseTextConformantWithOptions(allocator, text, .{});
         }
 
         /// Full JSON parser backed by the dynamic parser.
@@ -28332,6 +29545,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -28349,17 +29563,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -28464,6 +29684,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -28472,7 +29694,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -28534,6 +29760,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -28636,6 +29877,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -28650,9 +29901,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -28703,7 +29962,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-        pub const TextFormatOptions = struct { enum_as_name: bool = true };
+        pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
         pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
             return try self.formatTextAllocWithOptions(allocator, .{});
@@ -28762,7 +30021,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 },
             }
             for (self._unknown_fields) |raw| {
-                try @This().textWriteUnknownRaw(raw, writer);
+                if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
             }
         }
 
@@ -28773,6 +30032,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
         }
 
         pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+        }
+
+        pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+            _ = options;
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            var registry: pbz.Registry = undefined;
+            const file = try _pbzFileRegistry(arena.allocator(), &registry);
+            defer registry.deinit();
+            const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+            var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+            defer dynamic.deinit();
+            return try @This().fromDynamic(allocator, file, &dynamic);
+        }
+
+        fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
             var self = @This().init();
             errdefer self.deinit(allocator);
             var history_list: std.ArrayList(Audit) = .empty;
@@ -28941,15 +30217,10 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 return try @This().decodeOwned(allocator, writer.slice());
             }
 
-            /// Full TextFormat parser backed by the dynamic parser. Use this when the
-            /// fast line-oriented parseText does not cover the input syntax.
+            /// Full TextFormat parser backed by the dynamic parser. parseText falls
+            /// back to this parser when the fast line-oriented path cannot parse.
             pub fn parseTextConformant(allocator: std.mem.Allocator, text: []const u8) !@This() {
-                var file = try pbz_generated_file.decodeFileDescriptor(allocator);
-                defer file.deinit();
-                const message_descriptor = @This().descriptor(&file) orelse return error.TypeMismatch;
-                var dynamic = try pbz.text.parseAlloc(allocator, &file, message_descriptor, text);
-                defer dynamic.deinit();
-                return try @This().fromDynamic(allocator, &file, &dynamic);
+                return try @This().parseTextConformantWithOptions(allocator, text, .{});
             }
 
             /// Full JSON parser backed by the dynamic parser.
@@ -29538,6 +30809,7 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
     errdefer out.deinit(allocator);
     var quote: ?u8 = null;
     var escaped = false;
+    var expect_field = true;
     for (text) |c| {
         if (escaped) {
             escaped = false;
@@ -29555,17 +30827,23 @@ fn textNormalizeSeparators(allocator: std.mem.Allocator, text: []const u8) ![]u8
         }
         if (c == '"' or c == '\'') {
             quote = c;
+            expect_field = false;
             try out.append(allocator, c);
         } else if (c == ';' or c == ',') {
+            if (expect_field) return error.InvalidCharacter;
+            expect_field = true;
             try out.append(allocator, '\n');
         } else if (c == '{' or c == '<') {
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = true;
         } else if (c == '}' or c == '>') {
             try out.append(allocator, '\n');
             try out.append(allocator, c);
             try out.append(allocator, '\n');
+            expect_field = false;
         } else {
+            if (!std.ascii.isWhitespace(c)) expect_field = false;
             try out.append(allocator, c);
         }
     }
@@ -29670,6 +30948,8 @@ fn textFloat(comptime T: type, value: []const u8) !T {
         negative = body[0] == '-';
         body = body[1..];
     }
+    if (body.len >= 2 and body[0] == '0' and (body[1] == 'x' or body[1] == 'X')) return error.TypeMismatch;
+    if (body.len > 1 and body[0] == '0' and std.ascii.isDigit(body[1]) and std.mem.indexOfAny(u8, body, ".eE") == null) return error.TypeMismatch;
     if (std.ascii.eqlIgnoreCase(body, "nan")) return std.math.nan(T);
     if (std.ascii.eqlIgnoreCase(body, "inf") or std.ascii.eqlIgnoreCase(body, "infinity")) {
         const parsed = std.math.inf(T);
@@ -29678,7 +30958,11 @@ fn textFloat(comptime T: type, value: []const u8) !T {
     return try std.fmt.parseFloat(T, value);
 }
 
-fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+fn textUnquote(allocator: std.mem.Allocator, raw_value: []const u8) ![]const u8 {
+    var value = raw_value;
+    if (value.len >= 2 and value[0] == '[' and value[value.len - 1] == ']') {
+        value = std.mem.trim(u8, value[1 .. value.len - 1], " \\t\\r\\n");
+    }
     if (value.len >= 2) {
         const quote = value[0];
         if ((quote == '"' or quote == '\'') and value[value.len - 1] == quote) {
@@ -29740,6 +31024,21 @@ fn textUnquote(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
                     if (end == start) return error.InvalidEscape;
                     try out.append(allocator, decoded);
                     i = end;
+                },
+                'u', 'U' => {
+                    const count: usize = if (esc == 'u') 4 else 8;
+                    var codepoint: u32 = 0;
+                    var digits: usize = 0;
+                    while (digits < count) : (digits += 1) {
+                        if (i >= value.len) return error.InvalidEscape;
+                        const digit = @This().textHexDigit(value[i]) orelse return error.InvalidEscape;
+                        codepoint = codepoint * 16 + digit;
+                        i += 1;
+                    }
+                    if (codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return error.InvalidEscape;
+                    var buf: [4]u8 = undefined;
+                    const len = std.unicode.utf8Encode(@intCast(codepoint), &buf) catch return error.InvalidEscape;
+                    try out.appendSlice(allocator, buf[0..len]);
                 },
                 '0'...'7' => {
                     const start = i - 1;
@@ -29842,6 +31141,16 @@ fn textWriteUnknownRaw(raw: []const u8, writer: *std.Io.Writer) !void {
     while (try r.nextTag()) |tag| try @This().textWriteUnknownField(tag, &r, writer);
 }
 
+fn textLikelyUnknownMessage(bytes: []const u8) bool {
+    if (bytes.len == 0) return false;
+    var reader = pbz.Reader.init(bytes);
+    while (true) {
+        const tag = reader.nextTag() catch return false;
+        const actual = tag orelse return reader.eof();
+        reader.skipValue(actual) catch return false;
+    }
+}
+
 fn textWriteQuotedBytes(bytes: []const u8, writer: *std.Io.Writer) !void {
     try writer.writeByte('"');
     for (bytes) |c| {
@@ -29856,9 +31165,17 @@ fn textWriteUnknownField(tag: pbz.wire.Tag, r: *pbz.Reader, writer: *std.Io.Writ
         .fixed32 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed32() }),
         .fixed64 => try writer.print("{d}: {d}\n", .{ tag.number, try r.readFixed64() }),
         .length_delimited => {
-            try writer.print("{d}: ", .{tag.number});
-            try @This().textWriteQuotedBytes(try r.readBytes(), writer);
-            try writer.writeByte('\n');
+            const bytes = try r.readBytes();
+            if (@This().textLikelyUnknownMessage(bytes)) {
+                try writer.print("{d} {{\n", .{tag.number});
+                var _pbz_nested_reader = pbz.Reader.init(bytes);
+                while (try _pbz_nested_reader.nextTag()) |inner| try @This().textWriteUnknownField(inner, &_pbz_nested_reader, writer);
+                try writer.writeAll("}\n");
+            } else {
+                try writer.print("{d}: ", .{tag.number});
+                try @This().textWriteQuotedBytes(bytes, writer);
+                try writer.writeByte('\n');
+            }
         },
         .start_group => {
             try writer.print("{d} {{\n", .{tag.number});
@@ -29909,7 +31226,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     try std.json.Stringify.value(value, .{}, writer);
 }
 
-            pub const TextFormatOptions = struct { enum_as_name: bool = true };
+            pub const TextFormatOptions = struct { enum_as_name: bool = true, print_unknown_fields: bool = false };
 
             pub fn formatTextAlloc(self: @This(), allocator: std.mem.Allocator) ![]u8 {
                 return try self.formatTextAllocWithOptions(allocator, .{});
@@ -29936,7 +31253,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 if (self.actor.len != 0) { try writer.writeAll("actor: "); const value = self.actor; if (!pbz.validateUtf8(value)) return error.InvalidUtf8; try @This().textWriteQuotedBytes(value, writer); try writer.writeByte('\n'); }
                 if (self.at_unix != 0) { try writer.writeAll("at_unix: "); const value = self.at_unix; try writer.print("{d}", .{value}); try writer.writeByte('\n'); }
                 for (self._unknown_fields) |raw| {
-                    try @This().textWriteUnknownRaw(raw, writer);
+                    if (options.print_unknown_fields) try @This().textWriteUnknownRaw(raw, writer);
                 }
             }
 
@@ -29947,6 +31264,23 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
             }
 
             pub fn parseTextWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+                return @This().parseTextFastWithOptions(allocator, text, options) catch @This().parseTextConformantWithOptions(allocator, text, options);
+            }
+
+            pub fn parseTextConformantWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
+                _ = options;
+                var arena = std.heap.ArenaAllocator.init(allocator);
+                defer arena.deinit();
+                var registry: pbz.Registry = undefined;
+                const file = try _pbzFileRegistry(arena.allocator(), &registry);
+                defer registry.deinit();
+                const message_descriptor = @This().descriptor(file) orelse return error.TypeMismatch;
+                var dynamic = try pbz.text.parseAllocWithRegistry(allocator, file, &registry, message_descriptor, text);
+                defer dynamic.deinit();
+                return try @This().fromDynamic(allocator, file, &dynamic);
+            }
+
+            fn parseTextFastWithOptions(allocator: std.mem.Allocator, text: []const u8, options: @This().TextParseOptions) anyerror!@This() {
                 var self = @This().init();
                 errdefer self.deinit(allocator);
                 var _unknown_fields_list: std.ArrayList([]const u8) = .empty;
@@ -29995,3 +31329,11 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
     };
 
 };
+
+fn _pbzFileRegistry(arena: std.mem.Allocator, registry_out: *pbz.Registry) !*pbz.schema.FileDescriptor {
+    registry_out.* = pbz.Registry.init(arena);
+    const file = try arena.create(pbz.schema.FileDescriptor);
+    file.* = try pbz_generated_file.decodeFileDescriptor(arena);
+    try registry_out.addFile(file);
+    return file;
+}

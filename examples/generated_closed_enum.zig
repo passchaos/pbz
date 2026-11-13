@@ -47,8 +47,13 @@ pub fn main() !void {
     defer allocator.free(text);
     try std.testing.expect(std.mem.indexOf(u8, text, "kind: KIND_OK") != null);
     try std.testing.expect(std.mem.indexOf(u8, text, "history: KIND_OK") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "1: 123") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "2: 124") != null);
+    // Unknown fields are dropped by default; print_unknown_fields opts in.
+    try std.testing.expect(std.mem.indexOf(u8, text, "1: 123") == null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "2: 124") == null);
+    const text_with_unknown = try decoded.formatTextAllocWithOptions(allocator, .{ .print_unknown_fields = true });
+    defer allocator.free(text_with_unknown);
+    try std.testing.expect(std.mem.indexOf(u8, text_with_unknown, "1: 123") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text_with_unknown, "2: 124") != null);
 }
 
 comptime {
