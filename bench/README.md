@@ -24,6 +24,17 @@ Run pbz plus every available cross-language baseline with:
 bench/run_compare.sh
 ```
 
+Baseline versions are pinned to the latest stable implementations available at
+the time of the audit:
+
+- C++ and upb protobuf: v36.2 (latest stable release; v37.0 was still a
+  release candidate)
+- Rust `prost`: 0.14.x
+- Rust `quick-protobuf`: 0.8.1
+- Go protobuf: v1.36.12, built with the Go 1.27.4 toolchain
+  (override with `PBZ_GO_TOOLCHAIN`; the module requires Go >= 1.23)
+- Zig: 0.16.0
+
 Set `PBZ_COMPARE_LATEST_CPP=1` to additionally build and run the full C++
 benchmark against the conformance-pinned protobuf release (default v36.2)
 instead of only the system libprotobuf. This requires cmake, ninja, and the
