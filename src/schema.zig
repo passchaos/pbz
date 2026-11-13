@@ -376,6 +376,9 @@ pub const FieldDescriptor = struct {
     kind: FieldKind,
     extendee: ?[]const u8 = null,
     default_value: ?OptionValue = null,
+    /// Original `default_value` text from a decoded FieldDescriptorProto,
+    /// re-emitted verbatim so protoc's literal spelling round-trips.
+    default_value_text: ?[]const u8 = null,
     json_name: ?[]const u8 = null,
     oneof_name: ?[]const u8 = null,
     proto3_optional: bool = false,
@@ -384,11 +387,15 @@ pub const FieldDescriptor = struct {
     features: ?FeatureSet = null,
     feature_support: ?FeatureSupport = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
 
     pub fn deinit(self: *FieldDescriptor, allocator: std.mem.Allocator) void {
         deinitKind(&self.kind, allocator);
         self.edition_defaults.deinit(allocator);
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.* = undefined;
     }
 
@@ -603,9 +610,13 @@ pub const OneofDescriptor = struct {
     name: []const u8,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
 
     pub fn deinit(self: *OneofDescriptor, allocator: std.mem.Allocator) void {
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.* = undefined;
     }
 };
@@ -633,12 +644,16 @@ pub const ExtensionRange = struct {
     start: i64,
     end: ?i64,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
     declarations: std.ArrayList(ExtensionDeclaration) = .empty,
     verification: ?ExtensionRangeVerification = null,
     features: ?FeatureSet = null,
 
     pub fn deinit(self: *ExtensionRange, allocator: std.mem.Allocator) void {
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.declarations.deinit(allocator);
         self.* = undefined;
     }
@@ -772,9 +787,13 @@ pub const EnumValueDescriptor = struct {
     features: ?FeatureSet = null,
     feature_support: ?FeatureSupport = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
 
     pub fn deinit(self: *EnumValueDescriptor, allocator: std.mem.Allocator) void {
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.* = undefined;
     }
 
@@ -788,6 +807,9 @@ pub const EnumDescriptor = struct {
     values: std.ArrayList(EnumValueDescriptor) = .empty,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
     reserved_ranges: std.ArrayList(ReservedRange) = .empty,
     reserved_names: std.ArrayList([]const u8) = .empty,
     /// Edition 2024+ `local`/`export` modifier, serialized as
@@ -798,6 +820,7 @@ pub const EnumDescriptor = struct {
         for (self.values.items) |*value| value.deinit(allocator);
         self.values.deinit(allocator);
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.reserved_ranges.deinit(allocator);
         self.reserved_names.deinit(allocator);
         self.* = undefined;
@@ -877,8 +900,11 @@ pub const MessageDescriptor = struct {
     map_entry: bool = false,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
     /// Edition 2024+ `local`/`export` modifier, serialized as
-    /// EnumDescriptorProto.visibility (field 6).
+    /// DescriptorProto.visibility (field 11).
     visibility: SymbolVisibility = .default,
 
     pub fn deinit(self: *MessageDescriptor, allocator: std.mem.Allocator) void {
@@ -897,6 +923,7 @@ pub const MessageDescriptor = struct {
         self.reserved_ranges.deinit(allocator);
         self.reserved_names.deinit(allocator);
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.* = undefined;
     }
 
@@ -1198,6 +1225,9 @@ pub const ServiceDescriptor = struct {
     methods: std.ArrayList(MethodDescriptor) = .empty,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
 
     pub fn findMethod(self: *const ServiceDescriptor, name: []const u8) ?*const MethodDescriptor {
         for (self.methods.items) |*method| {
@@ -1219,6 +1249,7 @@ pub const ServiceDescriptor = struct {
         for (self.methods.items) |*method| method.deinit(allocator);
         self.methods.deinit(allocator);
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.* = undefined;
     }
 };
@@ -1231,9 +1262,13 @@ pub const MethodDescriptor = struct {
     server_streaming: bool = false,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
+    /// Raw unknown fields of the descriptor Options message, preserved so a
+    /// decoded FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
 
     pub fn deinit(self: *MethodDescriptor, allocator: std.mem.Allocator) void {
         deinitOptions(&self.options, allocator);
+        self.unknown_options.deinit(allocator);
         self.* = undefined;
     }
 
@@ -1263,6 +1298,10 @@ pub const FeatureSet = struct {
     /// FeatureSet field N). Resolved edition defaults leave it at zero. This is
     /// inheritance metadata: it is not part of `eql` or serialization.
     present: u9 = 0,
+    /// Raw unknown fields of a decoded FeatureSet message (custom feature
+    /// extensions), preserved so descriptor round-trips keep them. The slice
+    /// borrows from the decoded descriptor buffer.
+    unknown: []const u8 = "",
 
     pub const FieldPresence = enum { explicit, implicit, legacy_required };
     pub const EnumType = enum { open, closed };
@@ -1356,6 +1395,7 @@ pub const FeatureSet = struct {
         if (self.hasPresent("default_symbol_visibility")) result.default_symbol_visibility = self.default_symbol_visibility;
         if (self.hasPresent("enforce_proto_limits")) result.enforce_proto_limits = self.enforce_proto_limits;
         result.present = self.present;
+        if (self.unknown.len != 0) result.unknown = self.unknown;
         return result;
     }
 
@@ -1541,6 +1581,9 @@ pub const FileDescriptor = struct {
     extensions: std.ArrayList(FieldDescriptor) = .empty,
     services: std.ArrayList(ServiceDescriptor) = .empty,
     options: OptionList = .empty,
+    /// Raw unknown fields of the FileOptions message, preserved so a decoded
+    /// FileDescriptorSet re-encodes custom option payloads.
+    unknown_options: std.ArrayList([]const u8) = .empty,
     features: FeatureSet = FeatureSet.defaults(.proto2),
     source_code_info: SourceCodeInfo = .{},
     owned_strings: std.ArrayList([]u8) = .empty,
@@ -1562,6 +1605,7 @@ pub const FileDescriptor = struct {
         self.imports.deinit(self.allocator);
         self.missing_weak_imports.deinit(self.allocator);
         deinitOptions(&self.options, self.allocator);
+        self.unknown_options.deinit(self.allocator);
         self.source_code_info.deinit(self.allocator);
         for (self.owned_strings.items) |owned| self.allocator.free(owned);
         self.owned_strings.deinit(self.allocator);
