@@ -47,7 +47,19 @@ pub const LoadResult = struct {
     }
 };
 
+pub const LoadOptions = struct {
+    /// Reject custom options whose `(extension)` name does not resolve to a
+    /// declared extension of the matching Options message, matching protoc.
+    /// Off by default because pbz deliberately preserves uninterpreted options
+    /// for tooling that does not interpret them.
+    validate_custom_options: bool = false,
+};
+
 pub fn loadMemory(allocator: std.mem.Allocator, tree: *const MemorySourceTree, root_path: []const u8) Error!LoadResult {
+    return loadMemoryWithOptions(allocator, tree, root_path, .{});
+}
+
+pub fn loadMemoryWithOptions(allocator: std.mem.Allocator, tree: *const MemorySourceTree, root_path: []const u8, options: LoadOptions) Error!LoadResult {
     var result = LoadResult.init(allocator);
     errdefer result.deinit();
     var loading = std.StringHashMap(void).init(allocator);
@@ -57,6 +69,7 @@ pub fn loadMemory(allocator: std.mem.Allocator, tree: *const MemorySourceTree, r
     try loadOne(allocator, tree, root_path, &result, &loading, &loaded);
     for (result.files.items) |*file| try result.registry.addFile(file);
     try result.registry.validateAllFileReferences();
+    if (options.validate_custom_options) try result.registry.validateAllCustomOptions();
     return result;
 }
 
@@ -200,6 +213,131 @@ test "memory loader enforces editions local symbol visibility" {
     // Same-file references remain valid under LOCAL_ALL.
     var same_file = try loadMemory(allocator, &tree, "a.proto");
     defer same_file.deinit();
+}
+
+test "memory loader optionally validates custom options" {
+    const allocator = std.testing.allocator;
+    var tree = MemorySourceTree.init(allocator);
+    defer tree.deinit();
+    try tree.add("descriptor.proto",
+        \\syntax = "proto2";
+        \\package google.protobuf;
+        \\message FileOptions { extensions 1000 to max; }
+        \\message MessageOptions { extensions 1000 to max; }
+        \\message FieldOptions { extensions 1000 to max; }
+        \\message FeatureSet { extensions 1000 to 9994; }
+    );
+    try tree.add("opts.proto",
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "descriptor.proto";
+        \\extend google.protobuf.FileOptions { optional string file_note = 50000; }
+        \\extend google.protobuf.FieldOptions { optional Meta meta = 50001; }
+        \\message Meta {
+        \\  optional string label = 1;
+        \\  optional Inner inner = 2;
+        \\}
+        \\message Inner { optional int32 leaf = 1; }
+    );
+    try tree.add("features.proto",
+        \\syntax = "proto2";
+        \\package pb;
+        \\import "descriptor.proto";
+        \\extend google.protobuf.FeatureSet { optional CppFeatures cpp = 1000; }
+        \\message CppFeatures { optional bool legacy_closed_enum = 1; }
+    );
+    try tree.add("use.proto",
+        \\edition = "2023";
+        \\package demo;
+        \\import "opts.proto";
+        \\import "features.proto";
+        \\option (demo.file_note) = "x";
+        \\message M {
+        \\  int32 x = 1 [(demo.meta).inner.leaf = 7];
+        \\  string s = 2 [features.(pb.cpp).legacy_closed_enum = true];
+        \\}
+    );
+    var loaded = try loadMemoryWithOptions(allocator, &tree, "use.proto", .{ .validate_custom_options = true });
+    defer loaded.deinit();
+
+    // Default loaders keep uninterpreted options working.
+    var permissive = try loadMemory(allocator, &tree, "use.proto");
+    defer permissive.deinit();
+
+    var unknown_tree = MemorySourceTree.init(allocator);
+    defer unknown_tree.deinit();
+    try unknown_tree.add("bad.proto",
+        \\edition = "2023";
+        \\package demo;
+        \\message M { int32 x = 1 [(foo.bar) = 1]; }
+    );
+    try std.testing.expectError(error.UnknownOption, loadMemoryWithOptions(allocator, &unknown_tree, "bad.proto", .{ .validate_custom_options = true }));
+    var permissive_bad = try loadMemory(allocator, &unknown_tree, "bad.proto");
+    defer permissive_bad.deinit();
+
+    // Unknown feature sub-fields and mismatched option targets are rejected.
+    var bad_field_tree = MemorySourceTree.init(allocator);
+    defer bad_field_tree.deinit();
+    try bad_field_tree.add("descriptor.proto", "syntax = \"proto2\";\npackage google.protobuf;\nmessage FileOptions { extensions 1000 to max; }\nmessage FieldOptions { extensions 1000 to max; }\nmessage FeatureSet { extensions 1000 to 9994; }\n");
+    try bad_field_tree.add("features.proto",
+        \\syntax = "proto2";
+        \\package pb;
+        \\import "descriptor.proto";
+        \\extend google.protobuf.FeatureSet { optional CppFeatures cpp = 1000; }
+        \\extend google.protobuf.FileOptions { optional string note = 1001; }
+        \\message CppFeatures { optional bool legacy_closed_enum = 1; }
+    );
+    try bad_field_tree.add("bad_use.proto",
+        \\edition = "2023";
+        \\package demo;
+        \\import "features.proto";
+        \\message M { string s = 1 [features.(pb.cpp).bogus = true]; }
+    );
+    try std.testing.expectError(error.UnknownOption, loadMemoryWithOptions(allocator, &bad_field_tree, "bad_use.proto", .{ .validate_custom_options = true }));
+
+    var wrong_target_tree = MemorySourceTree.init(allocator);
+    defer wrong_target_tree.deinit();
+    try wrong_target_tree.add("descriptor.proto", "syntax = \"proto2\";\npackage google.protobuf;\nmessage FileOptions { extensions 1000 to max; }\nmessage FieldOptions { extensions 1000 to max; }\n");
+    try wrong_target_tree.add("opts2.proto",
+        \\syntax = "proto2";
+        \\package demo;
+        \\import "descriptor.proto";
+        \\extend google.protobuf.FileOptions { optional string file_note = 50000; }
+    );
+    try wrong_target_tree.add("wrong_use.proto",
+        \\edition = "2023";
+        \\package demo;
+        \\import "opts2.proto";
+        \\message M { int32 x = 1 [(demo.file_note) = "x"]; }
+    );
+    try std.testing.expectError(error.UnknownOption, loadMemoryWithOptions(allocator, &wrong_target_tree, "wrong_use.proto", .{ .validate_custom_options = true }));
+
+    // Plain option names must be built-ins; `features` and aggregate
+    // sub-field assignments stay valid.
+    var plain_tree = MemorySourceTree.init(allocator);
+    defer plain_tree.deinit();
+    try plain_tree.add("plain_bad.proto",
+        \\edition = "2023";
+        \\package demo;
+        \\option go_api_flag = "X";
+        \\message M { int32 x = 1; }
+    );
+    try std.testing.expectError(error.UnknownOption, loadMemoryWithOptions(allocator, &plain_tree, "plain_bad.proto", .{ .validate_custom_options = true }));
+    var plain_ok = try loadMemory(allocator, &plain_tree, "plain_bad.proto");
+    defer plain_ok.deinit();
+
+    var aggregate_tree = MemorySourceTree.init(allocator);
+    defer aggregate_tree.deinit();
+    try aggregate_tree.add("aggregate.proto",
+        \\edition = "2023";
+        \\package demo;
+        \\option features = { enum_type: CLOSED };
+        \\message M {
+        \\  int32 x = 1 [feature_support.edition_introduced = EDITION_2023];
+        \\}
+    );
+    var aggregate = try loadMemoryWithOptions(allocator, &aggregate_tree, "aggregate.proto", .{ .validate_custom_options = true });
+    defer aggregate.deinit();
 }
 
 test "memory loader honors explicit local and export visibility modifiers" {
@@ -456,13 +594,21 @@ test "memory loader resolves imported enum defaults" {
 }
 
 pub fn loadPath(allocator: std.mem.Allocator, root_dir_path: []const u8, root_path: []const u8) Error!LoadResult {
+    return loadPathWithOptions(allocator, root_dir_path, root_path, .{});
+}
+
+pub fn loadPathWithOptions(allocator: std.mem.Allocator, root_dir_path: []const u8, root_path: []const u8, options: LoadOptions) Error!LoadResult {
     const io = std.Io.Threaded.global_single_threaded.io();
     const root_dir = std.fs.openDirAbsolute(io, root_dir_path, .{}) catch return error.FileNotFound;
     defer root_dir.close(io);
-    return try loadDir(allocator, root_dir, root_path);
+    return try loadDirWithOptions(allocator, root_dir, root_path, options);
 }
 
 pub fn loadDir(allocator: std.mem.Allocator, root_dir: std.Io.Dir, root_path: []const u8) Error!LoadResult {
+    return loadDirWithOptions(allocator, root_dir, root_path, .{});
+}
+
+pub fn loadDirWithOptions(allocator: std.mem.Allocator, root_dir: std.Io.Dir, root_path: []const u8, options: LoadOptions) Error!LoadResult {
     var result = LoadResult.init(allocator);
     errdefer result.deinit();
     var loading = std.StringHashMap(void).init(allocator);
@@ -472,6 +618,7 @@ pub fn loadDir(allocator: std.mem.Allocator, root_dir: std.Io.Dir, root_path: []
     try loadDirOne(allocator, root_dir, root_path, &result, &loading, &loaded);
     for (result.files.items) |*file| try result.registry.addFile(file);
     try result.registry.validateAllFileReferences();
+    if (options.validate_custom_options) try result.registry.validateAllCustomOptions();
     return result;
 }
 

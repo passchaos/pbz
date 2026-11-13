@@ -119,7 +119,10 @@ extensions, `local`/`export` visibility modifiers, proto2 oneof defaults,
 `packed = false` on non-packable fields, and scoped MessageSet extension
 numbers. `FileDescriptorSet` decode/encode round-trips every protoc 36.2
 descriptor set for that corpus, including visibility, map-entry `json_name`,
-`packed = false`, and proto2 oneof defaults.
+`packed = false`, and proto2 oneof defaults. `LoadOptions.validate_custom_options`
+opts into protoc-parity option validation: over the same corpus it accepts and
+rejects exactly the same 161/22 files as protoc, including nested extension
+paths and unknown plain option names.
 
 A lightweight smoke test is also available:
 

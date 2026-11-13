@@ -673,55 +673,15 @@ fn writeFeatureSupport(allocator: std.mem.Allocator, feature_support: schema.Fea
     try writer.writeMessage(field_number, tmp.slice());
 }
 
-const OptionScope = enum { file, field, message, enumeration, enum_value, oneof, service, method, extension_range };
-
-fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const schema.FieldOption, writer: *wire.Writer, scope: OptionScope) Error!void {
+fn writeUninterpretedOptions(allocator: std.mem.Allocator, options: []const schema.FieldOption, writer: *wire.Writer, scope: schema.OptionScope) Error!void {
     for (options) |option| {
-        if (isKnownOption(option.name, scope)) continue;
+        if (schema.isKnownOption(option.name, scope)) continue;
         var tmp = wire.Writer.init(allocator);
         defer tmp.deinit();
         try writeOptionName(allocator, option.name, &tmp);
         try writeOptionValue(option.value, &tmp);
         try writer.writeMessage(999, tmp.slice());
     }
-}
-
-fn isKnownOption(name: []const u8, scope: OptionScope) bool {
-    const trimmed = std.mem.trim(u8, name, " \t\r\n");
-    if (std.mem.startsWith(u8, trimmed, "features.")) return true;
-    return switch (scope) {
-        .file => isKnownFileOption(trimmed),
-        .message => std.mem.eql(u8, trimmed, "message_set_wire_format") or std.mem.eql(u8, trimmed, "no_standard_descriptor_accessor") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "map_entry") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
-        .enumeration => std.mem.eql(u8, trimmed, "allow_alias") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "deprecated_legacy_json_field_conflicts"),
-        .enum_value => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "feature_support"),
-        .oneof => false,
-        .service => std.mem.eql(u8, trimmed, "deprecated"),
-        .method => std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "idempotency_level"),
-        .field => std.mem.eql(u8, trimmed, "ctype") or std.mem.eql(u8, trimmed, "packed") or std.mem.eql(u8, trimmed, "default") or std.mem.eql(u8, trimmed, "json_name") or std.mem.eql(u8, trimmed, "jstype") or std.mem.eql(u8, trimmed, "lazy") or std.mem.eql(u8, trimmed, "unverified_lazy") or std.mem.eql(u8, trimmed, "deprecated") or std.mem.eql(u8, trimmed, "weak") or std.mem.eql(u8, trimmed, "debug_redact") or std.mem.eql(u8, trimmed, "retention") or std.mem.eql(u8, trimmed, "targets") or std.mem.eql(u8, trimmed, "edition_defaults") or std.mem.eql(u8, trimmed, "feature_support"),
-        .extension_range => std.mem.eql(u8, schema.optionLeaf(name), "declaration") or std.mem.eql(u8, schema.optionLeaf(name), "verification"),
-    };
-}
-
-fn isKnownFileOption(trimmed: []const u8) bool {
-    return std.mem.eql(u8, trimmed, "java_package") or
-        std.mem.eql(u8, trimmed, "java_outer_classname") or
-        std.mem.eql(u8, trimmed, "java_multiple_files") or
-        std.mem.eql(u8, trimmed, "java_generate_equals_and_hash") or
-        std.mem.eql(u8, trimmed, "java_string_check_utf8") or
-        std.mem.eql(u8, trimmed, "optimize_for") or
-        std.mem.eql(u8, trimmed, "go_package") or
-        std.mem.eql(u8, trimmed, "cc_generic_services") or
-        std.mem.eql(u8, trimmed, "java_generic_services") or
-        std.mem.eql(u8, trimmed, "py_generic_services") or
-        std.mem.eql(u8, trimmed, "deprecated") or
-        std.mem.eql(u8, trimmed, "cc_enable_arenas") or
-        std.mem.eql(u8, trimmed, "objc_class_prefix") or
-        std.mem.eql(u8, trimmed, "csharp_namespace") or
-        std.mem.eql(u8, trimmed, "swift_prefix") or
-        std.mem.eql(u8, trimmed, "php_class_prefix") or
-        std.mem.eql(u8, trimmed, "php_namespace") or
-        std.mem.eql(u8, trimmed, "php_metadata_namespace") or
-        std.mem.eql(u8, trimmed, "ruby_package");
 }
 
 fn exactOptionBool(options: []const schema.FieldOption, name: []const u8) ?bool {

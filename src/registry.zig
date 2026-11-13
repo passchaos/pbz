@@ -4,7 +4,7 @@ const wire = @import("wire.zig");
 
 pub const TypeKind = enum { message, enumeration };
 
-pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, DuplicateJsonName, InvalidExtensionDeclaration, InvalidFieldType };
+pub const Error = std.mem.Allocator.Error || error{ DuplicateSymbol, DuplicateJsonName, InvalidExtensionDeclaration, InvalidFieldType, UnknownOption };
 
 const JsonNameOwner = struct {
     is_custom: bool,
@@ -681,6 +681,245 @@ pub const Registry = struct {
         for (self.files.items) |file| try self.validateFileReferences(file);
     }
 
+    const OptionTarget = enum { file, message, field, oneof, enumeration, enum_value, service, method, extension_range, feature_set };
+
+    fn optionTargetExtendee(target: OptionTarget) []const u8 {
+        return switch (target) {
+            .file => "google.protobuf.FileOptions",
+            .message => "google.protobuf.MessageOptions",
+            .field => "google.protobuf.FieldOptions",
+            .oneof => "google.protobuf.OneofOptions",
+            .enumeration => "google.protobuf.EnumOptions",
+            .enum_value => "google.protobuf.EnumValueOptions",
+            .service => "google.protobuf.ServiceOptions",
+            .method => "google.protobuf.MethodOptions",
+            .extension_range => "google.protobuf.ExtensionRangeOptions",
+            .feature_set => "google.protobuf.FeatureSet",
+        };
+    }
+
+    /// Rejects options whose `(extension)` name does not resolve to a declared
+    /// extension of the matching `*Options` message (or `FeatureSet` for
+    /// `features.(ext)`), matching protoc's unknown-option behavior. Built-in
+    /// options are left to the parser and are not interpreted here.
+    pub fn validateAllCustomOptions(self: *const Registry) Error!void {
+        for (self.files.items) |file| {
+            for (file.options.items) |option| try self.validateCustomOption(file, .file, option, file.package);
+            for (file.messages.items) |*message| try self.validateMessageCustomOptions(file, message, file.package);
+            for (file.enums.items) |*enumeration| try self.validateEnumCustomOptions(file, enumeration, file.package);
+            for (file.services.items) |*service| try self.validateServiceCustomOptions(file, service, file.package);
+            for (file.extensions.items) |*field| try self.validateFieldCustomOptions(file, field, file.package);
+        }
+    }
+
+    fn validateMessageCustomOptions(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, scope: []const u8) Error!void {
+        const message_scope = try qualifiedTypeName(self.allocator, scope, message.name);
+        defer self.allocator.free(message_scope);
+        for (message.options.items) |option| try self.validateCustomOption(file, .message, option, message_scope);
+        for (message.fields.items) |*field| try self.validateFieldCustomOptions(file, field, message_scope);
+        for (message.oneofs.items) |*oneof| {
+            for (oneof.options.items) |option| try self.validateCustomOption(file, .oneof, option, message_scope);
+        }
+        for (message.extension_ranges.items) |*range| {
+            for (range.options.items) |option| try self.validateCustomOption(file, .extension_range, option, message_scope);
+        }
+        for (message.messages.items) |*nested| try self.validateMessageCustomOptions(file, nested, message_scope);
+        for (message.enums.items) |*enumeration| try self.validateEnumCustomOptions(file, enumeration, message_scope);
+        for (message.extensions.items) |*field| try self.validateFieldCustomOptions(file, field, message_scope);
+    }
+
+    fn validateEnumCustomOptions(self: *const Registry, file: *const schema.FileDescriptor, enumeration: *const schema.EnumDescriptor, scope: []const u8) Error!void {
+        const enum_scope = try qualifiedTypeName(self.allocator, scope, enumeration.name);
+        defer self.allocator.free(enum_scope);
+        for (enumeration.options.items) |option| try self.validateCustomOption(file, .enumeration, option, enum_scope);
+        for (enumeration.values.items) |*value| {
+            for (value.options.items) |option| try self.validateCustomOption(file, .enum_value, option, enum_scope);
+        }
+    }
+
+    fn validateServiceCustomOptions(self: *const Registry, file: *const schema.FileDescriptor, service: *const schema.ServiceDescriptor, scope: []const u8) Error!void {
+        const service_scope = try qualifiedTypeName(self.allocator, scope, service.name);
+        defer self.allocator.free(service_scope);
+        for (service.options.items) |option| try self.validateCustomOption(file, .service, option, service_scope);
+        for (service.methods.items) |*method| {
+            for (method.options.items) |option| try self.validateCustomOption(file, .method, option, service_scope);
+        }
+    }
+
+    fn validateFieldCustomOptions(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scope: []const u8) Error!void {
+        for (field.options.items) |option| try self.validateCustomOption(file, .field, option, scope);
+    }
+
+    const ParsedCustomOption = struct {
+        extension_name: []const u8,
+        sub_path: []const u8,
+        feature_target: bool,
+    };
+
+    fn parseCustomOptionName(name: []const u8) ?ParsedCustomOption {
+        const trimmed = std.mem.trim(u8, name, " \t\r\n");
+        const open = std.mem.indexOfScalar(u8, trimmed, '(') orelse return null;
+        const close = std.mem.indexOfScalarPos(u8, trimmed, open + 1, ')') orelse return null;
+        var sub_path = trimmed[close + 1 ..];
+        if (sub_path.len != 0 and sub_path[0] == '.') sub_path = sub_path[1..];
+        const feature_target = std.mem.startsWith(u8, trimmed, "features.") and open == "features.".len;
+        return .{ .extension_name = trimmed[open + 1 .. close], .sub_path = sub_path, .feature_target = feature_target };
+    }
+
+    fn validateCustomOption(self: *const Registry, file: *const schema.FileDescriptor, target: OptionTarget, option: schema.FieldOption, scope: []const u8) Error!void {
+        _ = file;
+        const trimmed = std.mem.trim(u8, option.name, " \t\r\n");
+        if (parseCustomOptionName(trimmed)) |parsed| {
+            const extendee = optionTargetExtendee(if (parsed.feature_target) .feature_set else target);
+            const field = self.findOptionExtension(scope, parsed.extension_name, extendee) orelse return error.UnknownOption;
+            try self.validateOptionSubField(field, parsed.sub_path);
+            return;
+        }
+        // Plain names must be built-in options; protoc rejects unknown ones.
+        if (std.mem.startsWith(u8, trimmed, "features.")) return;
+        if (!schema.isKnownOption(trimmed, optionTargetScope(target))) return error.UnknownOption;
+    }
+
+    fn optionTargetScope(target: OptionTarget) schema.OptionScope {
+        return switch (target) {
+            .file => .file,
+            .message => .message,
+            .field => .field,
+            .oneof => .oneof,
+            .enumeration => .enumeration,
+            .enum_value => .enum_value,
+            .service => .service,
+            .method => .method,
+            .extension_range => .extension_range,
+            .feature_set => .file,
+        };
+    }
+
+    fn findOptionExtension(self: *const Registry, scope: []const u8, extension_name: []const u8, expected_extendee: []const u8) ?*const schema.FieldDescriptor {
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (self.optionExtensionMatches(file, field, scope, extension_name, expected_extendee)) return field;
+            }
+            for (file.messages.items) |*message| {
+                if (self.findOptionExtensionInMessage(file, message, scope, extension_name, expected_extendee)) |field| return field;
+            }
+        }
+        return null;
+    }
+
+    fn findOptionExtensionInMessage(self: *const Registry, file: *const schema.FileDescriptor, message: *const schema.MessageDescriptor, scope: []const u8, extension_name: []const u8, expected_extendee: []const u8) ?*const schema.FieldDescriptor {
+        for (message.extensions.items) |*field| {
+            if (self.optionExtensionMatches(file, field, scope, extension_name, expected_extendee)) return field;
+        }
+        for (message.messages.items) |*nested| {
+            if (self.findOptionExtensionInMessage(file, nested, scope, extension_name, expected_extendee)) |field| return field;
+        }
+        return null;
+    }
+
+    fn optionExtensionMatches(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, scope: []const u8, extension_name: []const u8, expected_extendee: []const u8) bool {
+        if (!self.optionExtensionNameMatches(file.package, field, scope, extension_name)) return false;
+        const owner = self.fileContainingExtension(field) orelse file;
+        const resolved = resolveExtensionExtendee(self, owner, field) orelse return false;
+        const expected = self.findMessage(expected_extendee, null) orelse return false;
+        return resolved == expected;
+    }
+
+    /// Resolves a relative option extension name from the annotated
+    /// descriptor's scope outward, like protobuf's option name resolution.
+    fn optionExtensionNameMatches(self: *const Registry, package: []const u8, field: *const schema.FieldDescriptor, scope: []const u8, extension_name: []const u8) bool {
+        const trimmed = std.mem.trim(u8, extension_name, " \t\r\n");
+        if (trimmed.len != 0 and trimmed[0] == '.') return schema.extensionNameMatches(package, field, trimmed);
+        var prefix = scope;
+        while (true) {
+            if (prefix.len != 0) {
+                const candidate = std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ prefix, trimmed }) catch return false;
+                defer self.allocator.free(candidate);
+                if (schema.extensionNameMatches(package, field, candidate)) return true;
+            }
+            if (prefix.len == 0) break;
+            if (std.mem.lastIndexOfScalar(u8, prefix, '.')) |idx| {
+                prefix = prefix[0..idx];
+            } else {
+                prefix = "";
+            }
+        }
+        return schema.extensionNameMatches(package, field, trimmed);
+    }
+
+    fn validateOptionSubField(self: *const Registry, extension_field: *const schema.FieldDescriptor, sub_path: []const u8) Error!void {
+        if (sub_path.len == 0) return;
+        const owner = self.fileContainingExtension(extension_field) orelse return error.UnknownOption;
+        var message = switch (extension_field.kind) {
+            .message, .group => |type_name| self.findMessageVisible(owner, type_name, extensionScope(owner, extension_field)) orelse return error.UnknownOption,
+            else => return error.UnknownOption,
+        };
+        var index: usize = 0;
+        while (nextOptionPathSegment(sub_path, &index)) |segment| {
+            if (segment.len == 0) return error.UnknownOption;
+            if (segment[0] == '(') {
+                // Nested extension segment: `(ext.name)` extends the current
+                // message type rather than naming one of its fields.
+                const close = std.mem.lastIndexOfScalar(u8, segment, ')') orelse return error.UnknownOption;
+                const message_full = try self.messageFullNameAlloc(message) orelse return error.UnknownOption;
+                defer self.allocator.free(message_full);
+                const nested = self.findExtensionOfMessage(message, message_full, segment[1..close]) orelse return error.UnknownOption;
+                if (!optionPathHasMore(sub_path, index)) return;
+                const nested_owner = self.fileContainingExtension(nested) orelse owner;
+                message = switch (nested.kind) {
+                    .message, .group => |type_name| self.findMessageVisible(nested_owner, type_name, extensionScope(nested_owner, nested)) orelse return error.UnknownOption,
+                    else => return error.UnknownOption,
+                };
+            } else {
+                const next = message.findField(segment) orelse return error.UnknownOption;
+                if (!optionPathHasMore(sub_path, index)) return;
+                // Field types resolve relative to the message that declares
+                // the field, not the extension's own scope.
+                const message_full = try self.messageFullNameAlloc(message) orelse return error.UnknownOption;
+                defer self.allocator.free(message_full);
+                message = switch (next.kind) {
+                    .message, .group => |type_name| self.findMessageVisible(owner, type_name, message_full) orelse return error.UnknownOption,
+                    else => return error.UnknownOption,
+                };
+            }
+        }
+    }
+
+    fn findExtensionOfMessage(self: *const Registry, message: *const schema.MessageDescriptor, scope: []const u8, extension_name: []const u8) ?*const schema.FieldDescriptor {
+        for (self.files.items) |file| {
+            for (file.extensions.items) |*field| {
+                if (self.extensionOfMessageMatches(file, field, message, scope, extension_name)) return field;
+            }
+            for (file.messages.items) |*message_scope| {
+                if (self.findExtensionOfMessageInScope(file, message_scope, message, scope, extension_name)) |field| return field;
+            }
+        }
+        return null;
+    }
+
+    fn findExtensionOfMessageInScope(self: *const Registry, file: *const schema.FileDescriptor, message_scope: *const schema.MessageDescriptor, message: *const schema.MessageDescriptor, scope: []const u8, extension_name: []const u8) ?*const schema.FieldDescriptor {
+        for (message_scope.extensions.items) |*field| {
+            if (self.extensionOfMessageMatches(file, field, message, scope, extension_name)) return field;
+        }
+        for (message_scope.messages.items) |*nested| {
+            if (self.findExtensionOfMessageInScope(file, nested, message, scope, extension_name)) |field| return field;
+        }
+        return null;
+    }
+
+    fn extensionOfMessageMatches(self: *const Registry, file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor, message: *const schema.MessageDescriptor, scope: []const u8, extension_name: []const u8) bool {
+        if (!self.optionExtensionNameMatches(file.package, field, scope, extension_name)) return false;
+        const owner = self.fileContainingExtension(field) orelse file;
+        return resolveExtensionExtendee(self, owner, field) == message;
+    }
+
+    fn messageFullNameAlloc(self: *const Registry, target: *const schema.MessageDescriptor) std.mem.Allocator.Error!?[]u8 {
+        for (self.files.items) |file| {
+            if (try findMessageFullName(self.allocator, file.messages.items, target, file.package)) |full| return full;
+        }
+        return null;
+    }
+
     pub fn validateFileReferences(self: *const Registry, file: *const schema.FileDescriptor) Error!void {
         for (file.messages.items) |*message| {
             const scope = try qualifiedTypeName(self.allocator, file.package, message.name);
@@ -1317,6 +1556,51 @@ fn findEnumValueAfterMessage(message: *const schema.MessageDescriptor, rest: []c
         if (enumeration.findValue(rest)) |value| return value;
     }
     return null;
+}
+
+fn findMessageFullName(allocator: std.mem.Allocator, messages: []const schema.MessageDescriptor, target: *const schema.MessageDescriptor, prefix: []const u8) std.mem.Allocator.Error!?[]u8 {
+    for (messages) |*message| {
+        const full = if (prefix.len == 0)
+            try std.fmt.allocPrint(allocator, "{s}", .{message.name})
+        else
+            try std.fmt.allocPrint(allocator, "{s}.{s}", .{ prefix, message.name });
+        errdefer allocator.free(full);
+        if (message == target) return full;
+        if (try findMessageFullName(allocator, message.messages.items, target, full)) |found| {
+            allocator.free(full);
+            return found;
+        }
+        allocator.free(full);
+    }
+    return null;
+}
+
+fn nextOptionPathSegment(path: []const u8, index: *usize) ?[]const u8 {
+    while (index.* < path.len and path[index.*] == '.') index.* += 1;
+    if (index.* >= path.len) return null;
+    const start = index.*;
+    if (path[start] == '(') {
+        const close = std.mem.indexOfScalarPos(u8, path, start + 1, ')') orelse {
+            index.* = path.len;
+            return path[start..];
+        };
+        index.* = close + 1;
+        return path[start .. close + 1];
+    }
+    const dot = std.mem.indexOfScalarPos(u8, path, start, '.') orelse {
+        index.* = path.len;
+        return path[start..];
+    };
+    index.* = dot;
+    return path[start..dot];
+}
+
+fn optionPathHasMore(path: []const u8, index: usize) bool {
+    var i = index;
+    while (i < path.len) : (i += 1) {
+        if (path[i] != '.') return true;
+    }
+    return false;
 }
 
 fn extensionScope(file: *const schema.FileDescriptor, field: *const schema.FieldDescriptor) ?[]const u8 {

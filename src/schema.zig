@@ -1420,6 +1420,53 @@ pub const FeatureSet = struct {
     }
 };
 
+/// Descriptor kinds that carry options, used by the built-in option whitelist.
+pub const OptionScope = enum { file, field, message, enumeration, enum_value, oneof, service, method, extension_range };
+
+/// Built-in option names understood by protoc 36.2 for each descriptor kind.
+/// `features.*` options are accepted separately.
+pub fn isKnownOption(name: []const u8, scope: OptionScope) bool {
+    const trimmed = std.mem.trim(u8, name, " \t\r\n");
+    // `features` is a FeatureSet option on every descriptor kind, and dotted
+    // names such as `feature_support.edition_introduced` assign aggregate
+    // sub-fields of a known option.
+    if (std.mem.eql(u8, trimmed, "features") or std.mem.startsWith(u8, trimmed, "features.")) return true;
+    const base = if (std.mem.indexOfScalar(u8, trimmed, '.')) |idx| trimmed[0..idx] else trimmed;
+    return switch (scope) {
+        .file => isKnownFileOption(base),
+        .message => std.mem.eql(u8, base, "message_set_wire_format") or std.mem.eql(u8, base, "no_standard_descriptor_accessor") or std.mem.eql(u8, base, "deprecated") or std.mem.eql(u8, base, "map_entry") or std.mem.eql(u8, base, "deprecated_legacy_json_field_conflicts"),
+        .enumeration => std.mem.eql(u8, base, "allow_alias") or std.mem.eql(u8, base, "deprecated") or std.mem.eql(u8, base, "deprecated_legacy_json_field_conflicts"),
+        .enum_value => std.mem.eql(u8, base, "deprecated") or std.mem.eql(u8, base, "debug_redact") or std.mem.eql(u8, base, "feature_support"),
+        .oneof => false,
+        .service => std.mem.eql(u8, base, "deprecated"),
+        .method => std.mem.eql(u8, base, "deprecated") or std.mem.eql(u8, base, "idempotency_level"),
+        .field => std.mem.eql(u8, base, "ctype") or std.mem.eql(u8, base, "packed") or std.mem.eql(u8, base, "default") or std.mem.eql(u8, base, "json_name") or std.mem.eql(u8, base, "jstype") or std.mem.eql(u8, base, "lazy") or std.mem.eql(u8, base, "unverified_lazy") or std.mem.eql(u8, base, "deprecated") or std.mem.eql(u8, base, "weak") or std.mem.eql(u8, base, "debug_redact") or std.mem.eql(u8, base, "retention") or std.mem.eql(u8, base, "targets") or std.mem.eql(u8, base, "edition_defaults") or std.mem.eql(u8, base, "feature_support"),
+        .extension_range => std.mem.eql(u8, optionLeaf(name), "declaration") or std.mem.eql(u8, optionLeaf(name), "verification"),
+    };
+}
+
+pub fn isKnownFileOption(trimmed: []const u8) bool {
+    return std.mem.eql(u8, trimmed, "java_package") or
+        std.mem.eql(u8, trimmed, "java_outer_classname") or
+        std.mem.eql(u8, trimmed, "java_multiple_files") or
+        std.mem.eql(u8, trimmed, "java_generate_equals_and_hash") or
+        std.mem.eql(u8, trimmed, "java_string_check_utf8") or
+        std.mem.eql(u8, trimmed, "optimize_for") or
+        std.mem.eql(u8, trimmed, "go_package") or
+        std.mem.eql(u8, trimmed, "cc_generic_services") or
+        std.mem.eql(u8, trimmed, "java_generic_services") or
+        std.mem.eql(u8, trimmed, "py_generic_services") or
+        std.mem.eql(u8, trimmed, "deprecated") or
+        std.mem.eql(u8, trimmed, "cc_enable_arenas") or
+        std.mem.eql(u8, trimmed, "objc_class_prefix") or
+        std.mem.eql(u8, trimmed, "csharp_namespace") or
+        std.mem.eql(u8, trimmed, "swift_prefix") or
+        std.mem.eql(u8, trimmed, "php_class_prefix") or
+        std.mem.eql(u8, trimmed, "php_namespace") or
+        std.mem.eql(u8, trimmed, "php_metadata_namespace") or
+        std.mem.eql(u8, trimmed, "ruby_package");
+}
+
 pub const FeatureSetEditionDefault = struct {
     edition: Edition = .unknown,
     overridable_features: ?FeatureSet = null,
