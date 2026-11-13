@@ -874,6 +874,16 @@ pub const Registry = struct {
 
 fn typeVisibleFromFile(from_file: *const schema.FileDescriptor, file: *const schema.FileDescriptor, found: TypeRef) bool {
     if (sameFile(from_file, file)) return true;
+    // Edition 2024+ `local`/`export` modifiers override the file default.
+    const explicit: schema.SymbolVisibility = switch (found) {
+        .message => |message| message.visibility,
+        .enumeration => |enumeration| enumeration.visibility,
+    };
+    switch (explicit) {
+        .local => return false,
+        .exported => return true,
+        .default => {},
+    }
     return switch (file.features.default_symbol_visibility) {
         .export_all => true,
         .export_top_level => switch (found) {

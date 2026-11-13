@@ -202,6 +202,61 @@ test "memory loader enforces editions local symbol visibility" {
     defer same_file.deinit();
 }
 
+test "memory loader honors explicit local and export visibility modifiers" {
+    const allocator = std.testing.allocator;
+
+    var hidden_tree = MemorySourceTree.init(allocator);
+    defer hidden_tree.deinit();
+    try hidden_tree.add("a.proto",
+        \\edition = "2024";
+        \\package v;
+        \\local message Hidden { int32 x = 1; }
+        \\message Outer { export message Inner { int32 y = 1; } }
+    );
+    try hidden_tree.add("b.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "a.proto";
+        \\message B { v.Hidden h = 1; }
+    );
+    try std.testing.expectError(error.InvalidFieldType, loadMemory(allocator, &hidden_tree, "b.proto"));
+
+    // An exported nested type is visible even when its parent stays local.
+    var export_tree = MemorySourceTree.init(allocator);
+    defer export_tree.deinit();
+    try export_tree.add("c.proto",
+        \\edition = "2024";
+        \\package v;
+        \\message Outer { export message Inner { int32 y = 1; } }
+    );
+    try export_tree.add("d.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "c.proto";
+        \\message B { v.Outer.Inner i = 1; }
+    );
+    var exported = try loadMemory(allocator, &export_tree, "d.proto");
+    defer exported.deinit();
+
+    // `export` overrides LOCAL_ALL for top-level declarations.
+    var override_tree = MemorySourceTree.init(allocator);
+    defer override_tree.deinit();
+    try override_tree.add("e.proto",
+        \\edition = "2024";
+        \\package v;
+        \\option features.default_symbol_visibility = LOCAL_ALL;
+        \\export message Visible { int32 x = 1; }
+    );
+    try override_tree.add("f.proto",
+        \\edition = "2024";
+        \\package w;
+        \\import "e.proto";
+        \\message B { v.Visible visible = 1; }
+    );
+    var overridden = try loadMemory(allocator, &override_tree, "f.proto");
+    defer overridden.deinit();
+}
+
 test "memory loader enforces editions enum and strict visibility" {
     const allocator = std.testing.allocator;
     var enum_tree = MemorySourceTree.init(allocator);

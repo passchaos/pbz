@@ -790,6 +790,9 @@ pub const EnumDescriptor = struct {
     options: OptionList = .empty,
     reserved_ranges: std.ArrayList(ReservedRange) = .empty,
     reserved_names: std.ArrayList([]const u8) = .empty,
+    /// Edition 2024+ `local`/`export` source modifier. Source-retention only;
+    /// not serialized into FileDescriptorProto.
+    visibility: SymbolVisibility = .default,
 
     pub fn deinit(self: *EnumDescriptor, allocator: std.mem.Allocator) void {
         for (self.values.items) |*value| value.deinit(allocator);
@@ -857,6 +860,10 @@ pub const EnumDescriptor = struct {
     }
 };
 
+/// Edition 2024+ symbol visibility modifier written before a `message` or
+/// `enum` declaration. `exported` corresponds to the `export` keyword.
+pub const SymbolVisibility = enum { default, local, exported };
+
 pub const MessageDescriptor = struct {
     name: []const u8,
     fields: std.ArrayList(FieldDescriptor) = .empty,
@@ -870,6 +877,9 @@ pub const MessageDescriptor = struct {
     map_entry: bool = false,
     features: ?FeatureSet = null,
     options: OptionList = .empty,
+    /// Edition 2024+ `local`/`export` source modifier. Source-retention only;
+    /// not serialized into FileDescriptorProto.
+    visibility: SymbolVisibility = .default,
 
     pub fn deinit(self: *MessageDescriptor, allocator: std.mem.Allocator) void {
         for (self.fields.items) |*field| field.deinit(allocator);

@@ -112,6 +112,12 @@ canonical byte layout matches the reference for cyclic raw fields and unknown
 field ordering. With `PBZ_CONFORMANCE_GENERATED_JSON=1` and
 `PBZ_CONFORMANCE_GENERATED_TEXT=1` the same 2817/445 results are produced
 entirely by generated parse/stringify/format code.
+Source parsing is also differentially checked against `protoc` 36.2: all 183
+`.proto` files shipped in the protobuf `src/` and `editions/` trees parse with
+`pbz.ProtoParser` with zero false rejections, covering custom FeatureSet
+extensions, `local`/`export` visibility modifiers, proto2 oneof defaults,
+`packed = false` on non-packable fields, and scoped MessageSet extension
+numbers.
 
 A lightweight smoke test is also available:
 

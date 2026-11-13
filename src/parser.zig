@@ -178,6 +178,7 @@ pub const Parser = struct {
         try self.validateFeatureSemantics();
         try self.validateNamingStyle();
         try self.validateProtoLimits();
+        try self.validateSymbolVisibility();
         return self.file;
     }
 
@@ -255,6 +256,10 @@ pub const Parser = struct {
             } else if (self.matchIdent("enum")) {
                 const index: i32 = @intCast(self.file.enums.items.len);
                 try self.appendEnumDescriptor(&self.file.enums, try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start));
+            } else if (self.matchIdent("local")) {
+                try self.parseTopLevelVisibility(.local, decl_start);
+            } else if (self.matchIdent("export")) {
+                try self.parseTopLevelVisibility(.exported, decl_start);
             } else if (self.matchIdent("extend")) {
                 try self.parseExtend(&self.file.extensions, "", null, &.{7});
             } else if (self.matchIdent("service")) {
@@ -548,6 +553,10 @@ pub const Parser = struct {
                 defer self.allocator.free(path);
                 const enum_start = self.previous_end;
                 try self.appendEnumDescriptor(&message.enums, try self.parseEnumAfterKeyword(path, enum_start));
+            } else if (self.matchIdent("local")) {
+                try self.parseNestedVisibility(&message, message_scope, source_path, .local);
+            } else if (self.matchIdent("export")) {
+                try self.parseNestedVisibility(&message, message_scope, source_path, .exported);
             } else if (self.matchIdent("oneof")) {
                 const oneof_start = self.previous_end;
                 const index: i32 = @intCast(message.oneofs.items.len);
@@ -588,6 +597,48 @@ pub const Parser = struct {
         try validateMessageFields(&message, self.file.syntax, file_json_format);
         try self.addSourceLocation(source_path, decl_start, self.previousEnd());
         return message;
+    }
+
+    fn parseTopLevelVisibility(self: *Parser, visibility: schema.SymbolVisibility, decl_start: usize) Error!void {
+        try self.validateVisibilityModifier(visibility);
+        if (self.matchIdent("message")) {
+            const index: i32 = @intCast(self.file.messages.items.len);
+            var message = try self.parseMessageAfterKeyword(&.{ 4, index }, decl_start, self.file.package);
+            message.visibility = visibility;
+            try self.appendMessageDescriptor(&self.file.messages, message);
+        } else if (self.matchIdent("enum")) {
+            const index: i32 = @intCast(self.file.enums.items.len);
+            var enumeration = try self.parseEnumAfterKeyword(&.{ 5, index }, decl_start);
+            enumeration.visibility = visibility;
+            try self.appendEnumDescriptor(&self.file.enums, enumeration);
+        } else return error.UnexpectedToken;
+    }
+
+    fn parseNestedVisibility(self: *Parser, message: *schema.MessageDescriptor, message_scope: []const u8, source_path: []const i32, visibility: schema.SymbolVisibility) Error!void {
+        try self.validateVisibilityModifier(visibility);
+        if (self.matchIdent("message")) {
+            const index: i32 = @intCast(message.messages.items.len);
+            const path = try self.childPath(source_path, 3, index);
+            defer self.allocator.free(path);
+            const nested_start = self.previous_end;
+            var nested = try self.parseMessageAfterKeyword(path, nested_start, message_scope);
+            nested.visibility = visibility;
+            try self.appendMessageDescriptor(&message.messages, nested);
+        } else if (self.matchIdent("enum")) {
+            const index: i32 = @intCast(message.enums.items.len);
+            const path = try self.childPath(source_path, 4, index);
+            defer self.allocator.free(path);
+            const enum_start = self.previous_end;
+            var enumeration = try self.parseEnumAfterKeyword(path, enum_start);
+            enumeration.visibility = visibility;
+            try self.appendEnumDescriptor(&message.enums, enumeration);
+        } else return error.UnexpectedToken;
+    }
+
+    fn validateVisibilityModifier(self: *const Parser, visibility: schema.SymbolVisibility) ParseError!void {
+        _ = visibility;
+        if (self.file.syntax != .editions) return error.InvalidSyntax;
+        if (@intFromEnum(self.file.edition) < @intFromEnum(schema.Edition.edition_2024)) return error.InvalidSyntax;
     }
 
     fn parseEnumAfterKeyword(self: *Parser, source_path: []const i32, decl_start: usize) Error!schema.EnumDescriptor {
@@ -987,9 +1038,14 @@ pub const Parser = struct {
     fn addFileOption(self: *Parser, option: schema.FieldOption) Error!void {
         if (isFeatureOption(option.name)) {
             if (self.file.syntax != .editions) return error.InvalidSyntax;
-            try self.validateFeatureOptionEdition(option);
-            try validateFeatureOptionTarget(option, .file);
-            try applyFeatureOptionValue(&self.file.features, option);
+            // `features.(extension).name` belongs to a custom FeatureSet
+            // extension; without import resolution it is stored as an option
+            // instead of being applied to the built-in FeatureSet.
+            if (!isCustomFeatureOption(option.name)) {
+                try self.validateFeatureOptionEdition(option);
+                try validateFeatureOptionTarget(option, .file);
+                try applyFeatureOptionValue(&self.file.features, option);
+            }
             try self.appendFieldOption(&self.file.options, option);
         } else {
             try self.validateFileOptionEdition(option);
@@ -1018,6 +1074,7 @@ pub const Parser = struct {
     fn applyFeatureOption(self: *Parser, target: *?schema.FeatureSet, option: schema.FieldOption, feature_target: FeatureTarget) Error!void {
         if (!isFeatureOption(option.name)) return;
         if (self.file.syntax != .editions) return error.InvalidSyntax;
+        if (isCustomFeatureOption(option.name)) return;
         try self.validateFeatureOptionEdition(option);
         try validateFeatureOptionTarget(option, feature_target);
         var features = target.* orelse schema.FeatureSet.defaults(self.file.syntax);
@@ -1027,6 +1084,12 @@ pub const Parser = struct {
 
     fn isFeatureOption(name: []const u8) bool {
         return std.mem.startsWith(u8, std.mem.trim(u8, name, " \t\r\n"), "features.");
+    }
+
+    fn isCustomFeatureOption(name: []const u8) bool {
+        const trimmed = std.mem.trim(u8, name, " \t\r\n");
+        if (!std.mem.startsWith(u8, trimmed, "features.")) return false;
+        return std.mem.indexOfScalar(u8, trimmed, '(') != null;
     }
 
     fn applyFeatureOptionValue(features: *schema.FeatureSet, option: schema.FieldOption) ParseError!void {
@@ -1119,7 +1182,17 @@ pub const Parser = struct {
                     if (unsigned_value > std.math.maxInt(i64)) return .{ .unsigned_integer = unsigned_value };
                     return .{ .integer = @intCast(unsigned_value) };
                 } else |_| {}
-            }
+            } else if (parseU64(number_text)) |unsigned_value| {
+                // Negative literals are parsed through u64 so that
+                // -0x8000000000000000 (INT64_MIN) round-trips as an integer.
+                if (unsigned_value <= @as(u64, 1) << 63) {
+                    const signed_value: i64 = if (unsigned_value == (@as(u64, 1) << 63))
+                        std.math.minInt(i64)
+                    else
+                        -@as(i64, @intCast(unsigned_value));
+                    return .{ .integer = signed_value };
+                }
+            } else |_| {}
             if (parseI64(number_text)) |parsed| {
                 return .{ .integer = if (negative) -parsed else parsed };
             } else |err| switch (err) {
@@ -1194,11 +1267,13 @@ pub const Parser = struct {
                 } else return error.InvalidFieldType;
             } else if (std.mem.startsWith(u8, option.name, "features.")) {
                 if (self.file.syntax != .editions) return error.InvalidSyntax;
-                try self.validateFeatureOptionEdition(option);
-                try validateFeatureOptionTarget(option, .extension_range);
-                var features = range.features orelse schema.FeatureSet.defaults(self.file.syntax);
-                try applyFeatureOptionValue(&features, option);
-                range.features = features;
+                if (!isCustomFeatureOption(option.name)) {
+                    try self.validateFeatureOptionEdition(option);
+                    try validateFeatureOptionTarget(option, .extension_range);
+                    var features = range.features orelse schema.FeatureSet.defaults(self.file.syntax);
+                    try applyFeatureOptionValue(&features, option);
+                    range.features = features;
+                }
             }
         }
     }
@@ -1363,19 +1438,27 @@ pub const Parser = struct {
     fn validateFieldDefault(self: *Parser, field: *const schema.FieldDescriptor, context: ?*schema.MessageDescriptor) ParseError!void {
         const value = field.default_value orelse return;
         if (self.file.syntax == .proto3) return error.InvalidDefault;
-        if (field.cardinality == .repeated or field.kind == .map or field.oneof_name != null) return error.InvalidDefault;
+        if (field.cardinality == .repeated or field.kind == .map) return error.InvalidDefault;
         switch (field.kind) {
             .scalar => |scalar| try validateScalarDefault(scalar, value),
             .enumeration => |name| {
-                const number = switch (value) {
-                    .integer => |v| v,
+                const enumeration = self.findEnumDescriptor(name, context);
+                switch (value) {
+                    .integer => |number| {
+                        // Imported enums are not resolvable without loading
+                        // imports, so their numeric defaults are accepted.
+                        const resolved = enumeration orelse return;
+                        for (resolved.values.items) |enum_value| {
+                            if (enum_value.number == number) return;
+                        }
+                        return error.InvalidDefault;
+                    },
+                    // A locally declared enum default is converted to its
+                    // number by resolveEnumDefault; a leftover identifier can
+                    // only refer to an imported enum value.
+                    .identifier, .string => if (enumeration != null) return error.InvalidDefault,
                     else => return error.InvalidDefault,
-                };
-                const enumeration = self.findEnumDescriptor(name, context) orelse return error.InvalidDefault;
-                for (enumeration.values.items) |enum_value| {
-                    if (enum_value.number == number) return;
                 }
-                return error.InvalidDefault;
             },
             .message => |name| {
                 switch (value) {
@@ -1412,7 +1495,11 @@ pub const Parser = struct {
     }
 
     fn validateFieldPackedOption(field: *const schema.FieldDescriptor) ParseError!void {
-        if (field.packed_override != null and !field.isPackable()) return error.InvalidFieldType;
+        // protoc only rejects `[packed = true]` on non-packable fields;
+        // `[packed = false]` is a legal no-op everywhere.
+        if (field.packed_override) |is_packed| {
+            if (is_packed and !field.isPackable()) return error.InvalidFieldType;
+        }
     }
 
     fn validateFieldOptionApplicabilities(self: *Parser) ParseError!void {
@@ -1435,6 +1522,15 @@ pub const Parser = struct {
         const file_limits = self.file.features.enforce_proto_limits;
         for (self.file.messages.items) |*message| try validateMessageProtoLimits(message, file_limits);
         for (self.file.enums.items) |*enumeration| try validateEnumProtoLimits(enumeration, file_limits);
+    }
+
+    fn validateSymbolVisibility(self: *Parser) ParseError!void {
+        if (self.file.syntax != .editions) return;
+        const strict = self.file.features.default_symbol_visibility == .strict;
+        for (self.file.messages.items) |*message| try validateMessageVisibility(message, false, strict);
+        for (self.file.enums.items) |*enumeration| {
+            if (strict and enumeration.visibility == .exported) return error.InvalidFieldType;
+        }
     }
 
 const FeatureTarget = enum {
@@ -1488,7 +1584,7 @@ fn validatePackageNaming(package: []const u8) ParseError!void {
 fn validateMessageNaming(message: *const schema.MessageDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
     const style = effectiveNamingStyle(message.features, inherited);
     if (style != .style_legacy and !isTitleCaseName(message.name)) return error.InvalidFieldType;
-    for (message.fields.items) |*field| try validateFieldNaming(field, style, message);
+    for (message.fields.items) |*field| try validateFieldNaming(field, fieldInheritedNamingStyle(message, field, style), message);
     for (message.oneofs.items) |*oneof| {
         const oneof_style = effectiveNamingStyle(oneof.features, style);
         if (oneof_style != .style_legacy and !isLowerSnakeCaseName(oneof.name)) return error.InvalidFieldType;
@@ -1497,6 +1593,16 @@ fn validateMessageNaming(message: *const schema.MessageDescriptor, inherited: sc
     for (message.messages.items) |*nested| try validateMessageNaming(nested, style);
     for (message.enums.items) |*enumeration| try validateEnumNaming(enumeration, style);
     for (message.extensions.items) |*field| try validateFieldNaming(field, style, message);
+}
+
+/// Oneof-scoped features are inherited by their member fields in protobuf's
+/// feature resolution, so a oneof-level STYLE_LEGACY also relaxes field names.
+fn fieldInheritedNamingStyle(message: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor, message_style: schema.FeatureSet.EnforceNamingStyle) schema.FeatureSet.EnforceNamingStyle {
+    const oneof_name = field.oneof_name orelse return message_style;
+    for (message.oneofs.items) |*oneof| {
+        if (std.mem.eql(u8, oneof.name, oneof_name)) return effectiveNamingStyle(oneof.features, message_style);
+    }
+    return message_style;
 }
 
 fn validateFieldNaming(field: *const schema.FieldDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle, message: ?*const schema.MessageDescriptor) ParseError!void {
@@ -1574,6 +1680,16 @@ fn validateEnumProtoLimits(enumeration: *const schema.EnumDescriptor, inherited:
 
 fn effectiveProtoLimits(features: ?schema.FeatureSet, inherited: schema.FeatureSet.EnforceProtoLimits) schema.FeatureSet.EnforceProtoLimits {
     return if (features) |value| value.enforce_proto_limits else inherited;
+}
+
+/// STRICT visibility forbids exporting nested declarations; top-level `export`
+/// remains valid (descriptor.proto's VisibilityFeature comment).
+fn validateMessageVisibility(message: *const schema.MessageDescriptor, nested: bool, strict: bool) ParseError!void {
+    if (strict and nested and message.visibility == .exported) return error.InvalidFieldType;
+    for (message.messages.items) |*child| try validateMessageVisibility(child, true, strict);
+    for (message.enums.items) |*enumeration| {
+        if (strict and enumeration.visibility == .exported) return error.InvalidFieldType;
+    }
 }
 
 fn validateEnumNaming(enumeration: *const schema.EnumDescriptor, inherited: schema.FeatureSet.EnforceNamingStyle) ParseError!void {
@@ -1862,9 +1978,14 @@ fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.Mes
         try self.collectExtensions(&extensions);
         for (extensions.items, 0..) |field, i| {
             for (extensions.items[i + 1 ..]) |other| {
-                const field_extendee = field.extendee orelse "";
-                const other_extendee = other.extendee orelse "";
-                if (!std.mem.eql(u8, field_extendee, other_extendee)) continue;
+                // Extension numbers are unique per resolved extendee; two
+                // relative spellings in different scopes can name different
+                // messages (for example MessageSet test protos).
+                const same_extendee = if (self.resolveExtendee(field)) |field_extendee|
+                    (if (self.resolveExtendee(other)) |other_extendee| field_extendee == other_extendee else extendeeTextEqual(field, other))
+                else
+                    extendeeTextEqual(field, other);
+                if (!same_extendee) continue;
                 if (field.number == other.number or schema.extensionSymbolsEqual(self.file.package, field, other)) return error.DuplicateField;
             }
         }
@@ -1913,7 +2034,7 @@ fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.Mes
         const extendee_name = field.extendee orelse return;
         if (self.file.syntax == .proto3 and !isCustomOptionExtendee(extendee_name)) return error.InvalidFieldType;
         if (self.file.findMessageDeep(extendee_name) == null and self.file.findEnumDeep(extendee_name) != null) return error.InvalidFieldType;
-        const extendee = self.file.findMessageDeep(extendee_name) orelse return;
+        const extendee = self.resolveExtendee(field) orelse return;
         for (extendee.extension_ranges.items) |range| {
             if (range.containsInMessage(extendee, field.number)) {
                 try self.validateExtensionFieldDeclaration(field, extendee, range);
@@ -1950,12 +2071,6 @@ fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.Mes
         if (message.messageSetWireFormat()) {
             if (self.file.syntax == .proto3) return error.InvalidFieldType;
             if (message.fields.items.len != 0) return error.InvalidFieldType;
-            var has_message_set_range = false;
-            for (message.extension_ranges.items) |range| {
-                const end = range.effectiveEnd(message);
-                if (range.start <= 4 and end > 4) has_message_set_range = true;
-            }
-            if (!has_message_set_range) return error.InvalidRange;
         }
         for (self.file.extensions.items) |*field| try self.validateMessageSetExtension(message, field);
         for (self.file.messages.items) |*scope| try self.validateMessageSetExtensionsInMessage(message, scope);
@@ -1969,8 +2084,7 @@ fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.Mes
 
     fn validateMessageSetExtension(self: *Parser, message_set: *const schema.MessageDescriptor, field: *const schema.FieldDescriptor) ParseError!void {
         if (!message_set.messageSetWireFormat()) return;
-        const extendee = field.extendee orelse return;
-        const extendee_message = self.file.findMessageDeep(extendee) orelse return;
+        const extendee_message = self.resolveExtendee(field) orelse return;
         if (extendee_message != message_set) return;
         if (field.cardinality == .repeated or field.cardinality == .required) return error.InvalidFieldType;
         switch (field.kind) {
@@ -2006,6 +2120,44 @@ fn validateMessageFieldOptionApplicabilities(self: *Parser, message: *schema.Mes
             if (findEnumInMessage(message, leaf)) |enumeration| return enumeration;
         }
         return null;
+    }
+
+    /// Resolves an extension extendee within its declaring scope, walking from
+    /// the innermost scope outward like protobuf's relative name lookup.
+    /// Returns null when the extendee lives in an imported file; the loader
+    /// resolves those later.
+    fn resolveExtendee(self: *Parser, field: *const schema.FieldDescriptor) ?*const schema.MessageDescriptor {
+        const raw = field.extendee orelse return null;
+        if (std.mem.startsWith(u8, raw, ".")) return self.findMessageByFullName(raw[1..]);
+        var prefix: []const u8 = self.file.package;
+        if (field.full_name) |full_name| {
+            prefix = if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |idx| full_name[0..idx] else "";
+        }
+        while (true) {
+            if (prefix.len != 0) {
+                const candidate = std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ prefix, raw }) catch return null;
+                defer self.allocator.free(candidate);
+                if (self.findMessageByFullName(candidate)) |message| return message;
+            }
+            if (prefix.len == 0) break;
+            if (std.mem.lastIndexOfScalar(u8, prefix, '.')) |idx| {
+                prefix = prefix[0..idx];
+            } else {
+                prefix = "";
+            }
+        }
+        return self.findMessageByFullName(raw);
+    }
+
+    fn findMessageByFullName(self: *Parser, full_name: []const u8) ?*const schema.MessageDescriptor {
+        var rest = full_name;
+        if (self.file.package.len != 0) {
+            if (rest.len <= self.file.package.len) return null;
+            if (!std.mem.eql(u8, rest[0..self.file.package.len], self.file.package)) return null;
+            if (rest[self.file.package.len] != '.') return null;
+            rest = rest[self.file.package.len + 1 ..];
+        }
+        return findMessagePath(self.file.messages.items, rest);
     }
 
     fn isEnumName(self: *Parser, name: []const u8, context: ?*schema.MessageDescriptor) bool {
@@ -2553,6 +2705,22 @@ fn findEnumInMessage(message: *const schema.MessageDescriptor, leaf: []const u8)
     if (message.findEnum(leaf)) |enumeration| return enumeration;
     for (message.messages.items) |*nested| if (findEnumInMessage(nested, leaf)) |found| return found;
     return null;
+}
+
+fn findMessagePath(messages: []const schema.MessageDescriptor, path: []const u8) ?*const schema.MessageDescriptor {
+    if (path.len == 0) return null;
+    const dot = std.mem.indexOfScalar(u8, path, '.');
+    const head = if (dot) |idx| path[0..idx] else path;
+    for (messages) |*message| {
+        if (!std.mem.eql(u8, message.name, head)) continue;
+        if (dot) |idx| return findMessagePath(message.messages.items, path[idx + 1 ..]);
+        return message;
+    }
+    return null;
+}
+
+fn extendeeTextEqual(a: *const schema.FieldDescriptor, b: *const schema.FieldDescriptor) bool {
+    return std.mem.eql(u8, a.extendee orelse "", b.extendee orelse "");
 }
 
 fn extensionTypeMatches(package: []const u8, field: *const schema.FieldDescriptor, declared_type: []const u8) bool {
@@ -4188,6 +4356,131 @@ test "parser rejects feature options on unsupported targets and removed options"
     defer v2024.deinit();
 }
 
+test "parser accepts edition 2024 local and export visibility modifiers" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\edition = "2024";
+        \\package demo;
+        \\local message LocalMessage { int32 x = 1; }
+        \\export enum ExportedEnum { EXPORTED_ENUM_UNKNOWN = 0; }
+        \\message Outer { export message Inner { int32 y = 1; } }
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(schema.SymbolVisibility.local, file.findMessage("LocalMessage").?.visibility);
+    try std.testing.expectEqual(schema.SymbolVisibility.exported, file.findEnum("ExportedEnum").?.visibility);
+    try std.testing.expectEqual(schema.SymbolVisibility.exported, file.findMessage("Outer").?.messages.items[0].visibility);
+
+    try std.testing.expectError(error.InvalidSyntax, Parser.parse(allocator,
+        \\edition = "2023";
+        \\package demo;
+        \\local message LocalMessage { int32 x = 1; }
+    ));
+    // STRICT forbids exporting nested declarations but allows top-level export.
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message Outer { export message Inner { int32 y = 1; } }
+    ));
+    var strict_top = try Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\export message TopLevel { int32 x = 1; }
+    );
+    defer strict_top.deinit();
+}
+
+test "parser accepts custom FeatureSet extensions" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\edition = "2023";
+        \\package demo;
+        \\option features.(pb.cpp).string_type = VIEW;
+        \\message M {
+        \\  string value = 1 [features.(pb.cpp).string_type = CORD];
+        \\}
+    );
+    defer file.deinit();
+    const field = file.findMessage("M").?.findField("value").?;
+    // Custom feature extensions stay uninterpreted instead of being applied
+    // to the built-in FeatureSet.
+    try std.testing.expect(field.features == null);
+}
+
+test "parser allows packed false on non-packable fields" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M {
+        \\  repeated string strings = 1 [packed = false];
+        \\  repeated int32 ints = 2 [packed = false];
+        \\}
+    );
+    defer file.deinit();
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\syntax = "proto3";
+        \\message M { repeated string strings = 1 [packed = true]; }
+    ));
+}
+
+test "parser accepts proto2 oneof defaults and int64 minimum literals" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\message M {
+        \\  oneof pick { int32 chosen = 1 [default = 5]; }
+        \\  optional int64 minimum = 2 [default = -0x8000000000000000];
+        \\}
+    );
+    defer file.deinit();
+    try std.testing.expectEqual(@as(i64, 5), file.findMessage("M").?.findField("chosen").?.default_value.?.integer);
+    try std.testing.expectEqual(std.math.minInt(i64), file.findMessage("M").?.findField("minimum").?.default_value.?.integer);
+}
+
+test "parser resolves scoped extension extendees" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message A {
+        \\  message E { extensions 100 to max; }
+        \\  message Ext { extend E { optional Ext e = 100; } }
+        \\}
+        \\message B {
+        \\  message E { extensions 100 to max; }
+        \\  message Ext { extend E { optional Ext e = 100; } }
+        \\}
+    );
+    defer file.deinit();
+    // The same number on different resolved extendees is legal.
+    try std.testing.expectError(error.DuplicateField, Parser.parse(allocator,
+        \\syntax = "proto2";
+        \\package demo;
+        \\message E { extensions 100 to max; }
+        \\message X { extend E { optional int32 a = 100; } }
+        \\message Y { extend E { optional int32 b = 100; } }
+    ));
+}
+
+test "parser inherits oneof naming style for member fields" {
+    const allocator = std.testing.allocator;
+    var file = try Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName {
+        \\  oneof pick {
+        \\    option features.enforce_naming_style = STYLE_LEGACY;
+        \\    int32 foo_bar_1 = 1;
+        \\  }
+        \\}
+    );
+    defer file.deinit();
+    try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
+        \\edition = "2026";
+        \\package demo;
+        \\message GoodName { oneof pick { int32 foo_bar_1 = 1; } }
+    ));
+}
+
 test "parser resolves feature inheritance for partial feature sets" {
     const allocator = std.testing.allocator;
     var file = try Parser.parse(allocator,
@@ -4499,10 +4792,12 @@ test "parser validates proto2 MessageSet declarations and extensions" {
         \\syntax = "proto2";
         \\message Bad { option message_set_wire_format = true; extensions 4 to max; optional int32 id = 1; }
     ));
-    try std.testing.expectError(error.InvalidRange, Parser.parse(allocator,
+    // protoc 36.2 no longer requires MessageSet extension ranges to cover 4.
+    var narrow = try Parser.parse(allocator,
         \\syntax = "proto2";
-        \\message Bad { option message_set_wire_format = true; extensions 5 to max; }
-    ));
+        \\message Narrow { option message_set_wire_format = true; extensions 5 to max; }
+    );
+    defer narrow.deinit();
     try std.testing.expectError(error.InvalidFieldType, Parser.parse(allocator,
         \\syntax = "proto2";
         \\message Host { option message_set_wire_format = true; extensions 4 to max; }
