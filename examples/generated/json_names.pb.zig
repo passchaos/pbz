@@ -586,19 +586,19 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "display_name") or std.mem.eql(u8, key, "shownName")) {
+                        if (key.len == 12 and std.mem.eql(u8, key, "display_name") or key.len == 9 and std.mem.eql(u8, key, "shownName")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.display_name = "";
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "legacy_count") or std.mem.eql(u8, key, "legacy-count")) {
+                        if (key.len == 12 and std.mem.eql(u8, key, "legacy_count") or key.len == 12 and std.mem.eql(u8, key, "legacy-count")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             self.legacy_count = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "same_name")) {
+                        if (key.len == 9 and std.mem.eql(u8, key, "same_name")) {
                             if (_pbz_seen.isSet(2)) return error.DuplicateField;
                             _pbz_seen.set(2);
                             self.same_name = "";
@@ -607,19 +607,19 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "display_name") or std.mem.eql(u8, key, "shownName")) {
+                    if (key.len == 12 and std.mem.eql(u8, key, "display_name") or key.len == 9 and std.mem.eql(u8, key, "shownName")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.display_name = try @This().jsonString(value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "legacy_count") or std.mem.eql(u8, key, "legacy-count")) {
+                    if (key.len == 12 and std.mem.eql(u8, key, "legacy_count") or key.len == 12 and std.mem.eql(u8, key, "legacy-count")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.legacy_count = try @This().jsonInt(i32, value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "same_name")) {
+                    if (key.len == 9 and std.mem.eql(u8, key, "same_name")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         self.same_name = try @This().jsonString(value);

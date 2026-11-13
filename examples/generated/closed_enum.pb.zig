@@ -616,14 +616,14 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "kind")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "kind")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.kind = 0;
                             self.has_kind = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "history")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             const old = self.history; self.history = &.{}; if (old.len != 0) allocator.free(old);
@@ -632,14 +632,14 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "kind")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "kind")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.kind = @This().jsonEnum(value, &.{"KIND_UNKNOWN", "KIND_OK"}, &.{0, 1}, true) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         self.has_kind = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "history")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };

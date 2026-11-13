@@ -529,13 +529,13 @@ pub const demo = struct {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "id")) {
+                            if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                                 if (_pbz_seen.isSet(0)) return error.DuplicateField;
                                 _pbz_seen.set(0);
                                 self.id = 0;
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "name")) {
+                            if (key.len == 4 and std.mem.eql(u8, key, "name")) {
                                 if (_pbz_seen.isSet(1)) return error.DuplicateField;
                                 _pbz_seen.set(1);
                                 self.name = "";
@@ -544,13 +544,13 @@ pub const demo = struct {
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "id")) {
+                        if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.id = try @This().jsonInt(i32, value);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "name")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "name")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             self.name = try @This().jsonString(value);

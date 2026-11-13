@@ -1024,34 +1024,34 @@ pub const demo = struct {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "primary")) {
+                            if (key.len == 7 and std.mem.eql(u8, key, "primary")) {
                                 if (_pbz_seen.isSet(0)) return error.DuplicateField;
                                 _pbz_seen.set(0);
                                 if (self.primary) |*old_value| old_value.deinit(allocator); self.primary = null;
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "history")) {
+                            if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                                 if (_pbz_seen.isSet(1)) return error.DuplicateField;
                                 _pbz_seen.set(1);
                                 const old = self.history; self.history = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
+                            if (key.len == 7 and std.mem.eql(u8, key, "by_name") or key.len == 6 and std.mem.eql(u8, key, "byName")) {
                                 if (_pbz_seen.isSet(2)) return error.DuplicateField;
                                 _pbz_seen.set(2);
                                 @This().deinitMap_by_name(allocator, &self.by_name);
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "chosen")) {
+                            if (key.len == 6 and std.mem.eql(u8, key, "chosen")) {
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "fallback")) {
+                            if (key.len == 8 and std.mem.eql(u8, key, "fallback")) {
                                 continue;
                             }
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "primary")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "primary")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             var _pbz_nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -1059,7 +1059,7 @@ pub const demo = struct {
                             if (self.primary) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.primary = _pbz_nested; }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "history")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -1074,7 +1074,7 @@ pub const demo = struct {
                             { const old = self.history; self.history = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "by_name") or std.mem.eql(u8, key, "byName")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "by_name") or key.len == 6 and std.mem.eql(u8, key, "byName")) {
                             if (_pbz_seen.isSet(2)) return error.DuplicateField;
                             _pbz_seen.set(2);
                             const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -1090,7 +1090,7 @@ pub const demo = struct {
                             }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "chosen")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "chosen")) {
                             if (_pbz_seen.isSet(3)) return error.DuplicateField;
                             _pbz_seen.set(3);
                             if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -1098,7 +1098,7 @@ pub const demo = struct {
                             { var _pbz_nested = try pbz_generated_file.imports.imported_common_proto.demo.imports.common.Profile.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_selected(allocator); self.selected = .{ .chosen = _pbz_nested }; }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "fallback")) {
+                        if (key.len == 8 and std.mem.eql(u8, key, "fallback")) {
                             if (_pbz_seen.isSet(4)) return error.DuplicateField;
                             _pbz_seen.set(4);
                             if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;

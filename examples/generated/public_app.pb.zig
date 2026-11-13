@@ -543,13 +543,13 @@ pub const demo = struct {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "direct_leaf") or std.mem.eql(u8, key, "directLeaf")) {
+                            if (key.len == 11 and std.mem.eql(u8, key, "direct_leaf") or key.len == 10 and std.mem.eql(u8, key, "directLeaf")) {
                                 if (_pbz_seen.isSet(0)) return error.DuplicateField;
                                 _pbz_seen.set(0);
                                 if (self.direct_leaf) |*old_value| old_value.deinit(allocator); self.direct_leaf = null;
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "mid")) {
+                            if (key.len == 3 and std.mem.eql(u8, key, "mid")) {
                                 if (_pbz_seen.isSet(1)) return error.DuplicateField;
                                 _pbz_seen.set(1);
                                 if (self.mid) |*old_value| old_value.deinit(allocator); self.mid = null;
@@ -558,7 +558,7 @@ pub const demo = struct {
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "direct_leaf") or std.mem.eql(u8, key, "directLeaf")) {
+                        if (key.len == 11 and std.mem.eql(u8, key, "direct_leaf") or key.len == 10 and std.mem.eql(u8, key, "directLeaf")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             var _pbz_nested = try imports.public_mid_proto.imports.public_leaf_proto.demo.publics.leaf.Leaf.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -566,7 +566,7 @@ pub const demo = struct {
                             if (self.direct_leaf) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.direct_leaf = _pbz_nested; }
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "mid")) {
+                        if (key.len == 3 and std.mem.eql(u8, key, "mid")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             var _pbz_nested = try imports.public_mid_proto.demo.publics.mid.Mid.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });

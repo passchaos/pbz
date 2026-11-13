@@ -1172,25 +1172,25 @@ pub const demo = struct {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "id")) {
+                    if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.id = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "name")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "name")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.name = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "scores")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "scores")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         const old = self.scores; self.scores = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "counts")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "counts")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         @This().deinitMap_counts(allocator, &self.counts);
@@ -1199,19 +1199,19 @@ pub const demo = struct {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "id")) {
+                if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     self.id = try @This().jsonInt(i32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "name")) {
+                if (key.len == 4 and std.mem.eql(u8, key, "name")) {
                     if (_pbz_seen.isSet(1)) return error.DuplicateField;
                     _pbz_seen.set(1);
                     self.name = try @This().jsonString(value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "scores")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "scores")) {
                     if (_pbz_seen.isSet(2)) return error.DuplicateField;
                     _pbz_seen.set(2);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -1222,7 +1222,7 @@ pub const demo = struct {
                     self.scores = blk: { const old = self.scores; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "counts")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "counts")) {
                     if (_pbz_seen.isSet(3)) return error.DuplicateField;
                     _pbz_seen.set(3);
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -3046,85 +3046,85 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "active")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "active")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.active = false;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "count")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "count")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.count = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "total")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "total")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         self.total = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "delta")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "delta")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         self.delta = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "big_delta") or std.mem.eql(u8, key, "bigDelta")) {
+                    if (key.len == 9 and std.mem.eql(u8, key, "big_delta") or key.len == 8 and std.mem.eql(u8, key, "bigDelta")) {
                         if (_pbz_seen.isSet(4)) return error.DuplicateField;
                         _pbz_seen.set(4);
                         self.big_delta = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "checksum")) {
+                    if (key.len == 8 and std.mem.eql(u8, key, "checksum")) {
                         if (_pbz_seen.isSet(5)) return error.DuplicateField;
                         _pbz_seen.set(5);
                         self.checksum = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "token")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "token")) {
                         if (_pbz_seen.isSet(6)) return error.DuplicateField;
                         _pbz_seen.set(6);
                         self.token = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "signed_fixed") or std.mem.eql(u8, key, "signedFixed")) {
+                    if (key.len == 12 and std.mem.eql(u8, key, "signed_fixed") or key.len == 11 and std.mem.eql(u8, key, "signedFixed")) {
                         if (_pbz_seen.isSet(7)) return error.DuplicateField;
                         _pbz_seen.set(7);
                         self.signed_fixed = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "signed_big_fixed") or std.mem.eql(u8, key, "signedBigFixed")) {
+                    if (key.len == 16 and std.mem.eql(u8, key, "signed_big_fixed") or key.len == 14 and std.mem.eql(u8, key, "signedBigFixed")) {
                         if (_pbz_seen.isSet(8)) return error.DuplicateField;
                         _pbz_seen.set(8);
                         self.signed_big_fixed = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "ratio")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "ratio")) {
                         if (_pbz_seen.isSet(9)) return error.DuplicateField;
                         _pbz_seen.set(9);
                         self.ratio = 0e0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "score")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "score")) {
                         if (_pbz_seen.isSet(10)) return error.DuplicateField;
                         _pbz_seen.set(10);
                         self.score = 0e0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "kind")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "kind")) {
                         if (_pbz_seen.isSet(11)) return error.DuplicateField;
                         _pbz_seen.set(11);
                         self.kind = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "flags")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "flags")) {
                         if (_pbz_seen.isSet(12)) return error.DuplicateField;
                         _pbz_seen.set(12);
                         const old = self.flags; self.flags = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "ids")) {
+                    if (key.len == 3 and std.mem.eql(u8, key, "ids")) {
                         if (_pbz_seen.isSet(13)) return error.DuplicateField;
                         _pbz_seen.set(13);
                         const old = self.ids; self.ids = &.{}; if (old.len != 0) allocator.free(old);
@@ -3133,79 +3133,79 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "active")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "active")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     self.active = try @This().jsonBool(value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "count")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "count")) {
                     if (_pbz_seen.isSet(1)) return error.DuplicateField;
                     _pbz_seen.set(1);
                     self.count = try @This().jsonInt(u32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "total")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "total")) {
                     if (_pbz_seen.isSet(2)) return error.DuplicateField;
                     _pbz_seen.set(2);
                     self.total = try @This().jsonInt(u64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "delta")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "delta")) {
                     if (_pbz_seen.isSet(3)) return error.DuplicateField;
                     _pbz_seen.set(3);
                     self.delta = try @This().jsonInt(i32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "big_delta") or std.mem.eql(u8, key, "bigDelta")) {
+                if (key.len == 9 and std.mem.eql(u8, key, "big_delta") or key.len == 8 and std.mem.eql(u8, key, "bigDelta")) {
                     if (_pbz_seen.isSet(4)) return error.DuplicateField;
                     _pbz_seen.set(4);
                     self.big_delta = try @This().jsonInt(i64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "checksum")) {
+                if (key.len == 8 and std.mem.eql(u8, key, "checksum")) {
                     if (_pbz_seen.isSet(5)) return error.DuplicateField;
                     _pbz_seen.set(5);
                     self.checksum = try @This().jsonInt(u32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "token")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "token")) {
                     if (_pbz_seen.isSet(6)) return error.DuplicateField;
                     _pbz_seen.set(6);
                     self.token = try @This().jsonInt(u64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "signed_fixed") or std.mem.eql(u8, key, "signedFixed")) {
+                if (key.len == 12 and std.mem.eql(u8, key, "signed_fixed") or key.len == 11 and std.mem.eql(u8, key, "signedFixed")) {
                     if (_pbz_seen.isSet(7)) return error.DuplicateField;
                     _pbz_seen.set(7);
                     self.signed_fixed = try @This().jsonInt(i32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "signed_big_fixed") or std.mem.eql(u8, key, "signedBigFixed")) {
+                if (key.len == 16 and std.mem.eql(u8, key, "signed_big_fixed") or key.len == 14 and std.mem.eql(u8, key, "signedBigFixed")) {
                     if (_pbz_seen.isSet(8)) return error.DuplicateField;
                     _pbz_seen.set(8);
                     self.signed_big_fixed = try @This().jsonInt(i64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "ratio")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "ratio")) {
                     if (_pbz_seen.isSet(9)) return error.DuplicateField;
                     _pbz_seen.set(9);
                     self.ratio = try @This().jsonFloat(f32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "score")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "score")) {
                     if (_pbz_seen.isSet(10)) return error.DuplicateField;
                     _pbz_seen.set(10);
                     self.score = try @This().jsonFloat(f64, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "kind")) {
+                if (key.len == 4 and std.mem.eql(u8, key, "kind")) {
                     if (_pbz_seen.isSet(11)) return error.DuplicateField;
                     _pbz_seen.set(11);
                     self.kind = @This().jsonEnum(value, &.{"BENCH_KIND_UNKNOWN", "BENCH_KIND_ALPHA", "BENCH_KIND_BETA"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "flags")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "flags")) {
                     if (_pbz_seen.isSet(12)) return error.DuplicateField;
                     _pbz_seen.set(12);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -3216,7 +3216,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.flags = blk: { const old = self.flags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "ids")) {
+                if (key.len == 3 and std.mem.eql(u8, key, "ids")) {
                     if (_pbz_seen.isSet(13)) return error.DuplicateField;
                     _pbz_seen.set(13);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -4618,25 +4618,25 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "title")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "title")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.title = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "payload")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "payload")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.payload = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "tags")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "tags")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         const old = self.tags; self.tags = &.{}; if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "chunks")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "chunks")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         const old = self.chunks; self.chunks = &.{}; if (old.len != 0) allocator.free(old);
@@ -4645,19 +4645,19 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "title")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "title")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     self.title = try @This().jsonString(value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "payload")) {
+                if (key.len == 7 and std.mem.eql(u8, key, "payload")) {
                     if (_pbz_seen.isSet(1)) return error.DuplicateField;
                     _pbz_seen.set(1);
                     self.payload = try @This().jsonBytes(arena_allocator, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "tags")) {
+                if (key.len == 4 and std.mem.eql(u8, key, "tags")) {
                     if (_pbz_seen.isSet(2)) return error.DuplicateField;
                     _pbz_seen.set(2);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -4668,7 +4668,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self.tags = blk: { const old = self.tags; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "chunks")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "chunks")) {
                     if (_pbz_seen.isSet(3)) return error.DuplicateField;
                     _pbz_seen.set(3);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -5891,13 +5891,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "payload")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "payload")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.payload = "";
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "chunks")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "chunks")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         const old = self.chunks; self.chunks = &.{}; if (old.len != 0) allocator.free(old);
@@ -5906,13 +5906,13 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "payload")) {
+                if (key.len == 7 and std.mem.eql(u8, key, "payload")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     self.payload = try @This().jsonBytes(arena_allocator, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "chunks")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "chunks")) {
                     if (_pbz_seen.isSet(1)) return error.DuplicateField;
                     _pbz_seen.set(1);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -7421,70 +7421,70 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "count")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "count")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.count = 0;
                         self.has_count = false;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "note")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "note")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.note = "";
                         self.has_note = false;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "raw")) {
+                    if (key.len == 3 and std.mem.eql(u8, key, "raw")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         self.raw = "";
                         self.has_raw = false;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "child")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "child")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         if (self.child) |*old_value| old_value.deinit(allocator); self.child = null;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "name")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "name")) {
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "token")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "token")) {
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "nested")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "nested")) {
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "code")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "code")) {
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "count")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "count")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     self.count = try @This().jsonInt(i32, value);
                     self.has_count = true;
                     continue;
                 }
-                if (std.mem.eql(u8, key, "note")) {
+                if (key.len == 4 and std.mem.eql(u8, key, "note")) {
                     if (_pbz_seen.isSet(1)) return error.DuplicateField;
                     _pbz_seen.set(1);
                     self.note = try @This().jsonString(value);
                     self.has_note = true;
                     continue;
                 }
-                if (std.mem.eql(u8, key, "raw")) {
+                if (key.len == 3 and std.mem.eql(u8, key, "raw")) {
                     if (_pbz_seen.isSet(2)) return error.DuplicateField;
                     _pbz_seen.set(2);
                     self.raw = try @This().jsonBytes(arena_allocator, value);
                     self.has_raw = true;
                     continue;
                 }
-                if (std.mem.eql(u8, key, "child")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "child")) {
                     if (_pbz_seen.isSet(3)) return error.DuplicateField;
                     _pbz_seen.set(3);
                     var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -7492,7 +7492,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (self.child) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.child = _pbz_nested; }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "name")) {
+                if (key.len == 4 and std.mem.eql(u8, key, "name")) {
                     if (_pbz_seen.isSet(4)) return error.DuplicateField;
                     _pbz_seen.set(4);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -7500,7 +7500,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._pbzDeinitOneof_pick(allocator); self.pick = .{ .name = try @This().jsonString(value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "token")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "token")) {
                     if (_pbz_seen.isSet(5)) return error.DuplicateField;
                     _pbz_seen.set(5);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -7508,7 +7508,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._pbzDeinitOneof_pick(allocator); self.pick = .{ .token = try @This().jsonBytes(arena_allocator, value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "nested")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "nested")) {
                     if (_pbz_seen.isSet(6)) return error.DuplicateField;
                     _pbz_seen.set(6);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -7516,7 +7516,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     { var _pbz_nested = try Child.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields }); errdefer _pbz_nested.deinit(allocator); self._pbzDeinitOneof_pick(allocator); self.pick = .{ .nested = _pbz_nested }; }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "code")) {
+                if (key.len == 4 and std.mem.eql(u8, key, "code")) {
                     if (_pbz_seen.isSet(7)) return error.DuplicateField;
                     _pbz_seen.set(7);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -8728,22 +8728,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "id")) {
+                        if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                             self.id = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "label")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "label")) {
                             self.label = "";
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "id")) {
+                    if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                         self.id = try @This().jsonInt(i32, value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "label")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "label")) {
                         self.label = try @This().jsonString(value);
                         continue;
                     }
@@ -9985,7 +9985,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -9994,7 +9994,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -11241,7 +11241,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -11250,7 +11250,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -12489,7 +12489,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -12498,7 +12498,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -13737,7 +13737,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -13746,7 +13746,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -14985,7 +14985,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -14994,7 +14994,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -16233,7 +16233,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -16242,7 +16242,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -17481,7 +17481,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -17490,7 +17490,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -18735,7 +18735,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -18744,7 +18744,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -19989,7 +19989,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -19998,7 +19998,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -21243,7 +21243,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -21252,7 +21252,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -22497,7 +22497,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -22506,7 +22506,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -23751,7 +23751,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -23760,7 +23760,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -24980,7 +24980,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -24989,7 +24989,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -26237,7 +26237,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "values")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const old = self.values; self.values = &.{}; if (old.len != 0) allocator.free(old);
@@ -26246,7 +26246,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "values")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "values")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -27599,7 +27599,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "counts")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "counts")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         @This().deinitMap_counts(allocator, &self.counts);
@@ -27608,7 +27608,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "counts")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "counts")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -29329,49 +29329,49 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                 const key = entry.key;
                 const value = entry.value;
                 if (value == .null) {
-                    if (std.mem.eql(u8, key, "id")) {
+                    if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.id = 0;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audit")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "audit")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         if (self.audit) |*old_value| old_value.deinit(allocator); self.audit = null;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "history")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         const old = self.history; self.history = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audits")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "audits")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         @This().deinitMap_audits(allocator, &self.audits);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
+                    if (key.len == 9 and std.mem.eql(u8, key, "user_name") or key.len == 8 and std.mem.eql(u8, key, "userName")) {
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
+                    if (key.len == 15 and std.mem.eql(u8, key, "organization_id") or key.len == 14 and std.mem.eql(u8, key, "organizationId")) {
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                    if (key.len == 13 and std.mem.eql(u8, key, "audit_subject") or key.len == 12 and std.mem.eql(u8, key, "auditSubject")) {
                         continue;
                     }
                     if (options.ignore_unknown_fields) continue;
                     return error.UnknownField;
                 }
-                if (std.mem.eql(u8, key, "id")) {
+                if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                     if (_pbz_seen.isSet(0)) return error.DuplicateField;
                     _pbz_seen.set(0);
                     self.id = try @This().jsonInt(i32, value);
                     continue;
                 }
-                if (std.mem.eql(u8, key, "audit")) {
+                if (key.len == 5 and std.mem.eql(u8, key, "audit")) {
                     if (_pbz_seen.isSet(1)) return error.DuplicateField;
                     _pbz_seen.set(1);
                     var _pbz_nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -29379,7 +29379,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     if (self.audit) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.audit = _pbz_nested; }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "history")) {
+                if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                     if (_pbz_seen.isSet(2)) return error.DuplicateField;
                     _pbz_seen.set(2);
                     const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -29394,7 +29394,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     { const old = self.history; self.history = try list.toOwnedSlice(allocator); for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old); }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "audits")) {
+                if (key.len == 6 and std.mem.eql(u8, key, "audits")) {
                     if (_pbz_seen.isSet(3)) return error.DuplicateField;
                     _pbz_seen.set(3);
                     const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -29410,7 +29410,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     }
                     continue;
                 }
-                if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
+                if (key.len == 9 and std.mem.eql(u8, key, "user_name") or key.len == 8 and std.mem.eql(u8, key, "userName")) {
                     if (_pbz_seen.isSet(4)) return error.DuplicateField;
                     _pbz_seen.set(4);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -29418,7 +29418,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = try @This().jsonString(value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
+                if (key.len == 15 and std.mem.eql(u8, key, "organization_id") or key.len == 14 and std.mem.eql(u8, key, "organizationId")) {
                     if (_pbz_seen.isSet(5)) return error.DuplicateField;
                     _pbz_seen.set(5);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -29426,7 +29426,7 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = try @This().jsonBytes(arena_allocator, value) };
                     continue;
                 }
-                if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                if (key.len == 13 and std.mem.eql(u8, key, "audit_subject") or key.len == 12 and std.mem.eql(u8, key, "auditSubject")) {
                     if (_pbz_seen.isSet(6)) return error.DuplicateField;
                     _pbz_seen.set(6);
                     if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -30679,22 +30679,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "actor")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "actor")) {
                             self.actor = "";
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "at_unix") or std.mem.eql(u8, key, "atUnix")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "at_unix") or key.len == 6 and std.mem.eql(u8, key, "atUnix")) {
                             self.at_unix = 0;
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "actor")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "actor")) {
                         self.actor = try @This().jsonString(value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "at_unix") or std.mem.eql(u8, key, "atUnix")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "at_unix") or key.len == 6 and std.mem.eql(u8, key, "atUnix")) {
                         self.at_unix = try @This().jsonInt(i64, value);
                         continue;
                     }

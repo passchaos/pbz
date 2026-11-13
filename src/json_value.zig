@@ -150,7 +150,14 @@ const Parser = struct {
                 try self.expectKeyword("null");
                 break :blk .null;
             },
-            '-', '0'...'9' => Value.parseFromNumberSlice(try self.parseNumberToken()),
+            '-', '0'...'9' => blk: {
+                const token = try self.parseNumberToken();
+                if (token.integer) |integer| break :blk .{ .integer = integer };
+                if (token.integer_syntax) break :blk .{ .number_string = token.text };
+                const f = std.fmt.parseFloat(f64, token.text) catch break :blk .{ .number_string = token.text };
+                if (std.math.isFinite(f)) break :blk .{ .float = f };
+                break :blk .{ .number_string = token.text };
+            },
             else => error.SyntaxError,
         };
     }
@@ -159,6 +166,17 @@ const Parser = struct {
         if (self.index + keyword.len > self.text.len) return error.UnexpectedEndOfInput;
         if (!std.mem.eql(u8, self.text[self.index..][0..keyword.len], keyword)) return error.SyntaxError;
         self.index += keyword.len;
+    }
+
+    /// FNV-1a over a JSON key. Used only for duplicate detection inside one
+    /// object; collisions fall back to an exact key comparison.
+    fn keyHash(key: []const u8) u32 {
+        var hash: u32 = 2166136261;
+        for (key) |byte| {
+            hash ^= byte;
+            hash *%= 16777619;
+        }
+        return hash;
     }
 
     fn parseObject(self: *Parser, depth: u32) ParseError!Value {
@@ -170,6 +188,10 @@ const Parser = struct {
             self.index += 1;
             return .{ .object = .{ .entries = try entries.toOwnedSlice(self.allocator) } };
         }
+        // Small objects dominate protobuf messages: an open-addressing table
+        // of entry indices avoids the O(n^2) exact-compare scan without
+        // allocating. Larger objects migrate to the hash map.
+        var small_slots: [64]u32 = @splat(0);
         var seen: std.StringHashMapUnmanaged(void) = .empty;
         var use_hash = false;
         while (true) {
@@ -179,14 +201,17 @@ const Parser = struct {
             const key = try self.parseString();
 
             if (!use_hash) {
-                for (entries.items) |entry| {
-                    if (std.mem.eql(u8, entry.key, key)) return error.DuplicateField;
-                }
-                // Linear duplicate checks stay cheaper for small protobuf
-                // messages; switch to a hash set for map-like objects.
-                if (entries.items.len >= 16) {
+                if (entries.items.len >= 32) {
                     for (entries.items) |entry| try seen.put(self.allocator, entry.key, {});
                     use_hash = true;
+                } else {
+                    var slot = keyHash(key) & 63;
+                    while (small_slots[slot] != 0) {
+                        const previous = entries.items[small_slots[slot] - 1];
+                        if (std.mem.eql(u8, previous.key, key)) return error.DuplicateField;
+                        slot = (slot + 1) & 63;
+                    }
+                    small_slots[slot] = @intCast(entries.items.len + 1);
                 }
             }
             if (use_hash) {
@@ -340,32 +365,70 @@ const Parser = struct {
         return slice;
     }
 
-    fn parseNumberToken(self: *Parser) ParseError![]const u8 {
+    const NumberToken = struct {
+        text: []const u8,
+        /// Set when the token is a plain integer (no fraction/exponent) that
+        /// fits in i64, so the value tree can store it without a second scan.
+        integer: ?i64 = null,
+        integer_syntax: bool = false,
+    };
+
+    fn parseNumberToken(self: *Parser) ParseError!NumberToken {
         const start = self.index;
-        if (self.text[self.index] == '-') {
+        const negative = self.text[self.index] == '-';
+        if (negative) {
             self.index += 1;
             if (self.index >= self.text.len) return error.UnexpectedEndOfInput;
         }
+        var magnitude: u64 = 0;
+        var overflow = false;
         switch (self.text[self.index]) {
             '0' => self.index += 1,
             '1'...'9' => {
+                magnitude = self.text[self.index] - '0';
                 self.index += 1;
-                while (self.index < self.text.len and std.ascii.isDigit(self.text[self.index])) self.index += 1;
+                while (self.index < self.text.len and std.ascii.isDigit(self.text[self.index])) {
+                    const digit: u64 = self.text[self.index] - '0';
+                    if (magnitude > (std.math.maxInt(u64) - digit) / 10) {
+                        overflow = true;
+                    } else {
+                        magnitude = magnitude * 10 + digit;
+                    }
+                    self.index += 1;
+                }
             },
             else => return error.SyntaxError,
         }
+        var integer_syntax = true;
         if (self.index < self.text.len and self.text[self.index] == '.') {
+            integer_syntax = false;
             self.index += 1;
             if (self.index >= self.text.len or !std.ascii.isDigit(self.text[self.index])) return error.SyntaxError;
             while (self.index < self.text.len and std.ascii.isDigit(self.text[self.index])) self.index += 1;
         }
         if (self.index < self.text.len and (self.text[self.index] == 'e' or self.text[self.index] == 'E')) {
+            integer_syntax = false;
             self.index += 1;
             if (self.index < self.text.len and (self.text[self.index] == '+' or self.text[self.index] == '-')) self.index += 1;
             if (self.index >= self.text.len or !std.ascii.isDigit(self.text[self.index])) return error.SyntaxError;
             while (self.index < self.text.len and std.ascii.isDigit(self.text[self.index])) self.index += 1;
         }
-        return self.text[start..self.index];
+        const text = self.text[start..self.index];
+        if (!integer_syntax) return .{ .text = text, .integer_syntax = false };
+        if (!overflow) {
+            if (negative) {
+                if (magnitude <= @as(u64, 1) << 63) {
+                    const signed: i64 = if (magnitude == (@as(u64, 1) << 63))
+                        std.math.minInt(i64)
+                    else
+                        -@as(i64, @intCast(magnitude));
+                    return .{ .text = text, .integer = signed, .integer_syntax = true };
+                }
+            } else if (magnitude <= std.math.maxInt(i64)) {
+                return .{ .text = text, .integer = @intCast(magnitude), .integer_syntax = true };
+            }
+        }
+        return .{ .text = text, .integer_syntax = true };
     }
 };
 

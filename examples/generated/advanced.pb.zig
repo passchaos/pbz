@@ -1136,55 +1136,55 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "id")) {
+                        if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.id = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "kind")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "kind")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             self.kind = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "audit")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "audit")) {
                             if (_pbz_seen.isSet(2)) return error.DuplicateField;
                             _pbz_seen.set(2);
                             if (self.audit) |*old_value| old_value.deinit(allocator); self.audit = null;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "audits")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "audits")) {
                             if (_pbz_seen.isSet(6)) return error.DuplicateField;
                             _pbz_seen.set(6);
                             @This().deinitMap_audits(allocator, &self.audits);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
+                        if (key.len == 9 and std.mem.eql(u8, key, "user_name") or key.len == 8 and std.mem.eql(u8, key, "userName")) {
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
+                        if (key.len == 15 and std.mem.eql(u8, key, "organization_id") or key.len == 14 and std.mem.eql(u8, key, "organizationId")) {
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                        if (key.len == 13 and std.mem.eql(u8, key, "audit_subject") or key.len == 12 and std.mem.eql(u8, key, "auditSubject")) {
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "id")) {
+                    if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.id = try @This().jsonInt(i32, value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "kind")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "kind")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.kind = @This().jsonEnum(value, &.{"KIND_UNKNOWN", "KIND_PERSON", "KIND_ORG"}, &.{0, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audit")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "audit")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         var _pbz_nested = try Audit.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -1192,7 +1192,7 @@ pub const demo = struct {
                         if (self.audit) |*existing| { try existing.mergeFrom(allocator, _pbz_nested); _pbz_nested.deinit(allocator); } else { self.audit = _pbz_nested; }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audits")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "audits")) {
                         if (_pbz_seen.isSet(6)) return error.DuplicateField;
                         _pbz_seen.set(6);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -1208,7 +1208,7 @@ pub const demo = struct {
                         }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "user_name") or std.mem.eql(u8, key, "userName")) {
+                    if (key.len == 9 and std.mem.eql(u8, key, "user_name") or key.len == 8 and std.mem.eql(u8, key, "userName")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -1216,7 +1216,7 @@ pub const demo = struct {
                         self._pbzDeinitOneof_subject(allocator); self.subject = .{ .user_name = try @This().jsonString(value) };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "organization_id") or std.mem.eql(u8, key, "organizationId")) {
+                    if (key.len == 15 and std.mem.eql(u8, key, "organization_id") or key.len == 14 and std.mem.eql(u8, key, "organizationId")) {
                         if (_pbz_seen.isSet(4)) return error.DuplicateField;
                         _pbz_seen.set(4);
                         if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -1224,7 +1224,7 @@ pub const demo = struct {
                         self._pbzDeinitOneof_subject(allocator); self.subject = .{ .organization_id = try @This().jsonBytes(arena_allocator, value) };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "audit_subject") or std.mem.eql(u8, key, "auditSubject")) {
+                    if (key.len == 13 and std.mem.eql(u8, key, "audit_subject") or key.len == 12 and std.mem.eql(u8, key, "auditSubject")) {
                         if (_pbz_seen.isSet(5)) return error.DuplicateField;
                         _pbz_seen.set(5);
                         if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -2463,22 +2463,22 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "actor")) {
+                            if (key.len == 5 and std.mem.eql(u8, key, "actor")) {
                                 self.actor = "";
                                 continue;
                             }
-                            if (std.mem.eql(u8, key, "at_unix") or std.mem.eql(u8, key, "atUnix")) {
+                            if (key.len == 7 and std.mem.eql(u8, key, "at_unix") or key.len == 6 and std.mem.eql(u8, key, "atUnix")) {
                                 self.at_unix = 0;
                                 continue;
                             }
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "actor")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "actor")) {
                             self.actor = try @This().jsonString(value);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "at_unix") or std.mem.eql(u8, key, "atUnix")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "at_unix") or key.len == 6 and std.mem.eql(u8, key, "atUnix")) {
                             self.at_unix = try @This().jsonInt(i64, value);
                             continue;
                         }

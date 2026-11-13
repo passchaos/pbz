@@ -1491,25 +1491,25 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "by_int") or std.mem.eql(u8, key, "byInt")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "by_int") or key.len == 5 and std.mem.eql(u8, key, "byInt")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             @This().deinitMap_by_int(allocator, &self.by_int);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "by_bool") or std.mem.eql(u8, key, "byBool")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "by_bool") or key.len == 6 and std.mem.eql(u8, key, "byBool")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             @This().deinitMap_by_bool(allocator, &self.by_bool);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "by_i64") or std.mem.eql(u8, key, "byI64")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "by_i64") or key.len == 5 and std.mem.eql(u8, key, "byI64")) {
                             if (_pbz_seen.isSet(2)) return error.DuplicateField;
                             _pbz_seen.set(2);
                             @This().deinitMap_by_i64(allocator, &self.by_i64);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "by_u64") or std.mem.eql(u8, key, "byU64")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "by_u64") or key.len == 5 and std.mem.eql(u8, key, "byU64")) {
                             if (_pbz_seen.isSet(3)) return error.DuplicateField;
                             _pbz_seen.set(3);
                             @This().deinitMap_by_u64(allocator, &self.by_u64);
@@ -1518,7 +1518,7 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "by_int") or std.mem.eql(u8, key, "byInt")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "by_int") or key.len == 5 and std.mem.eql(u8, key, "byInt")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -1530,7 +1530,7 @@ pub const demo = struct {
                         }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "by_bool") or std.mem.eql(u8, key, "byBool")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "by_bool") or key.len == 6 and std.mem.eql(u8, key, "byBool")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -1542,7 +1542,7 @@ pub const demo = struct {
                         }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "by_i64") or std.mem.eql(u8, key, "byI64")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "by_i64") or key.len == 5 and std.mem.eql(u8, key, "byI64")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -1554,7 +1554,7 @@ pub const demo = struct {
                         }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "by_u64") or std.mem.eql(u8, key, "byU64")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "by_u64") or key.len == 5 and std.mem.eql(u8, key, "byU64")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };

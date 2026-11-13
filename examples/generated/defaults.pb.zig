@@ -875,56 +875,56 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "count")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "count")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.count = 42;
                             self.has_count = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "max_count") or std.mem.eql(u8, key, "maxCount")) {
+                        if (key.len == 9 and std.mem.eql(u8, key, "max_count") or key.len == 8 and std.mem.eql(u8, key, "maxCount")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             self.max_count = 18446744073709551615;
                             self.has_max_count = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "enabled")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "enabled")) {
                             if (_pbz_seen.isSet(2)) return error.DuplicateField;
                             _pbz_seen.set(2);
                             self.enabled = true;
                             self.has_enabled = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "label")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "label")) {
                             if (_pbz_seen.isSet(3)) return error.DuplicateField;
                             _pbz_seen.set(3);
                             self.label = "hello\nzig";
                             self.has_label = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "raw")) {
+                        if (key.len == 3 and std.mem.eql(u8, key, "raw")) {
                             if (_pbz_seen.isSet(4)) return error.DuplicateField;
                             _pbz_seen.set(4);
                             self.raw = "\x01\x02";
                             self.has_raw = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "mode")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "mode")) {
                             if (_pbz_seen.isSet(5)) return error.DuplicateField;
                             _pbz_seen.set(5);
                             self.mode = 2;
                             self.has_mode = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "ratio")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "ratio")) {
                             if (_pbz_seen.isSet(6)) return error.DuplicateField;
                             _pbz_seen.set(6);
                             self.ratio = std.math.inf(f32);
                             self.has_ratio = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "neg_ratio") or std.mem.eql(u8, key, "negRatio")) {
+                        if (key.len == 9 and std.mem.eql(u8, key, "neg_ratio") or key.len == 8 and std.mem.eql(u8, key, "negRatio")) {
                             if (_pbz_seen.isSet(7)) return error.DuplicateField;
                             _pbz_seen.set(7);
                             self.neg_ratio = -std.math.inf(f64);
@@ -934,56 +934,56 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "count")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "count")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.count = try @This().jsonInt(i32, value);
                         self.has_count = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "max_count") or std.mem.eql(u8, key, "maxCount")) {
+                    if (key.len == 9 and std.mem.eql(u8, key, "max_count") or key.len == 8 and std.mem.eql(u8, key, "maxCount")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.max_count = try @This().jsonInt(u64, value);
                         self.has_max_count = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "enabled")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "enabled")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         self.enabled = try @This().jsonBool(value);
                         self.has_enabled = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "label")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "label")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         self.label = try @This().jsonString(value);
                         self.has_label = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "raw")) {
+                    if (key.len == 3 and std.mem.eql(u8, key, "raw")) {
                         if (_pbz_seen.isSet(4)) return error.DuplicateField;
                         _pbz_seen.set(4);
                         self.raw = try @This().jsonBytes(arena_allocator, value);
                         self.has_raw = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "mode")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "mode")) {
                         if (_pbz_seen.isSet(5)) return error.DuplicateField;
                         _pbz_seen.set(5);
                         self.mode = @This().jsonEnum(value, &.{"MODE_UNKNOWN", "MODE_ALPHA", "MODE_BETA"}, &.{0, 1, 2}, true) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         self.has_mode = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "ratio")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "ratio")) {
                         if (_pbz_seen.isSet(6)) return error.DuplicateField;
                         _pbz_seen.set(6);
                         self.ratio = try @This().jsonFloat(f32, value);
                         self.has_ratio = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "neg_ratio") or std.mem.eql(u8, key, "negRatio")) {
+                    if (key.len == 9 and std.mem.eql(u8, key, "neg_ratio") or key.len == 8 and std.mem.eql(u8, key, "negRatio")) {
                         if (_pbz_seen.isSet(7)) return error.DuplicateField;
                         _pbz_seen.set(7);
                         self.neg_ratio = try @This().jsonFloat(f64, value);

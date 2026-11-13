@@ -495,7 +495,7 @@ pub const demo = struct {
                         const key = entry.key;
                         const value = entry.value;
                         if (value == .null) {
-                            if (std.mem.eql(u8, key, "leaf")) {
+                            if (key.len == 4 and std.mem.eql(u8, key, "leaf")) {
                                 if (_pbz_seen.isSet(0)) return error.DuplicateField;
                                 _pbz_seen.set(0);
                                 if (self.leaf) |*old_value| old_value.deinit(allocator); self.leaf = null;
@@ -504,7 +504,7 @@ pub const demo = struct {
                             if (options.ignore_unknown_fields) continue;
                             return error.UnknownField;
                         }
-                        if (std.mem.eql(u8, key, "leaf")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "leaf")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             var _pbz_nested = try imports.public_leaf_proto.demo.publics.leaf.Leaf.jsonParseValueWithOptions(allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });

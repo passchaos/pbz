@@ -1387,17 +1387,23 @@ pub fn writeJsonParseOneofField(ctx: *const CodegenContext, oneof: schema.OneofD
 }
 
 pub fn writeJsonKeyCondition(field: *const schema.FieldDescriptor, writer: *std.Io.Writer) Error!void {
-    try writer.writeAll("std.mem.eql(u8, key, ");
+    try writer.print("key.len == {d} and std.mem.eql(u8, key, ", .{field.name.len});
     try cg.writeZigStringLiteral(field.name, writer);
     try writer.writeAll(")");
     if (field.json_name) |json_name| {
         if (!std.mem.eql(u8, json_name, field.name)) {
-            try writer.writeAll(" or std.mem.eql(u8, key, ");
+            try writer.print(" or key.len == {d} and std.mem.eql(u8, key, ", .{json_name.len});
             try cg.writeZigStringLiteral(json_name, writer);
             try writer.writeAll(")");
         }
     } else if (std.mem.indexOfScalar(u8, field.name, '_') != null) {
-        try writer.writeAll(" or std.mem.eql(u8, key, ");
+        // LowerCamel removes each underscore and uppercases the next byte, so
+        // the alias is exactly one byte shorter per underscore.
+        var underscores: usize = 0;
+        for (field.name) |byte| {
+            if (byte == '_') underscores += 1;
+        }
+        try writer.print(" or key.len == {d} and std.mem.eql(u8, key, ", .{field.name.len - underscores});
         try cg.writeZigLowerCamelStringLiteral(field.name, writer);
         try writer.writeAll(")");
     }

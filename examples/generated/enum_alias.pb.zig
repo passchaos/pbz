@@ -716,13 +716,13 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "status")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "status")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.status = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "history")) {
+                        if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             const old = self.history; self.history = &.{}; if (old.len != 0) allocator.free(old);
@@ -731,13 +731,13 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "status")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "status")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.status = @This().jsonEnum(value, &.{"STATUS_UNKNOWN", "STATUS_STARTED", "STATUS_RUNNING", "STATUS_DONE"}, &.{0, 1, 1, 2}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "history")) {
+                    if (key.len == 7 and std.mem.eql(u8, key, "history")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };

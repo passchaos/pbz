@@ -2107,9 +2107,9 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "if (options.ignore_unknown_fields) continue;") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "if (value == .null)") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.id = try @This().jsonInt(i32, value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"id\") or std.mem.eql(u8, key, \"id\")") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"user_id\") or std.mem.eql(u8, key, \"userId\")") != null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"display_name\") or std.mem.eql(u8, key, \"shownName\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "key.len == 2 and std.mem.eql(u8, key, \"id\") or key.len == 2 and std.mem.eql(u8, key, \"id\")") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "key.len == 7 and std.mem.eql(u8, key, \"user_id\") or key.len == 6 and std.mem.eql(u8, key, \"userId\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "key.len == 12 and std.mem.eql(u8, key, \"display_name\") or key.len == 9 and std.mem.eql(u8, key, \"shownName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.raw = try @This().jsonBytes(arena_allocator, value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.kind = @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "for (array.items) |item| try list.append(allocator, try @This().jsonString(item));") != null);
@@ -2117,7 +2117,7 @@ test "codegen emits typed json stringify and parse methods" {
     try std.testing.expect(std.mem.indexOf(u8, content, "self.tags = &.{}; if (old.len != 0) allocator.free(old);") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.choice = .{ .alias = try @This().jsonString(value) };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self._pbzDeinitOneof_choice(allocator); continue;") == null);
-    try std.testing.expect(std.mem.indexOf(u8, content, "std.mem.eql(u8, key, \"alt_name\") or std.mem.eql(u8, key, \"altName\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "key.len == 8 and std.mem.eql(u8, key, \"alt_name\") or key.len == 7 and std.mem.eql(u8, key, \"altName\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "self.choice = .{ .pick_kind = @This().jsonEnum(value, &.{\"UNKNOWN\", \"ADMIN\"}, &.{0, 1}, false) catch |err| { if (options.ignore_unknown_fields) continue; return err; } };") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnum(value: pbz.json.Value, comptime names: []const []const u8, comptime numbers: []const i32, comptime closed: bool) !i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, content, "fn jsonEnumNumber(value: i32, comptime numbers: []const i32, comptime closed: bool) !i32") != null);

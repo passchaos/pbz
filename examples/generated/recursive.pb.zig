@@ -583,14 +583,14 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "child")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "child")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.child = "";
                             self.has_child = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "children")) {
+                        if (key.len == 8 and std.mem.eql(u8, key, "children")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             const old = self.children; self.children = &.{}; for (old) |item| { var mutable = item; mutable.deinit(allocator); } if (old.len != 0) allocator.free(old);
@@ -599,7 +599,7 @@ pub const demo = struct {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "child")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "child")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         var _pbz_nested = try Node.jsonParseValueWithOptions(arena_allocator, arena_allocator, value, .{ .ignore_unknown_fields = options.ignore_unknown_fields });
@@ -608,7 +608,7 @@ pub const demo = struct {
                         self.has_child = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "children")) {
+                    if (key.len == 8 and std.mem.eql(u8, key, "children")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };

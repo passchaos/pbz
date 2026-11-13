@@ -2079,14 +2079,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "id")) {
+                        if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.id = 0;
                             self.has_id = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "note")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "note")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             self.note = "";
@@ -2096,14 +2096,14 @@ fn jsonWriteString(writer: *std.Io.Writer, value: []const u8) !void {
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "id")) {
+                    if (key.len == 2 and std.mem.eql(u8, key, "id")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.id = try @This().jsonInt(i32, value);
                         self.has_id = true;
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "note")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "note")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.note = try @This().jsonString(value);

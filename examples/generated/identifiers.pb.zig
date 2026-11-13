@@ -1059,58 +1059,58 @@ pub const demo = struct {
                     const key = entry.key;
                     const value = entry.value;
                     if (value == .null) {
-                        if (std.mem.eql(u8, key, "type")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "type")) {
                             if (_pbz_seen.isSet(0)) return error.DuplicateField;
                             _pbz_seen.set(0);
                             self.@"type" = 0;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "error")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "error")) {
                             if (_pbz_seen.isSet(1)) return error.DuplicateField;
                             _pbz_seen.set(1);
                             self.@"error" = "";
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "test")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "test")) {
                             if (_pbz_seen.isSet(2)) return error.DuplicateField;
                             _pbz_seen.set(2);
                             const old = self.@"test"; self.@"test" = &.{}; if (old.len != 0) allocator.free(old);
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "align")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "align")) {
                             if (_pbz_seen.isSet(3)) return error.DuplicateField;
                             _pbz_seen.set(3);
                             @This().deinitMap_align(allocator, &self.@"align");
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "null")) {
+                        if (key.len == 4 and std.mem.eql(u8, key, "null")) {
                             if (_pbz_seen.isSet(6)) return error.DuplicateField;
                             _pbz_seen.set(6);
                             self.@"null" = false;
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "await")) {
+                        if (key.len == 5 and std.mem.eql(u8, key, "await")) {
                             continue;
                         }
-                        if (std.mem.eql(u8, key, "opaque")) {
+                        if (key.len == 6 and std.mem.eql(u8, key, "opaque")) {
                             continue;
                         }
                         if (options.ignore_unknown_fields) continue;
                         return error.UnknownField;
                     }
-                    if (std.mem.eql(u8, key, "type")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "type")) {
                         if (_pbz_seen.isSet(0)) return error.DuplicateField;
                         _pbz_seen.set(0);
                         self.@"type" = try @This().jsonInt(i32, value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "error")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "error")) {
                         if (_pbz_seen.isSet(1)) return error.DuplicateField;
                         _pbz_seen.set(1);
                         self.@"error" = try @This().jsonString(value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "test")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "test")) {
                         if (_pbz_seen.isSet(2)) return error.DuplicateField;
                         _pbz_seen.set(2);
                         const array = switch (value) { .array => |array| array, else => return error.TypeMismatch };
@@ -1121,7 +1121,7 @@ pub const demo = struct {
                         self.@"test" = blk: { const old = self.@"test"; const owned = try list.toOwnedSlice(allocator); if (old.len != 0) allocator.free(old); break :blk owned; };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "align")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "align")) {
                         if (_pbz_seen.isSet(3)) return error.DuplicateField;
                         _pbz_seen.set(3);
                         const object_value = switch (value) { .object => |map_object| map_object, else => return error.TypeMismatch };
@@ -1133,13 +1133,13 @@ pub const demo = struct {
                         }
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "null")) {
+                    if (key.len == 4 and std.mem.eql(u8, key, "null")) {
                         if (_pbz_seen.isSet(6)) return error.DuplicateField;
                         _pbz_seen.set(6);
                         self.@"null" = try @This().jsonBool(value);
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "await")) {
+                    if (key.len == 5 and std.mem.eql(u8, key, "await")) {
                         if (_pbz_seen.isSet(4)) return error.DuplicateField;
                         _pbz_seen.set(4);
                         if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
@@ -1147,7 +1147,7 @@ pub const demo = struct {
                         self._pbzDeinitOneof_async(allocator); self.async = .{ .await = try @This().jsonString(value) };
                         continue;
                     }
-                    if (std.mem.eql(u8, key, "opaque")) {
+                    if (key.len == 6 and std.mem.eql(u8, key, "opaque")) {
                         if (_pbz_seen.isSet(5)) return error.DuplicateField;
                         _pbz_seen.set(5);
                         if (_pbz_seen_oneofs.isSet(0)) return error.DuplicateField;
